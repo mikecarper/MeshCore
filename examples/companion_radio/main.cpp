@@ -2897,6 +2897,11 @@ void halt() {
 
 #if defined(BLE_PIN_CODE)
   static bool companion_bluetooth_initialized = false;
+  // When Bluetooth has not started yet, startCompanionBluetooth() will use
+  // the active PIN from MyMesh. An initialized stack can update it in place.
+  bool companionApplyBluetoothPin(uint32_t pin) {
+    return !companion_bluetooth_initialized || bluetooth_interface.setPin(pin);
+  }
   static char companion_bluetooth_start_failure[96] =
       "Bluetooth has not started";
   static uint32_t companion_bluetooth_start_at = 0;

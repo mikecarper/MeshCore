@@ -125,7 +125,7 @@ int main() {
   assert(notice.find("DEVICE WARNING:")==0);
   assert(notice.find("Common Bluetooth PIN")!=std::string::npos);
   assert(notice.find("Settings > Bluetooth Settings > Custom")!=std::string::npos);
-  assert(notice.find("6 digits, save and reboot")!=std::string::npos);
+  assert(notice.find("6 digits and save")!=std::string::npos);
   assert(notice.find("Local notice")!=std::string::npos);
   assert(notice.find("\n- Settings > Bluetooth Settings > Custom\n- Enter 6 digits")!=std::string::npos);
   assert(notice.size()<133 && m.serial.output.size()==notice.size()+11);

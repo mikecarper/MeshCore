@@ -740,13 +740,13 @@ until Bluetooth connects or the two-minute pairing window expires. USB, WiFi,
 Ethernet, and hardware-serial connections do not suppress this screen. With no
 saved BLE PIN, display builds generate a new PIN at boot; builds without a
 physical display use `123456`. Use `set pin 654321` in the Companion CLI to save
-a fixed pairing PIN, then `reboot` to activate it. `set pin 0` restores the
-default/generated PIN policy. A PIN saved through the Companion protocol also
-takes effect after reboot. See the [PIN command reference](cli_commands.md#set-the-bluetooth-pairing-pin-companion).
+a fixed pairing PIN. `set pin 0` restores the default/generated PIN policy.
+PIN changes made through the CLI or Companion protocol apply to future pairings
+immediately. Existing bonded phones continue to use their saved keys; forget
+and re-pair a phone to require the new PIN. See the [PIN command reference](cli_commands.md#set-the-bluetooth-pairing-pin-companion).
 
 The app's Bluetooth settings show the saved custom PIN or Random choice as
-soon as it is saved. The pairing screen continues showing the active PIN
-until reboot, when the saved choice takes effect.
+soon as it is saved. Some app versions may still say to reboot.
 
 On T1000-E, a USB data host automatically pauses Bluetooth, including an
 existing phone connection. Unplug USB to resume Bluetooth after 500 ms; a

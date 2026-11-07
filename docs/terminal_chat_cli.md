@@ -312,9 +312,9 @@ takes effect after reboot. `get ble.name` and `set ble.name` are short aliases.
 ```
 set pin {0-999999}
 ```
-Saves the Bluetooth pairing PIN. For example, run `set pin 654321`, then
-`reboot` to activate it. `set pin 0` removes the saved override and restores the
-build's default/generated PIN policy after reboot; it does not disable Bluetooth.
+Saves and immediately applies the Bluetooth pairing PIN. For example, run
+`set pin 654321`. `set pin 0` removes the saved override and restores the
+build's default/generated PIN policy; it does not disable Bluetooth.
 Existing bonds can reconnect without PIN entry, so forget the phone's device
 entry and pair again if needed. See [Bluetooth pairing PIN](cli_commands.md#set-the-bluetooth-pairing-pin-companion).
 

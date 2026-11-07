@@ -51,6 +51,36 @@ static void good(SerialBLEInterface& a) {
   assert(tx->value_handle == 0x002a && tx->cccd_handle == 0x002b);
   assert(rx->value_handle == 0x002d); // Saved clients never chase heap order.
 }
+static void live_pin() {
+  SerialBLEInterface a;
+  assert(a.begin("MeshCore-", "legacy", 246810, custom));
+  a.enable();
+  const auto deletions = bond_deletions;
+  const auto disconnect_count = disconnects;
+  auto* original=server; original->connected=true;
+  esp_ble_gatts_cb_param_t connection;
+  original->callbacks->onConnect(original,&connection);
+  BLEDevice::security->onAuthenticationComplete(esp_ble_auth_cmpl_t{});
+  assert(a.isConnected());
+  assert(a.setPin(135790));
+  assert(pin==135790 && BLEDevice::security->onPassKeyRequest()==135790);
+  assert(a.isConnected() && disconnects==disconnect_count && bond_deletions==deletions);
+  failure="pin-update";
+  assert(!a.setPin(246801));
+  assert(pin==135790 && BLEDevice::security->onPassKeyRequest()==135790);
+  failure.clear();
+  assert(!a.setPin(1000000));
+  original->connected=false;
+  original->callbacks->onDisconnect(original);
+  stopped(a);
+  const auto before=pin_updates;
+  assert(a.setPin(864209));
+  assert(pin_updates==before); // Stack is stopped; next start applies it.
+  a.enable();
+  assert(pin==864209 && BLEDevice::security->onPassKeyRequest()==864209);
+  assert(bond_deletions==deletions);
+  stopped(a); retire_global(); ++suites;
+}
 static void repeated_cycles() {
   SerialBLEInterface a; assert(a.begin("MeshCore-","legacy",246810,custom));
   // Test initial saved-off as well as all subsequent live toggles.
@@ -274,6 +304,7 @@ static void cache_api_and_async_failures_are_bounded() {
 }
 #endif
 int main() {
+  live_pin();
 #if MESH_BLE_AUTO_CACHE_REFRESH
   cache_async_migration_and_real_nus_proof();
   cache_disconnect_pending_timeout_and_teardown();

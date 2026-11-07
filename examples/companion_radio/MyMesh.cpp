@@ -2429,7 +2429,7 @@ bool MyMesh::sendCommonBlePinWarning(BaseSerialInterface* route) {
     i += 4;
     static const char text[] = "DEVICE WARNING: Common Bluetooth PIN (Local notice).\n"
                                "- Settings > Bluetooth Settings > Custom\n"
-                               "- Enter 6 digits, save and reboot.";
+                               "- Enter 6 digits and save.";
     static_assert(sizeof(text) - 1 < 133, "Bluetooth PIN warning must fit app messages");
     static_assert(sizeof(text) - 1 + 11 <= MAX_FRAME_SIZE, "Bluetooth PIN warning must fit a message");
     memcpy(&out_frame[i], text, sizeof(text) - 1);
@@ -3577,9 +3577,14 @@ void MyMesh::begin(bool has_display, bool radio_available,
 #endif
 
 #ifdef BLE_PIN_CODE // 123456 by default
+#ifdef DISPLAY_CLASS
+  _ble_random_default = has_display && BLE_PIN_CODE == 123456;
+#else
+  _ble_random_default = false;
+#endif
   if (_prefs.ble_pin == 0) {
 #ifdef DISPLAY_CLASS
-    if (has_display && BLE_PIN_CODE == 123456) {
+    if (_ble_random_default) {
       StdRNG rng;
       _active_ble_pin = rng.nextInt(100000, 999999); // random pin each session
     } else {
@@ -5137,14 +5142,15 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
         || parsed < 0 || parsed > 999999) {
       mesh::cli::formatError(reply, reply_size, "pin must be 0-999999");
     } else {
-      const uint32_t previous = _prefs.ble_pin;
-      _prefs.ble_pin = static_cast<uint32_t>(parsed);
-      if (!savePrefs()) {
-        _prefs.ble_pin = previous;
-        mesh::cli::formatError(reply, reply_size, "pin changed but save failed");
+      if (!applyAndSaveBLEPin(static_cast<uint32_t>(parsed))) {
+        mesh::cli::formatError(reply, reply_size,
+                               _ble_pin_apply_failed ? "could not apply pin" : "could not save pin");
       } else {
         snprintf(reply, reply_size, "> pin is now %06lu",
                  (unsigned long)_prefs.ble_pin);
+#if defined(BLE_PIN_CODE)
+        if (_serial) scheduleCommonBlePinWarning(_serial->captureReplyRoute());
+#endif
       }
     }
     return true;
@@ -5651,6 +5657,78 @@ CompanionNodePrefs *MyMesh::getNodePrefs() {
 uint32_t MyMesh::getBLEPin() {
   return _active_ble_pin;
 }
+
+#if defined(BLE_PIN_CODE)
+extern bool companionApplyBluetoothPin(uint32_t pin);
+#endif
+
+bool MyMesh::applyAndSaveBLEPin(uint32_t pin) {
+  _ble_pin_apply_failed = false;
+#if defined(BLE_PIN_CODE)
+  if (_ble_pin_restore_pending) {
+    _ble_pin_apply_failed = true;
+    return false;
+  }
+  const uint32_t previous = _prefs.ble_pin;
+  const uint32_t previous_active = _active_ble_pin;
+  uint32_t active = pin;
+  if (pin == 0) {
+    if (_ble_random_default) {
+      if (previous == 0) {
+        active = _active_ble_pin;
+      } else {
+        StdRNG rng;
+        active = rng.nextInt(100000, 999999);
+      }
+    } else {
+      active = BLE_PIN_CODE;
+    }
+  }
+  // Apply first: a rejected live update must not leave a new persistent PIN
+  // that would become active unexpectedly on the next boot.
+  if (!companionApplyBluetoothPin(active)) {
+    _ble_pin_apply_failed = true;
+    return false;
+  }
+  _active_ble_pin = active;
+  _using_common_ble_pin = mesh::companion::usingCommonBlePin(active);
+  if (!savePreference(_prefs.ble_pin, pin)) {
+    if (companionApplyBluetoothPin(previous_active)) {
+      _active_ble_pin = previous_active;
+      _using_common_ble_pin = mesh::companion::usingCommonBlePin(previous_active);
+    } else {
+      // Keep reporting the PIN actually in use and retry the rollback.
+      _ble_pin_restore = previous_active;
+      _ble_pin_restore_pending = true;
+      _ble_pin_restore_last_retry = _ms->getMillis();
+    }
+    return false;
+  }
+  _active_ble_pin = active;
+  _using_common_ble_pin = mesh::companion::usingCommonBlePin(active);
+  if (!_using_common_ble_pin) {
+    _common_ble_pin_warning_pending = false;
+    _common_ble_pin_warning_in_flight = false;
+    _common_ble_pin_warning_route = nullptr;
+  }
+#else
+  if (!savePreference(_prefs.ble_pin, pin)) return false;
+#endif
+  return true;
+}
+
+#if defined(BLE_PIN_CODE)
+void MyMesh::servicePendingBLEPinRestore() {
+  if (!_ble_pin_restore_pending) return;
+  const uint32_t now = _ms->getMillis();
+  if (now - _ble_pin_restore_last_retry < 1000U) return;
+  _ble_pin_restore_last_retry = now;
+  if (!companionApplyBluetoothPin(_ble_pin_restore)) return;
+  _active_ble_pin = _ble_pin_restore;
+  _using_common_ble_pin = mesh::companion::usingCommonBlePin(_active_ble_pin);
+  _ble_pin_restore_pending = false;
+}
+#endif
 
 bool MyMesh::setBluetoothEnabledPreference(bool enabled) {
   return savePreference(_prefs.bluetooth_enabled, static_cast<uint8_t>(enabled));
@@ -6935,8 +7013,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     out_frame[i++] = FIRMWARE_VER_CODE;
     out_frame[i++] = MAX_CONTACTS / 2;   // v3+
     out_frame[i++] = MAX_GROUP_CHANNELS; // v3+
-    // Device info reports the saved setting (0 = random/default). Pairing
-    // continues using _active_ble_pin until the requested reboot.
+    // Device info reports the saved setting (0 = random/default).
     memcpy(&out_frame[i], &_prefs.ble_pin, 4);
     i += 4;
     memset(&out_frame[i], 0, 12);
@@ -8023,8 +8100,12 @@ void MyMesh::handleCmdFrame(size_t len) {
 
     // ensure pin is zero, or a valid 6 digit pin
     if (pin == 0 || (pin >= 100000 && pin <= 999999)) {
-      if (savePreference(_prefs.ble_pin, pin)) writeOKFrame();
-      else writeErrFrame(ERR_CODE_FILE_IO_ERROR);
+      if (applyAndSaveBLEPin(pin)) {
+        writeOKFrame();
+#if defined(BLE_PIN_CODE)
+        scheduleCommonBlePinWarning(_serial->captureReplyRoute());
+#endif
+      } else writeErrFrame(_ble_pin_apply_failed ? ERR_CODE_BAD_STATE : ERR_CODE_FILE_IO_ERROR);
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     }
@@ -12297,6 +12378,9 @@ void MyMesh::checkSerialInterface() {
 }
 
 void MyMesh::loop() {
+#if defined(BLE_PIN_CODE)
+  servicePendingBLEPinRestore();
+#endif
 #if MESH_WARM_RX_REFRESH
   if (_radio && _radio->serviceAGCMaintenanceFastLane()) return;
 #endif

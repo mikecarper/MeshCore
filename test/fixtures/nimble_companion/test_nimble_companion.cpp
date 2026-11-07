@@ -102,6 +102,34 @@ static void authenticate(SerialBLEInterface& interface, NimBLEConnInfo& info) {
   interface.checkRecvFrame(discarded);
 }
 
+static void test_live_pin_updates_without_losing_connection_or_bonds() {
+  reset(); SerialBLEInterface interface;
+  assert(interface.begin("MeshCore-", "pin", 123456));
+  interface.enable();
+  NimBLEConnInfo info;
+  authenticate(interface, info);
+  auto* server = NimBLEDevice::server.get();
+  const auto previous_deletions = bond_deletions;
+  const auto previous_disconnects = disconnects;
+  assert(server->displayPairingPasskey() == 123456);
+  assert(interface.setPin(246810));
+  assert(server->displayPairingPasskey() == 246810);
+  assert(pin == 123456);  // NimBLE sentinel remains callback-driven.
+  assert(interface.isConnected() && disconnects == previous_disconnects);
+  assert(bond_deletions == previous_deletions);
+  assert(!interface.setPin(1000000));
+  assert(server->displayPairingPasskey() == 246810);
+  server->connected = false;
+  server->callbacks->onDisconnect(server, info, 0);
+  interface.disable();
+  assert(interface.setPin(135790));
+  interface.enable();
+  server = NimBLEDevice::server.get();
+  assert(server && server->displayPairingPasskey() == 135790);
+  assert(bond_deletions == previous_deletions);
+  NimBLEDevice::deinit(true);
+}
+
 static void test_advertising_restart_retries_and_disable_cancels() {
   reset(); SerialBLEInterface interface;
   assert(interface.begin("MeshCore-", "retry", 123456));
@@ -560,6 +588,7 @@ static void test_full_bond_store_never_evicts_existing_peer() {
 }
 
 int main() {
+  test_live_pin_updates_without_losing_connection_or_bonds();
   test_full_bond_store_never_evicts_existing_peer();
   test_identity_modes();
   test_pairing_wake_for_random_and_saved_pins();

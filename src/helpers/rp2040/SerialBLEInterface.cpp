@@ -77,6 +77,13 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name, uint32_t pi
   return true;
 }
 
+bool SerialBLEInterface::setPin(uint32_t pin_code) {
+  if (pin_code > 999999U) return false;
+  BluetoothLock lock;
+  sm_use_fixed_passkey_in_display_role(pin_code);
+  return true;
+}
+
 void SerialBLEInterface::clearBuffers() {
   send_queue_len = 0;
   recv_queue_len = 0;

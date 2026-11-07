@@ -65,8 +65,7 @@ assert "getOfflineQueueCapacity()" in local
 # happened to work.
 assert local.count('strncmp(command, "set pin", 7) == 0') == 1
 assert "mesh::cli::parseIntegerStrict(value, parsed)" in local
-assert "const uint32_t previous = _prefs.ble_pin;" in local
-assert "_prefs.ble_pin = previous;" in local
+assert "applyAndSaveBLEPin(static_cast<uint32_t>(parsed))" in local
 
 terminal_start = source.index("void MyMesh::handleTerminalCommand(")
 terminal_end = source.index("\nvoid MyMesh::enterCLIRescue()", terminal_start)

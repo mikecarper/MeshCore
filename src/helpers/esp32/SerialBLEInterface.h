@@ -103,7 +103,9 @@ class SerialBLEInterface : public BaseSerialInterface,
   bool _hasBondedPeer = false;
   mesh::companion::BluetoothPeerIdentity _bondedPeer;
   uint16_t last_conn_id;
-  uint32_t _pin_code;
+  // Pairing callbacks run on the Bluetooth host task while the Companion task
+  // can change the PIN. Publish the new value without racing those callbacks.
+  std::atomic<uint32_t> _pin_code{0};
   uint32_t _last_write;
   uint32_t _adv_restart_started;
   bool _adv_restart_pending;
@@ -236,6 +238,10 @@ public:
              bool clear_bonds = false, bool stealth_pair_once = false,
              const mesh::companion::BluetoothPeerIdentity*
                  bonded_only_peer = nullptr);
+
+  // Change the passkey for subsequent pairings without touching saved bonds.
+  // A disabled stack applies it when it next starts.
+  bool setPin(uint32_t pin_code);
 
   // BaseSerialInterface methods
   void enable() override;

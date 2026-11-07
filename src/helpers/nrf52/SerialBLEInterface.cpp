@@ -831,6 +831,13 @@ bool SerialBLEInterface::startAdvertising(const char* failure_cause) {
   return false;
 }
 
+bool SerialBLEInterface::setPin(uint32_t pin_code) {
+  if (!_begin_ready || pin_code > 999999) return false;
+  char pin[7];
+  snprintf(pin, sizeof(pin), "%06lu", (unsigned long)pin_code);
+  return Bluefruit.Security.setPIN(pin);
+}
+
 bool SerialBLEInterface::begin(const char* prefix, const char* name,
                                uint32_t pin_code,
                                const uint8_t* custom_address,
@@ -857,8 +864,8 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name,
   _bonded_only_configure_pending = false;
   _pending_bonded_peer = mesh::companion::BluetoothPeerIdentity();
 
-  char charpin[20];
-  snprintf(charpin, sizeof(charpin), "%lu", (unsigned long)pin_code);
+  char charpin[7];
+  snprintf(charpin, sizeof(charpin), "%06lu", (unsigned long)pin_code);
   
   mesh_nrf52::applyBluetoothLedPolicy();
   // Configure individual connection values rather than the all-or-nothing

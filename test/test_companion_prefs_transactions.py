@@ -136,6 +136,7 @@ struct MyMesh {
   void servicePendingTxPower() {}
   void servicePendingLocalRadioSettings();
   Prefs _prefs,durable;
+  bool _ble_pin_apply_failed=false;
   double durable_lat=10,durable_lon=20;
   bool storage_accepts=true,_radio_available=true;
   unsigned saves=0,gps_policy_updates=0;
@@ -150,6 +151,7 @@ struct MyMesh {
   @SAVE_PREFERENCE@
   bool saveAdvertName(const char*);
   bool saveAdvertLocation(double,double);
+  bool applyAndSaveBLEPin(uint32_t);
   bool applyAndSaveRxPowerSaving(const char*,char*);
   bool applyAndSavePowerSaving(const char*,char*);
   bool applyAndSaveRxBoostedGain(bool);
@@ -453,6 +455,7 @@ class CompanionPrefsTransactionTests(unittest.TestCase):
             '@GPS_METHOD@': extract_braced(text, 'bool MyMesh::setGpsEnabled('),
             '@METHODS@': '\n'.join(extract_braced(text,sig) for sig in (
                 'bool MyMesh::saveAdvertName(', 'bool MyMesh::saveAdvertLocation(',
+                'bool MyMesh::applyAndSaveBLEPin(',
                 'bool MyMesh::applyAndSaveRxPowerSaving(',
                 'bool MyMesh::applyAndSaveRxBoostedGain(',
                 'bool MyMesh::applyAndSavePowerSaving(',

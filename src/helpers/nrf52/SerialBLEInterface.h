@@ -188,6 +188,9 @@ public:
              bool clear_bonds = false, bool stealth_pair_once = false,
              const mesh::companion::BluetoothPeerIdentity*
                  bonded_only_peer = nullptr);
+  // Apply the passkey for future pairings without restarting Bluetooth or
+  // changing existing bonds. False leaves the previous passkey in use.
+  bool setPin(uint32_t pin_code);
   // Refresh the GAP and scan-response name after a saved node/Bluetooth name
   // changes. A connected phone is left alone; the next idle pass applies it.
   bool refreshName(const char* prefix, const char* name);

@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "test/fixtures/pico_ble_queues"
 SANITIZERS = (["-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"]
               if sys.platform.startswith("linux") else [])
-SCENARIOS = ("normal", "admission", "priority", "mtu", "notify", "registration",
+SCENARIOS = ("set-pin", "normal", "admission", "priority", "mtu", "notify", "registration",
              "registration-sync-duplicate", "registration-error", "callback-clock",
              "deadline-progress", "best-effort", "locked", "stall-zero", "stall-wrap",
              "stall-cccd", "stall-register", "stall-notify", "stall-mtu",

@@ -3031,16 +3031,15 @@ Choose a six-digit code for a fixed Bluetooth pairing PIN. For example:
 
 ```text
 set pin 654321
-reboot
 ```
 
 The command saves the PIN across reboots and replies `> pin is now 654321`.
-Reboot to activate the new code; the current Bluetooth session keeps its
-existing PIN until then. A failed save reports an error and retains the
-previous saved setting.
+The new PIN applies to future pairings immediately. Existing bonded phones
+continue to use their saved keys; forget and re-pair a phone to require the new
+PIN. A failed save or Bluetooth update reports an error.
 
 `set pin 0` clears the saved override, rather than setting the pairing code to
-`000000` or disabling Bluetooth. After reboot, the build's default policy
+`000000` or disabling Bluetooth. The build's default policy immediately
 applies: normally `123456` without a display, or a generated PIN on eligible
 display-equipped builds.
 

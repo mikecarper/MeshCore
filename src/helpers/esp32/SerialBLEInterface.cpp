@@ -608,6 +608,29 @@ bool SerialBLEInterface::advertisingAllowed() const {
       && !_bondedOnlyRecoveryPending.load(std::memory_order_acquire);
 }
 
+bool SerialBLEInterface::setPin(uint32_t pin_code) {
+  if (pin_code > 999999) return false;
+  if (_stackActive && !_shutdownPending) {
+#if defined(MESH_USE_NIMBLE_ARDUINO)
+    // The pairing callback reads _pin_code directly. Keep NimBLE's sentinel
+    // unchanged so the callback continues to provide the actual passkey.
+#elif defined(CONFIG_NIMBLE_ENABLED)
+    BLESecurity sec;
+    sec.setPassKey(true, pin_code);
+#elif defined(CONFIG_BLUEDROID_ENABLED)
+    // Unlike BLESecurity::setStaticPIN(), this does not change authentication
+    // mode or other security options, and lets us detect a controller error.
+    if (esp_ble_gap_set_security_param(ESP_BLE_SM_SET_STATIC_PASSKEY,
+                                      &pin_code, sizeof(pin_code)) != ESP_OK)
+      return false;
+#else
+    return false;
+#endif
+  }
+  _pin_code.store(pin_code, std::memory_order_release);
+  return true;
+}
+
 bool SerialBLEInterface::begin(const char* prefix, const char* name,
                                uint32_t pin_code,
                                const uint8_t* custom_address,
@@ -669,7 +692,7 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name,
 bool SerialBLEInterface::startBluetoothStack(bool clear_bonds) {
   const char* dev_name = _deviceName;
   const uint8_t* custom_address = _hasCustomAddress ? _customAddress : nullptr;
-  const uint32_t pin_code = _pin_code;
+  const uint32_t pin_code = _pin_code.load(std::memory_order_acquire);
   // A failed start can have partially initialized the controller. Keep the
   // shutdown gate closed until servicePowerState() has cleaned it up.
   _stackActive = true;
