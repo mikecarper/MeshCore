@@ -2475,6 +2475,48 @@ roles also clamp transmit power to the board's limit for that frequency. Like
 
 ---
 
+#### Full Companion 255-byte receive probe observer
+
+Full ESP32 and nRF52 Companion builds provide a local-only, RAM-only lab
+observer. It starts disabled after every reboot. It sends no RF, writes no
+settings, and adds no streaming/push frames. Reduced builds, infrastructure
+roles and ESP-NOW-only images do not allocate its 552-byte state.
+
+```text
+set radio.probe <16 hexadecimal nonce characters>
+get radio.probe
+get radio.probe.page <0-15>
+set radio.probe off
+```
+
+Arming resets the counters and all 128 sequence slots. `off` stops collection
+and preserves the completed counters/pages until a new nonce or reboot.
+Only commands with a local sender timestamp of zero are accepted, including
+getters. Build-time `MESH_ENABLE_RADIO_PROBE_OBSERVER=0` removes the feature.
+
+Each accepted PHY packet has exactly 255 bytes: `3e 00`, ASCII `SPLIT1`, the
+8-byte nonce, ASCII `L`, a little-endian uint32 sequence from 0 through 127,
+and 234 padding bytes whose values are 0 through 233. The observer validates
+all bytes before crediting a unique sequence. A complete matching duplicate
+increments only `duplicates`; malformed packets with that nonce increment
+`invalid`. Other nonces are ignored. First-reception metadata is retained.
+
+`get radio.probe` reports version, active flag, nonce, length, slot count,
+`unique`, `duplicates`, `invalid`, and `scope=phy255,app=0`. These counts prove
+successful radio reads matching the complete probe; they do not claim ordinary
+application delivery. The unchanged application parser rejects its oversized
+253-byte application payload. No truncated `0x88` frame is produced.
+
+Each page returns `v=1,nonce=...,start=...,count=8,valid=XX,records=...`.
+Bit zero of the validity mask corresponds to `start`. The 64 hexadecimal
+record characters encode eight 4-byte entries: signed int16 little-endian RSSI
+in dBm, signed int8 SNR in quarter-dB, and receive profile 0/1 (255 unknown).
+Numeric metadata is truncated toward zero and saturated to those ranges;
+non-finite measurements are invalid. Invalid slots contain zeros. Replies fit
+the existing CLI/176-byte host frame; global frame and payload limits are unchanged.
+
+---
+
 #### LR2021 frequency measurement and crystal calibration
 
 Available on LR2021 builds, including Meshnology W12:

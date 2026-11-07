@@ -696,6 +696,7 @@ jobs:
           python3 -B test/test_lr2021_calibration.py -v
           python3 -B test/test_lr2021_auto_trim.py -v
           python3 -B test/test_lr2021_boot_auto_trim.py -v
+          python3 -B test/test_radio_probe_observer.py -v
           python3 -B test/test_lr2021_auto_trim_profiles.py -v
           python3 -B test/test_lr2021_frequency_correction.py -v
           python3 -B test/test_lr2021_packet_frequency.py -v

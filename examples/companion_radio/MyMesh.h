@@ -37,6 +37,7 @@
 #include <helpers/TempRadioReplyBarrier.h>
 #include <helpers/MeshtextConfig.h>
 #include <helpers/HostKiss.h>
+#include <helpers/RadioProbeObserver.h>
 #if MESH_ENABLE_ETHERNET_TUNNEL
 #include <helpers/EthernetTunnelSettings.h>
 #include <helpers/esp32/EthernetKissServer.h>
@@ -691,6 +692,9 @@ public:
   bool canRecoverUsbLogging() const;
 
 private:
+#if MESH_ENABLE_RADIO_PROBE_OBSERVER
+  mesh::RadioProbeObserver _radio_probe;
+#endif
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
   mesh::CompanionDirectAdminGuard _ota_direct_admin;
   ContactInfo _ota_direct_contact;

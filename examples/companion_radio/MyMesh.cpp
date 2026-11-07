@@ -840,6 +840,9 @@ const char* MyMesh::getLogDateTime() {
 #endif
 
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
+#if MESH_ENABLE_RADIO_PROBE_OBSERVER
+  _radio_probe.observe(raw,len,rssi,snr,_radio ? _radio->receiveProfile() : 255);
+#endif
 #if MESH_PACKET_LOGGING
   if (mesh::isUsbPacketLoggingAllowed()) {
     mesh::SerialLogLine<> line;
@@ -11442,6 +11445,10 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
         "companion", reply, reply_capacity);
     return true;
   }
+#endif
+
+#if MESH_ENABLE_RADIO_PROBE_OBSERVER
+  if (_radio_probe.handle(command,reply,reply_capacity,sender_timestamp==0)) return true;
 #endif
 
   if (mesh::cli::deferForRadioMaintenance(_radio && _radio->isAGCMaintenancePending(),
