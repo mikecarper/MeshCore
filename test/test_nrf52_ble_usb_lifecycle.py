@@ -17,6 +17,7 @@ class NrfBleUsbLifecycleTests(unittest.TestCase):
             'bool SerialBLEInterface::servicePendingTxReset()', 'void SerialBLEInterface::enable()',
             'void SerialBLEInterface::disable()', 'void SerialBLEInterface::disconnect()',
             'void SerialBLEInterface::onConnect(', 'void SerialBLEInterface::onSecured(',
+            'void SerialBLEInterface::onPairingComplete(',
             'void SerialBLEInterface::onDisconnect(', 'bool SerialBLEInterface::isValidConnection(',
             'bool SerialBLEInterface::isConnected()', 'void SerialBLEInterface::recoverStalledTx(',
             'void SerialBLEInterface::serviceTxRecovery(', 'void SerialBLEInterface::loop()',

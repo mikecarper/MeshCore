@@ -8,6 +8,7 @@
 #include <helpers/nrf52/BleRxFrameQueue.h>
 #define BLE_CONN_HANDLE_INVALID 0xffff
 #define BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION 0x13
+#define BLE_GAP_SEC_STATUS_SUCCESS 0
 #define BLE_HEALTH_CHECK_INTERVAL 10000
 #define BLE_COMPANION_START_TIMEOUT_MS 15000
 #define BLE_MIN_CONN_INTERVAL 12
@@ -21,6 +22,7 @@
 #define meshBleTrace(...) do {} while(0)
 static uint32_t clock_ms=100;
 static bool physical_link=false;
+static bool link_secured=true;
 static unsigned disconnect_requests=0;
 static uint16_t last_disconnect_handle=0xffff;
 uint32_t millis(){return clock_ms;}
@@ -28,7 +30,7 @@ struct ble_gap_addr_t {};
 struct ble_gap_conn_params_t {uint16_t min_conn_interval,max_conn_interval,slave_latency,conn_sup_timeout;};
 struct BLEConnection {
  bool connected()const{return physical_link;}
- bool secured()const{return true;}
+ bool secured()const{return link_secured;}
  bool bonded()const{return true;}
  ble_gap_addr_t getPeerAddr()const{return {};}
 };
@@ -63,7 +65,7 @@ struct SerialBLEInterface {
  mesh::BleTxStallWatchdog _tx_stall_watchdog;
  mesh::BleDisconnectRecovery _tx_disconnect_recovery;
  SecuritySessionTimer _security_timer,_companion_start_timer;
- unsigned recovery_services=0;
+ unsigned recovery_services=0,bond_removals=0,stealth_resets=0,successful_peers=0;
  void clearBuffers();void resetTxState();bool servicePendingTxReset();
  void enable();void disable();void disconnect();void loop();
  bool advertisingAllowed()const;bool isAdvertising()const;
@@ -72,10 +74,10 @@ struct SerialBLEInterface {
  void recoverStalledTx(const char*,uint16_t handle=BLE_CONN_HANDLE_INVALID,uint32_t generation=0);
  void serviceTxRecovery(uint32_t);
  void serviceBondedOnlyTransition(){}
- bool removeStoredBondForPeer(const char*){return false;}
- void requestBondedOnlyRecovery(const char*){}
- void noteSuccessfulConnection(const ble_gap_addr_t&){}
- static void onConnect(uint16_t);static void onSecured(uint16_t);static void onDisconnect(uint16_t,uint8_t);
+ bool removeStoredBondForPeer(const char*){++bond_removals;return false;}
+ void requestBondedOnlyRecovery(const char*){++stealth_resets;}
+ void noteSuccessfulConnection(const ble_gap_addr_t&){++successful_peers;}
+ static void onConnect(uint16_t);static void onSecured(uint16_t);static void onPairingComplete(uint16_t,uint8_t);static void onDisconnect(uint16_t,uint8_t);
 };
 static SerialBLEInterface* instance=nullptr;
 @METHODS@
@@ -140,5 +142,29 @@ static void repeated_idle_usb_cycles_restore_advertising() {
  for(unsigned n=0;n<5;++n){link.enable();assert(Bluefruit.Advertising.running);link.disable();assert(!Bluefruit.Advertising.running);clock_ms+=501;}
  link.enable();assert(Bluefruit.Advertising.running);
 }
+static void authentication_failure_retains_bond_and_stealth() {
+ physical_link=false;link_secured=true;disconnect_requests=0;clock_ms=100;
+ SerialBLEInterface link;instance=&link;link.enable();link._bonded_only=true;
+ physical_link=true;link.recv_queue.connect(7);SerialBLEInterface::onConnect(7);
+ link_secured=false;
+ SerialBLEInterface::onSecured(7);
+ assert(disconnect_requests==1 && link.bond_removals==0 && link.stealth_resets==0);
+ // A failed pairing must have the same preservation behavior.
+ link.recv_queue.connect(7);SerialBLEInterface::onConnect(7);
+ SerialBLEInterface::onPairingComplete(7, 5);
+ assert(disconnect_requests==2 && link.bond_removals==0 && link.stealth_resets==0);
+ // The same peer can next establish security and complete a new pairing.
+ // Bluefruit owns key persistence; this callback test does not model flash.
+ physical_link=false;link.recv_queue.disconnect(7);
+ SerialBLEInterface::onDisconnect(7,BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+ link_secured=true;
+ physical_link=true;link.recv_queue.connect(7);SerialBLEInterface::onConnect(7);
+ SerialBLEInterface::onSecured(7);
+ const unsigned prior=link.successful_peers;
+ SerialBLEInterface::onPairingComplete(7,BLE_GAP_SEC_STATUS_SUCCESS);
+ assert(link.isConnected() && link.successful_peers==prior+1);
+ assert(link.bond_removals==0 && link.stealth_resets==0);
+}
 int main(){normal_session();callback_crosses_disable_enable(false);callback_crosses_disable_enable(true);
- reused_handle_and_late_disconnect();closed_physical_link_cannot_block_advertising();repeated_idle_usb_cycles_restore_advertising();}
+ reused_handle_and_late_disconnect();closed_physical_link_cannot_block_advertising();repeated_idle_usb_cycles_restore_advertising();
+ authentication_failure_retains_bond_and_stealth();}

@@ -782,6 +782,13 @@ stealth remains enabled. Repeating `on` keeps an existing bond. Toggle `off`,
 then `on`, then reboot to reset first pairing. All flag changes need reboot.
 The node still sends directed or allowlisted BLE packets; it is not radio silent.
 
+On nRF52 and NimBLE Companions, an authentication failure does not by itself
+delete a saved bond. A phone that still has its keys can retry after a weak
+connection. Stealth remains enabled after a failure; if a reset phone can no
+longer be recognized, use an authorized local connection to turn stealth off
+before pairing again. Re-pairing and interrupted bond storage are handled by
+the platform Bluetooth stack and are not guaranteed to preserve the old key.
+
 ESP32 TCP ports 5000, 5001, and 5002 remain trusted-network services. The HTTP
 admin login protects WebConfig and runtime browser OTA, and does not protect
 these ports or delegated remote CLI. Administrative console access can change
