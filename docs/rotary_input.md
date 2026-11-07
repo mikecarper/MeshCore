@@ -27,7 +27,7 @@ get rotary.pins.available
 ```
 
 The list shows rotation-input pins for the current pull-up setting, excluding
-pins held by other functions. A board's existing user-button pin can
+pins held by other functions. A board's existing active-low user-button pin can
 additionally be selected as the push switch, even when absent from that list.
 Every wire must use a different physical pad.
 
@@ -129,7 +129,7 @@ notifications or enable a disabled alert rule.
 Assignments are checked before pins are initialized. Radio/front-end,
 flash/PSRAM, USB, debug, strapping, display/touch, active buses, GPS, battery,
 charger and power-control pins are excluded. The push switch has a narrow
-exception for the existing user button. In-use pins are locked across rotary
+exception for an existing active-low user button. In-use pins are locked across rotary
 inputs, custom outputs, programmable notification GPIO and ordinary user
 GPIO/timers. A low output remains owned until reset or reassignment.
 nRF52/STM32 Arduino aliases of one pad share one claim.

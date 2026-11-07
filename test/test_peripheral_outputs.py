@@ -283,8 +283,47 @@ void saveFailuresAndRecovery() {
   begin(board,&fs);assert(!claims(12));
   mesh::pins::release(Owner::Rotary,mesh::pins::pinMask(12));
 }
+unsigned gpioIo() {
+  unsigned count=0;
+  for(unsigned pin=0;pin<64;++pin)count+=writes[pin]+mode_writes[pin];
+  return count;
+}
+void terminalShutdown() {
+  mesh::MainBoard board;MockFS fs;
+  begin(board,&fs);resetOwners();
+  genericBuzzer builtin(TEST_UI_BUZZER_PIN);
+  builtin.begin();builtin.quiet(false);builtin.play("Builtin:d=4,o=5,b=100:c");
+  auto io=fs.io,gpio=gpioIo(),stops=rtttl::stops;
+  shutdown();shutdown();
+  assert(fs.io==io&&gpioIo()==gpio&&rtttl::stops==stops&&rtttl::active);
+  builtin.stop();
+  begin(board,&fs);
+  assert(command("set peripheral.buzzer 12")=="OK");
+  assert(command("set peripheral.led.notify 13")=="OK");
+  assert(command("set peripheral.led.gps 14")=="OK");
+  assert(command("set peripheral.led.ble 15")=="OK");
+  const auto saved=fs.files[target];
+  setBuzzerQuiet(false);playNotification("Custom:d=4,o=5,b=100:c");
+  notificationLed(true);notifyMessage(false,false,true);loop(true,true,true);
+  assert(rtttl::active&&needsPolling()&&levels[13]==HIGH&&levels[14]==HIGH&&levels[15]==HIGH);
+  io=fs.io;shutdown();
+  assert(fs.io==io&&fs.files[target]==saved&&!rtttl::active&&!needsPolling());
+  assert(!configuredBuzzer()&&!configuredNotificationLed());
+  for(unsigned pin=12;pin<=15;++pin)assert(levels[pin]==LOW&&modes[pin]==INPUT&&!claims(pin));
+  assert(mesh::pins::held(Owner::Outputs)==0);
+  assert(command("get peripherals")=="> buzzer=off led.notify=off led.gps=off led.ble=off");
+  gpio=gpioIo();stops=rtttl::stops;
+  shutdown();loop(true,true,true);notifyMessage(false,true,true);
+  assert(gpioIo()==gpio&&rtttl::stops==stops&&fs.io==io&&!needsPolling());
+  assert(command("set peripheral.led.notify 16").find("Error:")==0);
+  assert(fs.io==io&&!claims(16));
+  // Saved wiring is restored only by a fresh begin, never by shutdown.
+  begin(board,&fs);assert(configuredBuzzerPin()==12&&configuredNotificationLed()&&claims(15));
+  shutdown();
+}
 int main() {
   defaultsAndPersistence();parsingAndConflicts();outputsAndBuzzerOwnership();saveFailuresAndRecovery();
+  terminalShutdown();
 }
 '''
 

@@ -14,6 +14,8 @@ namespace peripherals {
 // is driven until a complete saved record passes this board's pin policy.
 // Call from the main loop; transport callbacks must defer commands there.
 void begin(MainBoard& board, FILESYSTEM* fs);
+// Terminal power-off: release runtime pins without changing saved settings.
+void shutdown();
 bool handleCommand(const char* command, char* reply, size_t capacity);
 void loop(bool gps_active, bool bluetooth_enabled, bool bluetooth_connected);
 void notificationLed(bool on);
@@ -31,6 +33,7 @@ bool needsPolling();
 bool claims(uint8_t pin);
 #else
 inline void begin(MainBoard&, FILESYSTEM*) {}
+inline void shutdown() {}
 inline bool handleCommand(const char*, char*, size_t) { return false; }
 inline void loop(bool, bool, bool) {}
 inline void notificationLed(bool) {}

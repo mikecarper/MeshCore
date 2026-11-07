@@ -249,6 +249,11 @@ inline Rejection buttonRejection(uint8_t pin, bool pullup = true) {
   if (user_button >= 0 && user_button < UINT8_MAX
       && pin == static_cast<uint8_t>(user_button)) {
     if (!isMapped(pin)) return Rejection::InvalidPin;
+#if defined(USER_BTN_PRESSED)
+    // The custom encoder switch is active low. A native active-high button
+    // cannot share that input until the encoder supports switch polarity.
+    if (USER_BTN_PRESSED != LOW) return Rejection::FirmwareReserved;
+#endif
     if (UserGpioPinPolicy::isFirmwareReserved(pin, true)) return Rejection::FirmwareReserved;
 #if defined(ESP32_PLATFORM) && defined(CONFIG_IDF_TARGET_ESP32)
     if (pullup && pin >= 34 && pin <= 39) return Rejection::NoPullup;

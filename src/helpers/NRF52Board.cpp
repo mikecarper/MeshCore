@@ -10,6 +10,8 @@
 #include <target.h>
 #include "PeripheralPinPolicy.h"
 #include "RuntimePinClaims.h"
+#include "RotarySettings.h"
+#include "PeripheralOutputs.h"
 #include "PowerSavingDiagnostics.h"
 #include "Nrf52RegulatorPlatform.h"
 
@@ -825,6 +827,23 @@ float NRF52Board::getMCUTemperature() {
 }
 
 void NRF52Board::shutdownPeripherals() {
+#if MESH_CUSTOM_PERIPHERALS
+#ifdef PIN_USER_BTN
+  const bool rotary_user_button = mesh::ui::rotaryOwnsButtonPin(PIN_USER_BTN);
+#endif
+  mesh::ui::setRotaryUiSupported(false);
+#ifdef PIN_USER_BTN
+  // Board-specific release/wake handling still needs the original pull mode.
+  if (rotary_user_button) {
+#if defined(USER_BTN_PRESSED) && USER_BTN_PRESSED == HIGH
+    pinMode(PIN_USER_BTN, INPUT_PULLDOWN);
+#else
+    pinMode(PIN_USER_BTN, INPUT_PULLUP);
+#endif
+  }
+#endif
+  mesh::peripherals::shutdown();
+#endif
   // Stop Bluefruit's LED owner before setting a final OFF latch. Its timer
   // stop is queued, so allow the existing shutdown delay to drain a pending
   // blinky callback before the final write below (also safe before BLE begin).

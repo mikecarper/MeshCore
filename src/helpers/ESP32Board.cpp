@@ -8,6 +8,8 @@
 #include "FileRead.h"
 #include "PeripheralPinPolicy.h"
 #include "RuntimePinClaims.h"
+#include "RotarySettings.h"
+#include "PeripheralOutputs.h"
 #include <helpers/esp32/ManagementPassword.h>
 #if MESH_ENABLE_EMERGENCY_POWER
 #include <esp_task_wdt.h>
@@ -1349,6 +1351,23 @@ bool ESP32Board::otaFromManifest(const char* manifest_base, const char* current_
 #endif  // WITH_MQTT_BRIDGE
 
 void ESP32Board::shutdownPeripherals() {
+#if MESH_CUSTOM_PERIPHERALS
+#ifdef PIN_USER_BTN
+  const bool rotary_user_button = mesh::ui::rotaryOwnsButtonPin(PIN_USER_BTN);
+#endif
+  mesh::ui::setRotaryUiSupported(false);
+#ifdef PIN_USER_BTN
+  // Stop custom wake IRQs without leaving the original button floating.
+  if (rotary_user_button) {
+#if defined(USER_BTN_PRESSED) && USER_BTN_PRESSED == HIGH
+    pinMode(PIN_USER_BTN, INPUT_PULLDOWN);
+#else
+    pinMode(PIN_USER_BTN, INPUT_PULLUP);
+#endif
+  }
+#endif
+  mesh::peripherals::shutdown();
+#endif
   // Power off the display if any
 #ifdef DISPLAY_CLASS
   display.turnOff();

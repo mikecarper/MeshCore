@@ -214,6 +214,15 @@ void begin(MainBoard& board, FILESYSTEM* fs) {
   apply(saved, mask);
 }
 
+void shutdown() {
+  apply(Settings(), 0);
+  notification_on = gps_on = bluetooth_on = legacy_notification_on = false;
+  legacy_notification_deadline = 0;
+  rejected_saved_pins = false;
+  main_board = nullptr;
+  settings_fs = nullptr;
+}
+
 bool handleCommand(const char* command, char* reply, size_t capacity) {
   if (!command || !reply || !capacity) return false;
   if (strcmp(command, "get peripheral.pins.available") == 0) {

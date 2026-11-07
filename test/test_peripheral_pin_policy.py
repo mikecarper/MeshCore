@@ -75,6 +75,21 @@ assert(!availableButton(0));
 assert(buttonRejection(0) == Rejection::FirmwareReserved);
 """)
 
+    def test_active_high_native_button_is_not_reused_as_active_low_switch(self):
+        adapter = self.ESP32 + "\nconstexpr uint8_t LOW=0, HIGH=1;\n"
+        self.run_policy(["ESP32_PLATFORM", "CONFIG_IDF_TARGET_ESP32", "PIN_USER_BTN=4",
+                         "USER_BTN_PRESSED=HIGH"], adapter, """
+assert(!availableButton(4));
+assert(!availableButton(4, false));
+assert(buttonRejection(4) == Rejection::FirmwareReserved);
+assert(availableButton(16));
+""")
+        self.run_policy(["ESP32_PLATFORM", "CONFIG_IDF_TARGET_ESP32", "PIN_USER_BTN=4",
+                         "USER_BTN_PRESSED=LOW"], adapter, """
+assert(availableButton(4));
+assert(availableButton(16));
+""")
+
     def test_native_usb_releases_only_unassigned_default_uart_pads(self):
         adapter = """
 constexpr uint8_t TX=43, RX=44, SDA=17, SCL=18;
