@@ -114,7 +114,14 @@ int main() {
     encodeSettings(bytes,value); assert(!decodeSettings(bytes,sizeof(bytes),loaded));
   }
   value=configured();
-  for(uint8_t bad : {0,4,9,255}) {
+  value.enabled=true; value.radio.cr=4;
+  assert(validSettings(value));
+  encodeSettings(bytes,value);
+  assert(bytes[7]==4 && decodeSettings(bytes,sizeof(bytes),loaded));
+  assert(loaded.enabled==value.enabled && loaded.configured==value.configured
+      && loaded.radio==value.radio && loaded.radio.cr==4);
+  value=configured();
+  for(uint8_t bad : {0,3,9,255}) {
     value.radio.cr=bad; assert(!validSettings(value));
     encodeSettings(bytes,value); assert(!decodeSettings(bytes,sizeof(bytes),loaded));
   }
