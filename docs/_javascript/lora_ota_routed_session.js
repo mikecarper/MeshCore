@@ -46,7 +46,8 @@
       if (await this.local('ota.peer radio') !== 'OTApeer radio=radio')
         throw Error('Select the source primary radio for routed OTA');
 
-      const status = await this.remote('ota status'), self = await this.remote('ota self'), version = await this.remote('ver');
+      const {status,self} = await checks.readReceiver(command => this.link.remoteCommand(this.key, this.password, command));
+      const version = await this.remote('ver');
       const dest = checks.destination(status, self, version);
       const cryptoApi = globalThis.crypto?.subtle || (typeof require === 'function' ? require('node:crypto').webcrypto.subtle : null);
       if (!cryptoApi) throw Error('Web Crypto is unavailable');

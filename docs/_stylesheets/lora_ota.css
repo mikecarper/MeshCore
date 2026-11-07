@@ -19,6 +19,17 @@
 }
 
 [data-lora-ota] p { margin: 0.6rem 0; }
+[data-lora-ota] .lora-ota-availability {
+  padding: 0.9rem 1rem;
+  border: 2px solid var(--md-accent-fg-color);
+  border-radius: 0.4rem;
+  font-weight: 700;
+}
+[data-lora-ota] .lora-ota-availability[data-state="unsupported"],
+[data-lora-ota] .lora-ota-availability[data-state="unavailable"],
+[data-lora-ota] .lora-ota-availability[data-state="unknown"] {
+  border-color: #b45309;
+}
 [data-lora-ota] label { display: block; font-weight: 600; }
 [data-lora-ota] input:not([type="checkbox"]),
 [data-lora-ota] textarea,

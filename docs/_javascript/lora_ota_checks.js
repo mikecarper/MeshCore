@@ -32,6 +32,47 @@
     if (nrf && (!caps || Number(caps[1]) < 3)) throw Error('Target did not confirm its supported bootloader codecs');
     return { targetId: parseInt(target[1], 16), hwId: hw[1], baseHash: body[1].toLowerCase(), version: version(ver), nrf, maxBlock, codecs: nrf ? parseInt(caps[2], 16) : 7, external: /(?:QSPI|SD) apply OK/i.test(combined), sd: /SD apply OK|\bbl:SD\b/i.test(combined) };
   }
+  // Only an explicit command rejection proves that the receiver is absent.
+  // Missing replies, access errors and incomplete metadata remain unknown.
+  function availability(status, self) {
+    const reply = String(status || '').trim().replace(/^>\s*/, '');
+    if (/^(?:(?:err(?:or)?)[\s:–-]+)?(?:unknown(?:\s+(?:command|cmd))?|unsupported(?:\s+command)?|(?:command\s+)?not supported)[.!]?$/i.test(reply) ||
+        /^Unknown OTA command(?:\. Type `ota help`\.|; use ota help)$/i.test(reply))
+      return {state:'unsupported', message:'LoRa updates are not available on this target’s current firmware. Install a compatible LoRa OTA receiver build using USB or another supported update method first.'};
+    if (/\bOTA\s+seeder\b|\binstall:disabled\b|\bsource-only; local install disabled\b/i.test(reply + ' ' + String(self || '')))
+      return {state:'unsupported', message:'LoRa updates are not available for this target: its firmware can send updates but cannot receive or install them. Install an OTA receiver build using USB or another supported update method first.'};
+    const target=/\btarget:([0-9a-f]{8})\b/i.exec(reply), hardware=/\bhw=([^ |]+)/i.exec(reply);
+    if (!target || target[1]==='00000000' || !hardware || hardware[1]==='?')
+      return {state:'unknown', message:'LoRa update support could not be confirmed from the target’s reply. Check access and connectivity, then investigate again.'};
+    const combined = reply + ' ' + String(self || '');
+    if (/(?:QSPI|SD) store:ERR|storage unsafe:|\bNO\s+(?:(?:QSPI|SD|delta)\s+)?(?:mota-)?apply\b|\bbl:(?:NONE|storage-ERR|NO-QSPI|NO-SD)\b/i.test(combined))
+      return {state:'unavailable', message:'LoRa updates are unavailable: the target reports that its storage or OTA bootloader is not ready. Check its bootloader and storage before updating.'};
+    if (self === undefined)
+      return {state:'unknown', message:'Checking whether this target can receive LoRa updates…'};
+    try {
+      destination(reply, String(self || ''), '0.0.0');
+      return {state:'supported', message:'LoRa OTA receiver detected. Firmware compatibility and radio settings still need to pass their checks.'};
+    } catch (error) {
+      if (/bootloader codecs/.test(error.message))
+        return {state:'unknown', message:'LoRa update support could not be confirmed: the target has not reported its supported OTA bootloader codecs. Check the bootloader diagnostics before updating.'};
+      if (/block limit/.test(error.message))
+        return {state:'unavailable', message:'LoRa updates are unavailable in this browser: ' + error.message + '. Check the target’s OTA bootloader and firmware.'};
+      return {state:'unknown', message:'LoRa update support could not be confirmed. The target did not provide a usable OTA status and installed-image identity. Check access and connectivity, then investigate again.'};
+    }
+  }
+  // Used by manual package checks too, so skipping investigation does not
+  // defer an explicit receiver rejection until after unrelated target reads.
+  async function readReceiver(remote) {
+    const normalize = value => String(value || '').trim().replace(/^>\s*/, '');
+    const status = normalize(await remote('ota status'));
+    const first = availability(status);
+    const reject = result => { const error=Error(result.message);error.otaAvailability=result;throw error; };
+    if (first.state==='unsupported' || first.state==='unavailable')reject(first);
+    const self = normalize(await remote('ota self'));
+    const result = availability(status, self);
+    if(result.state!=='supported')reject(result);
+    return {status,self};
+  }
   function validate(info, dest, verifiedSigner) {
     if (!info || !dest || !(info.baseHash instanceof Uint8Array)) throw Error('Invalid package metadata');
     if (info.isBootloader) throw Error('Bootloader updates are not supported by this updater');
@@ -112,5 +153,5 @@
         plan.memorySize + Math.ceil(info.blob.length / 4096) * 4096 > ceiling - plan.app)
       throw Error('The current nRF52 staging space no longer fits this differential');
   }
-  return { route, destination, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, validateInternalPlan, version, hex };
+  return { route, destination, availability, readReceiver, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, validateInternalPlan, version, hex };
 });

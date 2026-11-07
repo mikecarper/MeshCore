@@ -34,8 +34,7 @@
   }
   async function readLive(link,key,password){
     await link.verifyPeer(key,password);
-    const status=await link.remoteCommand(key,password,'ota status');
-    const self=await link.remoteCommand(key,password,'ota self');
+    const {status,self}=await checks.readReceiver(command=>link.remoteCommand(key,password,command));
     const version=await link.remoteCommand(key,password,'ver');
     const d=checks.destination(status,self,version);
     if(!d.nrf)await checks.ensureSequentialTarget(status,self,()=>link.remoteCommand(key,password,'get bootloader.ver'));

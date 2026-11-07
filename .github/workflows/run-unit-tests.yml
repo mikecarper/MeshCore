@@ -39,6 +39,7 @@ jobs:
         run: |
           python3 -m pip install detools==0.53.0
           node test/test_browser_lora_ota_checks.js
+          node --test test/test_browser_lora_ota_availability.js
           node --test test/test_browser_lora_ota_repeat.js
           node --test test/test_browser_lora_ota_sim.js
           node --test test/test_browser_lora_ota_companion_source.js
@@ -62,6 +63,7 @@ jobs:
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_legacy_investigation_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_repeater_retry_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_investigation_progress_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_availability_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_routed_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_routefind_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_delta_runtime.py -v
