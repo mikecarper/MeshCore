@@ -734,9 +734,26 @@ int MyMesh::getFromOfflineQueue(uint8_t frame[]) {
   return len;
 }
 
+#if defined(BLE_PIN_CODE)
+extern bool companionIsBluetoothRoute(BaseSerialInterface* route);
+#endif
+
 void MyMesh::syncNextOfflineMessage() {
   BaseSerialInterface* reply_route = _serial->captureReplyRoute();
 #if defined(BLE_PIN_CODE)
+  if (_common_ble_pin_warning_pending && companionIsBluetoothRoute(reply_route)) {
+    // A sync is already under way, so extra MSG_WAITING pushes are no longer
+    // needed and could cause overlapping inbox requests.
+    _common_ble_pin_warning_pushes = 3;
+  }
+  if (_common_ble_pin_warning_in_flight && companionIsBluetoothRoute(reply_route)) {
+    // Continue this sync without duplicating the notice. This request may be
+    // pipelined, so the next APP_START re-arms the warning regardless.
+    _common_ble_pin_warning_in_flight = false;
+    _common_ble_pin_warning_pending = false;
+    _common_ble_pin_warning_sent = true;
+    _common_ble_pin_warning_route = nullptr;
+  }
   // Deliver directly to the Bluetooth requester, never to the shared inbox.
   // Existing messages always retain priority.
   if (offline_queue_len == 0 && sendCommonBlePinWarning(reply_route)) return;
@@ -2350,12 +2367,15 @@ void MyMesh::servicePendingChannelNotices() {
 }
 
 #if defined(BLE_PIN_CODE)
-extern bool companionIsBluetoothRoute(BaseSerialInterface* route);
-
 void MyMesh::scheduleCommonBlePinWarning(BaseSerialInterface* route) {
   if (_using_common_ble_pin && isBluetoothEnabledPreference() &&
-      !_common_ble_pin_warning_sent && companionIsBluetoothRoute(route)) {
+      companionIsBluetoothRoute(route)) {
+    // A new APP_START can follow a disconnect that discarded a queued frame.
+    // The protocol has no receipt ACK, so each app session gets one warning.
+    _common_ble_pin_warning_sent = false;
     _common_ble_pin_warning_pending = true;
+    _common_ble_pin_warning_in_flight = false;
+    _common_ble_pin_warning_pushes = 0;
     _common_ble_pin_warning_route = route;
   }
 }
@@ -2367,13 +2387,20 @@ void MyMesh::serviceCommonBlePinWarning() {
       !isBluetoothEnabledPreference()) return;
   if (!_serial->isReplyRouteAvailable(route)) {
     // A new app start re-arms the notification on reconnect.
+    _common_ble_pin_warning_in_flight = false;
     _common_ble_pin_warning_route = nullptr;
     return;
   }
+  if (_common_ble_pin_warning_in_flight || _common_ble_pin_warning_pushes >= 3) return;
+  const uint32_t now = _ms->getMillis();
+  if (_common_ble_pin_warning_pushes != 0 &&
+      now - _common_ble_pin_warning_last_push < 3000U) return;
   if (_serial->isReplyRouteWriteBusy(route)) return;
   const uint8_t notice = PUSH_CODE_MSG_WAITING;
-  if (_serial->writeFrameToRoute(route, &notice, 1) == 1)
-    _common_ble_pin_warning_route = nullptr;
+  if (_serial->writeFrameToRoute(route, &notice, 1) == 1) {
+    ++_common_ble_pin_warning_pushes;
+    _common_ble_pin_warning_last_push = now;
+  }
 }
 
 bool MyMesh::sendCommonBlePinWarning(BaseSerialInterface* route) {
@@ -2408,11 +2435,12 @@ bool MyMesh::sendCommonBlePinWarning(BaseSerialInterface* route) {
     memcpy(&out_frame[i], text, sizeof(text) - 1);
     i += sizeof(text) - 1;
     if (_serial->writeFrameToRoute(route, out_frame, i) == static_cast<size_t>(i)) {
-      _common_ble_pin_warning_sent = true;
-      _common_ble_pin_warning_pending = false;
-      _common_ble_pin_warning_route = nullptr;
+      // A successful write only queues the frame. Suppress duplicates in this
+      // sync; the next APP_START retries because there is no receipt ACK.
+      _common_ble_pin_warning_in_flight = true;
     } else {
       // Re-notify after backpressure so the app has another chance to sync.
+      _common_ble_pin_warning_pushes = 0;
       _common_ble_pin_warning_route = route;
     }
     return true;

@@ -987,6 +987,9 @@ private:
   bool _using_common_ble_pin = false;
   bool _common_ble_pin_warning_pending = false;
   bool _common_ble_pin_warning_sent = false;
+  bool _common_ble_pin_warning_in_flight = false;
+  uint8_t _common_ble_pin_warning_pushes = 0;
+  uint32_t _common_ble_pin_warning_last_push = 0;
   BaseSerialInterface* _common_ble_pin_warning_route = nullptr;
 #endif
   bool _iter_started;
