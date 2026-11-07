@@ -1759,10 +1759,10 @@
     "src/helpers/FloodAdvertCLI.h": "0f378e4d0f6c3b9b79991068a4b4208139484d2144ee1d7c5094d39043463be4",
     "src/helpers/LedSettings.cpp": "df0681234ca1337148ad59caa935857bc692f98bf18603ca6d099c0382028400",
     "src/helpers/StorageLayout.cpp": "5dd1c8bcbe2902e1f22d14f9ab425465bdc38926fae23989987d850b484cbb18",
-    "examples/companion_radio/MyMesh.cpp": "27e244cb5ee726993ea99144a1afe29a7986dfa09f23781826e37aad93e71d0d",
+    "examples/companion_radio/MyMesh.cpp": "147aa0360aa4d1d189621cdac557890cf35a3fe40984d82b08ce97cfe979a2d6",
     "src/helpers/CommonRadioPrefs.cpp": "de964f85c2645ff238cdd75fefdf15c97a09edcd5fff953375e0c02238c5db5c",
     "examples/companion_radio/CompanionRetry.h": "e0ae10c7b2f778346f4645c4e147d87e1fbc7f8b99484752a8eed914bb21380f",
-    "examples/companion_radio/Notifications.cpp": "173fb0d452fdd383585dd88ab35fbb079a90e068adca2db9bc44d604557d3873",
+    "examples/companion_radio/Notifications.cpp": "c0a0aa35646bdecaa2e45b997509868cc1200dcdffda8cbdf57605ec0f2e26f6",
     "src/helpers/ota/OtaCli.cpp": "6b0265be4f5a68c74bcab031fe7b8d88734b51370f4dfeeed52df4339bbe0fbe",
     "src/helpers/MorseCLI.h": "fd6888f30dace1c4dbe929cc44ff1d5fa4a49b6938e26546fb21233ca7e5dbbb"
   }
