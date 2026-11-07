@@ -955,6 +955,7 @@ int main() {
   // Independent timing examples: configured preamble + four symbols + the
   // existing sync/header allowance. Payload limits retain their old values.
   const Case cases[] = {
+    {7, 62.5f, 4, 32, 99, 1819},
     {7, 62.5f, 5, 32, 99, 1456},
     {7, 125,   5, 32, 50, 1528},
     {7, 500,   5, 64, 21, 1569},

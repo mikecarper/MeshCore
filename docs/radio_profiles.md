@@ -129,7 +129,12 @@ get radio2.status
 ```
 
 The tuple is **frequency in MHz, bandwidth in kHz, spreading factor, coding-rate
-denominator, mode, optional preamble in symbols**. `5` means coding rate 4/5.
+denominator, mode, optional preamble in symbols**. Denominators `4` through `8`
+select 4/4 through 4/8. `4` disables payload forward-error correction; the
+explicit header and payload CRC remain enabled. Defaults and named presets
+keep their existing coding rates. The no-coding mode already used by adaptive
+direct retries is also available for saved primary, secondary and temporary
+profiles; select it explicitly on each endpoint when testing it.
 
 ### MediaMesh presets
 

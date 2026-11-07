@@ -247,7 +247,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
         && parseDecimalStrict(parts[0], freq)
         && parseDecimalStrict(parts[1], bw)
         && parseIntStrict(parts[2], 5, 12, sf)
-        && parseIntStrict(parts[3], 5, 8, cr)
+        && parseIntStrict(parts[3], 4, 8, cr)
         && freq >= 150.0f && freq <= 2500.0f
         && isValidLoRaBandwidth(bw)) {
       setSpreadFactor(static_cast<uint8_t>(sf));

@@ -34,8 +34,8 @@ delete beacon 2
 delete beacon all
 ```
 
-MeshCore tuple order is `MHz,kHz,SF,CR,dBm[,preamble]`; CR is 5 through 8,
-representing 4/5 through 4/8. The default beacon preamble is 32 symbols.
+MeshCore tuple order is `MHz,kHz,SF,CR,dBm[,preamble]`; CR is 4 through 8,
+representing 4/4 (no payload FEC) through 4/8. The default beacon preamble is 32 symbols.
 Meshtext takes an explicit `us`, `eu868`, `eu433`, or `anz` region, a recognized
 preset, and dBm. Its frequency is calculated using the stock preset channel;
 its preamble is fixed at 16 symbols. Invalid modem, region, power, or text

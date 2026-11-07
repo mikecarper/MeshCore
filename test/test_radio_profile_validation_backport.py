@@ -102,7 +102,7 @@ int main(){
  for(float frequency:{MESH_RADIO_PROFILE_CHIP==1268?433.0f:915.0f,2400.0f})
  for(float bandwidth:{7.791f,7.8f,31.25f,62.5f,125.0f,500.0f,812.5f})
  for(unsigned sf=5;sf<=12;++sf)
- for(unsigned cr=5;cr<=8;++cr)
+ for(unsigned cr=4;cr<=8;++cr)
  for(unsigned preamble:{0,8,32,65528}) {
   p.freq=frequency;p.bw=bandwidth;p.sf=sf;p.cr=cr;p.preamble=preamble;
   p.protocol=mesh::RadioProfileProtocol::MeshCore;
@@ -118,7 +118,8 @@ int main(){
        ?uint32_t(referenceAirtime(p,length,cr,beacon_preamble)):0;
    assert(w.getBeaconAirtime(p,length)==beacon_expected);
   }
-  assert(w.getProfileAirtime(0,255,4)==w.getProfileAirtime(0,255));
+  assert(w.getProfileAirtime(0,255,4)==referenceProfileAirtime(p,255,4,w.profilePreamble(0)));
+  assert(w.getProfileAirtime(0,255,3)==w.getProfileAirtime(0,255));
   assert(w.getProfileAirtime(0,255,9)==w.getProfileAirtime(0,255));
  }
  // Meshtext fixes the preamble to 16 even when a long explicit value is saved.

@@ -589,7 +589,7 @@ class CustomSX1262 : public SX1262 {
     // negative error in the unsigned time-on-air result and can stall TX.
     RadioLibTime_t getTimeOnAir(size_t len) override {
       uint8_t cr = this->codingRate;
-      // RadioLib stores ordinary CR 4/5 through 4/8 as 0-4. Long-interleaving
+      // RadioLib stores ordinary CR 4/4 through 4/8 as 0-4. Long-interleaving
       // CR values 0-4 and 5-7 map to the same time-on-air denominators.
       if (cr < 5) {
         cr += 4;

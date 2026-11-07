@@ -467,7 +467,7 @@ static bool isValidScheduledRadioParams(float freq, float bw, uint8_t sf, uint8_
   return freq >= 150.0f && freq <= 2500.0f
       && isValidLoRaBandwidth(bw)
       && sf >= 5 && sf <= 12
-      && cr >= 5 && cr <= 8;
+      && cr >= 4 && cr <= 8;
 }
 
 static bool buildRepeatersChannel(mesh::GroupChannel& channel) {

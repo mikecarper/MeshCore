@@ -694,7 +694,7 @@ static void testBounds() {
     changed = enabledImage();
     changed[33] = static_cast<uint8_t>(value);
     seal(changed);
-    expectResult(changed, value >= 5 && value <= 8);
+    expectResult(changed, value >= 4 && value <= 8);
     changed = enabledImage();
     changed[34] = static_cast<uint8_t>(value);
     seal(changed);

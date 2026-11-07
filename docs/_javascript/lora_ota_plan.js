@@ -24,7 +24,7 @@
   }
   function radioValid(r) {
     return r && Number.isInteger(r.sf) && r.sf >= 5 && r.sf <= 12 && Number.isFinite(r.bandwidth) && r.bandwidth > 0 &&
-      Number.isInteger(r.cr) && r.cr >= 5 && r.cr <= 8 && Number.isInteger(r.preamble) && r.preamble >= 1 && r.preamble <= 65535;
+      Number.isInteger(r.cr) && r.cr >= 4 && r.cr <= 8 && Number.isInteger(r.preamble) && r.preamble >= 1 && r.preamble <= 65535;
   }
   function estimateEdge(edge, caps, options = {}) {
     if (!edge || !Number.isSafeInteger(edge.payloadSize) || edge.payloadSize <= 0 || edge.payloadSize > 64 * 1024 * 1024 ||

@@ -184,7 +184,7 @@ public:
     // armed that NSS pulse can wake/stop the autonomous duty-cycle loop.
     // The active profile is LoRa, so use the cached tuple instead. Supplying
     // the coding rate also avoids getProfileAirtime's single-radio fallback.
-    if (_rx_ps_armed && _params_valid && _active_profile < 2 && _cur_cr >= 5 && _cur_cr <= 8)
+    if (_rx_ps_armed && _params_valid && _active_profile < 2 && _cur_cr >= 4 && _cur_cr <= 8)
       return getProfileAirtime(_active_profile,len,_cur_cr);
     return RadioLibWrapper::getEstAirtimeFor(len);
   }
@@ -1097,7 +1097,7 @@ public:
     if (_lab_seq_requested) {
       uint8_t raw_cr=0;
       if (r->getLoRaPacketStatus(&raw_cr,&received_crc)==RADIOLIB_ERR_NONE
-          && raw_cr>=1 && raw_cr<=4) {
+          && raw_cr<=4) {
         received_cr=raw_cr+4; received_params_valid=true;
       }
     }

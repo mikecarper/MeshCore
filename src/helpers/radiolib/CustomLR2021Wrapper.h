@@ -261,7 +261,7 @@ public:
 #if !defined(MESH_W12_PRAM_EXPERIMENT) || !MESH_W12_PRAM_EXPERIMENT
   uint32_t getEstAirtimeFor(int len) override {
     // getTimeOnAir queries packet type over SPI; NSS can stop duty-cycle RX.
-    if (_rx_ps_armed && _params_valid && _active_profile < 2 && _cur_cr >= 5 && _cur_cr <= 8)
+    if (_rx_ps_armed && _params_valid && _active_profile < 2 && _cur_cr >= 4 && _cur_cr <= 8)
       return getProfileAirtime(_active_profile, len, _cur_cr);
     return RadioLibWrapper::getEstAirtimeFor(len);
   }

@@ -1534,7 +1534,7 @@ uint32_t RadioLibWrapper::getProfileAirtime(uint8_t profile, int len, uint8_t cr
   if (!validateProfile(p)) return 0;
   const double symbol = mesh::RadioProfiles::symbolUs(p);
   if (symbol <= 0 || len < 0) return 0;
-  if (cr < 5 || cr > 8) cr = p.cr;
+  if (cr < 4 || cr > 8) cr = p.cr;
   const int de = symbol >= 16000
 #if MESH_RADIO_PROFILE_CHIP == 1121
       // RadioLib 7.8.1 forces SX128x-compatible LDRO for high-band SF11/12.
@@ -3778,7 +3778,7 @@ PacketMillis RadioLibWrapper::calcMaxPacketMillis(uint8_t sf, float bw, uint8_t 
       : (fallback_total_us > preamble_us ? fallback_total_us - preamble_us
                                         : fallback_total_us);
   // rescale payload_us for max possible CR
-  if (cr >= 5 && cr < 8) { payload_us = (payload_us * 8) / cr; }
+  if (cr >= 4 && cr < 8) { payload_us = (payload_us * 8) / cr; }
 
   return PacketMillis {static_cast<uint32_t>((preamble_guard_us + 999) / 1000),
                        (payload_us + 999) / 1000};

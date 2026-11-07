@@ -851,6 +851,21 @@ static void mediaMeshScopeLifecycle() {
 }
 
 int main(int argc, char** argv) {
+  {
+    Fixture f;
+    f.cmd("set radio2 910.5,500,12,4,rxtx,32"); f.advance(2000);
+    assert(f.radio.p.secondary.params.cr==4);
+    Radio reboot; mesh::RadioProfileCLI restored;
+    restored.begin(&f.fs,&reboot,&f.clock);
+    assert(reboot.p.enabled() && reboot.p.secondary.params.cr==4);
+    f.cmd("set radio2 910.5,500,12,3,rxtx,32",false);
+    f.cmd("set radio2 910.5,500,12,9,rxtx,32",false);
+    assert(f.radio.p.secondary.params.cr==4);
+    f.cmd("set tempradio2 911.5,500,12,4,rxtx,1,32"); f.advance(2000);
+    assert(f.radio.p.secondary_temporary && f.radio.p.secondary.params.cr==4);
+    f.advance(60000);
+    assert(!f.radio.p.secondary_temporary && f.radio.p.secondary.params.cr==4);
+  }
   static_assert(uint8_t(mesh::RadioCrossMode::Auto)==0 && uint8_t(mesh::RadioCrossMode::On)==1
       && uint8_t(mesh::RadioCrossMode::Off)==2, "saved crossover encoding must remain compatible");
   {

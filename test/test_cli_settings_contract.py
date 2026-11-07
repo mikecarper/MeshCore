@@ -125,6 +125,14 @@ int main() {
   assert(radio->handleCommand("set radio 916,125,8,6", 0, reply));
   assert(!strncmp(reply, "OK", 2) && radio->isDirty());
   assert(prefs.freq == 916 && prefs.bw == 125 && prefs.sf == 8 && prefs.cr == 6);
+  radio->clearDirty();
+  assert(radio->handleCommand("set radio 916,500,12,4", 0, reply));
+  assert(!strncmp(reply, "OK", 2) && radio->isDirty() && prefs.cr == 4);
+  radio->clearDirty();
+  for (const char* text : {"set radio 916,500,12,3", "set radio 916,500,12,9"}) {
+    assert(radio->handleCommand(text, 0, reply));
+    assert(strstr(reply, "invalid radio") && !radio->isDirty() && prefs.cr == 4);
+  }
 }
 '''
         with tempfile.TemporaryDirectory(prefix='common-radio-dispatch-') as directory:

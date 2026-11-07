@@ -34,6 +34,9 @@ int main() {
   w._rx_ps_armed=true;
   assert(w.getEstAirtimeFor(123)==123 && w.driver_calls==1);
   assert(w.last_profile==0 && w.last_len==123 && w.last_cr==5);
+  w._cur_cr=4;
+  assert(w.getEstAirtimeFor(255)==123 && w.driver_calls==1);
+  assert(w.last_profile==0 && w.last_len==255 && w.last_cr==4);
   w._lab_scan_active=true; w._lab_last_profile=1;
   assert(w.getEstAirtimeFor(55)==123 && w.last_profile==1 && w.last_cr==5 && w.driver_calls==1);
   w._lab_scan_active=false; w._rx_ps_armed=false;

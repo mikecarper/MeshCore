@@ -10,6 +10,14 @@ int main() {
     assert(plan.slots[i].packed.frequency==904525000);
   }
   assert(plan.slots[4].logical_profile==1 && plan.slots[4].physical.sf==7);
+  profiles[0].cr=4;
+  assert(sequentialPlan(profiles,0,5,8,plan) && plan.count==5);
+  for (uint8_t i=0;i<4;++i) {
+    assert(plan.slots[i].physical.cr==4 && ((plan.slots[i].packed.modem>>12)&15u)==0);
+  }
+  profiles[0].cr=3; assert(!sequentialPlan(profiles,0,5,8,plan) && !plan.count);
+  profiles[0].cr=9; assert(!sequentialPlan(profiles,0,5,8,plan) && !plan.count);
+  profiles[0].cr=5; assert(sequentialPlan(profiles,0,5,8,plan));
   SequentialSlot hit;
   assert(sequentialHit(plan,0,11,12,hit) && hit.logical_profile==0 && hit.physical.sf==5);
   assert(sequentialHit(plan,3,11,12,hit) && hit.physical.sf==8);

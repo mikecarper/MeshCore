@@ -2028,7 +2028,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->freq = constrain(_prefs->freq, 150.0f, 2500.0f);
     _prefs->bw = isValidLoRaBandwidth(_prefs->bw) ? _prefs->bw : defaultLoRaBandwidth();
     _prefs->sf = constrain(_prefs->sf, 5, 12);
-    _prefs->cr = constrain(_prefs->cr, 5, 8);
+    _prefs->cr = constrain(_prefs->cr, 4, 8);
     uint8_t extra_sf_count = 0;
     if (!mesh::lr2021::storedSideDetectorCount(_prefs->extra_sf, extra_sf_count)
         || !mesh::lr2021::validateSideDetectorSFs(
@@ -3481,7 +3481,7 @@ bool CommonCLI::acceptsPrimaryRadioParams(float freq, float bw, uint8_t sf,
                                           uint8_t cr, uint16_t preamble) {
   // The positive range and bandwidth whitelist also reject NaN and infinities.
   return freq >= 150.0f && freq <= 2500.0f
-      && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8 && isValidLoRaBandwidth(bw)
+      && sf >= 5 && sf <= 12 && cr >= 4 && cr <= 8 && isValidLoRaBandwidth(bw)
       && _radio_profiles.acceptsPrimary(freq, bw, sf, cr, preamble);
 }
 

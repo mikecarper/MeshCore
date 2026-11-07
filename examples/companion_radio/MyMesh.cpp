@@ -3389,7 +3389,7 @@ void MyMesh::begin(bool has_display, bool radio_available,
   _prefs.freq = constrain(_prefs.freq, 150.0f, 2500.0f);
   _prefs.bw = constrain(_prefs.bw, 7.8f, 500.0f);
   _prefs.sf = constrain(_prefs.sf, 5, 12);
-  _prefs.cr = constrain(_prefs.cr, 5, 8);
+  _prefs.cr = constrain(_prefs.cr, 4, 8);
   _prefs.tx_power_dbm = constrain(_prefs.tx_power_dbm, -9, MAX_LORA_TX_POWER);
   _prefs.flood_retry_attempts = constrain(_prefs.flood_retry_attempts, 0, 15);
   if (_prefs.flood_retry_max_path > 63
@@ -5409,7 +5409,7 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
         || !isfinite(freq) || !isfinite(bw)
         || freq < 150.0f || freq > 2500.0f
         || !isFullCompanionBandwidth(bw)
-        || sf < 5 || sf > 12 || cr < 5 || cr > 8
+        || sf < 5 || sf > 12 || cr < 4 || cr > 8
         || timeout_mins == 0 || timeout_mins > 10080UL
         || !_radio_profiles.acceptsPrimary(freq, bw, sf, cr, preamble)) {
       snprintf(reply, reply_size,
@@ -7432,7 +7432,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     const uint8_t sf = cmd_frame[9], cr = cmd_frame[10];
     const uint8_t repeat = len > 11 ? cmd_frame[11] : 0;
     if (freq < 150000 || freq > 2500000 || bw < 7000 || bw > 500000
-        || sf < 5 || sf > 12 || cr < 5 || cr > 8) {
+        || sf < 5 || sf > 12 || cr < 4 || cr > 8) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     } else {
       const auto result = applyAndSaveRadioParams(freq / 1000.0f, bw / 1000.0f,

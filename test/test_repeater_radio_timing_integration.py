@@ -700,7 +700,7 @@ int main() {
   handle("tempradio 910,250,5,5,1440", reply.text);
   assert(!strcmp(reply.text, "OK - temp params for 1440 mins (1d0h0m); applying in 2s; rx.watchdog=12hours"));
   assert(!strncmp(reply.text, "OK - temp params for ", 21)); // exact reply-barrier marker
-  handle("tempradio 910,250,5,5,90", reply.text);
+  handle("tempradio 910,250,5,4,90", reply.text);
   assert(!strcmp(reply.text, "OK - temp params for 90 mins (0d1h30m); applying in 2s; rx.watchdog=off (temp<12hours)"));
   assert(callbacks.calls == 2 && callbacks.duration == 5400);
   for (const char* minutes : {"0", "-1", "12oops", "1.5", "4294967295", "4294967296"}) {
@@ -712,7 +712,7 @@ int main() {
   }
   for (const char* command : {"tempradio 910,250,261,5,30",
       "tempradio 910,250,7,261,30", "tempradio 910,250,0,5,30",
-      "tempradio 910,250,7,4,30", "tempradio 149,250,7,5,30",
+      "tempradio 910,250,7,3,30", "tempradio 149,250,7,5,30",
       "tempradio 910,123,7,5,30"}) {
     handle(command, reply.text);
     assert(!strcmp(reply.text, "Error, invalid params") && callbacks.calls == 2);

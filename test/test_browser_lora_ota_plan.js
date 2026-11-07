@@ -74,4 +74,8 @@ test('invalid image hashes, role changes and non-upgrade edges are rejected',()=
 });
 test('airtime uses explicit-header LoRa symbol timing',()=>{
   assert.ok(Math.abs(airtime(186,radio) - 0.643584)<1e-9);
+  const cr4={sf:12,bandwidth:500,cr:4,preamble:32};
+  assert.ok(Math.abs(airtime(255,cr4)-1.771520)<1e-9);
+  assert.ok(estimateEdge({payloadSize:1024,blockSize:1024},caps,{radio:cr4}).rfAirtimeSeconds>0);
+  for(const cr of [3,9]) assert.throws(()=>estimateEdge({payloadSize:1024,blockSize:1024},caps,{radio:{...cr4,cr}}),/radio parameters/);
 });

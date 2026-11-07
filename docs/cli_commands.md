@@ -2167,7 +2167,8 @@ node after the save succeeds. See [regulator recovery and hardware checks](power
 - `freq`: Frequency in MHz
 - `bw`: Bandwidth in kHz. Most targets allow `7.8`, `10.4`, `15.6`, `20.8`, `31.25`, `41.7`, `62.5`, `125`, `250`, `500`. LR1110 targets allow `62.5`, `125`, `250`, `500`.
 - `sf`: Spreading factor (5-12)
-- `cr`: Coding rate (5-8)
+- `cr`: Coding-rate denominator (4-8). `4` selects 4/4 without payload FEC;
+  `8` selects 4/8. Header and CRC settings are unchanged.
 
 **Set by build flag:** `LORA_FREQ`, `LORA_BW`, `LORA_SF`, `LORA_CR`
 
@@ -2309,7 +2310,7 @@ settings use a safe effective power without replacing the saved preference.
 - `freq`: Frequency in MHz (150-2500)
 - `bw`: Bandwidth in kHz (same allowed values as `set radio`)
 - `sf`: Spreading factor (5-12)
-- `cr`: Coding rate (5-8)
+- `cr`: Coding-rate denominator (4-8); `4` selects 4/4 without payload FEC.
 - `timeout_mins`: Duration in minutes (must be > 0)
 
 **Notes:**
@@ -2372,7 +2373,7 @@ intervals and the 24-hour watchdog policy. An explicitly saved normal-mode
 - `freq`: Frequency in MHz (150-2500)
 - `bw`: Bandwidth in kHz (same allowed values as `set radio`)
 - `sf`: Spreading factor (5-12)
-- `cr`: Coding rate (5-8)
+- `cr`: Coding-rate denominator (4-8); `4` selects 4/4 without payload FEC.
 - `start_time`: UTC Unix epoch seconds, or `+N` for N whole minutes from now
 - `end_time`: UTC Unix epoch seconds, or `+N` for N whole minutes from now
 - `n`: Scheduled entry number from `get radioat` or `get tempradioat`

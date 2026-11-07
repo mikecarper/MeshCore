@@ -122,6 +122,14 @@ struct MyMesh : CompanionFleetFixture {
   }
   @SAVE_PREFS@
   void bootSanitize() { @COMPANION_SANITIZE@ }
+  int binary_result=-1;
+  void writeOKFrame() { binary_result=0; }
+  void writeErrFrame(int code) { binary_result=code; }
+  void setRadioFrame(const uint8_t* cmd_frame,size_t len) {
+    constexpr uint8_t CMD_SET_RADIO_PARAMS=11;
+    constexpr int ERR_CODE_ILLEGAL_ARG=1,ERR_CODE_FILE_IO_ERROR=2;
+    @BINARY_SET_RADIO@
+  }
   bool handleCommand(const char*,uint32_t,char*);
   const char* command(const char* value,uint32_t timestamp=0) {
     profile_metadata_fs=&profile_fs;
@@ -237,6 +245,22 @@ int main() {
     assert(loaded.freq==915 && loaded.sf==8 && loaded.cr==6);
     assert(fabsf(loaded.bw-125)<0.001f);++checks;
   }
+  for(uint32_t timestamp:{0U,1700000000U}) {
+    MyMesh m;assert(!error(m.command("set radio 915,500,12,4,32",timestamp)));
+    CompanionNodePrefs loaded;m.loadSaved(loaded);
+    assert(loaded.cr==4 && loaded.sf==12 && loaded.bw==500);
+    m._prefs=loaded;m.bootSanitize();assert(m._prefs.cr==4);++checks;
+  }
+  for(uint8_t cr:{uint8_t(3),uint8_t(4),uint8_t(8),uint8_t(9)}) {
+    MyMesh m;uint8_t frame[12]={11};uint32_t f=915000,bw=500000;
+    memcpy(frame+1,&f,4);memcpy(frame+5,&bw,4);frame[9]=12;frame[10]=cr;
+    m.setRadioFrame(frame,sizeof(frame));
+    if(cr>=4&&cr<=8) {
+      assert(m.binary_result==0);CompanionNodePrefs loaded;m.loadSaved(loaded);
+      assert(loaded.cr==cr && loaded.sf==12 && loaded.bw==500);
+    } else {assert(m.binary_result==1);m.expectOriginal();}
+    ++checks;
+  }
   { // Omitted suffix intentionally restores the automatic preamble.
     MyMesh m;assert(!error(m.command("set radio 915,125,8,6")));
     assert(m.rebootPreamble()==0);++checks;
@@ -313,7 +337,9 @@ def production_primary_radio_harness():
         '@COMMAND_FILTER@': extract_braced(companion, 'static bool isCompanionRadioPrefsCommand('),
         '@DISPATCH@': extract_braced(companion, 'void MyMesh::queueSavedRadioApply(') + '\n'
             + extract_braced(companion, 'MyMesh::RadioSettingResult MyMesh::applyAndSaveRadioParams(') + '\n' + dispatch,
-        '@COMPANION_SANITIZE@': boot_checks(companion, '_prefs.airtime_factor'),
+        '@COMPANION_SANITIZE@': boot_checks(companion, '_prefs.airtime_factor') + '\n'
+            + re.search(r'_prefs\.cr = constrain\([^;]+;',companion).group(),
+        '@BINARY_SET_RADIO@': extract_braced(companion, 'if (cmd_frame[0] == CMD_SET_RADIO_PARAMS)'),
         '@INFRA_SANITIZE@': boot_checks(infra, '_prefs->airtime_factor'),
         '@INFRA_SETTER@': extract_braced(infra, 'if (memcmp(config, "dutycycle ", 10) == 0)'),
         '@INFRA_RADIO@': extract_braced(infra, 'if (configKeyEquals(config, "radio"))').split('{', 1)[1].rsplit('}', 1)[0],

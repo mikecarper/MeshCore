@@ -84,7 +84,7 @@ public:
 static uint32_t airtime(const RadioLibWrapper& radio, uint8_t profile,
                         unsigned length, uint8_t override_cr) {
   const auto& p = radio._profiles.params(profile);
-  const unsigned cr = override_cr >= 5 && override_cr <= 8 ? override_cr : p.cr;
+  const unsigned cr = override_cr >= 4 && override_cr <= 8 ? override_cr : p.cr;
   const bool low_rate = (1U << p.sf) * 1000.0 / p.bw >= 16000;
   const int denominator = 4 * (p.sf - 2 * low_rate);
   const int numerator = 8 * int(length) - 4 * p.sf + (p.sf <= 6 ? 20 : 28) + 16;
@@ -177,7 +177,7 @@ int main() {
     for (uint8_t profile : {1, 0}) for (uint8_t active : {0, 1})
     for (uint8_t route : {ROUTE_TYPE_FLOOD, ROUTE_TYPE_TRANSPORT_FLOOD})
     for (uint8_t hash_size : {1, 2, 3}) for (uint8_t hops : {0, 1, 7, 21})
-    for (uint16_t payload : {0, 37, 100, 184}) for (uint8_t cr : {0, 5, 6, 8})
+    for (uint16_t payload : {0, 37, 100, 184}) for (uint8_t cr : {0, 4, 5, 6, 8})
     for (unsigned factor_quarters : {0, 1, 4, 15}) {
       mesh::Packet packet;
       packet.header = route | (PAYLOAD_TYPE_ADVERT << PH_TYPE_SHIFT);
@@ -252,7 +252,7 @@ class ClockTransitProfileTimingTests(unittest.TestCase):
     def test_actual_estimators_follow_packet_profile_wire_lengths_and_coding_rate(self):
         result = self.run_fixture()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("PASS: 24576 clock transit cases per estimator", result.stdout)
+        self.assertIn("PASS: 30720 clock transit cases per estimator", result.stdout)
 
     def test_exact_legacy_estimator_mutation_is_detected_for_each_role(self):
         def legacy(method):
