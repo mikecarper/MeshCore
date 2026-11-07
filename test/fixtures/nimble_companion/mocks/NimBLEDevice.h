@@ -9,6 +9,10 @@
 #include <memory>
 #include <cassert>
 
+#ifndef CONFIG_BT_NIMBLE_MAX_BONDS
+#define CONFIG_BT_NIMBLE_MAX_BONDS 15
+#endif
+
 constexpr uint8_t BLE_ADDR_PUBLIC = 0, BLE_ADDR_RANDOM = 1;
 constexpr uint8_t BLE_OWN_ADDR_PUBLIC = 0, BLE_OWN_ADDR_RANDOM = 1;
 constexpr uint8_t BLE_HS_IO_DISPLAY_ONLY = 0, BLE_HS_ADV_F_BREDR_UNSUP = 4;
@@ -30,6 +34,11 @@ struct NimBLEConnInfo {
   bool isBonded() const { return bonded; }
   uint16_t getConnHandle() const { return handle; }
   NimBLEAddress getIdAddress() const { return NimBLEAddress(identity); }
+};
+struct ble_store_status_event;
+struct NimBLEDeviceCallbacks {
+  virtual ~NimBLEDeviceCallbacks() = default;
+  virtual int onStoreStatus(ble_store_status_event*, void*) { return 0; }
 };
 class NimBLEServer;
 class NimBLECharacteristic;
@@ -55,6 +64,9 @@ inline int controller_state = 0;
 inline bool initialized = false, persisted = true, accept_notification = true;
 inline std::string failure, initialized_name;
 inline unsigned stops = 0, deleted_servers = 0, bond_deletions = 0;
+inline int stored_count = 0, store_error = 0, link_error = 0, key_error = 0;
+inline uint8_t store_peer_type = BLE_ADDR_PUBLIC;
+inline NimBLEDeviceCallbacks* device_callbacks = nullptr;
 inline std::vector<std::string> calls;
 inline uint8_t address[6] = {}, own_type = BLE_OWN_ADDR_PUBLIC, io_cap = 255;
 inline ble_addr_t allowlisted;
@@ -149,6 +161,7 @@ struct NimBLEServer {
 };
 struct NimBLEDevice {
   inline static std::unique_ptr<NimBLEServer> server;
+  static void setDeviceCallbacks(NimBLEDeviceCallbacks* cb) { fake_nimble::device_callbacks = cb; }
   static bool init(const std::string& name) {
     fake_nimble::initialized_name = name;
     fake_nimble::calls.push_back("init");

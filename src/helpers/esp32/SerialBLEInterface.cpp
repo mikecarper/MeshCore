@@ -3,6 +3,10 @@
 #include "../CompanionFrameQueue.h"
 #include "esp_mac.h"
 #include "esp_bt.h"
+#if defined(MESH_USE_NIMBLE_ARDUINO)
+#include "NimbleNonEvictingStore.h"
+static NimbleNonEvictingStore mesh_nimble_store_policy;
+#endif
 #include <stdlib.h>
 #include <new>
 #if defined(CONFIG_BLUEDROID_ENABLED) && !defined(MESH_USE_NIMBLE_ARDUINO)
@@ -671,6 +675,10 @@ bool SerialBLEInterface::startBluetoothStack(bool clear_bonds) {
   _stackActive = true;
   _nativeHostStopped = false;
   _callbacksEnabled.store(false, std::memory_order_release);
+  // Reject bond-store overflow instead of evicting a saved peer.
+#if defined(MESH_USE_NIMBLE_ARDUINO)
+  BLEDevice::setDeviceCallbacks(&mesh_nimble_store_policy);
+#endif
   // Create the BLE Device
 #if MESH_BLE_USES_NIMBLE
   if (!BLEDevice::init(dev_name)) {
@@ -921,9 +929,8 @@ void SerialBLEInterface::onAuthenticationComplete(NimBLEConnInfo& info) {
       pServer->updateConnParams(info.getConnHandle(), 12, 24, 0, 400);
     }
   } else {
-    BLEDevice::deleteBond(info.getIdAddress());
+    // An unsuccessful exchange may be transient; retain the saved bond.
     deviceConnected = false;
-    if (_bonded_only) requestBondedOnlyRecovery("bond authentication failed");
     pServer->disconnect(info.getConnHandle());
     if (advertisingAllowed()) scheduleAdvertisingRestart((uint32_t)millis());
   }
@@ -969,20 +976,8 @@ void SerialBLEInterface::onAuthenticationComplete(ble_gap_conn_desc* desc) {
   } else {
     BLE_DEBUG_PRINTLN(" - SecurityCallback - Authentication Failure");
 
-    if (desc != NULL) {
-      int remove_result = ble_store_util_delete_peer(&desc->peer_id_addr);
-      if (remove_result == 0) {
-        BLE_DEBUG_PRINTLN(" - SecurityCallback - Cleared failed peer bond");
-      } else {
-        BLE_DEBUG_PRINTLN(" - SecurityCallback - No peer bond cleared, err=%d",
-                          remove_result);
-      }
-    }
-
+    // Keep the saved key and advertising policy on a failed exchange.
     deviceConnected = false;
-    if (_bonded_only) {
-      requestBondedOnlyRecovery("bond authentication failed");
-    }
     if (desc != NULL) {
       pServer->disconnect(desc->conn_handle);
     }
