@@ -603,6 +603,9 @@ public:
 
   uint8_t getStartupReason() const override { return startup_reason; }
   bool isUserGpioAvailable(uint8_t pin) const override;
+  bool isPeripheralOutputAvailable(uint8_t pin) const override;
+  bool isPeripheralPinAvailable(uint8_t pin, bool pullup = false) const override;
+  bool isPeripheralButtonAvailable(uint8_t pin, bool pullup = true) const override;
 
   void applyLedPolicy() override {
     if (mesh::leds::enabled()) return;

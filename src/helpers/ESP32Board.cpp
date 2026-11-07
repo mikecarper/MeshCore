@@ -6,7 +6,8 @@
 #include <target.h>
 #include "UsbLogging.h"
 #include "FileRead.h"
-#include "UserGpioPinPolicy.h"
+#include "PeripheralPinPolicy.h"
+#include "RuntimePinClaims.h"
 #include <helpers/esp32/ManagementPassword.h>
 #if MESH_ENABLE_EMERGENCY_POWER
 #include <esp_task_wdt.h>
@@ -19,46 +20,22 @@ RTC_NOINIT_ATTR uint32_t rtc_backup_magic;
 }  // namespace esp32_clock
 }  // namespace mesh
 
-namespace {
-
-bool isEsp32SystemPin(uint8_t pin) {
-#if defined(CONFIG_IDF_TARGET_ESP32)
-  // SPI flash, boot strapping, and (when present) external PSRAM.
-  if ((pin >= 6 && pin <= 11) || pin == 0 || pin == 2 || pin == 5 || pin == 12 || pin == 15) return true;
-#ifdef BOARD_HAS_PSRAM
-  if (pin == 16 || pin == 17) return true;
-#endif
-#elif defined(CONFIG_IDF_TARGET_ESP32S2)
-  if ((pin >= 26 && pin <= 32) || pin == 0 || pin == 45 || pin == 46) return true;
-  if (pin == 19 || pin == 20) return true; // native USB
-#elif defined(CONFIG_IDF_TARGET_ESP32S3)
-  if ((pin >= 26 && pin <= 32) || pin == 0 || pin == 3 || pin == 45 || pin == 46) return true;
-#ifdef CONFIG_SPIRAM_MODE_OCT
-  if (pin >= 33 && pin <= 37) return true;
-#endif
-  if (pin == 19 || pin == 20) return true; // native USB/JTAG
-#elif defined(CONFIG_IDF_TARGET_ESP32C3)
-  if ((pin >= 12 && pin <= 17) || pin == 2 || pin == 8 || pin == 9) return true;
-  if (pin == 18 || pin == 19) return true; // native USB/JTAG
-#elif defined(CONFIG_IDF_TARGET_ESP32C6)
-  if ((pin >= 24 && pin <= 30) || pin == 4 || pin == 5 || pin == 8 || pin == 9 || pin == 15) return true;
-  if (pin == 12 || pin == 13) return true; // native USB/JTAG
-#endif
-  return false;
+bool ESP32Board::isUserGpioAvailable(uint8_t pin) const {
+  return isPeripheralOutputAvailable(pin)
+      && !mesh::pins::claimedByOther(peripheralPinIdentity(pin), mesh::pins::Owner::UserGpio);
 }
 
-} // namespace
+bool ESP32Board::isPeripheralOutputAvailable(uint8_t pin) const {
+  return PeripheralPinPolicy::available(pin, PeripheralPinPolicy::Use::Output);
+}
 
-bool ESP32Board::isUserGpioAvailable(uint8_t pin) const {
-  if (!digitalPinCanOutput(pin) || isEsp32SystemPin(pin)) return false;
+bool ESP32Board::isPeripheralPinAvailable(uint8_t pin, bool pullup) const {
+  return PeripheralPinPolicy::available(pin, pullup ? PeripheralPinPolicy::Use::InputPullup
+                                                 : PeripheralPinPolicy::Use::Input);
+}
 
-  // Serial is the local CLI, and Wire is initialized by ESP32Board::begin().
-  if (pin == TX || pin == RX) return false;
-#if !defined(PIN_BOARD_SDA) || !defined(PIN_BOARD_SCL)
-  if (pin == SDA || pin == SCL) return false;
-#endif
-
-  return !UserGpioPinPolicy::isFirmwareReserved(pin);
+bool ESP32Board::isPeripheralButtonAvailable(uint8_t pin, bool pullup) const {
+  return PeripheralPinPolicy::availableButton(pin, pullup);
 }
 
 #if defined(LIGHTWEIGHT_WIFI_OTA) && \

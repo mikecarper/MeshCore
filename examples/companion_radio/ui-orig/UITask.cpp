@@ -1,4 +1,8 @@
 #include "UITask.h"
+#include <helpers/RotarySettings.h>
+#if MESH_CUSTOM_PERIPHERALS
+#include <helpers/ui/RotaryInput.h>
+#endif
 #include <helpers/MorseLoopPolicy.h>
 #if UI_SMALL_MESSAGE_FONT == 1
   #include <helpers/ui/SmallMessageText.h>
@@ -750,7 +754,14 @@ void UITask::loop() {
 
   #ifdef PIN_USER_BTN
     if (_userButton) {
-      _userButton->update();
+#if MESH_CUSTOM_PERIPHERALS
+      static bool rotary_had_button = false;
+      const bool rotary_has_button = mesh::ui::rotaryOwnsButtonPin(PIN_USER_BTN);
+      if (rotary_had_button && !rotary_has_button) _userButton->resume();
+      rotary_had_button = rotary_has_button;
+      if (!rotary_has_button)
+#endif
+        _userButton->update();
     }
   #endif
   #ifdef PIN_USER_BTN_ANA
@@ -758,6 +769,30 @@ void UITask::loop() {
       _userButtonAnalog->update();
     }
   #endif
+#if MESH_CUSTOM_PERIPHERALS
+  if (auto* rotary = mesh::ui::customRotaryInput()) {
+    rotary->setRotationPolling(!_node_prefs->powersaving_enabled
+        || (_display != NULL && _display->isOn()));
+    const auto event = rotary->poll();
+    if (event != RotaryInputEvent::None && _display != NULL) {
+      handleButtonAnyPress();
+      if (_displayWasOn) {
+        if (event == RotaryInputEvent::LongPress) {
+          handleButtonLongPress();
+        } else if (event == RotaryInputEvent::Prev && !_alert[0]
+            && !(_origin[0] && _msg[0]) && !isPairingScreenActive()
+            && the_mesh.isDualRadioActive()) {
+          const uint8_t pages = mesh::ui::radioProfileDisplayPageCount(
+              true, radioProfileStatusPageCount(*_display, true));
+          _radio_profile_display_page = (_radio_profile_display_page + pages - 1) % pages;
+          _need_refresh = true;
+        } else {
+          handleButtonShortPress();
+        }
+      }
+    }
+  }
+#endif
   userLedHandler();
 
 #ifdef PIN_BUZZER
@@ -786,6 +821,13 @@ void UITask::loop() {
       _next_refresh = millis() + 1000;   // refresh every second
     }
   }
+#if MESH_CUSTOM_PERIPHERALS
+  // A switch may have woken the screen, or its power timer may have blanked
+  // it. Update the wake/poll mode before the main loop can sleep again.
+  if (auto* rotary = mesh::ui::customRotaryInput())
+    rotary->setRotationPolling(!_node_prefs->powersaving_enabled
+        || (_display != NULL && _display->isOn()));
+#endif
 }
 
 void UITask::handleButtonAnyPress() {

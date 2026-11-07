@@ -272,6 +272,42 @@ TEST_F(MomentaryButtonTest, PressAtExpiredWindowStartsNewClickSequence) {
   EXPECT_FALSE(button.needsPolling());
 }
 
+TEST_F(MomentaryButtonTest, ResumeDropsPendingClickAndAcceptsFreshGesture) {
+  MomentaryButton button(kPin, 1000, true, true, true);
+  button.begin();
+  cleanPress(button);
+  EXPECT_EQ(BUTTON_EVENT_NONE, cleanRelease(button));
+  EXPECT_TRUE(button.needsPolling());
+  button.resume();
+  EXPECT_FALSE(button.needsPolling());
+  advance(500);
+  EXPECT_EQ(BUTTON_EVENT_NONE, button.check());
+  cleanPress(button);
+  EXPECT_EQ(BUTTON_EVENT_NONE, cleanRelease(button));
+  advance(280);
+  EXPECT_EQ(BUTTON_EVENT_CLICK, button.check());
+}
+
+TEST_F(MomentaryButtonTest, ResumeHeldWaitsForDebouncedRelease) {
+  MomentaryButton button(kPin, 1000, true, true, true);
+  button.begin();
+  g_mock_pin_levels[kPin] = LOW;
+  button.resume();
+  EXPECT_FALSE(button.isPressed());
+  advance(15000);
+  EXPECT_EQ(BUTTON_EVENT_NONE, button.check(true));
+  EXPECT_FALSE(button.isPressed());
+  EXPECT_FALSE(button.needsPolling());
+  EXPECT_EQ(BUTTON_EVENT_NONE, cleanRelease(button));
+  advance(280);
+  EXPECT_EQ(BUTTON_EVENT_NONE, button.check());
+  cleanPress(button);
+  EXPECT_TRUE(button.isPressed());
+  EXPECT_EQ(BUTTON_EVENT_NONE, cleanRelease(button));
+  advance(280);
+  EXPECT_EQ(BUTTON_EVENT_CLICK, button.check());
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {

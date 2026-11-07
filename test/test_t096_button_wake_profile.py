@@ -63,7 +63,9 @@ class T096ButtonWakeProfileTest(unittest.TestCase):
             header,
         )
         self.assertIn("defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP)", main)
-        self.assertIn("if (!sleep_reason && user_btn.needsPolling()) sleep_reason = mask(Reason::Button);", main)
+        self.assertRegex(main,
+            r"if \(!sleep_reason && !mesh::ui::rotaryOwnsButtonPin\(PIN_USER_BTN\)\s*"
+            r"&& user_btn.needsPolling\(\)\) sleep_reason = mask\(Reason::Button\);")
         self.assertIn("const bool can_sleep = sleep_reason == 0;", main)
         self.assertIn("defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP)", repeater_main)
         self.assertIn("!user_btn.needsPolling()", repeater_main)

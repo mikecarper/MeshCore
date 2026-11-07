@@ -24,6 +24,9 @@ For practical on/off commands and update directions, see
 Shared hardware commands include [power and watchdog diagnostics](companion_power_diagnostics.md),
 [radio recovery and RXEN diagnostics](companion_radio_diagnostics.md), and
 [SD card management on supported builds](test-results/companion_cli_parity_2026-10-23.md#shared-sd-commands).
+Optional [rotary controls, passive buzzers and status LEDs](rotary_input.md)
+have saved custom pin assignments with shared GPIO protection. The guide
+includes a native-USB Heltec V4 encoder example and its remaining pin limits.
 
 `companion_radio_full` combines every qualified Companion transport for its
 platform into one artifact and acts as a host-backed LoRa mOTA source for

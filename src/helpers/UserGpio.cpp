@@ -1,4 +1,5 @@
 #include "UserGpio.h"
+#include "RuntimePinClaims.h"
 
 #include <Arduino.h>
 #include <ctype.h>
@@ -125,7 +126,21 @@ const char* UserGpio::stateName(State state) {
 }
 
 bool UserGpio::isAvailable(uint32_t pin) const {
-  return pin <= MAX_GPIO_PIN && _board->isUserGpioAvailable((uint8_t)pin);
+  if (pin > MAX_GPIO_PIN || !_board->isUserGpioAvailable((uint8_t)pin)) return false;
+  const uint16_t physical = _board->peripheralPinIdentity((uint8_t)pin);
+  if (mesh::pins::claimedByOther(physical, mesh::pins::Owner::UserGpio)) return false;
+  // A second Arduino alias must not acquire an independent output or timer
+  // on a pad this instance already controls under another Arduino number.
+  for (uint8_t other = 0; other <= MAX_GPIO_PIN; ++other) {
+    if (other != pin && (_controlled_mask & pinMask(other))
+        && _board->peripheralPinIdentity(other) == physical) return false;
+  }
+  return true;
+}
+
+bool UserGpio::claimPin(uint8_t pin) {
+  return mesh::pins::tryClaim(mesh::pins::Owner::UserGpio,
+      mesh::pins::pinMask(_board->peripheralPinIdentity(pin)));
 }
 
 UserGpio::State UserGpio::currentState(uint8_t pin) const {
@@ -145,6 +160,8 @@ void UserGpio::writeState(uint8_t pin, State state) {
   if (state == STATE_RESET) {
     pinMode(pin, INPUT);
     _controlled_mask &= ~mask;
+    mesh::pins::release(mesh::pins::Owner::UserGpio,
+        mesh::pins::pinMask(_board->peripheralPinIdentity(pin)));
     return;
   }
 
@@ -304,7 +321,7 @@ void UserGpio::formatAvailablePins(char* reply, size_t reply_size) const {
   size_t used = (size_t)snprintf(reply, reply_size, "> available GPIOs:");
   bool any = false;
   for (uint8_t pin = 0; pin <= MAX_GPIO_PIN; pin++) {
-    if (!_board->isUserGpioAvailable(pin)) continue;
+    if (!isAvailable(pin)) continue;
     if (used >= reply_size) break;
     const int written = snprintf(reply + used, reply_size - used, "%s%u",
                                  any ? "," : " ", pin);
@@ -320,7 +337,7 @@ void UserGpio::formatActivePins(char* reply, size_t reply_size) const {
   bool any = false;
   for (uint8_t pin = 0; pin <= MAX_GPIO_PIN; pin++) {
     const uint64_t mask = pinMask(pin);
-    if ((_controlled_mask & mask) == 0 || !_board->isUserGpioAvailable(pin)) continue;
+    if ((_controlled_mask & mask) == 0 || !isAvailable(pin)) continue;
     if (used >= reply_size) break;
     const State current = currentState(pin);
     int written;
@@ -426,6 +443,10 @@ UserGpio::SetResult UserGpio::handleSet(const char* args, char* reply,
   result.pin = pin;
   args = skipSpaces(args);
   if (*args == '\0') {
+    if (!claimPin(pin)) {
+      snprintf(reply, reply_size, "Error: GPIO %u is in use", pin);
+      return result;
+    }
     result.cancelled_timer = (_timer_mask & pinMask(pin)) != 0;
     cancelTimer(pin);
     writeState(pin, initial_state);
@@ -454,6 +475,11 @@ UserGpio::SetResult UserGpio::handleSet(const char* args, char* reply,
   if (isDuplicateTimedRequest(pin, request_id, request_source, command_spec)) {
     formatPinStatus(pin, "OK - duplicate ignored; ", reply, reply_size);
     result.outcome = SetResult::DUPLICATE_IGNORED;
+    return result;
+  }
+
+  if (!claimPin(pin)) {
+    snprintf(reply, reply_size, "Error: GPIO %u is in use", pin);
     return result;
   }
 

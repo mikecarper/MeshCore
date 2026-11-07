@@ -1,5 +1,7 @@
 #pragma once
 
+#define MESH_SENSECAP_INDICATOR 1
+
 #include <helpers/ESP32Board.h>
 #include <helpers/SensorManager.h>
 #include <helpers/sensors/EnvironmentSensorManager.h>

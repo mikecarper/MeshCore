@@ -18,6 +18,9 @@ ARDUINO = r'''
 #include <cstdio>
 #define LOW 0
 #define HIGH 1
+#define INPUT 0
+#define INPUT_PULLUP 2
+#define INPUT_PULLDOWN 3
 #define OUTPUT 1
 extern uint32_t now_ms;
 inline uint32_t millis(){return now_ms;}

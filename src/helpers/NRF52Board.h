@@ -103,6 +103,10 @@ public:
   static bool canIdleRadioProfile();
   virtual void sleep(uint32_t secs) override;
   bool isUserGpioAvailable(uint8_t pin) const override;
+  bool isPeripheralOutputAvailable(uint8_t pin) const override;
+  bool isPeripheralPinAvailable(uint8_t pin, bool pullup = false) const override;
+  bool isPeripheralButtonAvailable(uint8_t pin, bool pullup = true) const override;
+  uint16_t peripheralPinIdentity(uint8_t pin) const override;
   bool isExternalPowered() override;
   bool isUsbDataConnected() override;
   bool isUsbHostConnected() override;

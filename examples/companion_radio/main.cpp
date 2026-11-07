@@ -4,6 +4,11 @@
 #include <helpers/radiolib/LR2021SafeMode.h>
 #endif
 #include <helpers/LedSettings.h>
+#include <helpers/RotarySettings.h>
+#include <helpers/PeripheralOutputs.h>
+#if MESH_CUSTOM_PERIPHERALS
+#include <helpers/ui/RotaryInput.h>
+#endif
 #include <Arduino.h>   // needed for PlatformIO
 #include <helpers/ui/StartupScreen.h>
 #include <helpers/ui/DisplayPowerSettings.h>
@@ -4300,6 +4305,18 @@ void setup() {
 #endif
   ui_task.begin(disp, &sensors, the_mesh.getNodePrefs());  // still want to pass this in as dependency, as prefs might be moved
 #endif
+#if MESH_CUSTOM_PERIPHERALS
+  mesh::peripherals::begin(board, regulator_prefs_fs);
+  mesh::peripherals::setBuzzerQuiet(the_mesh.getNodePrefs()->buzzer_quiet);
+  bool rotary_ui_supported = false;
+#if defined(DISPLAY_CLASS) && !CARDPUTER_ADV_UI
+  rotary_ui_supported = ui_task.hasDisplay();
+#if defined(HELTEC_V4_DISPLAY_UNIFIED) && HELTEC_V4_DISPLAY_UNIFIED
+  rotary_ui_supported = display.selectedType() != mesh::ui::HeltecV4DisplayType::None;
+#endif
+#endif
+  mesh::ui::beginRotarySettings(board, regulator_prefs_fs, rotary_ui_supported);
+#endif
 #if defined(WIO_E5_MINI_HEADLESS_COMPANION_UI) && defined(PIN_USER_BTN)
   beginWioE5HeadlessControls();
 #endif
@@ -4439,6 +4456,18 @@ void loop() {
   if (!morse_timing) mesh::lr2021::loopLR2021CalibrationSettings(radio_driver);
 #endif
   if (!morse_timing) sensors.loop();
+#if MESH_CUSTOM_PERIPHERALS
+#if defined(DISPLAY_CLASS) && !CARDPUTER_ADV_UI
+#if defined(HELTEC_V4_DISPLAY_UNIFIED) && HELTEC_V4_DISPLAY_UNIFIED
+  mesh::ui::setRotaryUiSupported(display.selectedType() != mesh::ui::HeltecV4DisplayType::None);
+#else
+  mesh::ui::setRotaryUiSupported(ui_task.hasDisplay());
+#endif
+#endif
+  mesh::peripherals::setBuzzerQuiet(the_mesh.getNodePrefs()->buzzer_quiet);
+  mesh::peripherals::loop(sensors.isGpsPowered(),
+      interface_manager.isBluetoothEnabled(), interface_manager.isBluetoothConnected());
+#endif
 #if defined(WIO_E5_MINI_HEADLESS_COMPANION_UI) && defined(PIN_USER_BTN)
   serviceWioE5HeadlessControls();
 #endif
@@ -4509,6 +4538,11 @@ void loop() {
     if (!mesh::esp32::manualCpuSleepEnabled()) return mask(Reason::PolicyOff);
 #endif
     if (morse_timing) return mask(Reason::Morse);
+#if MESH_CUSTOM_PERIPHERALS
+    const auto* rotary = mesh::ui::customRotaryInput();
+    if ((rotary && rotary->needsPolling()) || mesh::peripherals::needsPolling())
+      return mask(Reason::Button);
+#endif
     const auto pending = the_mesh.pendingWorkReason();
     if (pending) return pending;
     if (mesh::isUsbLoggingWatchdogArmed()) return mask(Reason::UsbRecovery);
@@ -4539,7 +4573,8 @@ void loop() {
   // GPIO wake starts the poller, but multi-click and long-press results
   // are due after a time interval rather than another edge. The G3 also
   // retains a two-minute wake interval after button activity.
-  if (!sleep_reason && user_btn.needsPolling()) sleep_reason = mask(Reason::Button);
+  if (!sleep_reason && !mesh::ui::rotaryOwnsButtonPin(PIN_USER_BTN)
+      && user_btn.needsPolling()) sleep_reason = mask(Reason::Button);
 #endif
   uint32_t noise_floor_delay_ms = 0;
   const bool noise_floor_wait = !sleep_reason

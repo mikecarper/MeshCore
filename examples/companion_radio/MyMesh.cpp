@@ -17,6 +17,8 @@
 #include <helpers/esp32/PowerTestControls.h>
 #endif
 #include <helpers/LedSettings.h>
+#include <helpers/PeripheralOutputs.h>
+#include <helpers/RotarySettings.h>
 #include <helpers/ui/DisplayPowerSettings.h>
 #if defined(HELTEC_V4_DISPLAY_UNIFIED) && HELTEC_V4_DISPLAY_UNIFIED && defined(DISPLAY_CLASS)
 #include <helpers/ui/HeltecV4DisplaySettings.h>
@@ -1764,6 +1766,11 @@ bool MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
   const bool notification_managed = false;
 #endif
 
+#if MESH_CUSTOM_PERIPHERALS
+  if ((txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_SIGNED_PLAIN)
+      && !notification_managed && !_serial->isConnected()) notifyCustomMessage(false);
+#endif
+
 #if defined(DISPLAY_CLASS) || CARDPUTER_ADV_UI
   // we only want to show text messages on display, not cli data
   bool should_display = txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_SIGNED_PLAIN;
@@ -2499,6 +2506,9 @@ bool MyMesh::queueChannelText(uint8_t channel_idx, const uint8_t secret[32], flo
     frame[0] = PUSH_CODE_MSG_WAITING;
     _serial->writeFrame(frame, 1);
   } else {
+#if MESH_CUSTOM_PERIPHERALS
+    if (notify && !notification_managed) notifyCustomMessage(true);
+#endif
 #if defined(DISPLAY_CLASS) || CARDPUTER_ADV_UI
     if (notify && _ui && !notification_managed) _ui->notify(UIEventType::channelMessage);
 #endif
@@ -3340,7 +3350,9 @@ void MyMesh::begin(bool has_display, bool radio_available,
         && _notifications.validSettings(notification_settings)))
       mesh::notify::resetSettings(notification_settings);
   }
-
+#if MESH_CUSTOM_PERIPHERALS
+  if (!claimNotificationGpio()) mesh::notify::resetSettings(notification_settings);
+#endif
 #endif
 
   // load persisted prefs
@@ -4380,6 +4392,10 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
   while (*command == ' ') command++;
   if (mesh::cli::deferForRadioMaintenance(_radio && _radio->isAGCMaintenancePending(),
           command, reply, reply_size)) return true;
+#if MESH_CUSTOM_PERIPHERALS
+  if (mesh::peripherals::handleCommand(command, reply, reply_size)) return true;
+  if (mesh::ui::handleRotaryCommand(command, reply, reply_size)) return true;
+#endif
 #if defined(USE_LR2021) && defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
   if (mesh::lr2021::handleScannerCommand(command, reply, reply_size, radio_driver)) return true;
 #endif
@@ -11665,7 +11681,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
 #else
   if (mesh::leds::handleCommand(command, reply, reply_capacity)) return true;
 #endif
-#if defined(PIN_BUZZER) || defined(PIN_VIBRATION) || defined(HAS_DRV2605)
+#if defined(PIN_BUZZER) || defined(PIN_VIBRATION) || defined(HAS_DRV2605) || MESH_CUSTOM_PERIPHERALS
   if (handleAlertCommand(command, reply, reply_capacity)) return true;
 #endif
 

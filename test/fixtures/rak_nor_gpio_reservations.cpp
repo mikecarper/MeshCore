@@ -1,14 +1,18 @@
 #include <Arduino.h>
 #include <variant.h>
+// Actual RAK4631 variant.cpp maps Arduino pins 0..47 directly to P0/P1.
+const uint32_t g_ADigitalPinMap[] = {
+  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,
+  24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47
+};
 #include <helpers/UserGpio.h>
-#include <UserGpioPinPolicy.h>
+#include <helpers/PeripheralPinPolicy.h>
+#include <helpers/RuntimePinClaims.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
 
-// Actual RAK4631 variant.cpp maps Arduino pins 0..47 directly to P0/P1.
-static uint8_t digitalPinToPinName(uint8_t pin) { return pin; }
 class NRF52Board : public mesh::MainBoard {
 public:
   uint16_t getBattMilliVolts() override { return 0; }
@@ -16,9 +20,12 @@ public:
   void reboot() override {}
   uint8_t getStartupReason() const override { return BD_STARTUP_NORMAL; }
   bool isUserGpioAvailable(uint8_t pin) const override;
+  bool isPeripheralOutputAvailable(uint8_t pin) const override;
+  uint16_t peripheralPinIdentity(uint8_t pin) const override;
 };
-@EXPOSED@
 @APPROVAL@
+@OUTPUT@
+@IDENTITY@
 
 static unsigned scenarios = 0;
 static void refused(NRF52Board& board, UserGpio& gpio, uint8_t pin) {

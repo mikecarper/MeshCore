@@ -1504,6 +1504,14 @@ jobs:
 
       - name: Verify Companion Bluetooth settings and WebConfig
         run: |
+          python3 -B test/test_gpio_rotary_input.py -v
+          python3 -B test/test_rotary_settings.py -v
+          python3 -B test/test_peripheral_outputs.py -v
+          python3 -B test/test_notification_gpio_claims.py -v
+          python3 -B test/test_peripheral_pin_policy.py -v
+          python3 -B test/test_user_gpio_claims.py -v
+          python3 -B test/test_native_button_resume.py -v
+          python3 -B test/test_companion_rotary_navigation.py -v
           python3 -B test/test_rtttl_rollover.py -v
           python3 -B test/test_rtttl_rollover_recipes.py -v
           python3 -B test/test_companion_ui_deadlines.py -v

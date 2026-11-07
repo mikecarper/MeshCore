@@ -1,4 +1,8 @@
 #include "UITask.h"
+#include <helpers/RotarySettings.h>
+#if MESH_CUSTOM_PERIPHERALS
+#include <helpers/ui/RotaryInput.h>
+#endif
 #if UI_SMALL_MESSAGE_FONT == 1
   #include <helpers/ui/SmallMessageText.h>
 #endif
@@ -861,8 +865,12 @@ void UITask::shutdown(bool restart){
 }
 
 bool UITask::isButtonPressed() const {
+#if MESH_CUSTOM_PERIPHERALS
+  const auto* rotary = mesh::ui::customRotaryInput();
+  if (rotary && rotary->isButtonPressed()) return true;
+#endif
 #ifdef PIN_USER_BTN
-  return user_btn.isPressed();
+  return !mesh::ui::rotaryOwnsButtonPin(PIN_USER_BTN) && user_btn.isPressed();
 #else
   return false;
 #endif
@@ -908,9 +916,16 @@ void UITask::loop() {
     _next_refresh = millis();
   }
 
+#if MESH_CUSTOM_PERIPHERALS && defined(PIN_USER_BTN)
+  static bool rotary_had_button = false;
+  const bool rotary_has_button = mesh::ui::rotaryOwnsButtonPin(PIN_USER_BTN);
+  if (rotary_had_button && !rotary_has_button) user_btn.resume();
+  rotary_had_button = rotary_has_button;
+#endif
   char c = 0;
 #if UI_HAS_JOYSTICK
-  int ev = user_btn.check();
+  int ev = mesh::ui::rotaryOwnsButtonPin(PIN_USER_BTN)
+      ? BUTTON_EVENT_NONE : user_btn.check();
   if (ev == BUTTON_EVENT_CLICK) {
     c = checkDisplayOn(KEY_ENTER);
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
@@ -933,7 +948,8 @@ void UITask::loop() {
     c = handleTripleClick(KEY_SELECT);
   }
 #elif defined(PIN_USER_BTN)
-  int ev = user_btn.check();
+  int ev = mesh::ui::rotaryOwnsButtonPin(PIN_USER_BTN)
+      ? BUTTON_EVENT_NONE : user_btn.check();
   if (ev == BUTTON_EVENT_CLICK) {
     c = checkDisplayOn(KEY_NEXT);
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
@@ -942,6 +958,25 @@ void UITask::loop() {
     c = handleDoubleClick(KEY_PREV);
   } else if (ev == BUTTON_EVENT_TRIPLE_CLICK) {
     c = handleTripleClick(KEY_SELECT);
+  }
+#endif
+#if MESH_CUSTOM_PERIPHERALS
+  auto* custom_rotary = mesh::ui::customRotaryInput();
+  if (custom_rotary) {
+    custom_rotary->setRotationPolling(!_node_prefs->powersaving_enabled
+        || (_display != NULL && _display->isOn()));
+    const auto event = custom_rotary->poll();
+    if (c == 0 && _display != NULL) {
+      switch (event) {
+        case RotaryInputEvent::Next: c = checkDisplayOn(KEY_NEXT); break;
+        case RotaryInputEvent::Prev: c = checkDisplayOn(KEY_PREV); break;
+        case RotaryInputEvent::Select: c = checkDisplayOn(KEY_ENTER); break;
+        case RotaryInputEvent::LongPress:
+          c = !_display->isOn() ? checkDisplayOn(KEY_ENTER) : handleLongPress(KEY_ENTER);
+          break;
+        default: break;
+      }
+    }
   }
 #endif
 #if defined(PIN_USER_BTN_ANA)
@@ -1075,6 +1110,13 @@ void UITask::loop() {
     _cached_batt_mv = getBattMilliVolts();
     next_batt_chck = millis() + 8000;
   }
+#endif
+#if MESH_CUSTOM_PERIPHERALS
+  // A switch may have woken the screen, or its power timer may have blanked
+  // it. Update the wake/poll mode before the main loop can sleep again.
+  if (auto* rotary = mesh::ui::customRotaryInput())
+    rotary->setRotationPolling(!_node_prefs->powersaving_enabled
+        || (_display != NULL && _display->isOn()));
 #endif
 }
 

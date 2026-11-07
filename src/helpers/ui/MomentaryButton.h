@@ -33,6 +33,7 @@ class MomentaryButton {
   int8_t _candidate_level;
   uint32_t _candidate_since;
   bool _debouncing;
+  bool _ignore_until_release = false;
 #if MOMENTARY_BUTTON_WAKE_HOLD_MS > 0
   uint32_t _last_pressed_at = 0;
   bool _wake_hold_active = false;
@@ -44,6 +45,8 @@ public:
   MomentaryButton(int8_t pin, int long_press_mills=0, bool reverse=false, bool pulldownup=false, bool multiclick=true);
   MomentaryButton(int8_t pin, int long_press_mills, int analog_threshold);
   virtual void begin();
+  // Restore pin ownership without replaying a pending or currently held gesture.
+  virtual void resume();
   virtual int check(bool repeat_click=false);  // returns one of BUTTON_EVENT_*
   void enableQuadrupleClick() { _quadruple_click = true; }
   void cancelClick();  // suppress next BUTTON_EVENT_CLICK (if already in DOWN state)
