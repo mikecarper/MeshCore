@@ -116,22 +116,27 @@
       this.closing = true;
       // The native path is shared by all admin jobs. Finish the in-flight
       // exchange before changing it or closing the underlying transport.
-      this.closeTask = this.link.withAdmin(async () => {
+      this.closeTask = (async () => {
         let failure = null;
         try {
-          if (this.pathOwned && this.link.running && !this.link.failure) {
-            const current = await this.link.localCommand('ota.peer path');
-            if (current !== this.expected(this.selected)) throw Error('The OTA path changed; it was not overwritten');
-            if (current !== 'OTApeer path=off' && await this.link.localCommand('ota.peer path off') !== 'OTApeer path=off')
-              throw Error('Could not restore the source OTA path');
-          } else if (this.pathOwned && (!this.link.running || this.link.failure)) {
-            throw Error('The source disconnected; its OTA path may need to be cleared manually');
-          }
+          await this.link.withAdmin(async () => {
+            if (this.pathOwned && this.link.running && !this.link.failure) {
+              const current = await this.link.localCommand('ota.peer path');
+              if (current !== this.expected(this.selected)) throw Error('The OTA path changed; it was not overwritten');
+              if (current !== 'OTApeer path=off' && await this.link.localCommand('ota.peer path off') !== 'OTApeer path=off')
+                throw Error('Could not restore the source OTA path');
+            } else if (this.pathOwned && (!this.link.running || this.link.failure)) {
+              throw Error('The source disconnected; its OTA path may need to be cleared manually');
+            }
+          });
         } catch (error) { failure = error; }
+        // USB cleanup acquires this same queue to close the peer session and
+        // reset its OTA radio. Release our path transaction first; otherwise
+        // close waits forever for the transaction that is waiting for close.
         try { await this.link.close(); } catch (error) { failure ||= error; }
         this.opened = false; this.proved.clear();
         if (failure) throw failure;
-      });
+      })();
       return this.closeTask;
     }
   }

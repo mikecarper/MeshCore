@@ -2,6 +2,7 @@
 const assert = require('node:assert/strict');
 const {test} = require('node:test');
 const {relayRoute, RoutedRepeaterTransport} = require('../docs/_javascript/lora_ota_route.js');
+const {RepeaterTransport} = require('../docs/_javascript/lora_ota_serial.js');
 
 const source = 'a'.repeat(64), first = 'b'.repeat(64), second = 'c'.repeat(64), target = 'd'.repeat(64);
 class FakeLink {
@@ -82,6 +83,51 @@ test('close waits for in-flight routed command and rejects later commands', asyn
   assert.equal(raw.path,'BBBBBB,CCCCCC'); assert.equal(raw.running,true);
   release(); assert.equal(await job,'OK'); await close;
   assert.equal(raw.path,'off'); assert.equal(raw.running,false);
+});
+
+for (const changedPath of [false, true]) test('routed close releases the real admin queue before USB cleanup'+(changedPath?' after a path conflict':''), {timeout:2000}, async () => {
+  const raw=new RepeaterTransport({close:async()=>raw.trace.push('port closed')},{knownRepeater:target,aclOnly:true});
+  Object.assign(raw,{sourceKey:source,running:true,portOpened:true,supportsRoutedPath:true,
+    supportsOtaRadio2:true,otaRadioProfile:1,path:'off',trace:[]});
+  // Replace device I/O only; retain the production admin queue, peer cleanup,
+  // radio-selection readback and USB close implementation.
+  let profile='radio2';
+  raw.localCommand=async command=>{
+    if(command.startsWith('ota.peer radio')) {
+      raw.trace.push(command);
+      if(command==='ota.peer radio radio')profile='radio';
+      return 'OTApeer radio='+profile;
+    }
+    return FakeLink.prototype.localCommand.call(raw,command);
+  };
+  raw.checkClock=FakeLink.prototype.checkClock;
+  raw.job=FakeLink.prototype.job;
+  const link=new RoutedRepeaterTransport(raw,target,[first]);
+  await link.open();await link.verifyPeer(target,'');
+  let release,started;
+  raw.block=new Promise(resolve=>release=resolve);
+  const running=new Promise(resolve=>started=resolve);raw.started=started;
+  const job=link.remoteCommand(target,'','get tx');await running;
+  if(changedPath)raw.path='A1B2C3';
+  const closing=link.close(), again=link.close();
+  // Attach rejection handlers before releasing the queued operation.
+  const finished=Promise.allSettled([closing,again]);
+  await assert.rejects(link.remoteCommand(target,'','get tx'),/closing/);
+  assert.equal(raw.trace.includes('ota.peer close'),false);
+  release();assert.equal(await job,'OK');
+  const outcomes=await finished;
+  assert.equal(raw.running,false);assert.equal(raw.portOpened,false);
+  assert.equal(raw.ownsPeer,false);assert.equal(raw.otaRadioProfile,0);
+  assert.equal(raw.trace.filter(c=>c==='ota.peer close').length,1);
+  assert.equal(raw.trace.filter(c=>c==='port closed').length,1);
+  if(changedPath) {
+    assert.ok(outcomes.every(r=>r.status==='rejected'&&/path changed/.test(r.reason.message)));
+    assert.equal(raw.path,'A1B2C3');assert.equal(raw.trace.includes('ota.peer path off'),false);
+  } else {
+    assert.ok(outcomes.every(r=>r.status==='fulfilled'));
+    assert.equal(raw.path,'off');
+    assert.ok(raw.trace.indexOf('ota.peer path off')<raw.trace.indexOf('ota.peer close'));
+  }
 });
 
 test('after reboot the target ACL proof is reacquired', async () => {
