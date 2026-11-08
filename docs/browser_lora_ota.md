@@ -7,7 +7,7 @@
 - Chrome or Edge on a computer.
 - A Companion or Repeater connected by USB.
 - A target reachable over LoRa, with admin access.
-- Matching radio settings and an active TempRadio on the target.
+- Admin access on a shared starting channel; the page prepares the update channel.
 - Keep this page open during the transfer.
 
 <div data-lora-ota>
@@ -49,8 +49,31 @@
       <button type="button" class="lora-ota-secondary" data-role="legacy-inbox-clear" disabled>Clear saved browser copies</button>
     </section>
   </section>
+  <section class="lora-ota-step" data-role="radio-setup-panel">
+    <h2>2. Update channel</h2>
+    <p>The page prepares this automatically when you check the firmware. It prefers unused temporary radio2 on each end and falls back to the primary temporary channel. Saved normal channels stay unchanged.</p>
+    <p>For 902–928 MHz radios, the default is 909.950 MHz, or a separated alternate if that overlaps the normal channel. For other regions, choose a suitable frequency below.</p>
+    <details class="lora-ota-advanced">
+      <summary>Update channel options</summary>
+      <label>Update frequency (MHz)<input data-role="radio-frequency" type="number" min="150" max="2500" step="0.001" placeholder="Choose a frequency"></label>
+      <label>Bandwidth (kHz)<select data-role="radio-bandwidth"><option value="125">125</option><option value="250" selected>250</option><option value="500">500</option></select></label>
+      <label>Spreading factor<select data-role="radio-sf"><option value="5">SF5</option><option value="6">SF6</option><option value="7" selected>SF7</option><option value="8">SF8</option><option value="9">SF9</option><option value="10">SF10</option><option value="11">SF11</option><option value="12">SF12</option></select></label>
+      <label>Coding rate<select data-role="radio-cr"><option value="5" selected>4/5</option><option value="6">4/6</option><option value="7">4/7</option><option value="8">4/8</option></select></label>
+      <label>Preamble<input data-role="radio-preamble" type="number" min="1" max="65535" value="128"></label>
+      <label>Temporary window (minutes)<input data-role="radio-minutes" type="number" min="1" max="10080" value="120"></label>
+      <p class="lora-ota-actions"><button type="button" data-role="radio-prepare" disabled>Prepare now</button> <button type="button" class="lora-ota-secondary" data-role="radio-check" disabled>Check channel</button></p>
+    </details>
+    <p>Setup also turns RX power saving and automatic OTA fetch/install off and sets OTA hops to 0. These preferences are saved; any changes appear in Status.</p>
+    <p data-role="radio-setup-status" role="status" aria-live="polite">Connect and investigate the target first.</p>
+    <details class="lora-ota-advanced">
+      <summary>Manual setup and older firmware</summary>
+      <p>Automatic setup works with a guarded USB Companion or a compatible USB Repeater on a direct connection. The page checks which temporary profiles each device supports. Older Companions need manual setup; update the USB Companion to prepare a separate channel without changing saved settings.</p>
+      <p>Apply the command on the target first, then the USB source, and check the channel. Every relay also needs matching settings; automatic route preparation is not supported.</p>
+      <pre data-role="radio-commands">Choose the update frequency to show the temporary command.</pre>
+    </details>
+  </section>
   <section class="lora-ota-step">
-    <h2>2. Choose firmware</h2>
+    <h2>3. Choose firmware</h2>
     <p data-role="legacy-source-block" hidden>This Companion uses its shared message queue and raw packets.</p>
     <p data-role="firmware-catalog-status" role="status">Investigate the target to find matching firmware.</p>
     <section data-role="firmware-role-wrap" hidden><label>Target type
@@ -68,7 +91,7 @@
     <p class="lora-ota-actions"><button type="button" data-role="inspect" disabled>Check firmware and target</button></p>
   </section>
   <section class="lora-ota-step">
-    <h2>3. Send and install</h2>
+    <h2>4. Send and install</h2>
     <p>Keep this page open during the transfer. Check the status below before installing.</p>
     <p class="lora-ota-actions"><button type="button" data-role="transfer" disabled>Transfer</button> <button type="button" data-role="resume" class="lora-ota-secondary" disabled>Resume</button> <button type="button" data-role="install" disabled>Install and verify</button></p>
   </section>
@@ -143,10 +166,10 @@ the reported firmware identity and body hash after reboot.
 The source needs a compatible USB Companion with raw packet support, or a
 Repeater with `ota.peer` and USB folder support. Older Companions use their
 shared message queue: unrelated messages moved into the browser can be
-downloaded, but cannot be restored to the Companion. Before starting, set the
-target's TempRadio to match the source radio, turn RX power saving off, and
-turn automatic OTA fetch and install off. For a direct update, set OTA hops
-to 0. On older Companions, the browser can read the saved radio settings but
+downloaded, but cannot be restored to the Companion. The page prepares the
+update channel and required RX power saving / OTA preferences automatically on
+compatible direct connections. The temporary channel expires; the required
+RX power saving and OTA policy changes remain saved and are listed in Status. On older Companions, the browser can read the saved radio settings but
 cannot confirm active temporary settings, RX power saving or preamble; check
 these on the device. Some firmware accepts raw OTA packets from USB but
 suppresses their transmission without an active temporary radio.
@@ -205,5 +228,6 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_sim.js"></script>
 <script src="../_javascript/lora_ota_chain.js"></script>
 <script src="../_javascript/lora_ota_chain_ui.js"></script>
+<script src="../_javascript/lora_ota_radio_setup.js"></script>
 <script src="../_javascript/lora_ota_catalog.js"></script>
 <script src="../_javascript/lora_ota_browser.js"></script>

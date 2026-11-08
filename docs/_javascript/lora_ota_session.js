@@ -8,11 +8,19 @@
   'use strict';
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   function value(text) { const s = String(text).trim().replace(/^>\s*/, ''); if (!s || /^(error|err\b|unknown\b|unsupported\b)/i.test(s)) throw Error(s || 'Empty response'); return s; }
+  function diagnostic(text) {
+    const clean = String(text).replace(/[^\x20-\x7e]/g, ' ').replace(/\s+/g, ' ').trim();
+    return clean.length > 160 ? clean.slice(0, 160) + '...' : clean;
+  }
   function temp(text) {
-    const s = value(text).replace(/^TempRadio active:\s*/i, '');
+    let s;
+    try { s = value(text); }
+    catch (_) { throw Error('Cannot read active temporary radio settings: ' + diagnostic(text)); }
+    if (/^TempRadio (?:pending\b|inactive\b)/i.test(s)) throw Error('An active temporary radio window is required');
+    s = s.replace(/^TempRadio active:\s*/i, '');
     if (/^(?:off|inactive|pending)\b/i.test(s)) throw Error('An active temporary radio window is required');
     const m = s.match(/^(\d+(?:\.\d+)?),(\d+(?:\.\d+)?),(\d+),(\d+)/);
-    if (!m) throw Error('Cannot read active temporary radio settings');
+    if (!m) throw Error('Cannot read active temporary radio settings: ' + diagnostic(text));
     return m.slice(1).map(Number);
   }
   function download(status, stats = '') {
@@ -82,6 +90,86 @@
       try { parsed = download(status); } catch (_) { parsed = download(status, await this.remote('ota stats')); }
       return { ...parsed, status };
     }
+    async inspectRadios() {
+      // Package-independent GET-only preflight. The caller admits the selected
+      // peer first; inspect() also retains its full identity/install checks.
+      const checkSourceOta = !this.link.browserRawSource || this.link.otaSupported === true;
+      const guardedCompanion = this.link.browserRawSource && this.link.otaSupported === true;
+      if (!checkSourceOta) this.progress('The Companion firmware OTA seeder and folder state cannot be checked.');
+      let sourceRadio, targetRadio, savedSourceRadio, sourceReadback = 'active';
+      this.tempRadio = null;
+      for (const source of [true, false]) {
+        const label = source ? (this.link.browserRawSource ? 'USB Companion' : 'source') : 'target';
+        const profile = (source ? this.link.otaRadioProfile : this.link.otaTargetProfile) ?? 0;
+        if (profile !== 0 && profile !== 1) throw Error(label + ': Invalid selected OTA radio profile');
+        if (source && profile === 1 && this.link.supportsOtaRadio2 !== true)
+          throw Error(label + ': This source cannot verify OTA transmission on radio2');
+        const rawCommand = async c => {
+          try { return await (source ? this.link.localCommand(c) : this.link.remoteCommand(this.key, this.password, c)); }
+          catch (error) { throw Error(label + ': ' + diagnostic(error.message)); }
+        };
+        const command = async c => {
+          try { return value(await rawCommand(c)); }
+          catch (error) { throw Error(label + ': ' + diagnostic(error.message)); }
+        };
+        if (source && this.link.browserRawSource && this.link.localCliSupported === false) {
+          if (profile !== 0) throw Error('The USB Companion cannot verify an active temporary radio2 without local CLI');
+          const radio = await this.link.savedSourceRadio();
+          if (!Array.isArray(radio) || radio.length !== 4 || radio.some(v => !Number.isFinite(v) || v <= 0))
+            throw Error('Cannot read the USB Companion saved radio settings');
+          sourceRadio = savedSourceRadio = radio.slice(); sourceReadback = 'saved-only';
+          this.progress('The Companion reported these saved radio settings on connection. Active temporary settings, RX power saving and preamble cannot be verified on this firmware.');
+          continue;
+        }
+        let radio;
+        try {
+          if (profile === 1) {
+            // Resolve at call time: the page loads setup after this module.
+            const setup = typeof module === 'object' && module.exports ? require('./lora_ota_radio_setup.js') : globalThis.LoraOtaRadioSetup;
+            if (typeof setup?.readTemporary !== 'function') throw Error('Temporary radio2 verification is unavailable');
+            const selected = await setup.readTemporary(rawCommand, profile);
+            if (selected.state !== 'active') throw Error('An active temporary radio window is required');
+            radio = selected.tuple;
+            // Native locally generated OTA selects radio2 only while primary
+            // is not temporary. Never silently route requests to another lease.
+            const primary = String(await command('get tempradio')).trim().replace(/^>\s*/, '');
+            if (!/^(?:off|inactive|TempRadio inactive)$/i.test(primary))
+              throw Error('The primary temporary radio must be off when OTA uses radio2');
+          } else radio = temp(await command('get tempradio'));
+        }
+        catch (error) {
+          if (/active temporary radio window is required/i.test(String(error.message))) {
+            const hint = !source && profile === 0 && sourceRadio ? ' Run `tempradio '+sourceRadio.join(',')+',<minutes>` on the target, matching the Companion.' : '';
+            throw Error('An active temporary radio window is required on the '+label+(profile ? ' radio2' : '')+' for LoRa OTA.'+hint);
+          }
+          if (String(error.message).startsWith(label + ': ')) throw error;
+          throw Error(label + ': ' + diagnostic(error.message));
+        }
+        if (source) {
+          try { savedSourceRadio = temp(await command('get radio')); }
+          catch (error) { throw Error(label + ' saved primary: ' + diagnostic(error.message)); }
+          // Native source-selection APIs pin the selected profile generation,
+          // including a repeater's primary fallback. Unprobed older sources
+          // retain the original saved-primary equality requirement.
+          const verifiedSecondary = profile === 1 && this.link.supportsOtaRadio2 === true;
+          const nativeRepeater = !this.link.browserRawSource && this.link.supportsOtaRadio2 === true;
+          if (!guardedCompanion && !verifiedSecondary && !nativeRepeater && radio.some((v, i) => Math.abs(v - savedSourceRadio[i]) > 0.001))
+            throw Error('The '+label+' temporary radio must match its saved primary channel');
+        }
+        const rxps = await command('get radio.rxps');
+        if (!/^off\b/i.test(rxps)) throw Error(label + ': Turn RX power saving off before starting');
+        if (!source || checkSourceOta) {
+          try { policy(await command('ota config')); }
+          catch (error) { throw Error(label + ': ' + diagnostic(error.message)); }
+        }
+        if (source) sourceRadio = radio;
+        else targetRadio = radio;
+      }
+      if (targetRadio.some((v, i) => Math.abs(v - sourceRadio[i]) > 0.001))
+        throw Error('Temporary radio settings do not match between '+(this.link.browserRawSource ? 'USB Companion' : 'source')+' and target');
+      this.tempRadio = sourceRadio.slice();
+      return {source:sourceRadio, target:targetRadio, savedSource:savedSourceRadio, sourceReadback};
+    }
     async inspect(options = {}) {
       await this.link.verifyPeer(this.key, this.password);
       const {status,self} = await checks.readReceiver(command => this.link.remoteCommand(this.key, this.password, command));
@@ -110,35 +198,7 @@
       }
       this.bodyHash = await expectedBody(this.info, this.image);
       const checkSourceOta = !this.link.browserRawSource || this.link.otaSupported === true;
-      if (!checkSourceOta) this.progress('The Companion firmware OTA seeder and folder state cannot be checked.');
-      for (const [command, source] of [[c => this.local(c), true], [c => this.remote(c), false]]) {
-        if (source && this.link.browserRawSource && this.link.localCliSupported === false) {
-          const radio = await this.link.savedSourceRadio();
-          if (!Array.isArray(radio) || radio.length !== 4 || radio.some(v => !Number.isFinite(v) || v <= 0))
-            throw Error('Cannot read the Companion saved radio settings');
-          this.tempRadio = radio.slice();
-          this.progress('The Companion reported these saved radio settings on connection. Active temporary settings, RX power saving and preamble cannot be verified on this firmware.');
-          continue;
-        }
-        let radio;
-        try { radio = temp(await command('get tempradio')); }
-        catch (error) {
-          if (!source && /active temporary radio window is required/i.test(String(error.message))) {
-            const hint = this.tempRadio ? ' Run `tempradio '+this.tempRadio.join(',')+',<minutes>` on the target, matching the Companion.' : '';
-            throw Error('An active temporary radio window is required on the target for LoRa OTA.'+hint);
-          }
-          throw error;
-        }
-        if (source) {
-          const primary = temp(await command('get radio'));
-          if (radio.some((v, i) => Math.abs(v - primary[i]) > 0.001)) throw Error('The source temporary radio must match its saved primary channel');
-        }
-        const rxps = await command('get radio.rxps');
-        if (!/^off\b/i.test(rxps)) throw Error('Turn RX power saving off before starting');
-        if (!source || checkSourceOta) policy(await command('ota config'));
-        if (!this.tempRadio) this.tempRadio = radio;
-        else if (radio.some((v, i) => Math.abs(v - this.tempRadio[i]) > 0.001)) throw Error('Temporary radio settings do not match');
-      }
+      await this.inspectRadios();
       await this.requireInstallHash();
       const state = await this.readDownload();
       if (state.state !== 'idle' && (!options.allowExisting || state.id !== checks.hex(this.info.merkleRoot) || state.state === 'failed')) throw Error('Target already has another or failed OTA download; resolve it first');

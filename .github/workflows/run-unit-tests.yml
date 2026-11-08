@@ -48,6 +48,7 @@ jobs:
           node --test test/test_browser_lora_ota_catalog.js
           node --test test/test_browser_lora_ota_companion.js
           node --test test/test_browser_lora_ota_legacy_source.js
+          node --test test/test_browser_lora_ota_radio_setup.js
           node --test test/test_browser_lora_ota_package.js test/test_browser_lora_ota_zip.js test/test_browser_lora_ota_delta.js test/test_browser_lora_ota_serial.js test/test_browser_lora_ota_route.js test/test_browser_lora_ota_session.js test/test_browser_lora_ota_routed_session.js test/test_browser_lora_ota_plan.js test/test_browser_lora_ota_candidates.js test/test_browser_lora_ota_chain.js test/test_browser_lora_ota_chain_ui.js test/test_browser_lora_ota_discovery.js test/test_browser_lora_ota_collect.js
           python3 -B test/test_browser_ota_lease.py
           python3 -B test/test_ota_installhash.py -v
@@ -59,6 +60,7 @@ jobs:
           python3 -B test/test_browser_lora_ota_nrf_c_decoder.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_companion_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_radio_setup_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_source_link_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_legacy_investigation_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_repeater_retry_runtime.py -v

@@ -247,3 +247,34 @@ test('lost detach acknowledgement is reconciled if the folder is off', async () 
   await link.stopServing(); assert.equal(link.serving,false); assert.equal(port.folder,false);
   await link.close(); assert.equal(port.commands.filter(c=>c==='ota folder off').length,1);
 });
+
+
+test('OTA radio selection is idle, confirmed and reset on USB close', async () => {
+  const link=new RepeaterTransport({});link.running=true;
+  let profile='radio';const calls=[];
+  link.localCommand=async command=>{
+    calls.push(command);
+    if(command==='ota.peer close')return 'OTApeer closed';
+    if(command==='ota.peer radio')return 'OTApeer radio='+profile;
+    assert.ok(['ota.peer radio radio','ota.peer radio radio2'].includes(command));
+    profile=command.slice('ota.peer radio '.length);return 'OTApeer radio='+profile;
+  };
+  assert.equal(await link.probeOtaRadio(),true);assert.deepEqual(calls,['ota.peer radio']);
+  link.ownsPeer=true;link.authenticatedKey='b'.repeat(64);
+  await assert.rejects(()=>link.selectOtaRadio(1),/Close the OTA session/);
+  link.serving=true;await assert.rejects(()=>link.closeRadioSession(),/Stop the transfer/);
+  link.serving=false;await link.closeRadioSession();assert.equal(link.ownsPeer,false);assert.equal(link.authenticatedKey,null);
+  await link.selectOtaRadio(1);assert.equal(link.otaRadioProfile,1);
+  await link.close();assert.equal(profile,'radio');assert.equal(link.otaRadioProfile,0);
+  assert.deepEqual(calls.slice(-3),['ota.peer close','ota.peer radio radio','ota.peer radio']);
+});
+
+test('only explicit unsupported replies permit primary-only OTA profile fallback', async () => {
+  for(const reply of ['Unknown command','ERR unsupported','ERR use ota.peer status|acl KEY']){
+    const link=new RepeaterTransport({});link.localCommand=async()=>reply;
+    assert.equal(await link.probeOtaRadio(),false);
+    await link.selectOtaRadio(0);await assert.rejects(()=>link.selectOtaRadio(1),/cannot select/);
+  }
+  const link=new RepeaterTransport({});link.localCommand=async()=> 'OTApeer invalid';
+  await assert.rejects(()=>link.probeOtaRadio(),/Cannot confirm/);
+});

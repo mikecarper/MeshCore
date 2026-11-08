@@ -133,6 +133,7 @@
       this.knownRepeater = options.knownRepeater ? key(options.knownRepeater) : null;
       if (this.aclOnly && !this.knownRepeater) throw new Error('ACL access requires a complete known repeater key');
       this.supportsRoutedPath = false; this.clockChecked = false;
+      this.otaRadioProfile=0;this.otaTargetProfile=0;this.supportsOtaRadio2=false;
     }
     async open() {
       try {
@@ -327,6 +328,31 @@
         await this.checkClock(); await this.login(k, password); return k;
       });
     }
+    async closeRadioSession() {
+      if(this.serving)throw Error('Stop the transfer before changing the OTA channel');
+      return this.withAdmin(async()=>{
+        const reply=await this.localCommand('ota.peer close');
+        if(reply!=='OTApeer closed')throw Error('Could not close the source OTA session');
+        this.authenticatedKey=null;this.lastPeerUse=0;this.ownsPeer=false;
+      });
+    }
+    async probeOtaRadio() {
+      const reply=await this.localCommand('ota.peer radio');
+      const match=/^OTApeer radio=(radio|radio2)$/.exec(reply);
+      if(match){this.otaRadioProfile=match[1]==='radio2'?1:0;this.supportsOtaRadio2=true;return true;}
+      if(/^(?:unknown\b|unsupported\b|err(?:or)?\s*:?\s*(?:unknown|unsupported|use ota\.peer)\b)/i.test(reply)){this.supportsOtaRadio2=false;this.otaRadioProfile=0;return false;}
+      throw Error('Cannot confirm the source OTA radio selection');
+    }
+    async selectOtaRadio(profile) {
+      if(profile!==0&&profile!==1)throw Error('Invalid OTA radio selection');
+      if(!this.supportsOtaRadio2){if(profile===0){this.otaRadioProfile=0;return;}throw Error('This source cannot select OTA radio2');}
+      if(this.serving||this.authenticatedKey||this.ownsPeer)throw Error('Close the OTA session before selecting its radio');
+      const name=profile?'radio2':'radio';
+      if(await this.localCommand('ota.peer radio '+name)!=='OTApeer radio='+name ||
+         await this.localCommand('ota.peer radio')!=='OTApeer radio='+name)
+        throw Error('Source OTA radio selection could not be verified');
+      this.otaRadioProfile=profile;
+    }
     async remoteCommand(publicKey, password, text) {
       const k = this.validatePeer(publicKey, password); commandBytes(text, 154);
       return this.withAdmin(async () => {
@@ -390,7 +416,12 @@
     async close() {
       if (this.running && !this.failure) {
         if (this.serving) { try { await this.stopServing(); } catch (_) {} }
-        if (this.ownsPeer) { try { await this.localCommand('ota.peer close'); } catch (_) {} }
+        if (this.ownsPeer || this.supportsOtaRadio2 && this.otaRadioProfile!==0) {
+          try {
+            await this.closeRadioSession();
+            if(this.supportsOtaRadio2 && this.otaRadioProfile!==0)await this.selectOtaRadio(0);
+          } catch (_) {}
+        }
       }
       this.running = false;
       if (this.waiter) this.waiter(null, new Error('Connection closed'));

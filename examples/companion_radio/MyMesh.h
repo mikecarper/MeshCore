@@ -250,7 +250,13 @@ public:
   bool hasFiniteDelayedReplyForRoute(BaseSerialInterface* route) const;
   void resetUsbHostSessionInput();
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
-  void setDirectAdminUsbRoute(BaseSerialInterface* route) { _ota_direct_usb_route = route; }
+  void setDirectAdminUsbRoute(BaseSerialInterface* route) {
+    if (route != _ota_direct_usb_route) {
+      closeDirectOtaAdmin();
+      _ota_direct_radio_profile = 0;
+    }
+    _ota_direct_usb_route = route;
+  }
 #endif
 
   const char *getNodeName();
@@ -715,7 +721,9 @@ private:
   ContactInfo* _ota_direct_transient = nullptr;
   BaseSerialInterface* _ota_direct_usb_route = nullptr;
   bool _ota_direct_radio_owned = false;
+  uint8_t _ota_direct_radio_profile = 0;
   uint32_t _ota_direct_radio_generation = 0;
+  bool directOtaRadioEligible(uint8_t profile) const;
   bool directOtaRadioCurrent() const;
   void closeDirectOtaAdmin();
   bool handleDirectOtaFrame(size_t len);

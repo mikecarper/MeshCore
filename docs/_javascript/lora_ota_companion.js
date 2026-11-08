@@ -5,6 +5,7 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(portHelper){
   'use strict';
   const enc=new TextEncoder(),dec=new TextDecoder(),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+  const radioSetup=()=>typeof module==='object'&&module.exports?require('./lora_ota_radio_setup.js'):globalThis.LoraOtaRadioSetup;
   const hex=b=>Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');
   function unhex(s){if(!/^[a-f0-9]{64}$/i.test(s))throw Error('Enter the complete target public key');return Uint8Array.from(s.match(/../g),x=>parseInt(x,16));}
   function deviceText(frame,offset,length){
@@ -78,6 +79,7 @@
       this.failure=null;this.decoder=new Decoder();this.pending=null;this.loginWaiter=null;this.queue=Promise.resolve();this.admin=Promise.resolve();
       this.authenticated=false;this.guard=false;this.investigationEnabled=false;this.investigationCancelled=false;this.investigationAuthenticated=false;this.investigationVerified=false;this.investigationProofPending=false;this.investigationPassword=null;this.investigationPermission='unknown';this.used=new Set();this.timestamp=0;this.serving=false;this.seeder=null;this.radioQueue=[];this.radioRunning=false;this.nextTx=0;this.txQueue=Promise.resolve();this.contactList=[];this.peerType=2;
       this.otaSupported=false;this.localCliSupported=false;this.otaMode='legacy';this.rawPacketSupport='unverified';
+      this.otaRadioProfile=0;this.otaTargetProfile=0;this.supportsOtaRadio2=false;
       this.sourceUpdateRequired=null;
       this.firmwareVersion=null;this.firmwareBuildDate=null;this.firmwareProtocol=null;this.firmwareVersionTruncated=false;
       this.otaUnavailableReason='This Companion needs firmware with guarded zero-hop CLI and radio support';
@@ -475,14 +477,55 @@
       if(!this.otaSupported){this.investigationAuthenticated=false;this.investigationVerified=false;return this.verifyPeer(key,password);}
       return this.withAdmin(async()=>{if(this.guard)await this.guardMode(3);this.guard=false;this.authenticated=false;});
     }
+    async closeRadioSession(){
+      if(this.serving)throw Error('Stop the transfer before changing the OTA channel');
+      return this.withAdmin(async()=>{
+        if(this.guard)await this.guardMode(3);
+        this.guard=false;this.authenticated=false;
+      });
+    }
+    async probeOtaRadio(){
+      if(!this.otaSupported)return false;
+      const reply=(await this.localCommand('get ota.direct.radio')).replace(/^>\s*/,'');
+      const match=/^ota\.direct\.radio v=1 profile=(radio|radio2)$/.exec(reply);
+      if(match){this.otaRadioProfile=match[1]==='radio2'?1:0;this.supportsOtaRadio2=true;return true;}
+      if(/^(?:unknown\b|unsupported\b|err(?:or)?\s*:?\s*(?:unknown|unsupported)\b)/i.test(reply)){this.supportsOtaRadio2=false;this.otaRadioProfile=0;return false;}
+      throw Error('Cannot confirm the Companion OTA radio selection');
+    }
+    async selectOtaRadio(profile){
+      if(profile!==0&&profile!==1)throw Error('Invalid OTA radio selection');
+      if(!this.supportsOtaRadio2){if(profile===0){this.otaRadioProfile=0;return;}throw Error('Update the USB Companion to use temporary radio2 for OTA');}
+      if(this.serving||this.guard||this.authenticated)throw Error('Close the OTA session before selecting its radio');
+      const name=profile?'radio2':'radio';
+      const reply=await this.localCommand('set ota.direct.radio '+name);
+      if(reply!=='OK - ota.direct.radio '+name)throw Error('Companion did not confirm OTA '+name+' selection');
+      if((await this.localCommand('get ota.direct.radio')).replace(/^>\s*/,'')!=='ota.direct.radio v=1 profile='+name)
+        throw Error('Companion OTA radio selection could not be verified');
+      this.otaRadioProfile=profile;
+    }
+    async applyTemporaryRadio(command){
+      if(!this.otaSupported||this.serving||!/^tempradio [\d.,]+$|^set tempradio2 [\d.,]+,rxtx,[\d.,]+$/.test(command))
+        throw Error('Cannot prepare this Companion temporary radio automatically');
+      return this.withAdmin(async()=>{
+        // Arming locally sends no RF. It prevents shared-inbox eviction while
+        // the firmware reserves its OTA context for the temporary window.
+        if(!this.guard){await this.guardMode(1,Uint8Array.of(this.peerType));this.guard=true;}
+        try{return await this.localCommand(command);}
+        finally{await this.guardMode(3);this.guard=false;this.authenticated=false;}
+      });
+    }
     async setPath(){throw Error('Companion OTA currently supports zero-hop only');}
     async serve(info,blob,compress){
       if(this.serving)throw Error('An OTA package is already being served');
       if(this.rawPacketSupport==='unsupported'){const error=Error('This Companion cannot send raw OTA packets');error.sourceUpdateRequired='companion';throw error;}
       if(!globalThis.LoraOtaCompanionSource)throw Error('Companion seeder is unavailable');
-      const t=this.localCliSupported?sourceTemp(await this.localCommand('get tempradio')):
+      const t=this.localCliSupported?(this.otaRadioProfile===1
+        ?await radioSetup().readTemporary(c=>this.localCommand(c),1)
+        :sourceTemp(await this.localCommand('get tempradio'))):
         {radio:await this.savedSourceRadio(),preamble:32};
       this.preamble=t.preamble;this.sourceTempRadio=t;
+      if(this.localCliSupported)await this.localCommand('get radio');
+      this.sourceSavedRadio=await this.savedSourceRadio();
       await this.checkSourceRadio();
       this.seeder=await globalThis.LoraOtaCompanionSource.Source.create(info,this.sourceKey,{compress});this.serving=true;
       this.advertise();
@@ -494,11 +537,19 @@
         if(!this.sourceTempRadio||radio.some((v,i)=>Math.abs(v-this.sourceTempRadio.radio[i])>0.001))throw Error('Companion saved radio settings changed; OTA sending stopped');
         return;
       }
-      const temp=sourceTemp(await this.localCommand('get tempradio'));
+      const temp=this.otaRadioProfile===1
+        ?await radioSetup().readTemporary(c=>this.localCommand(c),1)
+        :sourceTemp(await this.localCommand('get tempradio'));
+      if(this.otaRadioProfile===1){
+        if(temp.state!=='active')throw Error('Companion temporary radio2 is no longer active; OTA sending stopped');
+        const primary=String(await this.localCommand('get tempradio')).trim().replace(/^>\s*/,'');
+        if(!/^(?:off|inactive|TempRadio inactive)$/i.test(primary))throw Error('Companion primary temporary radio changed while OTA uses radio2');
+      }
       await this.localCommand('get radio');
       const equal=(a,b)=>a.length===b.length&&a.every((v,i)=>Number.isFinite(v)&&Math.abs(v-b[i])<=0.001);
       if(!this.sourceTempRadio||!equal(temp.radio,this.sourceTempRadio.radio)||
-          temp.preamble!==this.sourceTempRadio.preamble||!equal(this.radio,temp.radio))
+          temp.preamble!==this.sourceTempRadio.preamble||!equal(this.radio,this.sourceSavedRadio)||
+          (!this.otaSupported&&!equal(this.radio,temp.radio)))
         throw Error('Companion radio or temporary profile changed; OTA sending stopped');
     }
     async pumpRadio(){if(this.radioRunning)return;this.radioRunning=true;try{while(this.serving&&this.radioQueue.length){const requests=await this.seeder.replies(this.radioQueue.shift());for(const r of requests){if(!this.serving)break;await this.sendRadio(r);}}}catch(e){this.failure=e;}finally{this.radioRunning=false;}}
@@ -513,13 +564,19 @@
       try{await this.command(join(Uint8Array.of(65,1),raw),0);}
       catch(error){if(error.companionErrorCode===1){this.rawPacketSupport='unsupported';this.sourceUpdateRequired='companion';error.sourceUpdateRequired='companion';error.message='Companion firmware does not support raw OTA packets';}throw error;}
       this.rawPacketSupport='accepted'; // queued by the Companion, not proof of RF transmission
-      const [,bw,sf,cr]=this.radio,symbol=2**sf/(bw*1000),de=symbol>=.016?1:0;
+      const [,bw,sf,cr]=this.sourceTempRadio?.radio||this.radio,symbol=2**sf/(bw*1000),de=symbol>=.016?1:0;
       const airtime=(this.preamble+4.25+8+Math.max(0,Math.ceil((8*raw.length-4*sf+44)/(4*(sf-2*de))))*cr)*symbol;
       this.nextTx=Date.now()+Math.ceil(Math.max(.25,2*airtime+.1)*1000);
     }
     async stopServing(){this.serving=false;clearTimeout(this.advertTimer);this.radioQueue=[];while(this.radioRunning)await sleep(10);await this.txQueue;this.seeder=null;}
     async close(){
-      await this.stopServing();if(this.running&&!this.failure&&this.guard){try{await this.guardMode(3);}catch(_){}}
+      await this.stopServing();
+      if(this.running&&!this.failure){
+        try{
+          await this.closeRadioSession();
+          if(this.supportsOtaRadio2&&this.otaRadioProfile!==0)await this.selectOtaRadio(0);
+        }catch(_){} // USB teardown also clears the firmware's RAM-only selection.
+      }
       this.running=false;if(this.pending){clearTimeout(this.pending.timer);this.pending.reject(Error('Connection closed'));this.pending=null;}
       if(this.reader){try{await this.reader.cancel();}catch(_){}try{await this.readTask;}catch(_){}try{this.reader.releaseLock();}catch(_){}}
       if(this.writer){try{await this.writer.close();}catch(_){}try{this.writer.releaseLock();}catch(_){}}

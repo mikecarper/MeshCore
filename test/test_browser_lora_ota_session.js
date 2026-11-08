@@ -39,6 +39,140 @@ test('validates temporary radio, policy and download identity conservatively', (
   assert.deepEqual(download('download: ready to install id=ABCDEF01 |'), {state:'ready',id:'abcdef01'});
   assert.throws(() => download('download: pending'), /identity/);
 });
+test('classifies exact Companion pending and inactive replies without accepting their tuples', () => {
+  for (const raw of ['TempRadio pending: 906.525,250.00,5,5,preamble=32',
+                     'TempRadio inactive', '> TempRadio inactive', '> pending', '> off'])
+    assert.throws(() => temp(raw), /An active temporary radio window is required/);
+  assert.deepEqual(temp('TempRadio active: 906.525,250.00,5,5 7200s left,preamble=32'), [906.525,250,5,5]);
+  assert.deepEqual(temp('TempRadio active: 906.525,250.00,5,5 7200s left'), [906.525,250,5,5]);
+  assert.deepEqual(temp('> 906.525,250.000,5,5,32'), [906.525,250,5,5]);
+});
+test('unrecognized temporary replies have bounded printable diagnostics', () => {
+  assert.throws(() => temp('unexpected\r\n\0\x1b\u202e'+ 'x'.repeat(400)), error => {
+    assert.match(error.message, /Cannot read active temporary radio settings: unexpected/);
+    assert(!/[\x00-\x1f\x7f-\x9f\u202e]/.test(error.message));
+    assert(error.message.length < 230);return true;
+  });
+});
+
+function radioPreflight(options = {}) {
+  const calls=[], progress=[];
+  const config={sourceTemp:'TempRadio active: 906.525,250.00,5,5 7200s left,preamble=32',
+    saved:'> 910.525,62.500,7,5',targetTemp:'> 906.525,250.000,5,5,32',
+    sourceTemp2:'> 906.525,250.000,5,5,rxtx,128; 0d2h0m (120 min) left',
+    targetTemp2:'> 906.525,250.000,5,5,rxtx,128; 0d2h0m (120 min) left',
+    sourceStatus:'> rxtx; RX=3,5 TX=0,0 switches=10 errors=0 max=200us preamble=32,128; test=4/4,4/4 ready budget=220us',
+    targetStatus:'> rxtx; RX=3,5 TX=0,0 switches=10 errors=0 max=200us preamble=32,128; test=4/4,4/4 ready budget=220us',
+    sourceRxps:'> off',targetRxps:'> off',policy:'autofetch=off autoinstall=off hops=0',...options};
+  const link={browserRawSource:true,otaSupported:true,localCliSupported:true,...options.link,
+    async verifyPeer(){throw Error('Radio-only preflight must not perform identity/login operations');},
+    async localCommand(command){
+      calls.push(['source',command]);
+      if(command==='get tempradio')return config.sourceTemp;if(command==='get radio')return config.saved;
+      if(command==='get tempradio2')return config.sourceTemp2;if(command==='get radio2.status')return config.sourceStatus;
+      if(command==='get radio.rxps')return config.sourceRxps;if(command==='ota config')return config.policy;
+      throw Error('Unexpected source command '+command);
+    },
+    async remoteCommand(key,password,command){
+      calls.push(['target',command]);assert.equal(key,'bb'.repeat(32));assert.equal(password,'secret');
+      if(command==='get tempradio')return config.targetTemp;if(command==='get radio.rxps')return config.targetRxps;
+      if(command==='get tempradio2')return config.targetTemp2;if(command==='get radio2.status')return config.targetStatus;
+      if(command==='ota config')return config.policy;throw Error('Unexpected target command '+command);
+    },async savedSourceRadio(){calls.push(['source','cached SELF_INFO']);return options.cached || [906.525,250,5,5];}};
+  return {link,calls,progress,session:new DirectSession(link,'bb'.repeat(32),'secret',null,{progress:text=>progress.push(text)})};
+}
+test('package-independent guarded Companion preflight accepts active off-primary without mutations', async () => {
+  const f=radioPreflight();const result=await f.session.inspectRadios();
+  assert.deepEqual(result,{source:[906.525,250,5,5],target:[906.525,250,5,5],savedSource:[910.525,62.5,7,5],sourceReadback:'active'});
+  assert.deepEqual(f.session.tempRadio,[906.525,250,5,5]);
+  assert.deepEqual(f.calls,[['source','get tempradio'],['source','get radio'],['source','get radio.rxps'],['source','ota config'],
+    ['target','get tempradio'],['target','get radio.rxps'],['target','ota config']]);
+});
+test('off-primary allowance requires guarded raw Companion and target matching still fails closed', async () => {
+  for(const link of [{browserRawSource:false,otaSupported:true},{browserRawSource:true,otaSupported:false},
+                    {browserRawSource:true,otaSupported:undefined}]) {
+    const f=radioPreflight({link});await assert.rejects(f.session.inspectRadios(),/temporary radio must match its saved primary/);
+    assert.equal(f.calls.some(([endpoint])=>endpoint==='target'),false);
+  }
+  const f=radioPreflight({targetTemp:'> 907.525,250.000,5,5,32'});
+  await assert.rejects(f.session.inspectRadios(),/Temporary radio settings do not match between USB Companion and target/);
+  assert.equal(f.session.tempRadio,null);
+});
+test('native API-probed repeater permits verified primary fallback away from saved settings', async () => {
+  const f=radioPreflight({link:{browserRawSource:false,supportsOtaRadio2:true,otaRadioProfile:0}});
+  const result=await f.session.inspectRadios();assert.deepEqual(result.source,[906.525,250,5,5]);
+  assert.deepEqual(result.savedSource,[910.525,62.5,7,5]);assert.deepEqual(result.target,result.source);
+  const old=radioPreflight({link:{browserRawSource:false,supportsOtaRadio2:false,otaRadioProfile:0}});
+  await assert.rejects(old.session.inspectRadios(),/source temporary radio must match its saved primary/);
+});
+test('radio-only preflight labels inactive source and target and bounds unexpected replies', async () => {
+  let f=radioPreflight({sourceTemp:'TempRadio pending: 906.525,250.00,5,5,preamble=32'});
+  await assert.rejects(f.session.inspectRadios(),/active temporary radio window is required on the USB Companion/);
+  f=radioPreflight({targetTemp:'TempRadio inactive'});
+  await assert.rejects(f.session.inspectRadios(),/required on the target.*tempradio 906.525,250,5,5/);
+  f=radioPreflight({targetTemp:'not-a-radio\r\n\0'+ 'x'.repeat(500)});
+  await assert.rejects(f.session.inspectRadios(),error=>{
+    assert.match(error.message,/target: Cannot read active temporary radio settings/);
+    assert(error.message.length < 200);assert(!/[\r\n\0]/.test(error.message));return true;
+  });
+  for(const options of [{sourceRxps:'> on'},{targetRxps:'> on'},{policy:'autofetch=on autoinstall=off hops=0'}]) {
+    f=radioPreflight(options);await assert.rejects(f.session.inspectRadios(),/RX power saving off|automatic OTA fetch/);
+  }
+});
+test('radio-only preflight preserves legacy cached-source fallback and explicit disclosure', async () => {
+  const f=radioPreflight({link:{localCliSupported:false,otaSupported:false}});
+  const result=await f.session.inspectRadios();assert.equal(result.sourceReadback,'saved-only');
+  assert.deepEqual(result.source,[906.525,250,5,5]);
+  assert.equal(f.calls.filter(([endpoint])=>endpoint==='source').length,1);
+  assert(f.progress.some(text=>/Active temporary settings, RX power saving and preamble cannot be verified/.test(text)));
+  assert(f.calls.some(([endpoint,command])=>endpoint==='target'&&command==='ota config'));
+  const invalid=radioPreflight({link:{localCliSupported:false,otaSupported:false},cached:[NaN,250,5,5]});
+  await assert.rejects(invalid.session.inspectRadios(),/USB Companion saved radio settings/);
+});
+test('selected temporary radio2 requires live RXTX proof and keeps the normal primary unchanged', async () => {
+  for(const browserRawSource of [true,false]) {
+    const f=radioPreflight({sourceTemp:'TempRadio inactive',targetTemp:'> off',
+      link:{browserRawSource,otaRadioProfile:1,otaTargetProfile:1,supportsOtaRadio2:true}});
+    const result=await f.session.inspectRadios();assert.deepEqual(result.source,[906.525,250,5,5]);
+    assert.deepEqual(result.target,result.source);assert.deepEqual(result.savedSource,[910.525,62.5,7,5]);
+    for(const endpoint of ['source','target']) {
+      assert(f.calls.some(([label,command])=>label===endpoint&&command==='get tempradio2'));
+      assert(f.calls.some(([label,command])=>label===endpoint&&command==='get radio2.status'));
+      assert(f.calls.some(([label,command])=>label===endpoint&&command==='get tempradio'));
+    }
+    assert(f.calls.every(([,command])=>command.startsWith('get ')||command==='ota config'));
+  }
+});
+test('source and target profiles are selected independently for older primary-only peers', async () => {
+  for(const [sourceProfile,targetProfile]of [[1,0],[0,1]]) {
+    const f=radioPreflight({sourceTemp:sourceProfile?'TempRadio inactive':'TempRadio active: 906.525,250.00,5,5 7200s left,preamble=128',
+      targetTemp:targetProfile?'> off':'> 906.525,250.000,5,5,128',
+      link:{otaRadioProfile:sourceProfile,otaTargetProfile:targetProfile,supportsOtaRadio2:true}});
+    const result=await f.session.inspectRadios();assert.deepEqual(result.source,result.target);
+    for(const [label,profile]of [['source',sourceProfile],['target',targetProfile]])
+      assert.equal(f.calls.some(([endpoint,command])=>endpoint===label&&command==='get tempradio2'),profile===1);
+  }
+});
+test('queued, unsupported, RX-only or mismatched secondary is never accepted as an active update channel', async () => {
+  const base={sourceTemp:'TempRadio inactive',targetTemp:'> off',
+    link:{otaRadioProfile:1,otaTargetProfile:1,supportsOtaRadio2:true}};
+  for(const changes of [
+    {sourceStatus:'> off; RX=0,0 TX=0,0 switches=0 errors=0 max=0us preamble=32,0'},
+    {sourceStatus:'> radio2 change pending reply transmission; previous channel retained'},
+    {sourceStatus:'> rxtx; RX=3,5 TX=0,0 switches=10 errors=0 max=200us preamble=32,64'},
+    {sourceTemp2:'> 906.525,250.000,5,5,rx,128; 0d2h0m (120 min) left'},
+    {sourceTemp2:'Error: unsupported'},
+    {sourceTemp:'TempRadio active: 910.525,62.50,7,5 120s left,preamble=32'},
+    {targetTemp2:'> 907.525,250.000,5,5,rxtx,128; 0d2h0m (120 min) left'},
+    {targetStatus:'> radio2 change pending storage commit (retrying); previous channel retained'}
+  ]) {
+    const f=radioPreflight({...base,...changes});await assert.rejects(f.session.inspectRadios());
+    assert.equal(f.session.tempRadio,null);
+  }
+  for(const link of [{otaRadioProfile:1},{otaRadioProfile:'1',supportsOtaRadio2:true},
+                    {otaRadioProfile:1,supportsOtaRadio2:true,localCliSupported:false}])
+    await assert.rejects(radioPreflight({link}).session.inspectRadios(),/radio2|Invalid selected/);
+});
 test('checks target and serves only matching verified package', async () => {
   const p = await pkg.parseMota(await pkg.buildFullMota(await image()));
   const id = Buffer.from(p.merkleRoot).toString('hex');

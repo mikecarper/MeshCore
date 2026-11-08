@@ -25,6 +25,12 @@ This guide is for **node operators**: how to update your MeshCore device's firmw
 plain language. No cables, no programmer - your node can download a new firmware from a neighbour and
 install it. (For the technical wire format, see [the OTA protocol spec](ota_protocol.md).)
 
+For a direct update from a USB-connected source, the [browser LoRa OTA tool](browser_lora_ota.md) sets up
+the temporary channel automatically and prefers an unused radio2 when supported. Saved radio channels stay
+unchanged. Status lists any required saved power-saving or OTA policy changes, which are retained. The
+browser defaults to BW250/SF7/CR5, preamble 128 and 120 minutes for broader radio compatibility. The
+commands below cover manual setup and multi-hop paths, using SF5 for the fast-channel example.
+
 LoRa OTA download and installation are present only in supported Keymind destination artifacts; the receiver
 must already be running one of those install-capable builds. Some internal-staging nRF52 targets use a lean
 `lora_ota_no_external_sensors` target, while matched external-QSPI boards can retain their normal full-sensor
@@ -36,14 +42,17 @@ forwarding filters, duplicate checks, and flood limits. OTA radio traffic is acc
 only while `tempradio` is actually running on that node. Every source, receiver, and intermediate repeater must
 therefore have an overlapping temporary-radio window.
 
-The recommended temporary OTA settings use 250 kHz bandwidth, SF5, CR5, and a 120-minute window. For a
-North American node currently configured for 910.525 MHz, run this on every participating node:
+The recommended temporary OTA settings use 250 kHz bandwidth, SF5, CR5, and a 120-minute window. This
+North American example uses 909.950 MHz, away from the ordinary USA channel at 910.525 MHz. Run this on every
+participating node:
 
 ```text
-tempradio 910.525,250,5,5,120
+tempradio 909.950,250,5,5,120
 ```
 
-Use the node's current permitted regional frequency in place of `910.525` when necessary.
+Choose a frequency permitted in your location and supported by every participating radio. Replace `909.950`
+with that frequency on the source, destination and every intermediate repeater. Their temporary frequency,
+bandwidth and spreading factor must match, and their temporary windows must overlap.
 
 The scripted updater checks the firmware version of the receiver and every
 sender before deciding whether RX power saving can remain active. At

@@ -65,6 +65,127 @@ async function run(){
   await s.serve({},new Uint8Array());assert.equal(s.preamble,32);
   temp='TempRadio active: 910.525,62.5,7,5 100s left,preamble=32';await s.checkSourceRadio();
   temp='> 911.150,62.5,7,5,32';await assert.rejects(()=>s.checkSourceRadio(),/changed/);await s.stopServing();
+
+  // The firmware guard owns the active profile generation, so a guarded
+  // source can use a temporary OTA channel without changing its saved mesh.
+  // Mirror localCommand's real get-radio side effect on the cached tuple.
+  const offPrimary=new CompanionTransport({},{});
+  offPrimary.sourceKey=source;offPrimary.localCliSupported=true;offPrimary.otaSupported=true;
+  let saved=[910.525,62.5,12,8],active='TempRadio active: 909.500,250.00,5,5 600s left,preamble=128';
+  offPrimary.radio=saved.slice();offPrimary.advertise=()=>{};
+  offPrimary.localCommand=async command=>{
+    if(command==='get tempradio')return active;
+    assert.equal(command,'get radio');offPrimary.radio=saved.slice();return '> '+saved.join(',');
+  };
+  await offPrimary.serve({},new Uint8Array());
+  assert.deepEqual(offPrimary.sourceSavedRadio,[910.525,62.5,12,8]);
+  assert.deepEqual(offPrimary.sourceTempRadio,{radio:[909.5,250,5,5],preamble:128});
+  assert.deepEqual(offPrimary.radio,saved);
+  await offPrimary.checkSourceRadio();
+  saved=[911.15,62.5,12,8];await assert.rejects(()=>offPrimary.checkSourceRadio(),/changed/);
+  saved=[910.525,62.5,12,8];
+  active='TempRadio active: 909.600,250.00,5,5 600s left,preamble=128';
+  await assert.rejects(()=>offPrimary.checkSourceRadio(),/changed/);
+  active='TempRadio active: 909.500,250.00,5,5 600s left,preamble=32';
+  await assert.rejects(()=>offPrimary.checkSourceRadio(),/changed/);
+  active='TempRadio inactive';await assert.rejects(()=>offPrimary.checkSourceRadio(),/temporary|active/i);
+  active='TempRadio active: 909.500,250.00,5,5 600s left,preamble=128';
+  await offPrimary.checkSourceRadio();
+
+  // Slow saved settings would impose a much longer delay. The actual fast
+  // temporary profile puts this maximum-size OTA frame at the 250 ms floor.
+  const raw=new Uint8Array(186);raw[0]=0x32;
+  let rawSends=0;offPrimary.command=async(frame,code)=>{
+    assert.equal(code,0);assert.deepEqual(frame,Uint8Array.of(65,1,...raw));++rawSends;return Uint8Array.of(0);
+  };
+  const realNow=Date.now;Date.now=()=>100000;
+  try{await offPrimary.sendRadioOrdered(raw);assert.equal(offPrimary.nextTx,100250);}
+  finally{Date.now=realNow;}
+  assert.equal(rawSends,1);await offPrimary.stopServing();
+
+  // Without firmware generation guards, retain the existing same-channel
+  // restriction rather than treating the off-primary profile as protected.
+  offPrimary.otaSupported=false;
+  await assert.rejects(()=>offPrimary.serve({},new Uint8Array()),/changed|saved|primary|match/i);
+  assert.equal(offPrimary.serving,false);
+
+  // Setup must refuse to disrupt an active transfer. After an explicit stop,
+  // closing the guard cannot reopen/login or send a second close.
+  const closing=new CompanionTransport({},{});
+  closing.serving=true;closing.guard=true;closing.authenticated=true;
+  let stopped=0,verified=0,loggedIn=0;const modes=[];
+  closing.stopServing=async()=>{++stopped;closing.serving=false;};
+  closing.guardMode=async mode=>{modes.push(mode);assert.equal(mode,3);};
+  closing.verifyPeer=async()=>{++verified;throw Error('must not authenticate');};
+  closing.login=async()=>{++loggedIn;throw Error('must not login');};
+  await assert.rejects(()=>closing.closeRadioSession(),/Stop the transfer/);
+  assert.equal(stopped,0);assert.deepEqual(modes,[]);
+  assert.equal(closing.serving,true);assert.equal(closing.guard,true);assert.equal(closing.authenticated,true);
+  await closing.stopServing();
+  await closing.closeRadioSession();await closing.closeRadioSession();
+  assert.equal(stopped,1);assert.deepEqual(modes,[3]);
+  assert.equal(closing.guard,false);assert.equal(closing.authenticated,false);
+  assert.equal(verified,0);assert.equal(loggedIn,0);
+  // Profile capability detection is read-only. Selection is explicit, idle
+  // and confirmed by readback; unknown replies do not guess support.
+  const selected=new CompanionTransport({},{});selected.otaSupported=true;
+  let chosen='radio',unexpected=false;const choices=[];
+  selected.localCommand=async command=>{
+    choices.push(command);
+    if(command==='get ota.direct.radio')return unexpected?'invalid':'> ota.direct.radio v=1 profile='+chosen;
+    assert.equal(command,'set ota.direct.radio radio2');chosen='radio2';return 'OK - ota.direct.radio radio2';
+  };
+  assert.equal(await selected.probeOtaRadio(),true);
+  assert.deepEqual(choices,['get ota.direct.radio']);
+  selected.guard=true;await assert.rejects(()=>selected.selectOtaRadio(1),/Close the OTA session/);
+  selected.guard=false;await selected.selectOtaRadio(1);assert.equal(selected.otaRadioProfile,1);
+  unexpected=true;await assert.rejects(()=>selected.probeOtaRadio(),/Cannot confirm/);
+  for(const reply of ['Unknown command','Error: unsupported']){
+    const unsupported=new CompanionTransport({},{});unsupported.otaSupported=true;
+    unsupported.localCommand=async()=>reply;
+    assert.equal(await unsupported.probeOtaRadio(),false);
+    await assert.rejects(()=>unsupported.selectOtaRadio(1),/Update the USB Companion/);
+    await unsupported.selectOtaRadio(0);
+  }
+
+  // Local temporary setup protects the shared queue without sending RF,
+  // authenticating, or retrying an uncertain write.
+  for(const lost of [false,true]){
+    const temporary=new CompanionTransport({},{});temporary.otaSupported=true;
+    const events=[];
+    temporary.guardMode=async mode=>{events.push(['guard',mode]);};
+    temporary.localCommand=async command=>{
+      assert.equal(temporary.guard,true);events.push(['local',command]);
+      if(lost)throw Error('Command timed out; result is unknown');return 'OK';
+    };
+    temporary.verifyPeer=async()=>{throw Error('must not authenticate');};
+    const action=temporary.applyTemporaryRadio('set tempradio2 909.95,250,7,5,rxtx,120,128');
+    if(lost)await assert.rejects(action,/result is unknown/);else assert.equal(await action,'OK');
+    assert.deepEqual(events,[['guard',1],['local','set tempradio2 909.95,250,7,5,rxtx,120,128'],['guard',3]]);
+    assert.equal(temporary.guard,false);assert.equal(temporary.authenticated,false);
+    const count=events.length;
+    for(const command of ['set radio 909.95,250,7,5','set tempradio2 909.95,250,7,5,rx,120,128','tempradio 909.95,250,7,5;reboot'])
+      await assert.rejects(()=>temporary.applyTemporaryRadio(command),/Cannot prepare/);
+    assert.equal(events.length,count);
+  }
+
+  // Radio2 pacing and every subsequent send use the active selected lease;
+  // primary off and a slower saved mesh are expected in this mode.
+  const secondarySource=new CompanionTransport({},{});
+  Object.assign(secondarySource,{sourceKey:source,localCliSupported:true,otaSupported:true,supportsOtaRadio2:true,otaRadioProfile:1,radio:[910.525,62.5,12,8]});
+  let secondaryLive=true;secondarySource.advertise=()=>{};
+  secondarySource.localCommand=async command=>{
+    if(command==='get radio'){secondarySource.radio=[910.525,62.5,12,8];return '> 910.525,62.5,12,8';}
+    if(command==='get tempradio')return 'TempRadio inactive';
+    if(command==='get tempradio2')return '> 909.950,250.000,7,5,rxtx,128;0d2h0m (120min) left';
+    if(command==='get radio2.status')return (secondaryLive?'rxtx':'off')+'; RX=0,0 TX=0,0 switches=1 errors=0 max=200us preamble=32,128';
+    throw Error('unexpected '+command);
+  };
+  await secondarySource.serve({},new Uint8Array());
+  assert.deepEqual(secondarySource.sourceTempRadio.radio,[909.95,250,7,5]);
+  await secondarySource.checkSourceRadio();secondaryLive=false;
+  await assert.rejects(()=>secondarySource.checkSourceRadio(),/changed|active|temporary/i);
+  await secondarySource.stopServing();
   console.log('Legacy Companion OTA source tests passed');
 }
 run().catch(e=>{console.error(e);process.exitCode=1;});
