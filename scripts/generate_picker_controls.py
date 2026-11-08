@@ -69,7 +69,7 @@ def capacity_note(reductions, defines):
             notes.append(f'Full Companion queue: {normal} offline messages normally; {borrowed} while mOTA borrows storage. '
                          f'mOTA and temporary-radio setup are refused if more than {borrowed} messages are pending; sync messages with an app first. '
                          'New messages during mOTA can overflow the smaller queue. '
-                         f'Stopping or disconnecting the source restores all {normal} slots.')
+                         f'All {normal} slots return when mOTA stops and any temporary-radio window ends.')
         elif queue or paper:
             if paper:
                 count, normal, borrowed = paper.groups()
@@ -83,7 +83,7 @@ def capacity_note(reductions, defines):
             notes.append(f'Full Companion queue: {normal} offline messages normally; {borrowed} while mOTA borrows queue storage. '
                          f'Sync unread messages with a Companion app before starting mOTA if more than {borrowed} are pending. '
                          'New messages during mOTA can overflow the smaller queue. '
-                         f'Stopping or disconnecting the source restores all {normal} slots.')
+                         f'All {normal} slots return when mOTA stops and any temporary-radio window ends.')
         elif neighbors:
             notes.append(f'Neighbor table: {neighbors[1]} entries.')
         elif rules:

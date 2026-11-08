@@ -264,6 +264,7 @@ class PickerControlsTests(unittest.TestCase):
         self.assertIn('setup are refused if more than 128 messages', control['memoryNote'])
         self.assertIn('sync messages with an app first', control['memoryNote'])
         self.assertIn('New messages during mOTA can overflow', control['memoryNote'])
+        self.assertIn('when mOTA stops and any temporary-radio window ends', control['memoryNote'])
 
     def test_compact_contacts_channels_and_queue_limits(self):
         for channels in (8, 30):
@@ -276,7 +277,7 @@ class PickerControlsTests(unittest.TestCase):
     def test_borrowed_queue_notes_retain_normal_and_active_capacities(self):
         control = self.generate(['nRF52 Full: 256 offline frames normally; 128 while mOTA borrows queue storage'])
         self.assertIn('256 offline messages normally; 128 while mOTA', control['memoryNote'])
-        self.assertIn('restores all 256 slots', control['memoryNote'])
+        self.assertIn('All 256 slots return when mOTA stops and any temporary-radio window ends', control['memoryNote'])
         self.assertEqual(control['memorySource'], 'a' * 40)
 
     def test_paper_includes_declared_channels_after_flag_overrides(self):
