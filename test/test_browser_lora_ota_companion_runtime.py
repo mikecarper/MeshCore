@@ -545,7 +545,7 @@ class CompanionBrowserRuntimeTest(unittest.TestCase):
         result=run_harness(harness,timeout=45)
         self.assertNotIn('error',result,result)
         self.assertIn('raw-packet compatibility',result['status'])
-        self.assertRegex(result['status'],r'(?i)run investigate.*verify.*public key')
+        self.assertRegex(result['status'],r'(?i)select find matching firmware.*verify.*public key')
         self.assertFalse(any(f[0] in (26,52,65) for f in result['frames']))
 
 

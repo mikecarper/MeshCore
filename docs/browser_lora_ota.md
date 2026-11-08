@@ -24,10 +24,10 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
     <p data-role="source-info" role="status" hidden></p>
     <p data-role="ota-availability" class="lora-ota-availability" role="status" aria-live="polite" hidden></p>
     <p data-role="source-update-help" role="status" hidden>This source needs updated firmware for this OTA workflow. If it is still connected here, disconnect it before opening the flasher. <a data-role="source-update-link" href="https://mikecarper.github.io/meshfirmware/" target="_blank" rel="noopener noreferrer">Update source firmware</a></p>
+    <p data-role="contact-status" role="status">Connect a Companion to load contacts.</p>
     <section data-role="target-controls" hidden>
     <label>Search contacts by name or public-key prefix<input data-role="contact-search" autocomplete="off" spellcheck="false" disabled></label>
     <p><strong>Device to update</strong></p>
-    <p data-role="contact-status" role="status">Connect a Companion to load contacts.</p>
     <section data-role="contact" class="lora-ota-contacts" role="group" aria-label="Devices to update" hidden></section>
     <label>Admin password (optional)<input data-role="password" type="password" autocomplete="off" aria-describedby="lora-ota-password-help"></label>
     <small id="lora-ota-password-help">Leave blank to use existing ACL access or an active session.</small>
