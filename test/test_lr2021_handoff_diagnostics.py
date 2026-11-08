@@ -89,7 +89,7 @@ struct CustomLR2021{
 };
 struct Fake{
  CustomLR2021 radio;CustomLR2021* _radio=&radio;
- bool _lab_scan_active=true,_lab_uncertain=false,_params_valid=true;
+ bool _lab_scan_active=true,_lab_uncertain=false,_params_valid=true,_lab_handoff_retry_eligible=false;
  bool _profile_refresh_required=true,_profile_repair_required=false;
  bool _lab_sleeping=false,_lab_session_ldo=false,_lab_pram_loaded=true,_rx_ps_enabled=false,_cw_active=false,_lab_resume_pending=false;
  bool _agc_pram_restore_owned=false;

@@ -30,6 +30,8 @@ private:
   bool _lab_sleeping = false;
   bool _lab_session_ldo = false;
   bool _lab_uncertain = false; // unread/ambiguous IRQ preserved for controlled recovery
+  bool _lab_handoff_retry_eligible = false;
+  mesh::w12pram::HandoffRetry _lab_handoff_retry;
   uint32_t _lab_uncertain_at=0, _lab_ambiguous_recoveries=0, _lab_cold_starts=0;
   bool _lab_transition_waiting=false;
   uint32_t _lab_transition_at=0;
@@ -141,7 +143,7 @@ private:
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
     _lab_seq_tx_lease=false;
 #endif
-    if (!_lab_uncertain) _lab_uncertain_at=millis();
+    if (!_lab_uncertain) { _lab_uncertain_at=millis(); _lab_handoff_retry_eligible=false; }
     _lab_uncertain=true; _lab_resume_pending=false;
     _profile_repair_required=true; _lab_error=RADIOLIB_ERR_UNKNOWN;
   }
@@ -214,7 +216,8 @@ private:
 #endif
     return receiving;
   }
-  void labRecover(int16_t err, mesh::w12pram::RecoveryOrigin origin=mesh::w12pram::RecoveryOrigin::Other) {
+  bool labRecover(int16_t err, mesh::w12pram::RecoveryOrigin origin=mesh::w12pram::RecoveryOrigin::Other) {
+    _lab_handoff_retry.cancel(); // never let an old retry mask a later fault
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
     _lab_seq_tx_lease=false;
 #endif
@@ -224,7 +227,8 @@ private:
     _lab_auto.observe(_profiles.generation[0],_profiles.generation[1]);
     _lab_auto.block(mesh::w12pram::AutoPolicy::Reason::Failed);
     // A chip reset tears down even a stuck PRAM hook and all custom code.
-    if (!labReinitialize()) _profile_repair_required=true;
+    if (!labReinitialize()) { _profile_repair_required=true; return false; }
+    return true;
   }
 
 public:
@@ -416,7 +420,12 @@ public:
     // The guarded stop ends ROM ownership, but CAD hardware may still run.
     // Checked standby and full tuple restore precede channel check and TX.
     if (!labWarmRestore(target)) {
-      if (_lab_uncertain) return Result::BUSY; // preserve ambiguous FIFO, no reset
+      if (_lab_uncertain) {
+        // A successful guarded stop was followed by a raced IRQ. Only this
+        // specific handoff permits delayed re-entry after a successful reset.
+        _lab_handoff_retry_eligible=true;
+        return Result::BUSY; // preserve ambiguous FIFO, no reset
+      }
       labMarkUncertain(); return Result::FAILED;
     }
     if (for_tx) {
@@ -579,6 +588,8 @@ public:
       _lab_resume_pending=false;
     } else if (!labScannerSetAutomatic(enabled)) return false;
     _lab_user_auto_off=!enabled;
+    // A deliberate user action supersedes an outstanding automatic retry.
+    _lab_handoff_retry.cancel();
     if (!enabled) _lab_exclusive_restore_auto=false;
     return true;
   }
@@ -1046,6 +1057,7 @@ public:
   uint32_t _multi_retry_at=0, _multi_gen0=UINT32_MAX, _multi_gen1=UINT32_MAX;
   uint8_t _multi_key_first=0, _multi_key_last=0, _multi_key_profile=0, _multi_key_flags=0;
   bool _multi_key_extra=false;
+  bool _multi_key_enabled=false;
   bool _multi_failed=false;
   void serviceMultiSf(bool rx_allowed, bool radio_owned) {
     const auto& cfg=mesh::lr2021::multiSfSettings();
@@ -1054,11 +1066,18 @@ public:
     if (_multi_gen0!=_profiles.generation[0] || _multi_gen1!=_profiles.generation[1]
         || _multi_key_first!=cfg.first || _multi_key_last!=cfg.last
         || _multi_key_profile!=cfg.profile || _multi_key_flags!=flags
-        || _multi_key_extra!=(_numSideDet!=0)) {
+        || _multi_key_extra!=(_numSideDet!=0) || _multi_key_enabled!=cfg.enabled) {
+      // An explicit range/profile change supersedes recovery for the old
+      // plan. Do not cancel merely because temporary RX permission changed.
+      if (_multi_gen0!=UINT32_MAX && (_multi_gen0!=_profiles.generation[0]
+          || _multi_gen1!=_profiles.generation[1] || _multi_key_first!=cfg.first
+          || _multi_key_last!=cfg.last || _multi_key_profile!=cfg.profile
+          || _multi_key_extra!=(_numSideDet!=0) || _multi_key_enabled!=cfg.enabled)) _lab_handoff_retry.cancel();
       _multi_gen0=_profiles.generation[0]; _multi_gen1=_profiles.generation[1];
       _multi_key_first=cfg.first; _multi_key_last=cfg.last;
       _multi_key_profile=cfg.profile; _multi_key_flags=flags;
       _multi_key_extra=_numSideDet!=0;
+      _multi_key_enabled=cfg.enabled;
       _multi_retry_at=0; _multi_failed=false;
     }
     if (_multi_retry_at && int32_t(millis()-_multi_retry_at)<0) return;
@@ -1173,7 +1192,36 @@ public:
     if (elapsed<1000 || (isChipBusy() && elapsed<5000)) return;
     _lab_uncertain=false;
     ++_lab_ambiguous_recoveries; ++n_recv_errors;
-    labRecover(RADIOLIB_ERR_UNKNOWN, mesh::w12pram::RecoveryOrigin::Handoff);
+    const bool eligible=_lab_handoff_retry_eligible && _lab_auto.enabled();
+    _lab_handoff_retry_eligible=false;
+    if (labRecover(RADIOLIB_ERR_UNKNOWN, mesh::w12pram::RecoveryOrigin::Handoff) && eligible) {
+      _lab_handoff_retry.observe(_profiles.generation[0],_profiles.generation[1]);
+      _lab_handoff_retry.schedule(millis());
+    }
+  }
+  void labServiceHandoffRetry(bool rx_allowed, bool radio_owned) {
+    _lab_handoff_retry.observe(_profiles.generation[0],_profiles.generation[1]);
+    const uint32_t now=millis();
+    if (rx_allowed && !radio_owned && state!=3 && !_lab_sleeping && !_lab_user_auto_off
+        && !mesh::lr2021::safeMode() && !_profile_repair_required
+        && _lab_auto.enabled() && _lab_auto.reason()==mesh::w12pram::AutoPolicy::Reason::Failed
+        && _lab_handoff_retry.due(now) && !isChipBusy() && !hasPendingRadioInterrupt()
+        && !isPacketPendingOrReceiving() && !hasPendingRadioInterrupt()
+        && _lab_handoff_retry.take(now)) {
+      _lab_auto.setEnabled(true);
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT && \
+    defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+      _multi_failed=false;
+      // Reconfigure the requested multi-SF plan before the automatic
+      // scanner service can start the ordinary two-profile plan.
+      _multi_retry_at=0;
+#endif
+    }
+  }
+  bool labMayRestoreExclusive() const {
+    // Ending another radio owner's lease must not bypass recovery backoff or
+    // clear an unrelated scanner failure.
+    return !_lab_auto.blocked() && !_lab_handoff_retry.pending();
   }
   void labStopForProfileTransition() {
     if (labScannerStop()) { _lab_transition_waiting=false; return; }
@@ -1221,9 +1269,11 @@ public:
 #if MESH_ENABLE_RADIO_DIRECTION
       rx_allowed=mesh::radioDirection::radioReceiveAllowed();
 #endif
-      if (!radio_owned && _lab_exclusive_restore_auto && !_lab_user_auto_off && !mesh::lr2021::safeMode()) {
+      if (!radio_owned && _lab_exclusive_restore_auto && !_lab_user_auto_off
+          && !mesh::lr2021::safeMode() && labMayRestoreExclusive()) {
         if (labScannerSetAutomatic(true)) _lab_exclusive_restore_auto=false;
       }
+      labServiceHandoffRetry(rx_allowed,radio_owned);
 #if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT && \
     defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
       serviceMultiSf(rx_allowed, radio_owned);

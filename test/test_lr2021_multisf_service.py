@@ -46,8 +46,9 @@ struct Fake : Base {
  Profiles _profiles;
  bool _multi_sf_enabled=false, _lab_seq_requested=false, _lab_uncertain=false, _params_valid=true;
  bool blocked=false, fail_apply=false, automatic=true;
- bool _multi_key_extra=false; unsigned _numSideDet=0;
+ bool _multi_key_extra=false,_multi_key_enabled=false; unsigned _numSideDet=0;
  mesh::w12pram::AutoPolicy _lab_auto;
+ struct { int cancellations=0; bool pending=false; void cancel() { ++cancellations; pending=false; } } _lab_handoff_retry;
  bool _lab_seq_tx_prepared=false,_lab_seq_tx_lease=false,_lab_scan_active=false,_lab_resume_pending=false;
  bool _lab_session_ldo=false,_lab_exclusive_restore_auto=false,_lab_user_auto_off=false;
  uint32_t _lab_exclusive_until=0;
@@ -99,8 +100,9 @@ int main() {
  f._lab_auto.failed=true; f.tick(); assert(f._multi_failed && !f._lab_seq_requested);
  assert(f.prepareTransmitProfile(0,false)==mesh::RadioParamApplyResult::APPLIED);
  ++f._profiles.generation[1]; f.tick(); assert(f._lab_seq_requested);
+ f._lab_handoff_retry.pending=true;
  mesh::lr2021::cfg.profile=1; mesh::lr2021::cfg.first=6; mesh::lr2021::cfg.last=9;
- f.tick(); assert(f._lab_seq_requested && f._lab_seq_selected==1 && f._lab_seq_first==6);
+ f.tick(); assert(!f._lab_handoff_retry.pending && f._lab_seq_requested && f._lab_seq_selected==1 && f._lab_seq_first==6);
  mesh::lr2021::cfg.enabled=false; f.tick(); assert(!f._lab_seq_requested && f.automatic);
  f._profiles.dual=false; ++f._profiles.generation[1]; mesh::lr2021::cfg.enabled=true;
  mesh::lr2021::cfg.profile=0; f.fail_apply=true; f.tick(); assert(f._multi_failed);
@@ -143,11 +145,13 @@ int main() {
  f._lab_scan_active=true; f._lab_session_ldo=true;
  assert(f.prepareBeaconTransmit(beacon,9)==mesh::RadioParamApplyResult::APPLIED);
  assert(f._lab_exclusive_restore_auto);
+ const int cancellations_before_manual=f._lab_handoff_retry.cancellations;
  assert(f.labScannerSetAutomaticManual(false));
+ assert(f._lab_handoff_retry.cancellations==cancellations_before_manual+1);
  assert(!f._lab_exclusive_restore_auto && f._lab_user_auto_off);
  for (int i=0;i<8;++i) f.tick(); f.beacon_owned=false; f.tick();
  assert(!f._lab_seq_requested && f._lab_user_auto_off);
- assert(f.labScannerSetAutomaticManual(true)); f.tick(); assert(f._lab_seq_requested);
+ assert(f.labScannerSetAutomaticManual(true)); assert(f._lab_handoff_retry.cancellations==cancellations_before_manual+2); f.tick(); assert(f._lab_seq_requested);
 }
 """.replace('@SERVICE@',service).replace('@PREPARE@',prepare).replace('@RELEASE@',release).replace('@PENDING@',pending).replace('@MANUAL@',manual).replace('@BEACON@',beacon)
 with tempfile.TemporaryDirectory() as directory:

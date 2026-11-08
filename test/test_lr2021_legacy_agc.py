@@ -177,7 +177,8 @@ class LR2021LegacyAGCTests(unittest.TestCase):
         source = (ROOT / 'src/helpers/radiolib/W12PramScannerLab.inc').read_text()
         signatures = [('@AUTO@', 'void labServiceAutomatic('), ('@UNCERTAIN@', 'void labServiceUncertain()'),
                       ('@SET@', 'bool labScannerSetAutomatic('), ('@RECONFIG@', 'bool labReconfigureBlocked()'),
-                      ('@TRANSITION@', 'void labStopForProfileTransition()'), ('@CURRENT@', 'bool labRxProfileCurrent()')]
+                      ('@TRANSITION@', 'void labStopForProfileTransition()'), ('@CURRENT@', 'bool labRxProfileCurrent()'),
+                      ('@RETRY@', 'void labServiceHandoffRetry('), ('@MAYRESTORE@', 'bool labMayRestoreExclusive()')]
         for token, signature in signatures:
             code = code.replace(token, body(source, signature).replace(' override', ''))
         code += r'''

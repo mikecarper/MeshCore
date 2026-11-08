@@ -23,6 +23,7 @@ struct RadioLibWrapper {
 };
 struct Fake: RadioLibWrapper {
   bool _lab_scan_active=true,_lab_uncertain=false,_lab_resume_pending=false,_lab_session_ldo=true; uint8_t _lab_rx_preamble[2]={};
+  bool _lab_handoff_retry_eligible=false;
   bool pending=false,chipbusy=false,warm=true,reinit=true; int state=1, recoveries=0, calls=0; uint8_t admission=0;
   int16_t command_error=0; int target=-1; uint32_t _lab_pause_last=0,_lab_pause_min=UINT32_MAX,_lab_pause_max=0,_lab_tx_pauses=0,_lab_resume_at=0;
   mesh::w12pram::Status reply={};
@@ -47,8 +48,8 @@ int main(){using R=mesh::RadioParamApplyResult;
   {Fake f; f.reply.hooked=1;f.reply.state=2;assert(f.labPauseScanner()==R::BUSY && f.recoveries==0);}
   {Fake f; f.reply.hooked=0;f.reply.state=2;assert(f.labPauseScanner()==R::FAILED && f.recoveries==0 && f._lab_uncertain);}
   {Fake f; f.reply.stopped=true;f.reply.hooked=1;assert(f.labPauseScanner()==R::FAILED && f.recoveries==0 && f._lab_uncertain);}
-  {Fake f; f.reply.stopped=true;f.warm=false;f._lab_uncertain=true;assert(f.labPauseScanner()==R::BUSY && f.recoveries==0);}
-  {Fake f; f.reply.stopped=true;f.warm=false;assert(f.labPauseScanner()==R::FAILED && f.recoveries==0 && f._lab_uncertain);}
+  {Fake f; f.reply.stopped=true;f.warm=false;f._lab_uncertain=true;assert(f.labPauseScanner()==R::BUSY && f.recoveries==0 && f._lab_handoff_retry_eligible);}
+  {Fake f; f.reply.stopped=true;f.warm=false;assert(f.labPauseScanner()==R::FAILED && f.recoveries==0 && f._lab_uncertain && !f._lab_handoff_retry_eligible);}
   {Fake f; f.reply.stopped=true;assert(f.prepareTransmitProfile(1,false)==R::APPLIED);assert(!f._lab_scan_active&&f.target==1&&f._lab_resume_pending&&f._lab_tx_pauses==1&&f._lab_pause_last>0);}
   {Fake f; f._lab_uncertain=true;assert(f.prepareTransmitProfile(0,false)==R::BUSY && f.calls==0);}
   {Fake f; f.state=3;f._lab_resume_pending=true;assert(!f.labScannerStop()&&!f._lab_resume_pending&&f.calls==0);}

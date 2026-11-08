@@ -4,7 +4,7 @@ ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'test'))
 from test_lr2021_apply_transaction import method
 source=(ROOT/'src/helpers/radiolib/W12PramScannerLab.inc').read_text(encoding='utf8')
-sigs=['void labServiceAutomatic(', 'void labServiceUncertain()', 'bool labScannerSetAutomatic(', 'bool labReconfigureBlocked()', 'void labStopForProfileTransition()', 'bool labRxProfileCurrent()']
+sigs=['void labServiceAutomatic(', 'void labServiceUncertain()', 'bool labScannerSetAutomatic(', 'bool labReconfigureBlocked()', 'void labStopForProfileTransition()', 'bool labRxProfileCurrent()', 'void labServiceHandoffRetry(', 'bool labMayRestoreExclusive()']
 parts=[method(source,x).replace(' override','') for x in sigs]
 code=r'''
 #include <cassert>
@@ -12,14 +12,22 @@ code=r'''
 #include <helpers/radiolib/W12PramScannerCodec.h>
 #include <helpers/radiolib/W12PramAutoPolicy.h>
 #define RADIOLIB_ERR_UNKNOWN -1
+#define MESH_W12_MULTISF_EXPERIMENT 1
+#define MESH_W12_PRAM_SEQUENTIAL_LAB 1
 static uint32_t now=100; static uint32_t millis(){return now;}
 namespace mesh {enum class RadioParamApplyResult {APPLIED,BUSY,FAILED};
 namespace lr2021 { bool safe = false; bool safeMode() { return safe; } }}
 struct Fake {
   mesh::w12pram::AutoPolicy _lab_auto;
+  mesh::w12pram::HandoffRetry _lab_handoff_retry;
   struct {uint32_t generation[2]={1,2}; bool active=true, recommendation=true; bool enabled()const{return active;} bool recommendationReady()const{return recommendation;}} _profiles;
   struct {uint32_t generation;} _lab_snap[2]={{1},{2}};
   bool _lab_uncertain=false,_lab_sleeping=false,_lab_resume_pending=false,_lab_session_ldo=false,_lab_pram_loaded=false;
+  bool _lab_handoff_retry_eligible=false;
+  bool _lab_user_auto_off=false,_multi_failed=false;
+  uint32_t _multi_retry_at=0;
+  bool pending_irq=false,receiving=false;
+  bool reset_ok=true;
   bool _profile_repair_required=false,_lab_scan_active=false, supported=true, stop_ok=true, chip_busy=false;
   bool _lab_transition_waiting=false; uint32_t _lab_transition_at=0;
   int state=1, cold=0, warm=0, stops=0, errors=0, start_result=0, reset_calls=0, support_checks=0;
@@ -34,16 +42,31 @@ struct Fake {
   bool labScannerStop(){++stops;_lab_resume_pending=false;if(!stop_ok)return false;_lab_scan_active=false;_lab_session_ldo=false;return true;}
   mesh::RadioParamApplyResult labPauseScanner(){return stop_ok ? mesh::RadioParamApplyResult::APPLIED : mesh::RadioParamApplyResult::BUSY;}
   bool isChipBusy(){return chip_busy;}
+  bool hasPendingRadioInterrupt(){return pending_irq;}
+  bool isPacketPendingOrReceiving(){return receiving;}
   void labMarkUncertain(){_lab_uncertain=true;}
-  void labRecover(int,mesh::w12pram::RecoveryOrigin){++reset_calls;++_lab_recoveries;_lab_auto.block(mesh::w12pram::AutoPolicy::Reason::Failed);}
+  bool labRecover(int,mesh::w12pram::RecoveryOrigin){_lab_handoff_retry.cancel();++reset_calls;++_lab_recoveries;_lab_auto.block(mesh::w12pram::AutoPolicy::Reason::Failed);return reset_ok;}
 @AUTO@
 @UNCERTAIN@
 @SET@
 @RECONFIG@
 @TRANSITION@
 @CURRENT@
+@RETRY@
+@MAYRESTORE@
 };
 int main(){using Reason=mesh::w12pram::AutoPolicy::Reason;
+  {mesh::w12pram::HandoffRetry r; r.observe(1,2); r.schedule(100); assert(!r.take(60099)); assert(r.take(60100)); assert(!r.take(60101)); r.schedule(100); assert(!r.take(120099)); assert(r.take(120100)); r.schedule(100); assert(r.take(180100)); r.schedule(100); assert(!r.take(999999)); r.observe(2,2); r.schedule(100); assert(r.take(60100)); r.schedule(100); r.cancel(); assert(!r.take(999999));}
+  {mesh::w12pram::HandoffRetry r; r.observe(1,2); r.schedule(UINT32_MAX-30000u); assert(!r.take(100)); assert(r.take(30000));}
+  {mesh::w12pram::HandoffRetry r; r.observe(1,2); r.schedule(100); r.observe(1,3); assert(!r.pending()&&!r.take(999999)); r.schedule(200); assert(!r.take(60199)&&r.take(60200));}
+  {Fake f;f._lab_uncertain=true;f._lab_handoff_retry_eligible=true;f._lab_uncertain_at=now; now+=1000; f.labServiceUncertain(); assert(f.reset_calls==1); assert(!f._lab_handoff_retry.take(now+59999)); assert(f._lab_handoff_retry.take(now+60000));}
+  {Fake f;f._lab_uncertain=true;f._lab_uncertain_at=now; now+=1000; f.labServiceUncertain(); assert(!f._lab_handoff_retry.take(now+999999));}
+  {Fake f;f._lab_uncertain=true;f._lab_handoff_retry_eligible=true;f.reset_ok=false;f._lab_uncertain_at=now;now+=1000;f.labServiceUncertain();assert(!f._lab_handoff_retry.take(now+999999));}
+  {Fake f;f._lab_uncertain=true;f._lab_handoff_retry_eligible=true;f._lab_uncertain_at=now;now+=1000;f.labServiceUncertain();f.labRecover(-1,mesh::w12pram::RecoveryOrigin::Other);assert(!f._lab_handoff_retry.take(now+999999));}
+  {Fake f; assert(f.labMayRestoreExclusive()); f._lab_handoff_retry.observe(1,2); f._lab_handoff_retry.schedule(now); assert(!f.labMayRestoreExclusive()); f._lab_handoff_retry.cancel(); f._lab_auto.block(Reason::Failed); assert(!f.labMayRestoreExclusive()); f._lab_auto.setEnabled(true); assert(f.labMayRestoreExclusive());}
+  {Fake f; f._lab_uncertain=true; f._lab_handoff_retry_eligible=true; f._lab_uncertain_at=now; now+=1000; f.labServiceUncertain(); f._multi_failed=true; f._multi_retry_at=now+61000; now+=59999; f.labServiceHandoffRetry(true,false); assert(f._lab_auto.blocked()&&f._multi_failed); now++; f.labServiceHandoffRetry(true,false); assert(!f._lab_auto.blocked()&&!f._multi_failed&&f._multi_retry_at==0);}
+  {Fake f; f._lab_uncertain=true; f._lab_handoff_retry_eligible=true; f._lab_uncertain_at=now; now+=1000; f.labServiceUncertain(); f._multi_failed=true; now+=60000; f._profile_repair_required=true; f.labServiceHandoffRetry(true,false); assert(f._lab_auto.blocked()&&f._multi_failed); f._profile_repair_required=false; mesh::lr2021::safe=true; f.labServiceHandoffRetry(true,false); assert(f._lab_auto.blocked()); mesh::lr2021::safe=false; f._lab_user_auto_off=true; f.labServiceHandoffRetry(true,false); assert(f._lab_auto.blocked()); f._lab_user_auto_off=false; f.labServiceHandoffRetry(true,false); assert(!f._lab_auto.blocked()&&!f._multi_failed);}
+  {Fake f; f._lab_uncertain=true; f._lab_handoff_retry_eligible=true; f._lab_uncertain_at=now; now+=1000; f.labServiceUncertain(); now+=60000; f.labServiceHandoffRetry(false,false); assert(f._lab_auto.blocked()); f.labServiceHandoffRetry(true,true); assert(f._lab_auto.blocked()); f.state=3; f.labServiceHandoffRetry(true,false); assert(f._lab_auto.blocked()); f.state=1; f.pending_irq=true; f.labServiceHandoffRetry(true,false); assert(f._lab_auto.blocked()); f.pending_irq=false; f.receiving=true; f.labServiceHandoffRetry(true,false); assert(f._lab_auto.blocked()); f.receiving=false; f.chip_busy=true; f.labServiceHandoffRetry(true,false); assert(f._lab_auto.blocked()); f.chip_busy=false; f.labServiceHandoffRetry(true,false); assert(!f._lab_auto.blocked());}
   {Fake f; mesh::lr2021::safe=true; f.labServiceAutomatic(true,false); assert(f.cold==0); assert(!f.labScannerSetAutomatic(true)); mesh::lr2021::safe=false; f.labServiceAutomatic(true,false); assert(f.cold==1); mesh::lr2021::safe=true; f.labServiceAutomatic(true,false); assert(f.stops==1); mesh::lr2021::safe=false;}
   {Fake f;f._profiles.active=false;f.labServiceAutomatic(true,false);assert(f.cold==0);f._profiles.active=true;f.labServiceAutomatic(true,false);assert(f.cold==1&&f._lab_scan_active);}
   {Fake f;f._profiles.recommendation=false;f.labServiceAutomatic(true,false);assert(f.cold==0&&f.warm==0);f._profiles.recommendation=true;f.labServiceAutomatic(true,false);assert(f.cold==1);}
@@ -70,7 +93,7 @@ int main(){using Reason=mesh::w12pram::AutoPolicy::Reason;
   {Fake f;f._profiles.active=false;assert(!f.labRxProfileCurrent()&&!f._lab_uncertain);}
 }
 '''
-for name,body in zip(['@AUTO@','@UNCERTAIN@','@SET@','@RECONFIG@','@TRANSITION@','@CURRENT@'],parts):code=code.replace(name,body)
+for name,body in zip(['@AUTO@','@UNCERTAIN@','@SET@','@RECONFIG@','@TRANSITION@','@CURRENT@','@RETRY@','@MAYRESTORE@'],parts):code=code.replace(name,body)
 recv=method(source, 'int recvRaw(')
 assert recv.index('labRxProfileCurrent()') < recv.index('claimRadioInterrupt()'), 'stale RX must be rejected before IRQ claim'
 wrapper=(ROOT/'src/helpers/radiolib/CustomLR2021Wrapper.h').read_text(encoding='utf8')
