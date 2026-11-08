@@ -276,6 +276,14 @@ int main() {
         with tempfile.TemporaryDirectory(prefix="battery-calibration-store-") as temp:
             work = Path(temp)
             (work / "helpers").mkdir()
+            # Link the real platform policy, including MainBoard's out-of-line
+            # virtual methods. Native test boards override sleep, so remove
+            # only its ARM-only WFI instruction from a temporary header.
+            (work / "Arduino.h").write_text("#pragma once\n", encoding="ascii")
+            (work / "target.h").write_text("#pragma once\n#include <MeshCore.h>\n", encoding="ascii")
+            core = (ROOT / "src/MeshCore.h").read_text()
+            self.assertEqual(core.count('__asm volatile("wfi");'), 1)
+            (work / "MeshCore.h").write_text(core.replace('__asm volatile("wfi");', '(void)secs;'))
             mock = ROOT / "test/fixtures/radio_profiles/mocks/helpers/IdentityStore.h"
             mock_text = mock.read_text(encoding="ascii")
             mock_text = mock_text.replace("  bool fail_read_open = false;",
@@ -306,7 +314,8 @@ int main() {
                         "-Wno-sign-compare", "-Wno-unused-parameter", "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
                         "-fno-pie", "-no-pie", "-D" + platform,
                         "-I" + str(work), "-I" + str(ROOT / "src"),
-                        str(work / "test.cpp"), "-o", str(binary),
+                        str(work / "test.cpp"), str(ROOT / "src/helpers/PeripheralPinPolicy.cpp"),
+                        "-o", str(binary),
                     ], capture_output=True, text=True, timeout=60)
                     self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
                     result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=20)
