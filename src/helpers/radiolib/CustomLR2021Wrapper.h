@@ -42,6 +42,8 @@ class CustomLR2021Wrapper : public LRxxxxPulseWrapper<CustomLR2021> {
   using PulseBase=LRxxxxPulseWrapper<CustomLR2021>;
 #if MESH_WARM_RX_REFRESH && defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
   bool _agc_pram_paused=false,_agc_pram_restore_owned=false;
+  bool _agc_pram_cold_restore_owned=false,_agc_pram_cold_tried=false;
+  bool _agc_pram_arm_issued=false; // conservatively includes an ambiguous admitted arm failure
   uint32_t _agc_pram_generations[2]={0,0};
 #endif
 #if MESH_LR2021_RXPS_HOLD_AVAILABLE
@@ -310,13 +312,23 @@ public:
       if(paused==mesh::RadioParamApplyResult::BUSY) return Result::Deferred;
       if(paused!=mesh::RadioParamApplyResult::APPLIED) return Result::Failed;
       _agc_pram_paused=true;
+      _agc_pram_cold_tried=false;
+      _agc_pram_arm_issued=false;
       _lab_resume_pending=true; _lab_resume_at=millis();
       _agc_pram_generations[0]=_profiles.generation[0];
       _agc_pram_generations[1]=_profiles.generation[1];
     }
 #endif
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    const uint32_t previous_admission=_rxps_pulse.admit;
+    if(_agc_pram_paused)_agc_pram_arm_issued=true;
+#endif
     const auto result=PulseBase::periodicAGCMaintenance(adaptive);
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    // Publish potential sleep before the call which can issue arm. A pure
+    // pre-admission deferral issued no arm and retains the existing warm lease.
+    // Never change the independent had_cycle/cancel/failed credit evidence.
+    if(!_rxps_pulse.pending && _rxps_pulse.admit==previous_admission)_agc_pram_arm_issued=false;
     if(_agc_pram_paused && !_rxps_pulse.pending && finishAGCPulseOwner()) return mesh::AGCMaintenanceResult::Failed;
 #endif
     return result;
@@ -1094,18 +1106,53 @@ protected:
     if(!_agc_pram_paused) return RADIOLIB_ERR_NONE;
     if(!_profiles.enabled() || _profiles.generation[0]!=_agc_pram_generations[0]
         || _profiles.generation[1]!=_agc_pram_generations[1] || !_lab_resume_pending) {
-      _rxps_pulse.cancelRequest();_agc_pram_paused=false;_lab_resume_pending=false;return RADIOLIB_ERR_NONE;
+      _rxps_pulse.cancelRequest();_agc_pram_paused=false;_lab_resume_pending=false;_agc_pram_arm_issued=false;return RADIOLIB_ERR_NONE;
     }
-    if(_lab_uncertain || !_lab_pram_loaded) return RADIOLIB_ERR_UNKNOWN;
+    if(_lab_uncertain || !_lab_pram_loaded || (!_rxps_pulse.pending && _agc_pram_arm_issued)) {
+      // A retired/failed pulse cannot leave a stale scanner lease blocking
+      // ordinary host repair and every subsequent maintenance request.
+      _agc_pram_paused=false;_lab_resume_pending=false;_agc_pram_arm_issued=false;
+      return RADIOLIB_ERR_UNKNOWN;
+    }
+    const bool cold=_agc_pram_arm_issued;
+    if(cold && (!_rxps_pulse.pending || _rxps_pulse.phase!=RxpsPulse::Phase::Rearm
+        || _agc_pram_cold_tried)) return RADIOLIB_ERR_UNKNOWN;
     _agc_pram_restore_owned=true;
-    const bool restored=labScannerStart(true);
+    _agc_pram_cold_restore_owned=cold;
+    const bool restored=labScannerStart(!cold);
+    _agc_pram_cold_restore_owned=false;
     _agc_pram_restore_owned=false;
-    if(!restored || !_lab_scan_active || !_lab_status.hooked) return RADIOLIB_ERR_UNKNOWN;
+    if(!restored || !_lab_scan_active || !_lab_status.hooked) {
+      if(cold && _agc_pram_cold_tried) {
+        _agc_pram_paused=false;_lab_resume_pending=false;_agc_pram_arm_issued=false;
+        _lab_auto.block(mesh::w12pram::AutoPolicy::Reason::Failed);
+        _profile_repair_required=true;
+      }
+      return RADIOLIB_ERR_UNKNOWN;
+    }
     _agc_pram_paused=false;
+    _agc_pram_arm_issued=false;
 #endif
     return RADIOLIB_ERR_NONE;
   }
 #endif
+  int16_t finishPacketAGCPulseOwner(int16_t result) {
+#if MESH_WARM_RX_REFRESH && defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    if(!result && _agc_pram_paused && _rxps_pulse.pending && _rxps_pulse.phase==RxpsPulse::Phase::Packet) {
+      uint32_t irq=0;uint8_t mode=0;
+      auto* radio=static_cast<CustomLR2021*>(_radio);
+      result=radio->agcPulseStatus(irq,mode);
+      if(!result && (radio->agcPulsePacketDone(irq) || hasPendingRadioInterrupt() || mode!=4)) result=RADIOLIB_ERR_UNKNOWN;
+      if(!result) {
+        // The consumed packet must not complete maintenance before the
+        // scanner's owned restore has actually succeeded.
+        _rxps_pulse.rearming();
+        result=finishAGCPulseOwner();
+      }
+    }
+#endif
+    return result;
+  }
   int startReceiveMode() override {
     if (!_scan_retune) invalidateScanTuple();
     // LR2021 must leave CAD/RX before restarting with side detectors, or it
@@ -1113,6 +1160,7 @@ protected:
     const int16_t standby = recordApply(mesh::lr2021::ApplyStatus::Stage::Standby,
                                        _radio->standby());
     if (standby != RADIOLIB_ERR_NONE) return standby;
+    int16_t received=RADIOLIB_ERR_NONE;
 #if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
     if (_multi_sf_enabled) {
       mesh::w12multisf::Plan plan;
@@ -1120,16 +1168,23 @@ protected:
           || !applyMultiSfReceiveTuple(plan)) return RADIOLIB_ERR_UNKNOWN;
 #if MESH_LR2021_RXPS_AVAILABLE
       // Preserve RXPS intent while its multi-SF hold selects continuous RX.
-      return recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, startReceivePowerSaving());
+      received=recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, startReceivePowerSaving());
 #else
-      return recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, _radio->startReceive());
+      received=recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, _radio->startReceive());
+#endif
+    } else
+#endif
+    {
+#if MESH_LR2021_RXPS_AVAILABLE
+      received=recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, startReceivePowerSaving());
+#else
+      received=recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, _radio->startReceive());
 #endif
     }
-#endif
-#if MESH_LR2021_RXPS_AVAILABLE
-    return recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, startReceivePowerSaving());
+#if MESH_WARM_RX_REFRESH && defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    return finishPacketAGCPulseOwner(received);
 #else
-    return recordApply(mesh::lr2021::ApplyStatus::Stage::Receive, _radio->startReceive());
+    return received;
 #endif
   }
 

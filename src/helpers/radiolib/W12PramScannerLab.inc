@@ -433,6 +433,48 @@ public:
     }
     return true;
   }
+#if MESH_WARM_RX_REFRESH
+  bool labMaintenanceColdLeaseCurrent() const {
+    return _agc_pram_cold_restore_owned && _agc_pram_restore_owned && _agc_pram_paused
+        && _rxps_pulse.pending && _agc_pram_arm_issued
+        && _rxps_pulse.phase==RxpsPulse::Phase::Rearm && _lab_resume_pending
+        && !_lab_uncertain && !_lab_sleeping && !_lab_scan_active && _profiles.enabled()
+        && _profiles.generation[0]==_agc_pram_generations[0]
+        && _profiles.generation[1]==_agc_pram_generations[1];
+  }
+  bool labQuiesceMaintenanceColdReset() {
+    if(!labMaintenanceColdLeaseCurrent() || _agc_pram_cold_tried || !_lab_pram_loaded || !_lab_session_ldo
+        || _profile_repair_required || _profile_retry_at || state==3 || _cw_active || labExclusivePending()) return false;
+#if MESH_ENABLE_RADIO_DIRECTION
+    if(!mesh::radioDirection::radioReceiveAllowed()) return false;
+#endif
+#if MESH_ENABLE_TX_BEACONS
+    if(isBeaconRadioOwned()) return false;
+#endif
+#if MESH_ENABLE_CARRIER_TOOLS
+    if(_morse_owned) return false;
+#endif
+#if MESH_ENABLE_MORSE_RX
+    if(_morse_rx_owned) return false;
+#endif
+    auto* r=static_cast<CustomLR2021*>(_radio);
+    const auto quiet=[&](bool standby) {
+      if(isChipBusy() || hasPendingRadioInterrupt() || digitalRead(P_LORA_DIO_1)==HIGH) return false;
+      uint32_t irq=0;uint8_t mode=0;uint16_t fifo=0;
+      if(r->agcPulseStatus(irq,mode)!=RADIOLIB_ERR_NONE || mode==5 || (standby && mode!=1)) return false;
+      // Error flags may be the reason for recovery; they are never cleared to
+      // admit it. Every RX, other IRQ and FIFO byte still blocks the reset.
+      if(irq & ~(RADIOLIB_LR2021_IRQ_ERROR | RADIOLIB_LR2021_IRQ_CMD_ERROR)) return false;
+      if(r->getRxFifoLevel(&fifo)!=RADIOLIB_ERR_NONE || fifo) return false;
+      return !hasPendingRadioInterrupt() && digitalRead(P_LORA_DIO_1)!=HIGH && !isChipBusy();
+    };
+    if(!quiet(false) || r->standby()!=RADIOLIB_ERR_NONE || !quiet(true)) return false;
+    if(!labMaintenanceColdLeaseCurrent()) return false;
+    // Only an admitted actual reset consumes the one retry in this lease.
+    _agc_pram_cold_tried=true;
+    return true;
+  }
+#endif
   bool labScannerStop() {
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
     _lab_seq_tx_lease=false;
@@ -623,6 +665,11 @@ public:
       // Quiesce RX before the hard reset; a completion racing standby keeps
       // ownership of its FIFO. A late physical IRQ after admission is
       // ambiguous, so retain it for bounded recovery rather than clearing it.
+#if MESH_WARM_RX_REFRESH
+      if(_agc_pram_cold_restore_owned) {
+        if(!labQuiesceMaintenanceColdReset()) return false;
+      } else
+#endif
       if (!labQuiesceForReset()) return false;
       ++_lab_cold_starts;
       // Stay in standby after reinitialization: briefly entering RX here
@@ -647,6 +694,19 @@ public:
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
     if(restart.restart_stage==4)restart.restart_rc=rc;
 #endif
+#if MESH_WARM_RX_REFRESH
+    if(rc==RADIOLIB_ERR_NONE && !automatic && _agc_pram_cold_restore_owned) {
+      if(!labMaintenanceColdLeaseCurrent()) rc=RADIOLIB_ERR_UNKNOWN;
+      else {
+        const float frequencies[2]={_lab_snap[0].freq_hz/1000000.0f,_lab_snap[1].freq_hz/1000000.0f};
+        rc=recordApply(mesh::lr2021::ApplyStatus::Stage::Calibration,
+            r->resetReceiverCalibration(frequencies,2,false));
+      }
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      restart.restart_stage=12;restart.restart_rc=rc;
+#endif
+    }
+#endif
     if (!automatic) {
       const size_t words=sizeof(w12_pram_scan_blob)/sizeof(w12_pram_scan_blob[0]);
       for (size_t at=0;rc==RADIOLIB_ERR_NONE && at<words;) {
@@ -654,18 +714,10 @@ public:
         rc=r->writeRegMem32(0x801000u+uint32_t(at*4),w12_pram_scan_blob+at,count);
         at+=count;
       }
-#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
-      if(restart.restart_rc==RADIOLIB_ERR_NONE) {restart.restart_stage=5;restart.restart_rc=rc;}
-#endif
-    }
-    if(rc==RADIOLIB_ERR_NONE) {
-      // The custom install publishes its own retained identity. After checked
-      // standby, reactivate the known resident image before hello and rehook.
-      // Only the cold path above writes any image bytes.
-      rc=r->activatePram();
+      if(rc==RADIOLIB_ERR_NONE)rc=r->activatePram();
       if(rc==RADIOLIB_ERR_NONE)_lab_pram_loaded=true;
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
-      restart.restart_stage=5;restart.restart_rc=rc;
+      if(restart.restart_rc==RADIOLIB_ERR_NONE) {restart.restart_stage=5;restart.restart_rc=rc;}
 #endif
     }
     uint8_t req=2,ident[4]={};
@@ -729,7 +781,11 @@ public:
     if (rc!=RADIOLIB_ERR_NONE) {
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
       // SCN3 ownership may now be ambiguous; take no extra SPI snapshots.
-      if(automatic)labCaptureHandoffFailure(2,0,restart.restart_stage<11 && !_lab_scan_active);
+      if(automatic
+#if MESH_WARM_RX_REFRESH
+          || _agc_pram_cold_restore_owned
+#endif
+          )labCaptureHandoffFailure(2,0,restart.restart_stage<11 && !_lab_scan_active);
 #endif
       labMarkUncertain(); return false;
     }

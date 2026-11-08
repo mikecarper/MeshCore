@@ -14,8 +14,8 @@ protected:
   uint32_t defaultAGCPulseSleepUs() const override {
     return mesh::rxpspulse::bufferedSleepRequestUs(pulseRadio()->agcPulseTransitionUs(),32768,0xFFFFFF);
   }
-  // An autonomous scanner can transfer/reacquire its checked warm ownership.
-  // The hooks must not discard FIFO or cold-reset a resident scanner image.
+  // An autonomous scanner can transfer/reacquire checked ownership. A witnessed
+  // LR2021 sleep may require its guarded owned cold rebuild; never discard FIFO.
   virtual int16_t finishAGCPulseOwner() { return RADIOLIB_ERR_NONE; }
   void pulseError(int16_t rc,RxpsPulse::Step step) {
     _rxps_pulse.noteError(rc,step);_rxps_pulse.recovering(static_cast<uint32_t>(micros()));
