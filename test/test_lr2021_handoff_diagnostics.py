@@ -28,6 +28,7 @@ class LR2021HandoffDiagnosticsTests(unittest.TestCase):
 #include <cstring>
 #include <cstdlib>
 #include <vector>
+#include <string>
 #include <helpers/radiolib/W12PramScannerCodec.h>
 #include <helpers/radiolib/LR2021HandoffDiagnostics.h>
 #define RADIOLIB_ERR_NONE 0
@@ -49,23 +50,25 @@ struct CustomLR2021{
   int16_t standby_rc=0,fifo_rc=0;
   uint32_t raw_irq=0x20;uint16_t fifo=0;
   unsigned raw_reads=0,fifo_reads=0,dccm_reads=0;
+  unsigned image_writes=0,activations=0;bool registered=true;
+  std::vector<std::string> events;
   int fail_stage=0;bool correct_ident=true;
   int16_t setRegulatorLDO(){return fail_stage==3?-703:0;}
-  int16_t getVersion(uint8_t* major,uint8_t* minor){*major=1;*minor=0x18;return fail_stage==4?-704:0;}
-  int16_t writeRegMem32(uint32_t,const uint32_t*,size_t){return fail_stage==10?-710:0;}
+  int16_t getVersion(uint8_t* major,uint8_t* minor){events.push_back("version");*major=1;*minor=0x18;return fail_stage==4?-704:0;}
+  int16_t writeRegMem32(uint32_t addr,const uint32_t*,size_t){if(addr==0x801000){++image_writes;events.push_back("image");}return fail_stage==10?-710:0;}
   int16_t readRegMem32(uint32_t address,uint32_t* out,size_t count){
     ++dccm_reads;assert((address==0x8007F0&&count==2)||(address==0x800FF8&&count==2)||(address==0x806034&&count==1));
     for(size_t i=0;i<count;++i)out[i]=address+uint32_t(i*4);
     return 0;
   }
-  int16_t activatePram(){return 0;}
+  int16_t activatePram(){events.push_back("activate");++activations;if(fail_stage==5)return -705;registered=true;return 0;}
   int16_t setRxTxFallbackMode(int){return fail_stage==7?-707:0;}
   int16_t setDioIrqConfig(int,uint32_t){return fail_stage==9?-709:0;}
   int16_t labSpiCommand(uint16_t op,bool,uint8_t* data,size_t,const uint8_t* =nullptr,size_t=0){
-    if(op==0x012D){memcpy(data,correct_ident?"SCN3":"BAD!",4);return fail_stage==6?-706:0;}
+    if(op==0x012D){events.push_back("hello");memcpy(data,correct_ident?"SCN3":"BAD!",4);return !registered?-707:fail_stage==6?-706:0;}
     assert(op==0x0209);return fail_stage==8?-708:0;
   }
-  int16_t standby(){return standby_rc;}
+  int16_t standby(){events.push_back("standby");return standby_rc;}
   void labSetPramScan(bool){}
   uint32_t getIrqStatus(){++raw_reads;return raw_irq;}
   int16_t getRxFifoLevel(uint16_t* out){++fifo_reads;*out=fifo;return fifo_rc;}
@@ -75,6 +78,7 @@ struct Fake{
  bool _lab_scan_active=true,_lab_uncertain=false,_params_valid=true;
  bool _profile_refresh_required=true,_profile_repair_required=false;
  bool _lab_sleeping=false,_lab_session_ldo=false,_lab_pram_loaded=true,_rx_ps_enabled=false,_cw_active=false,_lab_resume_pending=false;
+ bool _agc_pram_restore_owned=false;
  int16_t _lab_error=0;int _lab_last_profile=-1;
  uint32_t _lab_cold_starts=0,_lab_good=0,_lab_bad=0,_lab_good_profile[2]={},_lab_tx_pauses=0,_lab_tx_resumes=0;
  uint32_t _lab_resume_last=0,_lab_resume_min=UINT32_MAX,_lab_resume_max=0,_lab_last_poll=0,_lab_progress_at=0,_lab_prev_cads=0;
@@ -103,9 +107,9 @@ struct Fake{
  bool isChipBusy(){return busy;}
  bool validateProfile(const Profiles::Params&){return true;}
  float hardwareFrequencyMHz(float f){return f;}
- uint8_t beginReconfigure(){return 1;}
+ uint8_t beginReconfigure(){return radio.standby()==0?1:3;}
  bool labQuiesceForReset(){return true;}
- bool labReinitialize(bool){return true;}
+ bool labReinitialize(bool){_lab_pram_loaded=false;return true;}
  @PENDING@
  uint16_t profilePreamble(uint8_t){return 32;}
  void invalidateScanTuple(){}
@@ -115,7 +119,7 @@ struct Fake{
  bool isInRecvMode(){return state==1;}
  void labMarkUncertain(){_lab_uncertain=true;}
  int16_t labScannerCommand(uint8_t op,const uint8_t*,size_t,mesh::w12pram::Status& out){
-   if(op==1){out.hooked=start_hooked;return start_command_rc;}
+   if(op==1){radio.events.push_back("hook");out.hooked=start_hooked;return start_command_rc;}
    assert(op==6);out=reply;return command_rc;
  }
  @METHODS@
@@ -169,7 +173,7 @@ int main(){using R=mesh::RadioParamApplyResult;
   assert(f._lab_handoff.first_failure.reason==2&&f.radio.raw_reads==1&&f.radio.fifo_reads==1);}
  {Fake f;f._lab_handoff.begin("old",123);f.busy=true;f.labCaptureHandoffFailure(2,0,true);
   assert(!f._lab_handoff.first_failure.raw&&!f.radio.raw_reads&&!f.radio.fifo_reads);}
- for(int stage:{3,4,6,7,8,9,10}){
+ for(int stage:{3,4,5,6,7,8,9,10}){
   Fake f;f._lab_scan_active=false;f._lab_handoff.begin("old",123);f.radio.fail_stage=stage;
   assert(!f.labScannerStart(true)&&f._lab_uncertain);
   const auto& d=f._lab_handoff.first_failure;
@@ -191,21 +195,47 @@ int main(){using R=mesh::RadioParamApplyResult;
   char out[160];f.labScannerHandoffDiag(out,sizeof(out));assert(strstr(out,"step=11")&&strstr(out,"id=53434E33"));
  }
 #endif
+ // Exercise the real shared restart method, not a mirrored legacy fixture.
+ // All callers (old/new maintenance, pending TX lease, generic recovery) use it.
+ for(bool pending_lease:{false,true})for(bool pulse_owner:{false,true}){
+  Fake f;f._lab_scan_active=false;f._lab_resume_pending=pending_lease;f._agc_pram_restore_owned=pulse_owner;f.radio.registered=false;
+  assert(f.labScannerStart(true)&&f._lab_scan_active&&f._lab_pram_loaded&&f.radio.registered);
+  assert(f.radio.activations==1&&f.radio.image_writes==0);
+  const auto& e=f.radio.events;
+  auto pos=[&](const char* s){for(size_t i=0;i<e.size();++i)if(e[i]==s)return i;return e.size();};
+  assert(pos("standby")<pos("activate")&&pos("activate")<pos("hello")&&pos("hello")<pos("hook"));
+ }
+ {Fake f;f._lab_scan_active=false;f._lab_pram_loaded=false;f.radio.registered=false;
+  assert(!f.labScannerStart(true)&&!f.radio.activations&&!f.radio.image_writes);}
+ {Fake f;f._lab_scan_active=false;f.radio.registered=false;f.radio.fail_stage=5;
+  assert(!f.labScannerStart(true)&&f._lab_uncertain&&!f._lab_scan_active);
+  assert(f.radio.activations==1&&!f.radio.image_writes);
+  for(const auto& event:f.radio.events)assert(event!="hello"&&event!="hook");}
+ {Fake f;f._lab_scan_active=false;f._lab_pram_loaded=false;f.radio.registered=false;
+  assert(f.labScannerStart(false)&&f._lab_pram_loaded&&f.radio.activations==1&&f.radio.image_writes==1);}
 }
 '''
         code = code.replace('@METHODS@', methods)
         code = code.replace('@PENDING@', body(shared, 'bool RadioLibWrapper::isPacketPendingOrReceiving()').replace('RadioLibWrapper::', ''))
         with tempfile.TemporaryDirectory(prefix='lr2021-handoff-') as temp:
             path = Path(temp)
-            (path / 'main.cpp').write_text(code)
-            for enabled in (0, 1):
+            for enabled, mutation in ((0, None), (1, None), (1, 'missing'), (1, 'ignored')):
+                current = code
+                if mutation:
+                    current = code.replace('rc=r->activatePram();',
+                        'rc=RADIOLIB_ERR_NONE;' if mutation == 'missing' else 'rc=(r->activatePram(),RADIOLIB_ERR_NONE);')
+                    self.assertNotEqual(current, code)
+                (path / 'main.cpp').write_text(current)
                 built = subprocess.run([compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
                     '-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-fno-pie', '-no-pie',
-                    '-DMESH_AGC_TIMING_DIAGNOSTICS=' + str(enabled), '-I' + str(ROOT / 'src'),
+                    '-DMESH_AGC_TIMING_DIAGNOSTICS=' + str(enabled), '-DMESH_WARM_RX_REFRESH=1', '-I' + str(ROOT / 'src'),
                     str(path / 'main.cpp'), '-o', str(path / 'test')], capture_output=True, text=True, timeout=60)
                 self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
                 result = subprocess.run([str(path / 'test')], capture_output=True, text=True, timeout=20)
-                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                if mutation:
+                    self.assertNotEqual(result.returncode, 0, 'Missing/ignored activation must fail the real restart harness')
+                else:
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 if __name__ == '__main__':

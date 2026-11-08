@@ -29,14 +29,17 @@ struct CustomLR2021 {
  std::vector<std::string> calls;
  std::vector<float> frontend_frequencies;
  bool busy=false,irq=false,receiving=false,inject_probe_irq=false,inject_standby_irq=false;
- int16_t standby_rc=0,calibration_rc=0;
- unsigned calibrations=0;
+ int16_t standby_rc=0,calibration_rc=0,activation_rc=0;
+ unsigned calibrations=0,activations=0;
+ bool pram_registered=true;
  int16_t standby(){calls.push_back("standby");if(inject_standby_irq)irq=true;return standby_rc;}
  int16_t resetReceiverCalibration(const float* frequencies=nullptr,size_t count=0){
    calls.push_back("calibrate");++calibrations;assert((frequencies&&count>=1&&count<=2)||(!frequencies&&!count));
    if(count)frontend_frequencies.assign(frequencies,frequencies+count);
+   if(calibration_rc==RADIOLIB_ERR_NONE)pram_registered=false; // code retained, ROM dispatch lost on sleep
    return calibration_rc;
  }
+ int16_t activatePram(){calls.push_back("activate");++activations;if(activation_rc==RADIOLIB_ERR_NONE)pram_registered=true;return activation_rc;}
 };
 struct Wrapper:Base {
  using PulseBase=Base;
@@ -93,9 +96,12 @@ struct Wrapper:Base {
  }
  bool labReconfigureBlocked(){return _lab_uncertain||_lab_scan_active;}
  bool labScannerStart(bool warm){
-   radio.calls.push_back("scanner");assert(warm&&_lab_pram_loaded);
+   radio.calls.push_back("scanner");assert(warm);
    if(inject_restart_irq)radio.irq=true;
-   if(!restart_result||radio.irq||radio.busy)return false;
+   if(!restart_result||radio.irq||radio.busy||!_lab_pram_loaded)return false;
+   if(radio.activatePram()!=RADIOLIB_ERR_NONE){_lab_uncertain=true;_lab_resume_pending=false;_profile_repair_required=true;return false;}
+   if(!radio.pram_registered)return false;
+   radio.calls.push_back("hook");
    _lab_scan_active=true;_lab_status.hooked=true;_lab_resume_pending=false;return true;
  }
  bool applyParams(float f,float bw,uint8_t sf,uint8_t cr){
@@ -157,6 +163,7 @@ static void successful(){
   if(profile==1){w._cur_freq=911.15f;w._cur_bw=250.0f;w._cur_sf=9;w._cur_cr=6;}
   assert(w.periodicOldAGCMaintenance()==Result::Applied);
   assert(w.radio.calibrations==1&&w.params_calls==1&&w.gain_calls==1&&w.power_calls==1&&w.receive_calls==1);
+  assert(w.radio.activations==0); // ordinary host RX never activates a scanner
   assert(w.noise_requests==1&&w._noise_floor_valid&&w._noise_floor_secondary_valid);
   assert(!w.scan_tuple&&w._apply_status.stage==mesh::lr2021::ApplyStatus::Stage::Applied);
   assert(w.side_detector_restores==1&&w.restored_multi_sf==multi);
@@ -282,6 +289,31 @@ static void scanner(){
  }
 #endif
 }
+static void activation(){
+#if MESH_W12_PRAM_EXPERIMENT
+ for(bool automatic:{false,true}){
+  Wrapper w;w.auto_enabled=automatic;w._profiles.active=true;w._lab_scan_active=true;w._lab_status.hooked=true;
+  assert(w.periodicOldAGCMaintenance()==Result::Applied);
+  assert(w.radio.calibrations==1&&w.radio.activations==1&&w.radio.pram_registered);
+  assert(w._lab_scan_active&&w._lab_status.hooked&&!w._lab_uncertain&&w._lab_pram_loaded);
+  assert(position(w,"calibrate")<position(w,"params")&&position(w,"params")<position(w,"receive"));
+  assert(position(w,"receive")<position(w,"activate")&&position(w,"activate")<position(w,"hook"));
+ }
+ for(unsigned failure=0;failure<3;++failure){
+  Wrapper w;w._profiles.active=true;w._lab_scan_active=true;w._lab_status.hooked=true;
+  if(failure==0)w.radio.activation_rc=-709;
+  if(failure==1)w._lab_pram_loaded=false;
+  if(failure==2)w.radio.calibration_rc=-710;
+  assert(w.periodicOldAGCMaintenance()==Result::Failed);
+  assert(w.radio.calibrations==1&&w.radio.activations==(failure==0?1u:0u));
+  assert(!w.noise_requests&&!w.claims&&!w._lab_scan_active&&w._apply_status.failed);
+  if(failure<2){assert(w.params_calls==1&&w.receive_calls==1);assert(w._lab_resume_pending==(failure==1));}
+  if(failure==0)assert(w._lab_uncertain&&w._profile_repair_required);
+  if(failure==2){assert(w._apply_status.code==-710&&!w.params_calls&&!w.receive_calls&&w._lab_resume_pending);
+    assert(w._profile_repair_required&&w._profile_refresh_required&&w.state==Wrapper::STATE_IDLE&&!w._dbm_applied&&!w._rx_boosted_gain_applied);}
+ }
+#endif
+}
 static void noiseOwnership(){
  Wrapper host;host.nf_requested=true;
  assert(host.isCalibratingNoiseFloor());
@@ -343,7 +375,7 @@ int main(int argc,char**argv){
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
  if(name=="diagnostics"){diagnostics();return 0;}
 #endif
- if(name=="success")successful();else if(name=="frontend")frontendCoverage();else if(name=="guards")guards();else if(name=="ownership")ownership();else if(name=="failures")failures();else if(name=="scanner")scanner();else if(name=="noise")noiseOwnership();else assert(false);
+ if(name=="success")successful();else if(name=="frontend")frontendCoverage();else if(name=="guards")guards();else if(name=="ownership")ownership();else if(name=="failures")failures();else if(name=="scanner")scanner();else if(name=="activation")activation();else if(name=="noise")noiseOwnership();else assert(false);
 #else
  (void)argv;Wrapper w;assert(w.periodicOldAGCMaintenance()==Result::Deferred&&w.radio.calls.empty());
 #endif

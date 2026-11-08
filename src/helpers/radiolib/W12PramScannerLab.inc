@@ -114,6 +114,7 @@ private:
     return rc;
   }
   bool labReinitialize(bool resume_rx=true) {
+    _lab_pram_loaded=false; // the hard reinitialization invalidates resident code
     _lab_scan_active=false;
     static_cast<CustomLR2021*>(_radio)->labSetPramScan(false);
     const auto& p=_profiles.params(0);
@@ -558,7 +559,7 @@ public:
 #if MESH_ENABLE_RADIO_DIRECTION
     if (!mesh::radioDirection::radioReceiveAllowed()) return false;
 #endif
-    if (_lab_uncertain || _lab_sleeping || _lab_scan_active || !_profiles.enabled() || !_params_valid || _rx_ps_enabled || _cw_active
+    if (_lab_uncertain || _lab_sleeping || _lab_scan_active || (automatic && !_lab_pram_loaded) || !_profiles.enabled() || !_params_valid || _rx_ps_enabled || _cw_active
         || state == 3 || isChipBusy() || hasPendingRadioInterrupt() || isPacketPendingOrReceiving()) return false;
 #if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
@@ -653,10 +654,18 @@ public:
         rc=r->writeRegMem32(0x801000u+uint32_t(at*4),w12_pram_scan_blob+at,count);
         at+=count;
       }
-      if (rc==RADIOLIB_ERR_NONE) rc=r->activatePram();
-      if (rc==RADIOLIB_ERR_NONE) _lab_pram_loaded=true;
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
       if(restart.restart_rc==RADIOLIB_ERR_NONE) {restart.restart_stage=5;restart.restart_rc=rc;}
+#endif
+    }
+    if (rc==RADIOLIB_ERR_NONE) {
+      // Retention keeps SCN3 code, but sleep loses its custom-command dispatch.
+      // Admission above established standby. Reactivate the resident image for
+      // every warm resume, then verify hello and the new hook as usual.
+      rc=r->activatePram();
+      if(rc==RADIOLIB_ERR_NONE)_lab_pram_loaded=true;
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      restart.restart_stage=5;restart.restart_rc=rc;
 #endif
     }
     uint8_t req=2,ident[4]={};

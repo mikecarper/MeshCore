@@ -70,6 +70,9 @@ class LR2021LegacyAGCTests(unittest.TestCase):
     def test_scanner_warm_restore_manual_mode_outer_lease_and_late_fifo(self):
         self.scenario('scanner')
 
+    def test_retained_scanner_activation_and_errors_are_checked_before_rehook(self):
+        self.scenario('activation')
+
     def test_pram_owns_rf_while_host_noise_request_remains_queued(self):
         self.scenario('noise')
 
