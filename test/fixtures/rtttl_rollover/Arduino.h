@@ -10,6 +10,7 @@ typedef signed char int8_t;
 typedef unsigned int uintptr_t;
 #define LOW 0
 #define HIGH 1
+#define INPUT 0
 #define OUTPUT 1
 extern uint32_t now_ms;
 extern unsigned tone_calls;

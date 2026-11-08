@@ -145,7 +145,11 @@ public:
 PAIRING_PREAMBLE = PREAMBLE.replace(
     '#include <helpers/ui/DisplayTextLayout.h>',
     '#include <helpers/ui/DisplayTextLayout.h>\n'
-    '#include <helpers/ui/BluetoothPairingUiPolicy.h>',
+    '#include <helpers/ui/BluetoothPairingUiPolicy.h>\n'
+    'namespace mesh { namespace ui {\n'
+    'bool rotary_owns_button=false;\n'
+    'bool rotaryOwnsButtonPin(uint8_t pin) { return rotary_owns_button && pin==7; }\n'
+    '} }',
 ).replace(
     '  bool notificationButton() { return false; }',
     '  bool notificationButton() { return false; }\n'
@@ -182,6 +186,15 @@ int main() {
   display.servicePower(false);
   display.wake(mesh::ui::DisplayWake::Button);
   UITask task(display);
+#if UI_DEFER_RENDER_DURING_BUTTON_GESTURE && defined(PIN_USER_BTN)
+  // Keep the real pending-gesture guard and model only rotary pin ownership.
+  g_mock_pin_levels[7]=LOW;
+  assert(task.isButtonGesturePending());
+  mesh::ui::rotary_owns_button=true;
+  assert(!task.isButtonGesturePending());
+  mesh::ui::rotary_owns_button=false;
+  g_mock_pin_levels[7]=HIGH;
+#endif
   HomeScreen home(&task);
   Screen group;
   MsgPreviewScreen messages(&task);

@@ -23,7 +23,7 @@ HARNESS = r'''
 #define UI_WIFI_SETUP_HOME_PAGE 0
 #define MESH_DEBUG_PRINTLN(...)
 constexpr char KEY_ENTER='e', KEY_NEXT='n', KEY_PREV='p', KEY_SELECT='s', KEY_UP='u', KEY_DOWN='d', KEY_LEFT='l', KEY_RIGHT='r';
-constexpr int BUTTON_EVENT_CLICK=1, BUTTON_EVENT_LONG_PRESS=2, BUTTON_EVENT_DOUBLE_CLICK=3;
+constexpr int BUTTON_EVENT_NONE=0, BUTTON_EVENT_CLICK=1, BUTTON_EVENT_LONG_PRESS=2, BUTTON_EVENT_DOUBLE_CLICK=3;
 constexpr int BUTTON_EVENT_TRIPLE_CLICK=4, BUTTON_EVENT_QUADRUPLE_CLICK=5;
 uint32_t now_ms=0;
 uint32_t millis() { return now_ms; }
@@ -32,6 +32,8 @@ unsigned visual_checks=0;
 void visual() { assert(visual_allowed && "headless visual path"); ++visual_checks; }
 namespace mesh { namespace ui {
 enum class DisplayWake { Button };
+bool rotary_owns_button=false;
+bool rotaryOwnsButtonPin(uint8_t pin) { return rotary_owns_button && pin==PIN_USER_BTN; }
 bool shouldDisplayBluetoothPairingPin(bool enabled, bool connected, uint32_t pin) {
   return enabled && !connected && pin;
 }
@@ -44,7 +46,8 @@ struct Mesh {
 } the_mesh;
 struct Button {
   int event=0;
-  int check() { const int result=event; event=0; return result; }
+  unsigned polls=0;
+  int check() { ++polls; const int result=event; event=0; return result; }
 } user_btn;
 struct Display {
   bool on=true;
@@ -91,7 +94,19 @@ void UITask::pollButtons() {
 @BUTTONS@
 }
 void event(UITask& ui, int code) { user_btn.event=code; ui.pollButtons(); }
+void rotary_owned() {
+  visual_allowed=false;
+  UITask ui;
+  the_mesh={}; user_btn={}; visual_checks=0;
+  mesh::ui::rotary_owns_button=true;
+  event(ui, BUTTON_EVENT_LONG_PRESS);
+  assert(user_btn.polls==0 && visual_checks==0);
+  assert(the_mesh.notifications==0 && the_mesh.rescues==0);
+  mesh::ui::rotary_owns_button=false;
+  user_btn={};
+}
 void headless() {
+  rotary_owned();
   visual_allowed=false;
   for (int screen=0; screen<3; ++screen) {
     for (int code : {BUTTON_EVENT_CLICK, BUTTON_EVENT_DOUBLE_CLICK,

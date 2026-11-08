@@ -72,10 +72,18 @@ if(!item)throw Error('Updater navigation link missing');item.click();});</script
             try:
                 with tempfile.TemporaryDirectory(prefix='meshcore-mkdocs-browser-', ignore_cleanup_errors=True) as profile:
                     command = [BROWSER, '--headless=new', '--disable-gpu', '--no-first-run',
+                               # The updater and simulated target are local. Optional
+                               # CDN fonts/maps must not stall the page's load event
+                               # when a CI runner cannot reach the public internet.
+                               '--disable-background-networking',
+                               '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1',
                                '--user-data-dir=' + profile, 'http://127.0.0.1:%d/MeshCore/' % server.server_port]
                     if os.name != 'nt' and hasattr(os, 'geteuid') and os.geteuid() == 0:
                         command.insert(1, '--no-sandbox')
-                    run_until_complete(command, done, timeout=45)
+                    try:
+                        run_until_complete(command, done, timeout=45)
+                    except AssertionError as error:
+                        self.fail(f'{error}\nLocal requests: {requests}\nHTTP failures: {failures}')
             finally:
                 server.shutdown(); server.server_close(); thread.join(timeout=5)
             self.assertEqual(len(results), 1)

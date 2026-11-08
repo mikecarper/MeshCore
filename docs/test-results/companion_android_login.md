@@ -25,8 +25,10 @@ Validation: 7 November 2026 (8 November UTC).
   followed by the Android test. An earlier pairing attempt also used the wrong
   test-harness PIN; it is not counted as a firmware failure.
 
-This verifies Android MeshCore Open on the tested V4.2. It does not establish
-MeshCore One/iOS behavior or physical T096/T114 behavior. The Android bond was
+The retry fix is shared Companion logic, exercised directly by production-path
+regression tests; it is not specific to the V4.2 radio driver. T096/T114 BLE
+builds also passed their size and DFU checks. This physical test verifies Android
+MeshCore Open, and does not establish MeshCore One/iOS behavior. The Android bond was
 created during this test; preservation from stock firmware is not claimed.
 The earlier independent Pi-central upgrade test is recorded in
 [Bluedroid bond preservation](bluedroid_bond_preservation.md).
@@ -55,3 +57,11 @@ also passed, including sanitizer coverage where supported.
 The later Companion OTA include test exposed a missing `<stdint.h>` include in
 `RotarySettings.h`. The header now declares its own integer-type dependency;
 all three production include configurations pass without transitive definitions.
+
+Continuing through the remaining test commands found stale button and buzzer
+fixtures. They now supply the rotary ownership boundary, no-event constant and
+Arduino input mode used by production. Tests also verify that a rotary-owned
+button is not polled or treated as a native rescue gesture. The hosted updater
+browser test blocks external DNS so optional CDN resources cannot delay its
+local navigation and simulated update; all existing transfer and install checks
+remain enabled, with local HTTP diagnostics added on failure.
