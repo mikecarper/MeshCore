@@ -301,12 +301,22 @@ class RegulatorAPIDispatchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='mesh-regulator-api-') as directory:
             folder = Path(directory)
             (folder/'Stream.h').write_text('#pragma once\nclass Stream {};\n')
+            (folder/'Arduino.h').write_text('#pragma once\n')
+            (folder/'target.h').write_text('#pragma once\n#include <MeshCore.h>\n')
+            # Compiling the real peripheral policy emits MainBoard's vtable,
+            # including its ARM-only default sleep implementation. The host
+            # never calls it; replace only that instruction in a temporary
+            # header while keeping all production API declarations intact.
+            core = (ROOT/'src/MeshCore.h').read_text()
+            self.assertEqual(core.count('__asm volatile("wfi");'), 1)
+            (folder/'MeshCore.h').write_text(core.replace('__asm volatile("wfi");', '(void)secs;'))
             binary = folder/'test'
             command = [compiler,'-std=c++17','-O2','-Wall','-Wextra','-Werror',
                 '-Wno-unused-parameter','-Wno-reorder',*SANITIZER_FLAGS,*flags,
                 f'-DEXPECT_FIXED_REGULATOR_API={int(fixed)}',
                 '-I',str(folder),'-I',str(ROOT/'src'),
-                str(ROOT/'test/fixtures/regulator_api_dispatch.cpp'),'-o',str(binary)]
+                str(ROOT/'test/fixtures/regulator_api_dispatch.cpp'),
+                str(ROOT/'src/helpers/PeripheralPinPolicy.cpp'),'-o',str(binary)]
             if require_virtual:
                 command.append('-DREQUIRE_VIRTUAL_REGULATOR_API=1')
             result = subprocess.run(command,text=True,capture_output=True,timeout=45)
