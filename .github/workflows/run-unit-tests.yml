@@ -150,7 +150,7 @@ jobs:
       - name: Compile both legacy T096 BLE FEM settings with their RAM gates
         # Sequential environments in one process; do not replace these with
         # Full overlays, which have different OTA and runtime allocations.
-        run: pio run -e Heltec_t096_companion_radio_ble_femoff -e Heltec_t096_companion_radio_ble_femon
+        run: bash tools/ci/pio_retry.sh run -e Heltec_t096_companion_radio_ble_femoff -e Heltec_t096_companion_radio_ble_femon
 
   nrf52-sensor-smoke:
     runs-on: ubuntu-26.04
@@ -163,7 +163,7 @@ jobs:
           python3 -B test/test_nrf52_endf_hex.py -v
           python3 -B test/test_endf_restamp.py -v
       - name: Compile GPS Sensor tracker on nRF52 boards
-        run: pio run -e t1000e_sensor -e RAK_WisMesh_Tag_sensor
+        run: bash tools/ci/pio_retry.sh run -e t1000e_sensor -e RAK_WisMesh_Tag_sensor
       - name: Qualify unified T114 Repeater with screen detection and LoRa OTA
         run: >-
           bash build.sh build-firmware Heltec_t114_repeater_lora_ota_no_external_sensors
@@ -180,7 +180,7 @@ jobs:
           --build-profile auto --firmware-version v1.18.0.1-halo-keymind-cascade-dev
           --radio-preset usa-cascade-fixed --profile cascade --require-ota
       - name: Compile optional RAK15002 SD archive (no hardware qualification)
-        run: pio run -e RAK_4631_repeater_rak15002_sd_seeder_only
+        run: bash tools/ci/pio_retry.sh run -e RAK_4631_repeater_rak15002_sd_seeder_only
 
   optional-display-smoke:
     runs-on: ubuntu-26.04
@@ -220,10 +220,10 @@ jobs:
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
       - name: Compile GPS-capable Sensor tracker on ESP32-S3
-        run: pio run -e heltec_v4_sensor
+        run: bash tools/ci/pio_retry.sh run -e heltec_v4_sensor
       - name: Compile shared-slot Station G3 and legacy alias with buffered KISS
         # One PlatformIO process: these environments share the checkout build tree.
-        run: pio run -e Station_G3_ESP32_repeater -e Station_G3_ESP32_r2_repeater -e Station_G3_ESP32_kiss_modem
+        run: bash tools/ci/pio_retry.sh run -e Station_G3_ESP32_repeater -e Station_G3_ESP32_r2_repeater -e Station_G3_ESP32_kiss_modem
       - name: Qualify Station G3 Full MQTT internal RAM and exact OTA identity
         run: >-
           bash build.sh build-firmware Station_G3_ESP32_r2_repeater_observer_mqtt
@@ -231,7 +231,7 @@ jobs:
           --radio-preset usa-cascade-fixed --profile cascade --require-ota --full-exact
       - name: Compile W12 band-aware RF switching in repeater and Full Companion
         run: |
-          pio run -e meshnology_w12_repeater
+          bash tools/ci/pio_retry.sh run -e meshnology_w12_repeater
           bash build.sh build-firmware meshnology_w12_companion_radio_full --firmware-version v1.18.0.1-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade --require-ota
       - name: Show qualification build logs on failure
         if: failure()
@@ -351,7 +351,7 @@ jobs:
       - name: Compile RP2040 contacts, ESP32-C6 rooms and ESP-NOW Companion
         # One process: PlatformIO environments share this checkout's build tree.
         run: >-
-          pio run -e Xiao_rp2040_companion_radio_usb
+          bash tools/ci/pio_retry.sh run -e Xiao_rp2040_companion_radio_usb
           -e LilyGo_Tlora_C6_room_server_ -e Generic_ESPNOW_comp_radio_usb
 
   cardputer-smoke:
@@ -363,7 +363,7 @@ jobs:
       - name: Compile Cardputer-Adv roles and shared T-Deck Companion
         # One process: PlatformIO environments share the checkout build tree.
         run: >-
-          pio run -e M5Stack_Cardputer_Adv_companion_radio_ble
+          bash tools/ci/pio_retry.sh run -e M5Stack_Cardputer_Adv_companion_radio_ble
           -e M5Stack_Cardputer_Adv_companion_radio_usb
           -e M5Stack_Cardputer_Adv_repeater -e M5Stack_Cardputer_Adv_room_server
           -e LilyGo_TDeck_companion_radio_ble
@@ -402,11 +402,11 @@ jobs:
             bash build.sh build-firmware "$target" --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade --require-ota
           done
       - name: Compile the remaining role interfaces
-        run: pio run -e Tbeam_kiss_modem -e LilyGo_T3S3_kiss_modem -e LilyGo_T3S3_terminal_chat -e Generic_E22_kiss_modem -e Meshadventurer_kiss_modem -e Meshadventurer_terminal_chat -e Tenstar_C3_kiss_modem
+        run: bash tools/ci/pio_retry.sh run -e Tbeam_kiss_modem -e LilyGo_T3S3_kiss_modem -e LilyGo_T3S3_terminal_chat -e Generic_E22_kiss_modem -e Meshadventurer_kiss_modem -e Meshadventurer_terminal_chat -e Tenstar_C3_kiss_modem
       - name: Compile Muzi shared radio recipes
         # Infrastructure remains a local qualification build until its
         # board-matched LoRa OTA loader has passed physical qualification.
-        run: pio run -e muzi_base_repeater -e muzi_base_room_server -e muzi_base_companion_radio_usb -e muzi_base_companion_radio_ble
+        run: bash tools/ci/pio_retry.sh run -e muzi_base_repeater -e muzi_base_room_server -e muzi_base_companion_radio_usb -e muzi_base_companion_radio_ble
       - name: Qualify Muzi Full Companion
         run: bash build.sh build-firmware muzi_base_companion_radio_full --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade
       - name: Upload universal build failure logs
@@ -434,7 +434,7 @@ jobs:
       - name: Compile shared and historical KISS recipes
         # One process: PlatformIO shares the checkout's build tree.
         run: >-
-          pio run -e heltec_v4_r8_kiss_modem -e heltec_v4_r8_tft_kiss_modem
+          bash tools/ci/pio_retry.sh run -e heltec_v4_r8_kiss_modem -e heltec_v4_r8_tft_kiss_modem
           -e WioTrackerL1_kiss_modem -e WioTrackerL1Eink_kiss_modem
       - name: Qualify Wio L1 Full Companion with runtime OLED, e-paper or headless selection
         run: bash build.sh build-firmware WioTrackerL1_companion_radio_full --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade
@@ -450,7 +450,7 @@ jobs:
         run: |
           python3 -m pip install platformio pycryptodome==3.23.0
           mkdir -p .pio/libdeps/management-test
-          pio pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/management-test
+          bash tools/ci/pio_retry.sh pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/management-test
       - name: Verify protocol, encryption, scheduling and MQTT decoding
         run: |
           python3 -B test/test_management_report.py -v
@@ -602,7 +602,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libssl-dev
           mkdir -p .pio/libdeps/room-mail-test
-          pio pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/room-mail-test
+          bash tools/ci/pio_retry.sh pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/room-mail-test
 
       - name: Verify shared SHA-512 signing against the original backend and RFC8032
         run: python3 -B test/test_ed25519_shared_sha512.py -v
@@ -740,7 +740,9 @@ jobs:
           python3 -B scripts/verify_ota_channel.py --self-test
 
       - name: Verify build output cleanup safety
-        run: python3 -B test/test_build_output_safety.py -v
+        run: |
+          python3 -B test/test_build_output_safety.py -v
+          python3 -B test/test_pio_transient_retry.py -v
 
       - name: Verify serial mOTA response deadlines and RX fairness
         run: |
@@ -1324,7 +1326,7 @@ jobs:
           MESHCORE_REQUIRE_ARM_COMPILER: '1'
           MESHCORE_REQUIRE_DFU_EMULATOR: '1'
         run: |
-          pio pkg install --global --tool 'platformio/toolchain-gccarmnoneeabi@1.140201.0'
+          bash tools/ci/pio_retry.sh pkg install --global --tool 'platformio/toolchain-gccarmnoneeabi@1.140201.0'
           python3 -B test/test_nrf52_svc_compat.py -v
           python3 -B test/test_nrf52_ble_cccd_fix.py -v
           python3 -B test/test_nrf52_ble_disconnect.py -v

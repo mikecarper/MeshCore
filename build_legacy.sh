@@ -3079,10 +3079,10 @@ prepare_esp32_arduino3_framework() {
   echo "Ensuring Arduino-ESP32 3.3.11 dependencies for ${env_name}..."
   if ! grep -Eq '"version"[[:space:]]*:[[:space:]]*"3\.3\.11"' "$arduino_manifest" 2>/dev/null; then
     pio pkg uninstall --global --tool framework-arduinoespressif32 --no-save || true
-    pio pkg install --global --tool "$arduino3_core_url"
+    run_pio_with_size_detection pkg install --global --tool "$arduino3_core_url" || return $?
   fi
-  pio pkg install --global --tool "$arduino3_libs_url"
-  pio pkg install -e "$pio_env_name"
+  run_pio_with_size_detection pkg install --global --tool "$arduino3_libs_url" || return $?
+  run_pio_with_size_detection pkg install -e "$pio_env_name"
 }
 
 requires_esp32_companion_full_ota_fallback() {
@@ -5308,22 +5308,39 @@ restore_platformio_build_flags() {
 run_pio_with_size_detection() {
   local build_output_log
   local build_status
+  local attempt delay
   local -a output_statuses
   # SCons can delete the environment's build directory when flags change.
   # A tee log inside that directory is then unlinked while still open, hiding
   # the size error from the measured-size fallback after PlatformIO exits.
   build_output_log=$(mktemp "${TMPDIR:-/tmp}/meshcore-build-XXXXXX.log") || return 1
-  pio "$@" 2>&1 | tee "$build_output_log"
-  output_statuses=("${PIPESTATUS[@]}")
-  build_status=${output_statuses[0]}
-  if [ "${output_statuses[1]}" -ne 0 ]; then
-    build_status=1
-  elif [ "$build_status" -ne 0 ] \
-      && grep -Eiq \
+  for attempt in 1 2 3 4; do
+    if pio "$@" 2>&1 | tee "$build_output_log"; then
+      output_statuses=("${PIPESTATUS[@]}")
+    else
+      output_statuses=("${PIPESTATUS[@]}")
+    fi
+    build_status=${output_statuses[0]}
+    if [ "${output_statuses[1]}" -ne 0 ]; then
+      build_status=1
+      break
+    fi
+    if [ "$build_status" -eq 0 ]; then break; fi
+    if grep -Eiq \
         'will not fit in region|region .+ overflowed by|section .+ will not fit|sketch too big|program size.*is greater than maximum|exceed(s|ing).*(flash|partition|app)' \
         "$build_output_log"; then
-    build_status=42
-  fi
+      build_status=42
+      break
+    fi
+    # Retry only PlatformIO's explicit transient download failures. Compiler,
+    # checksum, missing-package and all other failures remain immediate.
+    if [ "$attempt" -eq 4 ] || ! grep -Eiq \
+        "PackageException: Got the unrecognized status code '(408|429|500|502|503|504)' when downloaded" \
+        "$build_output_log"; then break; fi
+    case "$attempt" in 1) delay=5 ;; 2) delay=15 ;; *) delay=30 ;; esac
+    echo "Transient PlatformIO download failure; retrying in ${delay}s (${attempt}/3)." >&2
+    sleep "$delay"
+  done
   rm -f -- "$build_output_log"
   return "$build_status"
 }
