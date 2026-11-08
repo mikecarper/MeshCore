@@ -31,10 +31,17 @@ private:
 public:
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
   bool isCalibratingNoiseFloor() const override {
-    // A queued host refresh cannot own RF while the PRAM scanner is active.
-    // Keep it queued for the next host sampling window without blocking sleep
-    // or every subsequent legacy reset in the meantime.
-    return !_lab_scan_active && PulseBase::isCalibratingNoiseFloor();
+    if(_nf_calib_active || _nf_window_armed) return true;
+    // Purely queued host work cannot own RF during scanning or its checked
+    // maintenance pause. Keep the request for a later host sampling window.
+    if(_lab_scan_active) return false;
+#if MESH_WARM_RX_REFRESH
+    if(_agc_pram_paused && _lab_resume_pending && !_lab_uncertain && !_lab_sleeping
+        && _lab_pram_loaded && _lab_session_ldo && _profiles.enabled()
+        && _agc_pram_generations[0]==_profiles.generation[0]
+        && _agc_pram_generations[1]==_profiles.generation[1]) return false;
+#endif
+    return PulseBase::isCalibratingNoiseFloor();
   }
 #endif
   bool supportsOldAGC() const override { return MESH_ENABLE_OLD_AGC != 0; }
