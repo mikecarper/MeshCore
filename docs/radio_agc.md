@@ -36,13 +36,23 @@ With the saved default `agc.old auto`, the primary interval selects the method
 on receive-refresh builds:
 
 - **0:** primary maintenance off.
-- **Below 240 seconds:** new receive refresh only.
+- **Below 240 seconds:** new primary receive refresh, without the scheduled
+  old-reset half.
 - **240 seconds (4 minutes) or longer:** new receive refresh, followed by the old
   full receiver reset when that implementation is available in the build.
 
 For example, `set agc 236` uses the new method; `set agc 240` uses both on V4.
 The cutoff uses the configured interval, not time spent waiting for an idle
-radio. A late or deferred short-interval refresh does not turn into a full reset.
+radio. A late or deferred short-interval refresh does not enable that scheduled
+old half.
+
+The cutoff controls the optional old-reset policy, not calibration needed for
+recovery. Restoring an LR2021 PRAM scanner after a primary sleep/wake may require
+a cold radio reset and full base/frontend calibration even below 240 seconds.
+That calibration belongs to primary restoration; it does not satisfy the
+automatic old half at 240 seconds or longer. W12 hardware testing verified
+three short primary refreshes and both halves of a real 240-second cycle,
+including a separate old-helper increment after primary cold restoration.
 
 The combined operation first requires a witnessed refresh and checked RX
 reentry. Its old-reset half then waits for an idle primary visit, without
@@ -53,12 +63,18 @@ every calibration command; the LR2021 periodic path checks command and restore
 results. Failed or unconfirmed pulses do not trigger the
 automatic old reset.
 
-LR2021 also supports the old-reset policy. Its checked native sequence uses
-retained sleep, RC standby, `Calibrate(0x6F)` and forced frontend calibration at
-the actual programmed frequency. It restores the modem, protocol, power, gain
-and receive mode, including multi-SF or RXPS. A PRAM scanner is warm-paused and
-rehooked without reloading its image. Noise-floor refresh stays queued for the
-next host sampling window while PRAM owns reception. A busy receiver or pending packet defers
+LR2021 also supports the old-reset policy. Its checked native sequence uses RC
+standby, `Calibrate(0x6F)` and forced frontend calibration at the actual programmed
+frequency and all enabled profile frequencies. Ordinary single-profile and
+native RXPS operation include retained sleep/wake. A known-resident PRAM/LDO
+scanner session omits that sleep/wake step while still performing full
+calibration in checked RC standby. The scanner is warm-paused and its restart
+must be verified. A resident image must not be rewritten while active; an
+actual hard reset invalidates its loaded marker. Descriptor words alone do
+not verify a working scanner. The wrapper restores modem, protocol, power,
+gain and receive mode,
+including multi-SF or RXPS. Noise-floor refresh stays queued for the next host
+sampling window while PRAM owns reception. A busy receiver or pending packet defers
 the operation; failed calibration/restoration gets no success credit and waits
 the normal reset interval before another attempt. Device faults remain visible
 through the existing LR2021 radio-apply diagnostics.
@@ -67,7 +83,16 @@ The command mask, frontend frequency encoding and retained-sleep behavior follow
 [Semtech's LR20xx driver](https://github.com/Lora-net/usp/tree/main/smtc_rac_lib/radio_drivers/lr20xx_driver).
 
 This LR2021 implementation has host command/fault/ownership tests and build
-checks; it has not yet been verified for sensitivity or timing on hardware.
+checks. The [W12 hardware test](test-results/lr2021_legacy_agc_2026-11-08.md)
+passed single-profile legacy calibration (12/12 RF), native RXPS (12/12 incoming,
+1/1 outgoing), single-profile multi-SF (8/8), and nine quiet dual-profile/multi-SF
+calibrations followed by 18/18 RF probes with maintenance disabled. The final
+candidate also completed three independent old calibrations, three short
+primary cold-restoration cycles and a real four-minute primary-plus-old cycle,
+with verified scanner return and no reported failure or unplanned recovery. Its four
+old-helper calls took 26.301-26.357 ms, excluding scanner pause/rehook. A
+concurrent-traffic scanner handoff limitation remains unresolved; these tests
+do not establish sensitivity, RF downtime or lossless traffic handling.
 Builds that omit legacy support with `MESH_ENABLE_OLD_AGC=0`, including the
 default compact STM32 builds, retain the new method alone. Drivers without
 receive-refresh support keep their existing method.
