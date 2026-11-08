@@ -1776,6 +1776,7 @@ class SourceCliTests(unittest.TestCase):
             target_id=0x1234ABCD,
             manifest_id="01234567",
         )
+        error = io.StringIO()
         with tempfile.TemporaryDirectory() as directory:
             argv = [
                 "release.mota", "remote",
@@ -1818,19 +1819,29 @@ class SourceCliTests(unittest.TestCase):
                     ota,
                     "arm_target_temp_radio",
                     side_effect=ota.OtaError("synthetic handoff failure"),
-                ),
+                ) as arm_target,
                 mock.patch.object(ota, "shorten_target_temp_window"),
                 mock.patch.object(
                     ota, "shorten_source_temp_window", return_value=False
                 ),
                 mock.patch.object(ota, "source_cli_command", return_value="OK") as source_cli,
-                mock.patch.object(ota.time, "sleep"),
+                # This is a cleanup lifecycle fixture, not a clock-sync test.
+                # Keep the fixed controller reply current if setup crosses a
+                # host second; otherwise the real clock gate correctly stops
+                # before the handoff failure this test needs to exercise.
+                mock.patch.multiple(
+                    ota.time, time=mock.Mock(return_value=current_epoch),
+                    sleep=mock.Mock(),
+                ),
                 contextlib.redirect_stdout(io.StringIO()),
-                contextlib.redirect_stderr(io.StringIO()),
+                contextlib.redirect_stderr(error),
             ):
                 result = ota.main(argv, controller_override=controller)
 
         self.assertEqual(result, 2)
+        arm_target.assert_called_once()
+        self.assertIn("synthetic handoff failure", error.getvalue())
+        controller.sync_clock_forward.assert_not_called()
         self.assertIn(
             mock.call(
                 mock.ANY,
