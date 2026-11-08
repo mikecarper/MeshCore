@@ -36,7 +36,9 @@ uint32_t millis(){return clock_us/1000;}
 struct RadioModeConfig_t { struct {uint32_t timeout,irqFlags,irqMask;} receive; };
 #include "RxpsPulse.h"
 #include "RxpsPulseTiming.h"
-namespace mesh {struct MainBoard{};enum class AGCMaintenanceResult{Applied,Deferred,Failed};enum class RadioParamApplyResult{APPLIED,BUSY,FAILED};}
+namespace mesh {struct MainBoard{};enum class AGCMaintenanceResult{Applied,Deferred,Failed};enum class RadioParamApplyResult{APPLIED,BUSY,FAILED};
+namespace w12pram {struct AutoPolicy{enum class Reason{Failed};};}
+namespace lr2021 {struct ApplyStatus{enum class Stage{Standby,Receive};};}}
 struct Module {enum {MODE_RX};enum BitWidth_t{BITS_0=0,BITS_8=8,BITS_16=16};};
 struct Chip;
 struct Mod {
@@ -51,13 +53,14 @@ struct Chip {
  int status_error=0,clock_error=0,arm_error=0,rx_error=0,mode=4,reentry_mode=4;
  unsigned spi=0,stages=0,resumes=0,standbys=0,standby_fail_at=0;Mod module{this};Mod* mod=&module;
  int16_t getStatus(uint8_t* a,uint8_t* b,uint32_t* c){assert(!busy);assert(mod->spiConfig.widths[RADIOLIB_MODULE_SPI_WIDTH_STATUS]==Module::BITS_0);++spi;*a=4;*b=uint8_t(0x60|(MC_LR_AGC_2021?mode:mode<<1));*c=irq;return status_error;}
- int16_t standby(int){++spi;++standbys;busy=false;mode=1;if(race)irq=MC_LR_AGC_2021?1UL<<18:8;return standbys==standby_fail_at?-92:0;}
+ int16_t standby(int=0){++spi;++standbys;busy=false;mode=1;if(race)irq=MC_LR_AGC_2021?1UL<<18:8;return standbys==standby_fail_at?-92:0;}
  int16_t configLfClock(int value){assert(value==0);++spi;return clock_error;}
  int16_t restoreLfClock(){int rc=configLfClock(0);if(!rc)_lfClockRestoreNeeded=false;return rc;}
  int16_t stageMode(int,RadioModeConfig_t*){assert(!busy);++spi;++stages;irq=0;return 0;}
  int16_t startReceive(){assert(!busy);++spi;++resumes;mode=reentry_mode;irq=0;return rx_error;}
 #include "LRxxxxAGCChip.inc"
 };
+using CustomLR2021=Chip;
 int16_t Mod::SPIwriteStream(uint16_t op,const uint8_t* p,size_t n,bool wait,bool verify){
  assert(!chip->busy);assert(wait&&!verify);++chip->spi;++writes;opcode=op;bytes.assign(p,p+n);chip->mode=4;return chip->arm_error;
 }
@@ -75,6 +78,7 @@ struct RadioLibWrapper {
  virtual uint32_t rxPowerSavingTransitionUs()const{return 0;}
  virtual bool supportsWarmRxRefresh()const{return false;}
  virtual bool startAGCPulse(){return false;}
+ virtual int startReceiveMode(){return 0;}
  virtual void serviceAGCPulse(){}
  virtual mesh::AGCMaintenanceResult periodicAGCMaintenance(bool){
   auto c=_rxps_pulse.takeCompletion();
@@ -101,16 +105,34 @@ struct Radio:LRxxxxPulseWrapper<Chip> {
 struct Pram:Radio {
  using Radio::Radio;using PulseBase=Radio;
  bool _agc_pram_paused=false,_agc_pram_restore_owned=false;
+ bool _agc_pram_cold_restore_owned=false,_agc_pram_cold_tried=false;
+ bool _agc_pram_arm_issued=false;
+ bool _scan_retune=false;
  bool _lab_resume_pending=false;uint32_t _lab_resume_at=0;
  uint32_t _agc_pram_generations[2]={0,0};
- bool _lab_scan_active=true,_lab_uncertain=false,_lab_pram_loaded=true,fail_resume=false;
- struct {bool enabled_=true;bool enabled()const{return enabled_;}}_lab_auto;
+ bool _lab_scan_active=true,_lab_uncertain=false,_lab_pram_loaded=true,fail_resume=false,busy_resume=false;
+ struct {bool enabled_=true,blocked=false;bool enabled()const{return enabled_;}void block(mesh::w12pram::AutoPolicy::Reason){blocked=true;}}_lab_auto;
  struct {bool hooked=true;}_lab_status;
  unsigned pauses=0,starts=0,cold_resets=0;
+ void invalidateScanTuple(){}
+ int16_t recordApply(mesh::lr2021::ApplyStatus::Stage,int16_t result){return result;}
  mesh::RadioParamApplyResult pause_result=mesh::RadioParamApplyResult::APPLIED;
  mesh::RadioParamApplyResult labPauseScanner(bool,uint8_t){++pauses;if(pause_result==mesh::RadioParamApplyResult::APPLIED)_lab_scan_active=false;return pause_result;}
- bool labScannerStart(bool automatic){assert(automatic);assert(_agc_pram_restore_owned);++starts;if(fail_resume)return false;_lab_scan_active=true;_lab_status.hooked=true;_lab_resume_pending=false;return true;}
+ bool labScannerStart(bool automatic){
+  ++starts;
+  if(automatic){assert(_agc_pram_restore_owned);assert(!_agc_pram_cold_restore_owned);}
+  else {
+   assert(_agc_pram_cold_restore_owned);assert(_agc_pram_restore_owned);
+   if(busy_resume)return false; // admission never consumes a reset attempt
+   assert(!_agc_pram_cold_tried);_agc_pram_cold_tried=true;++cold_resets;
+   _lab_pram_loaded=false;
+  }
+  if(fail_resume){_lab_uncertain=true;return false;}
+  _lab_pram_loaded=true;_lab_scan_active=true;_lab_status.hooked=true;_lab_resume_pending=false;return true;
+ }
  ACTUAL_PRAM_PERIODIC
+ ACTUAL_PRAM_RECEIVE
+ ACTUAL_PRAM_PACKET_FINISH
  ACTUAL_PRAM_FINISH
 };
 static void cycle(Radio& r,Chip& chip){
@@ -155,12 +177,69 @@ int main(){
   assert(!r._rxps_pulse.defer&&!r._rxps_pulse.rearm_fail&&r._rxps_pulse.error==-92);
   assert(r._rxps_pulse.failed_step==RxpsPulse::Step::Recovery&&r._rxps_pulse.rtc==1&&r._rxps_pulse.verified==1);
   assert(r._rxps_pulse.takeCompletion()==RxpsPulse::Result::Failed);}
- {Chip c;Pram r(c,board);r.periodicAGCMaintenance(false);assert(r.pauses==1&&!r._lab_scan_active&&r._rxps_pulse.pending);cycle(r,c);assert(r.starts==1&&r._lab_scan_active&&r._lab_pram_loaded&&!r.cold_resets&&r._rxps_pulse.ok==1);}
+ {Chip c;Pram r(c,board);r.periodicAGCMaintenance(false);assert(r.pauses==1&&!r._lab_scan_active&&r._rxps_pulse.pending);cycle(r,c);assert(r.starts==1&&r._lab_scan_active&&r._lab_pram_loaded&&r.cold_resets==1&&r._rxps_pulse.ok==1);}
  {Chip c;Pram r(c,board);r._lab_scan_active=false;r.periodicAGCMaintenance(false);cycle(r,c);assert(!r.pauses&&!r.starts&&r._rxps_pulse.ok==1);}
  {Chip c;Pram r(c,board);r._lab_auto.enabled_=false;r.periodicAGCMaintenance(false);assert(r._lab_resume_pending);cycle(r,c);assert(r.starts==1&&r._lab_scan_active&&!r._lab_resume_pending&&!r._lab_auto.enabled_&&r._rxps_pulse.ok==1);}
  {Chip c;Pram r(c,board);r.periodicAGCMaintenance(false);r._lab_resume_pending=false;cycle(r,c);assert(!r.starts&&!r._lab_scan_active&&!r._agc_pram_paused&&!r._rxps_pulse.ok&&r._rxps_pulse.cancel);}
  {Chip c;Pram r(c,board);r.pause_result=mesh::RadioParamApplyResult::FAILED;assert(r.periodicAGCMaintenance(false)==mesh::AGCMaintenanceResult::Failed);assert(!c.module.writes&&!r._rxps_pulse.ok);}
- {Chip c;Pram r(c,board);r.fail_resume=true;r.periodicAGCMaintenance(false);cycle(r,c);assert(!r._rxps_pulse.ok);for(int i=0;i<4;++i)r.serviceAGCPulse();assert(r._rxps_pulse.fail==1&&!r._rxps_pulse.ok&&!r.cold_resets);}
+ {Chip c;Pram r(c,board);r.fail_resume=true;r.periodicAGCMaintenance(false);cycle(r,c);assert(!r._rxps_pulse.ok);for(int i=0;i<4;++i)r.serviceAGCPulse();assert(r._rxps_pulse.fail==1&&!r._rxps_pulse.ok&&r.cold_resets==1&&r.starts==1);}
+ // A paused lease that never slept still uses the ordinary warm handoff.
+ {Chip c;Pram r(c,board);r._lab_scan_active=false;r._agc_pram_paused=true;r._lab_resume_pending=true;
+  r._agc_pram_generations[0]=r._profiles.generation[0];r._agc_pram_generations[1]=r._profiles.generation[1];
+  assert(r.finishAGCPulseOwner()==0&&r.starts==1&&!r.cold_resets&&r._lab_scan_active);}
+ // A witnessed sleep never earns credit when cold admission is busy. Admission
+ // remains retryable, but only an actual reset consumes the per-lease limit.
+ {Chip c;Pram r(c,board);r.busy_resume=true;r.periodicAGCMaintenance(false);cycle(r,c);
+  assert(!r._rxps_pulse.ok&&!r.cold_resets&&!r._agc_pram_cold_tried&&r._rxps_pulse.failed);
+  for(int i=0;i<4;++i)r.serviceAGCPulse();
+  assert(!r._rxps_pulse.pending&&r._rxps_pulse.fail==1&&!r.cold_resets&&!r._rxps_pulse.ok);}
+ // A packet after a witnessed sleep retains its FIFO and pauses completion.
+ // Model the existing reader's explicit drain + checked RX reentry, then run
+ // the actual derived hook before base receiveEntry can grant any credit.
+ {Chip c;Pram r(c,board);r.periodicAGCMaintenance(false);auto& p=r._rxps_pulse;
+  p.sample(p.armed_at+100,false,false);p.sample(p.armed_at+p.rx_us,true,false);
+  p.sample(p.armed_at+p.rx_us+600,false,false);assert(p.had_cycle);
+  c.irq=MC_LR_AGC_2021?1UL<<18:8;r.serviceAGCPulse();
+  assert(p.phase==RxpsPulse::Phase::Packet&&c.irq&&!r.starts&&!r.cold_resets&&!p.ok);
+  c.irq=0;
+  assert(!r.startReceiveMode()&&r.cold_resets==1&&r._lab_scan_active&&!p.ok&&p.pending);
+  p.receiveEntry(0,micros());assert(p.ok==1&&!p.pending);}
+ // RxDone on the first wake observation bypasses the successful-cycle
+ // witness. The arm-issued lease still requires a cold scanner rebuild;
+ // restoration succeeds, but this attempt receives no maintenance credit.
+ for(bool cancelled:{false,true}){
+  Chip c;Pram r(c,board);r.periodicAGCMaintenance(false);auto& p=r._rxps_pulse;
+  p.sample(p.armed_at+100,false,false);p.sample(p.armed_at+p.rx_us,true,false);
+  p.sample(p.armed_at+p.rx_us+600,false,true);assert(!p.had_cycle);
+  c.irq=MC_LR_AGC_2021?1UL<<18:8;r.serviceAGCPulse();
+  assert(p.phase==RxpsPulse::Phase::Packet&&c.irq&&!r.cold_resets&&!p.ok);
+  c.irq=0;if(cancelled)p.cancelRequest();
+  const int16_t rc=r.startReceiveMode();
+  assert(!rc&&r.cold_resets==1&&r._lab_scan_active&&!p.ok&&p.pending);
+  p.receiveEntry(rc,micros());assert(!p.ok&&!p.pending&&p.defer);}
+ // A second packet racing the reader's reentry is never overwritten/reset.
+ {Chip c;Pram r(c,board);r.periodicAGCMaintenance(false);auto& p=r._rxps_pulse;
+  p.had_cycle=true;p.packetOwned();c.irq=MC_LR_AGC_2021?1UL<<18:8;
+  const unsigned resumes=c.resumes;
+  const int16_t rc=r.finishPacketAGCPulseOwner(0);
+  assert(rc&&c.irq&&!r.starts&&!r.cold_resets&&c.resumes==resumes&&!p.ok);
+  p.receiveEntry(rc,micros());assert(!p.ok&&p.pending&&p.phase==RxpsPulse::Phase::Recovery);}
+ for(unsigned blocker=0;blocker<3;++blocker){
+  Chip c;Pram r(c,board);r._lab_scan_active=false;r._agc_pram_paused=true;r._lab_resume_pending=true;
+  r._agc_pram_generations[0]=r._profiles.generation[0];r._agc_pram_generations[1]=r._profiles.generation[1];
+  r._agc_pram_arm_issued=true;
+  r._rxps_pulse.pending=true;r._rxps_pulse.had_cycle=true;r._rxps_pulse.phase=RxpsPulse::Phase::Rearm;
+  if(blocker==0)r._rxps_pulse.failed=true;
+  if(blocker==1)r._rxps_pulse.cancel=true;
+  if(blocker==2)r._rxps_pulse.phase=RxpsPulse::Phase::Packet;
+  const int16_t rc=r.finishAGCPulseOwner();
+  if(blocker==2)assert(rc&&!r.starts&&!r.cold_resets&&!r._rxps_pulse.ok);
+  else {
+   assert(!rc&&r.starts==1&&r.cold_resets==1&&r._lab_scan_active);
+   r._rxps_pulse.receiveEntry(rc,micros());assert(!r._rxps_pulse.ok&&!r._rxps_pulse.pending);
+   if(blocker==0)assert(r._rxps_pulse.fail==1);else assert(r._rxps_pulse.defer==1);
+  }
+ }
  {Chip c;Pram r(c,board);r.periodicAGCMaintenance(false);++r._profiles.generation[1];cycle(r,c);assert(!r.starts&&!r._rxps_pulse.ok&&r._rxps_pulse.cancel);}
  return 0;
 }

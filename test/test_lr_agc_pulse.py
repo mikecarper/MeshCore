@@ -186,6 +186,8 @@ int main(){
   fixture=(ROOT/'test/fixtures/lr_agc_pulse/main.cpp').read_text().replace('#include "ACTUAL_LR_WRAPPER"',production)
   fixture=fixture.replace(' ACTUAL_PRAM_PERIODIC',method(wrapper,'mesh::AGCMaintenanceResult periodicAGCMaintenance('))
   fixture=fixture.replace(' ACTUAL_PRAM_FINISH',method(wrapper,'int16_t finishAGCPulseOwner('))
+  fixture=fixture.replace(' ACTUAL_PRAM_PACKET_FINISH',method(wrapper,'int16_t finishPacketAGCPulseOwner('))
+  fixture=fixture.replace(' ACTUAL_PRAM_RECEIVE',method(wrapper,'int startReceiveMode('))
   with tempfile.TemporaryDirectory()as tmp:
    source=Path(tmp)/'test.cpp';source.write_text(fixture)
    for family in(0,1):
@@ -193,5 +195,13 @@ int main(){
      binary=Path(tmp)/('run'+str(family))
      subprocess.run(['g++','-std=c++17','-fsanitize=address,undefined,float-cast-overflow','-fno-omit-frame-pointer','-g','-I'+str(folder),'-DMC_LR_AGC_2021='+str(family),str(source),'-o',str(binary)],check=True,capture_output=True,text=True)
      subprocess.run([str(binary)],check=True,capture_output=True,text=True)
+   # Prove the packet cases exercise production receive wiring, rather than
+   # succeeding only because the fixture also calls the helper directly.
+   missing=fixture.replace('return finishPacketAGCPulseOwner(received);','return received;')
+   self.assertNotEqual(missing,fixture)
+   source.write_text(missing);binary=Path(tmp)/'missing-packet-owner'
+   subprocess.run(['g++','-std=c++17','-fsanitize=address,undefined,float-cast-overflow','-fno-omit-frame-pointer','-g','-I'+str(folder),'-DMC_LR_AGC_2021=1',str(source),'-o',str(binary)],check=True,capture_output=True,text=True)
+   failed=subprocess.run([str(binary)],capture_output=True,text=True)
+   self.assertNotEqual(failed.returncode,0,'Missing receive-to-scanner restoration must fail the packet scenario')
 
 if __name__=='__main__':unittest.main()
