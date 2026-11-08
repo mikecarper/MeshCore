@@ -43,7 +43,7 @@ struct LR2021 {
   uint32_t pram=0x12345678,trim=0x0808,tcxo=0,regulator=0;
   float freqMHz=910.525f,nominal=910.524f,programmed_frequency=0;
   uint8_t gainModeLf=3,gainModeHf=2;
-  bool in_standby=false;
+  bool in_standby=false,pram_registered=true;
   int16_t event(int command,std::initializer_list<uint16_t> value={}) {
     events.push_back({command,{value}});
     return int(events.size())-1==fail_at ? -706 : 0;
@@ -60,7 +60,7 @@ struct LR2021 {
   int16_t sleep(bool retain,uint32_t time) {
     assert(in_standby && retain && time==0);
     const int16_t status=event(Sleep,{uint16_t(retain),uint16_t(time)});
-    if(!status)in_standby=false;
+    if(!status){in_standby=false;pram_registered=false;}
     return status;
   }
   int16_t calibrate(uint8_t mask) {
@@ -116,33 +116,33 @@ static void frequencies() {
   }
 }
 static void failures() {
-  for(int fail=0;fail<11;++fail) {
+  for(bool retained_sleep:{false,true})for(int fail=0;fail<(retained_sleep?11:9);++fail) {
     CustomLR2021 chip;chip.fail_at=fail;
-    assert(chip.resetReceiverCalibration()==-706);
+    assert(chip.resetReceiverCalibration(nullptr,0,retained_sleep)==-706);
     assert(chip.events.size()==unsigned(fail+1));
     assert(chip._activityAt==99 && chip._headerSeen);preserved(chip);
   }
   const std::vector<uint16_t> bits={8,16,32,64,128,512,1024,2048,4096,8192,16384,32768};
-  for(uint16_t fault:bits) {
+  for(bool retained_sleep:{false,true})for(uint16_t fault:bits) {
     CustomLR2021 chip;chip.errors={fault,0,0};
-    assert(chip.resetReceiverCalibration()==0);
+    assert(chip.resetReceiverCalibration(nullptr,0,retained_sleep)==0);
     assert(chip.events[1].command==LR2021::ClearErrors);preserved(chip);
     CustomLR2021 clear_failed;clear_failed.errors={fault,0,0};clear_failed.fail_at=1;
-    assert(clear_failed.resetReceiverCalibration()==-706 && clear_failed.events.size()==2);
+    assert(clear_failed.resetReceiverCalibration(nullptr,0,retained_sleep)==-706 && clear_failed.events.size()==2);
     for(unsigned stage:{1U,2U}) {
       CustomLR2021 failed;failed.errors[stage]=fault;
-      assert(failed.resetReceiverCalibration()==RADIOLIB_ERR_FRONTEND_CALIBRATION_FAILED);
-      assert(failed.events.size()==(stage==1?6U:8U));
+      assert(failed.resetReceiverCalibration(nullptr,0,retained_sleep)==RADIOLIB_ERR_FRONTEND_CALIBRATION_FAILED);
+      assert(failed.events.size()==(stage==1?(retained_sleep?6U:4U):(retained_sleep?8U:6U)));
       assert(failed._activityAt==99 && failed._headerSeen);preserved(failed);
     }
   }
   // Every unrelated or mixed preexisting fault remains observable; never clear
   // the word merely to make calibration appear successful.
-  for(uint16_t fault:{uint16_t(1),uint16_t(2),uint16_t(4),uint16_t(256),
+  for(bool retained_sleep:{false,true})for(uint16_t fault:{uint16_t(1),uint16_t(2),uint16_t(4),uint16_t(256),
        uint16_t(1|8),uint16_t(1|512),uint16_t(2|512),uint16_t(4|512),
        uint16_t(256|512),uint16_t(0xffff)}) {
     CustomLR2021 chip;chip.errors[0]=fault;
-    assert(chip.resetReceiverCalibration()==RADIOLIB_ERR_FRONTEND_CALIBRATION_FAILED);
+    assert(chip.resetReceiverCalibration(nullptr,0,retained_sleep)==RADIOLIB_ERR_FRONTEND_CALIBRATION_FAILED);
     assert(chip.events.size()==1 && chip.errors[0]==fault);preserved(chip);
   }
 }
@@ -181,7 +181,31 @@ static void frontend_coverage() {
     assert(overflow.events.empty());
   }
 }
-int main(){frequencies();failures();frontend_coverage();}
+static void calibration_modes() {
+  for(bool retained_sleep:{false,true}) {
+    CustomLR2021 chip;chip.freqMHz=909.5f;chip.errors={512,0,0};
+    const float profiles[]={909.5f,919.5f};
+    assert(chip.resetReceiverCalibration(profiles,2,retained_sleep)==0);
+    const std::vector<int> standby_expected={LR2021::GetErrors,LR2021::ClearErrors,
+        LR2021::Standby,LR2021::Calibrate,LR2021::GetErrors,LR2021::FrontEnd,
+        LR2021::GetErrors,LR2021::Frequency,LR2021::Routing,LR2021::Gain};
+    const std::vector<int> sleep_expected={LR2021::GetErrors,LR2021::ClearErrors,
+        LR2021::Standby,LR2021::Sleep,LR2021::Standby,LR2021::Calibrate,
+        LR2021::GetErrors,LR2021::FrontEnd,LR2021::GetErrors,LR2021::Frequency,
+        LR2021::Routing,LR2021::Gain};
+    const auto& expected=retained_sleep?sleep_expected:standby_expected;
+    assert(chip.events.size()==expected.size());
+    for(size_t i=0;i<expected.size();++i)assert(chip.events[i].command==expected[i]);
+    for(const auto& event:chip.events) {
+      if(event.command==LR2021::Calibrate)assert(event.value==std::vector<uint16_t>{0x6f});
+      if(event.command==LR2021::FrontEnd)assert(event.value==std::vector<uint16_t>({228,230,0}));
+    }
+    assert(chip.pram_registered==!retained_sleep && chip.in_standby);
+    assert(chip.programmed_frequency==909.5f && !chip._activityAt && !chip._headerSeen);
+    preserved(chip);
+  }
+}
+int main(){frequencies();failures();frontend_coverage();calibration_modes();}
 """
 
 class LR2021ReceiverResetTests(unittest.TestCase):

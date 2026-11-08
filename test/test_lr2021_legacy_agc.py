@@ -70,8 +70,8 @@ class LR2021LegacyAGCTests(unittest.TestCase):
     def test_scanner_warm_restore_manual_mode_outer_lease_and_late_fifo(self):
         self.scenario('scanner')
 
-    def test_retained_scanner_activation_and_errors_are_checked_before_rehook(self):
-        self.scenario('activation')
+    def test_standby_calibration_only_for_known_resident_ldo_lease_including_generic_and_paused(self):
+        self.scenario('retention')
 
     def test_pram_owns_rf_while_host_noise_request_remains_queued(self):
         self.scenario('noise')
@@ -90,7 +90,9 @@ class LR2021LegacyAGCTests(unittest.TestCase):
             'frontend_secondary': actual.replace('hardware_frequencies,secondary ? 2 : 1', 'hardware_frequencies,1'),
             'frontend_correction': actual.replace('hardwareFrequencyMHz(_profiles.params(0).freq)',
                                                  'hardwareFrequencyMHz(hardwareFrequencyMHz(_profiles.params(0).freq))'),
-            'frontend_unset': actual.replace('if(!_params_valid) return radio->resetReceiverCalibration();', ''),
+            'frontend_unset': actual.replace('if(!_params_valid) return radio->resetReceiverCalibration(nullptr,0,retained_sleep);', ''),
+            'retention_known': actual.replace('retained_sleep=!(_lab_pram_loaded && _lab_session_ldo);', 'retained_sleep=true;'),
+            'retention_unknown': actual.replace('retained_sleep=!(_lab_pram_loaded && _lab_session_ldo);', 'retained_sleep=false;'),
         }
         with tempfile.TemporaryDirectory(prefix='lr2021-legacy-negative-') as temp:
             folder = Path(temp)
@@ -111,13 +113,16 @@ class LR2021LegacyAGCTests(unittest.TestCase):
                                            capture_output=True, text=True, timeout=60)
                     self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
                     scenario = {'noise': 'noise', 'dirty_pram': 'scanner', 'frontend_secondary': 'frontend',
-                                'frontend_correction': 'frontend', 'frontend_unset': 'frontend'}.get(name, 'failures')
+                                'frontend_correction': 'frontend', 'frontend_unset': 'frontend',
+                                'retention_known': 'retention', 'retention_unknown': 'retention'}.get(name, 'failures')
                     result = subprocess.run([str(folder / 'test'), scenario], capture_output=True, text=True, timeout=20)
                     self.assertNotEqual(result.returncode, 0, 'Ignored native errors must not satisfy the failure tests')
                     self.assertIn({'noise': 'isCalibratingNoiseFloor', 'applied_cache': '!w._dbm_applied',
                                    'dirty_pram': 'result==', 'frontend_secondary': 'frontend_frequencies.size()',
                                    'frontend_correction': 'correction_inputs.size()',
-                                   'frontend_unset': 'frontend_frequencies.empty()'}.get(name, 'Result::Failed'), result.stderr)
+                                   'frontend_unset': 'frontend_frequencies.empty()',
+                                   'retention_known': 'used_retained_sleep==expect_sleep',
+                                   'retention_unknown': 'used_retained_sleep==expect_sleep'}.get(name, 'Result::Failed'), result.stderr)
 
     def test_opt_in_timing_diagnostics_count_native_attempts_and_rx_without_false_credit(self):
         actual = (ROOT / 'src/helpers/radiolib/LR2021LegacyMaintenance.inc').read_text()

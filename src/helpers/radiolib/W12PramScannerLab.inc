@@ -654,18 +654,10 @@ public:
         rc=r->writeRegMem32(0x801000u+uint32_t(at*4),w12_pram_scan_blob+at,count);
         at+=count;
       }
-#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
-      if(restart.restart_rc==RADIOLIB_ERR_NONE) {restart.restart_stage=5;restart.restart_rc=rc;}
-#endif
-    }
-    if (rc==RADIOLIB_ERR_NONE) {
-      // Retention keeps SCN3 code, but sleep loses its custom-command dispatch.
-      // Admission above established standby. Reactivate the resident image for
-      // every warm resume, then verify hello and the new hook as usual.
-      rc=r->activatePram();
+      if(rc==RADIOLIB_ERR_NONE)rc=r->activatePram();
       if(rc==RADIOLIB_ERR_NONE)_lab_pram_loaded=true;
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
-      restart.restart_stage=5;restart.restart_rc=rc;
+      if(restart.restart_rc==RADIOLIB_ERR_NONE) {restart.restart_stage=5;restart.restart_rc=rc;}
 #endif
     }
     uint8_t req=2,ident[4]={};

@@ -10,7 +10,7 @@ from test_lr2021_receiver_reset import HARNESS
 ROOT=Path(__file__).resolve().parents[1]
 MAIN=r"""
 int main() {
-  frequencies(); failures(); frontend_coverage();
+  frequencies(); failures(); frontend_coverage(); calibration_modes();
   using Device=mesh::lr2021::CalibrationDeviceStatus;
   auto& device=mesh::lr2021::calibrationDeviceStatus();
   AGCTimingDiagnostics timing;
@@ -49,7 +49,7 @@ class LR2021CalibrationDeviceDiagnosticsTests(unittest.TestCase):
         source=('#include <cstring>\n#include <cstdio>\n'
                 '#include <helpers/radiolib/AGCTimingDiagnostics.h>\n'+
                 HARNESS.replace('@HELPER@',helper).replace(
-                    'int main(){frequencies();failures();frontend_coverage();}',MAIN))
+                    'int main(){frequencies();failures();frontend_coverage();calibration_modes();}',MAIN))
         with tempfile.TemporaryDirectory(prefix='lr2021-device-diag-') as directory:
             root=Path(directory);(root/'test.cpp').write_text(source)
             binary=root/'test'

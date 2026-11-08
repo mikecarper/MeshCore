@@ -32,11 +32,13 @@ struct CustomLR2021 {
  int16_t standby_rc=0,calibration_rc=0,activation_rc=0;
  unsigned calibrations=0,activations=0;
  bool pram_registered=true;
+ bool used_retained_sleep=true;
  int16_t standby(){calls.push_back("standby");if(inject_standby_irq)irq=true;return standby_rc;}
- int16_t resetReceiverCalibration(const float* frequencies=nullptr,size_t count=0){
+ int16_t resetReceiverCalibration(const float* frequencies=nullptr,size_t count=0,bool retained_sleep=true){
    calls.push_back("calibrate");++calibrations;assert((frequencies&&count>=1&&count<=2)||(!frequencies&&!count));
+   used_retained_sleep=retained_sleep;
    if(count)frontend_frequencies.assign(frequencies,frequencies+count);
-   if(calibration_rc==RADIOLIB_ERR_NONE)pram_registered=false; // code retained, ROM dispatch lost on sleep
+   if(calibration_rc==RADIOLIB_ERR_NONE&&retained_sleep)pram_registered=false; // code retained, ROM dispatch lost on sleep
    return calibration_rc;
  }
  int16_t activatePram(){calls.push_back("activate");++activations;if(activation_rc==RADIOLIB_ERR_NONE)pram_registered=true;return activation_rc;}
@@ -61,7 +63,7 @@ struct Wrapper:Base {
  struct Warm {bool attempting=false;void transition(uint32_t,bool){assert(false);}} _warm_refresh;
  bool _lab_uncertain=false,_lab_sleeping=false,_lab_scan_active=false,_lab_resume_pending=false;
  bool _agc_pram_paused=false;
- bool auto_enabled=true,_lab_pram_loaded=true;
+ bool auto_enabled=true,_lab_pram_loaded=true,_lab_session_ldo=true;
  uint32_t _lab_resume_at=0;
  struct Status{bool hooked=false;} _lab_status;
  mesh::RadioParamApplyResult pause_result=mesh::RadioParamApplyResult::APPLIED;
@@ -99,7 +101,6 @@ struct Wrapper:Base {
    radio.calls.push_back("scanner");assert(warm);
    if(inject_restart_irq)radio.irq=true;
    if(!restart_result||radio.irq||radio.busy||!_lab_pram_loaded)return false;
-   if(radio.activatePram()!=RADIOLIB_ERR_NONE){_lab_uncertain=true;_lab_resume_pending=false;_profile_repair_required=true;return false;}
    if(!radio.pram_registered)return false;
    radio.calls.push_back("hook");
    _lab_scan_active=true;_lab_status.hooked=true;_lab_resume_pending=false;return true;
@@ -289,28 +290,35 @@ static void scanner(){
  }
 #endif
 }
-static void activation(){
+static void retainedSleepEligibility(){
+ for(bool loaded:{false,true})for(bool ldo:{false,true})for(bool explicit_reset:{false,true}){
+  Wrapper w;w._lab_pram_loaded=loaded;w._lab_session_ldo=ldo;w._lab_resume_pending=loaded;
+  if(explicit_reset)w.doResetAGC();
+  else assert(w.periodicOldAGCMaintenance()==Result::Applied);
+#if MESH_W12_PRAM_EXPERIMENT
+  const bool expect_sleep=!(loaded&&ldo);
+#else
+  const bool expect_sleep=true;
+#endif
+  assert(w.radio.calibrations==1&&w.radio.used_retained_sleep==expect_sleep&&w.radio.activations==0);
+  assert(w.radio.pram_registered==!expect_sleep);
+ }
+ for(bool loaded:{false,true})for(bool ldo:{false,true}){
+  Wrapper w;w._params_valid=false;w._lab_pram_loaded=loaded;w._lab_session_ldo=ldo;
+  w.doResetAGC();
+#if MESH_W12_PRAM_EXPERIMENT
+  assert(w.radio.used_retained_sleep==!(loaded&&ldo));
+#else
+  assert(w.radio.used_retained_sleep);
+#endif
+  assert(w.radio.frontend_frequencies.empty()&&w.correction_inputs.empty()&&w.radio.activations==0);
+ }
 #if MESH_W12_PRAM_EXPERIMENT
  for(bool automatic:{false,true}){
   Wrapper w;w.auto_enabled=automatic;w._profiles.active=true;w._lab_scan_active=true;w._lab_status.hooked=true;
   assert(w.periodicOldAGCMaintenance()==Result::Applied);
-  assert(w.radio.calibrations==1&&w.radio.activations==1&&w.radio.pram_registered);
+  assert(w.radio.calibrations==1&&!w.radio.used_retained_sleep&&w.radio.activations==0&&w.radio.pram_registered);
   assert(w._lab_scan_active&&w._lab_status.hooked&&!w._lab_uncertain&&w._lab_pram_loaded);
-  assert(position(w,"calibrate")<position(w,"params")&&position(w,"params")<position(w,"receive"));
-  assert(position(w,"receive")<position(w,"activate")&&position(w,"activate")<position(w,"hook"));
- }
- for(unsigned failure=0;failure<3;++failure){
-  Wrapper w;w._profiles.active=true;w._lab_scan_active=true;w._lab_status.hooked=true;
-  if(failure==0)w.radio.activation_rc=-709;
-  if(failure==1)w._lab_pram_loaded=false;
-  if(failure==2)w.radio.calibration_rc=-710;
-  assert(w.periodicOldAGCMaintenance()==Result::Failed);
-  assert(w.radio.calibrations==1&&w.radio.activations==(failure==0?1u:0u));
-  assert(!w.noise_requests&&!w.claims&&!w._lab_scan_active&&w._apply_status.failed);
-  if(failure<2){assert(w.params_calls==1&&w.receive_calls==1);assert(w._lab_resume_pending==(failure==1));}
-  if(failure==0)assert(w._lab_uncertain&&w._profile_repair_required);
-  if(failure==2){assert(w._apply_status.code==-710&&!w.params_calls&&!w.receive_calls&&w._lab_resume_pending);
-    assert(w._profile_repair_required&&w._profile_refresh_required&&w.state==Wrapper::STATE_IDLE&&!w._dbm_applied&&!w._rx_boosted_gain_applied);}
  }
 #endif
 }
@@ -375,7 +383,7 @@ int main(int argc,char**argv){
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
  if(name=="diagnostics"){diagnostics();return 0;}
 #endif
- if(name=="success")successful();else if(name=="frontend")frontendCoverage();else if(name=="guards")guards();else if(name=="ownership")ownership();else if(name=="failures")failures();else if(name=="scanner")scanner();else if(name=="activation")activation();else if(name=="noise")noiseOwnership();else assert(false);
+ if(name=="success")successful();else if(name=="frontend")frontendCoverage();else if(name=="guards")guards();else if(name=="ownership")ownership();else if(name=="failures")failures();else if(name=="scanner")scanner();else if(name=="retention")retainedSleepEligibility();else if(name=="noise")noiseOwnership();else assert(false);
 #else
  (void)argv;Wrapper w;assert(w.periodicOldAGCMaintenance()==Result::Deferred&&w.radio.calls.empty());
 #endif

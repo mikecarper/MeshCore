@@ -1,18 +1,24 @@
-// Included inside CustomLR2021Wrapper. The chip helper retains configuration
-// and PRAM; this transaction owns packet admission and checked RX restoration.
+// Included inside CustomLR2021Wrapper. The chip helper runs checked calibration;
+// this transaction owns packet admission and checked RX restoration.
 private:
   int16_t resetLegacyReceiverCalibration() {
     auto* radio=static_cast<CustomLR2021*>(_radio);
+    bool retained_sleep=true;
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    // Avoid SetSleep for a known resident SCN3 LDO lease. Still run the
+    // complete calibration in checked RC standby.
+    retained_sleep=!(_lab_pram_loaded && _lab_session_ldo);
+#endif
     // Explicit recovery can run before a valid host tuple exists. In that
     // case preserve the driver's checked current-frequency-only behavior.
-    if(!_params_valid) return radio->resetReceiverCalibration();
+    if(!_params_valid) return radio->resetReceiverCalibration(nullptr,0,retained_sleep);
     // Retained calibration must cover every frequency the scanner can visit.
     // Convert nominal profiles exactly once; the driver consumes physical MHz
     // and separately preserves/restores its current physical frequency cache.
     const bool secondary=_profiles.enabled();
     const float hardware_frequencies[2]={hardwareFrequencyMHz(_profiles.params(0).freq),
         secondary ? hardwareFrequencyMHz(_profiles.params(1).freq) : 0.0f};
-    return radio->resetReceiverCalibration(hardware_frequencies,secondary ? 2 : 1);
+    return radio->resetReceiverCalibration(hardware_frequencies,secondary ? 2 : 1,retained_sleep);
   }
   void legacyCalibrationFailed(int16_t code) {
     recordApply(mesh::lr2021::ApplyStatus::Stage::Calibration, code);

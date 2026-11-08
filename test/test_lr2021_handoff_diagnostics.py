@@ -61,7 +61,7 @@ struct CustomLR2021{
     for(size_t i=0;i<count;++i)out[i]=address+uint32_t(i*4);
     return 0;
   }
-  int16_t activatePram(){events.push_back("activate");++activations;if(fail_stage==5)return -705;registered=true;return 0;}
+  int16_t activatePram(){events.push_back("activate");++activations;if(fail_stage==5)return -705;if(registered)return -707;registered=true;return 0;}
   int16_t setRxTxFallbackMode(int){return fail_stage==7?-707:0;}
   int16_t setDioIrqConfig(int,uint32_t){return fail_stage==9?-709:0;}
   int16_t labSpiCommand(uint16_t op,bool,uint8_t* data,size_t,const uint8_t* =nullptr,size_t=0){
@@ -173,7 +173,7 @@ int main(){using R=mesh::RadioParamApplyResult;
   assert(f._lab_handoff.first_failure.reason==2&&f.radio.raw_reads==1&&f.radio.fifo_reads==1);}
  {Fake f;f._lab_handoff.begin("old",123);f.busy=true;f.labCaptureHandoffFailure(2,0,true);
   assert(!f._lab_handoff.first_failure.raw&&!f.radio.raw_reads&&!f.radio.fifo_reads);}
- for(int stage:{3,4,5,6,7,8,9,10}){
+ for(int stage:{3,4,6,7,8,9,10}){
   Fake f;f._lab_scan_active=false;f._lab_handoff.begin("old",123);f.radio.fail_stage=stage;
   assert(!f.labScannerStart(true)&&f._lab_uncertain);
   const auto& d=f._lab_handoff.first_failure;
@@ -198,18 +198,18 @@ int main(){using R=mesh::RadioParamApplyResult;
  // Exercise the real shared restart method, not a mirrored legacy fixture.
  // All callers (old/new maintenance, pending TX lease, generic recovery) use it.
  for(bool pending_lease:{false,true})for(bool pulse_owner:{false,true}){
-  Fake f;f._lab_scan_active=false;f._lab_resume_pending=pending_lease;f._agc_pram_restore_owned=pulse_owner;f.radio.registered=false;
+  Fake f;f._lab_scan_active=false;f._lab_resume_pending=pending_lease;f._agc_pram_restore_owned=pulse_owner;
   assert(f.labScannerStart(true)&&f._lab_scan_active&&f._lab_pram_loaded&&f.radio.registered);
-  assert(f.radio.activations==1&&f.radio.image_writes==0);
+  assert(f.radio.activations==0&&f.radio.image_writes==0);
   const auto& e=f.radio.events;
   auto pos=[&](const char* s){for(size_t i=0;i<e.size();++i)if(e[i]==s)return i;return e.size();};
-  assert(pos("standby")<pos("activate")&&pos("activate")<pos("hello")&&pos("hello")<pos("hook"));
+  assert(pos("standby")<pos("hello")&&pos("hello")<pos("hook"));
  }
  {Fake f;f._lab_scan_active=false;f._lab_pram_loaded=false;f.radio.registered=false;
   assert(!f.labScannerStart(true)&&!f.radio.activations&&!f.radio.image_writes);}
- {Fake f;f._lab_scan_active=false;f.radio.registered=false;f.radio.fail_stage=5;
-  assert(!f.labScannerStart(true)&&f._lab_uncertain&&!f._lab_scan_active);
-  assert(f.radio.activations==1&&!f.radio.image_writes);
+ {Fake f;f._lab_scan_active=false;f._lab_pram_loaded=false;f.radio.registered=false;f.radio.fail_stage=5;
+  assert(!f.labScannerStart(false)&&f._lab_uncertain&&!f._lab_scan_active&&!f._lab_pram_loaded);
+  assert(f.radio.activations==1&&f.radio.image_writes==1);
   for(const auto& event:f.radio.events)assert(event!="hello"&&event!="hook");}
  {Fake f;f._lab_scan_active=false;f._lab_pram_loaded=false;f.radio.registered=false;
   assert(f.labScannerStart(false)&&f._lab_pram_loaded&&f.radio.activations==1&&f.radio.image_writes==1);}
@@ -219,11 +219,14 @@ int main(){using R=mesh::RadioParamApplyResult;
         code = code.replace('@PENDING@', body(shared, 'bool RadioLibWrapper::isPacketPendingOrReceiving()').replace('RadioLibWrapper::', ''))
         with tempfile.TemporaryDirectory(prefix='lr2021-handoff-') as temp:
             path = Path(temp)
-            for enabled, mutation in ((0, None), (1, None), (1, 'missing'), (1, 'ignored')):
+            for enabled, mutation in ((0, None), (1, None), (1, 'missing'), (1, 'ignored'), (1, 'warm_activation')):
                 current = code
                 if mutation:
-                    current = code.replace('rc=r->activatePram();',
-                        'rc=RADIOLIB_ERR_NONE;' if mutation == 'missing' else 'rc=(r->activatePram(),RADIOLIB_ERR_NONE);')
+                    if mutation=='warm_activation':
+                        current=code.replace('uint8_t req=2,ident[4]={};','if(automatic)rc=r->activatePram();\n uint8_t req=2,ident[4]={};')
+                    else:
+                        current = code.replace('rc=r->activatePram();',
+                            'rc=RADIOLIB_ERR_NONE;' if mutation == 'missing' else 'rc=(r->activatePram(),RADIOLIB_ERR_NONE);')
                     self.assertNotEqual(current, code)
                 (path / 'main.cpp').write_text(current)
                 built = subprocess.run([compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
@@ -233,7 +236,7 @@ int main(){using R=mesh::RadioParamApplyResult;
                 self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
                 result = subprocess.run([str(path / 'test')], capture_output=True, text=True, timeout=20)
                 if mutation:
-                    self.assertNotEqual(result.returncode, 0, 'Missing/ignored activation must fail the real restart harness')
+                    self.assertNotEqual(result.returncode, 0, 'Incorrect cold/warm activation must fail the real restart harness')
                 else:
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

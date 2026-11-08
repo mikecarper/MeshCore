@@ -438,9 +438,11 @@ class CustomLR2021 : public LR2021 {
     }
 
     // The wrapper admits this only after preserving packet/FIFO ownership and
-    // pausing any PRAM scanner. Retention sleep keeps its image and configuration;
-    // never use begin()/reset()/setTCXO(0), which would destroy that state.
-    int16_t resetReceiverCalibration(const float* hardware_mhz=nullptr, size_t count=0) {
+    // pausing any PRAM scanner. A resident scanner must stay in checked RC
+    // standby: SetSleep makes its custom commands unavailable on this chip.
+    // Never use begin()/reset()/setTCXO(0), which would destroy that state.
+    int16_t resetReceiverCalibration(const float* hardware_mhz=nullptr, size_t count=0,
+                                     bool retained_sleep=true) {
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
       auto& device_diagnostic=mesh::lr2021::calibrationDeviceStatus();
       device_diagnostic.begin();
@@ -475,10 +477,12 @@ class CustomLR2021 : public LR2021 {
       }
       status = standby();
       if (status != RADIOLIB_ERR_NONE) return status;
-      status = LR2021::sleep(true, 0);
-      if (status != RADIOLIB_ERR_NONE) return status;
-      status = standby();
-      if (status != RADIOLIB_ERR_NONE) return status;
+      if (retained_sleep) {
+        status = LR2021::sleep(true, 0);
+        if (status != RADIOLIB_ERR_NONE) return status;
+        status = standby();
+        if (status != RADIOLIB_ERR_NONE) return status;
+      }
       status = calibrate(RADIOLIB_LR2021_CALIBRATE_ALL);
       if (status != RADIOLIB_ERR_NONE) return status;
       status = getErrors(&errors);
