@@ -440,20 +440,24 @@ class CustomLR2021 : public LR2021 {
     // The wrapper admits this only after preserving packet/FIFO ownership and
     // pausing any PRAM scanner. Retention sleep keeps its image and configuration;
     // never use begin()/reset()/setTCXO(0), which would destroy that state.
-    int16_t resetReceiverCalibration() {
+    int16_t resetReceiverCalibration(const float* hardware_mhz=nullptr, size_t count=0) {
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
       auto& device_diagnostic=mesh::lr2021::calibrationDeviceStatus();
       device_diagnostic.begin();
 #endif
       const float hardware_frequency = freqMHz;
-      if (!isfinite(hardware_frequency) || hardware_frequency <= 0.0f
-          || hardware_frequency > 2600.0f) return RADIOLIB_ERR_INVALID_FREQUENCY;
+      mesh::lr2021::FrontEndCalibrationPlan frontend;
+      if (count > 3 || (count && !hardware_mhz) || !frontend.add(hardware_frequency))
+        return RADIOLIB_ERR_INVALID_FREQUENCY;
+      for (size_t i=0; i<count; ++i)
+        if (!frontend.add(hardware_mhz[i])) return RADIOLIB_ERR_INVALID_FREQUENCY;
       constexpr uint16_t calibration_errors = RADIOLIB_LR2021_LF_RC_CALIB_ERR
           | RADIOLIB_LR2021_HF_RC_CALIB_ERR | RADIOLIB_LR2021_PLL_CALIB_ERR
           | RADIOLIB_LR2021_AAF_CALIB_ERR | RADIOLIB_LR2021_IMG_CALIB_ERR
           | RADIOLIB_LR2021_MEAS_UNIT_ADC_CALIB_ERR | RADIOLIB_LR2021_PA_OFFSET_CALIB_ERR
           | RADIOLIB_LR2021_PPF_CALIB_ERR | RADIOLIB_LR2021_SRC_CALIB_ERR
-          | RADIOLIB_LR2021_SRC_SATURATION_CALIB_ERR | RADIOLIB_LR2021_SRC_TOLERANCE_CALIB_ERR;
+          | RADIOLIB_LR2021_SRC_SATURATION_CALIB_ERR | RADIOLIB_LR2021_SRC_TOLERANCE_CALIB_ERR
+          | RADIOLIB_LR2021_RXFREQ_NO_FE_CAL_ERR;
       uint16_t errors = 0;
       int16_t status = getErrors(&errors);
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
@@ -462,6 +466,8 @@ class CustomLR2021 : public LR2021 {
       if (status != RADIOLIB_ERR_NONE) return status;
       // ClearErrors clears the entire word. Preserve unrelated device faults
       // rather than erasing them just to obtain fresh calibration diagnostics.
+      // Missing FE coverage is repairable here because the complete validated
+      // profile plan is recalibrated below; oscillator/PLL-lock/busy faults are not.
       if (errors & ~calibration_errors) return RADIOLIB_ERR_FRONTEND_CALIBRATION_FAILED;
       if (errors) {
         status = clearErrors();
@@ -481,13 +487,10 @@ class CustomLR2021 : public LR2021 {
 #endif
       if (status != RADIOLIB_ERR_NONE) return status;
       if (errors) return RADIOLIB_ERR_FRONTEND_CALIBRATION_FAILED;
-      // Semtech's CalibFE helper rounds UP to the next 4 MHz point, selecting
-      // LF/HF in bit 15. Use the actual programmed frequency (after correction),
-      // and force calibration: setFrequency() skips it for an unchanged cache.
-      uint16_t frequencies[3] = {static_cast<uint16_t>(ceilf(hardware_frequency / 4.0f)), 0, 0};
-      if (mesh::lr2021::isHighBand(hardware_frequency))
-        frequencies[0] |= RADIOLIB_LR2021_CALIBRATE_FE_HF_PATH;
-      status = calibrateFrontEnd(frequencies);
+      // Refresh the current physical frequency and every enabled profile in
+      // one CalibFE command. Updating slot 1 alone may lose secondary coverage;
+      // setFrequency() skips calibration when its frequency cache is unchanged.
+      status = calibrateFrontEnd(frontend.frequencies);
       if (status != RADIOLIB_ERR_NONE) return status;
       status = getErrors(&errors);
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS

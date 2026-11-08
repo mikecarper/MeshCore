@@ -55,6 +55,9 @@ class LR2021LegacyAGCTests(unittest.TestCase):
     def test_full_restore_includes_secondary_tuple_multisf_rxps_protocol_power_gain(self):
         self.scenario('success')
 
+    def test_periodic_and_explicit_reset_calibrate_all_enabled_profile_frequencies_corrected_once(self):
+        self.scenario('frontend')
+
     def test_owners_and_invalid_profiles_do_not_issue_spi_or_pause_scanner(self):
         self.scenario('guards')
 
@@ -73,14 +76,18 @@ class LR2021LegacyAGCTests(unittest.TestCase):
     def test_ignored_errors_or_noise_ownership_are_rejected_by_negative_controls(self):
         actual = (ROOT / 'src/helpers/radiolib/LR2021LegacyMaintenance.inc').read_text()
         mutations = {
-            'calibration': actual.replace('radio->resetReceiverCalibration());',
-                                           '(radio->resetReceiverCalibration(),RADIOLIB_ERR_NONE));'),
+            'calibration': actual.replace('resetLegacyReceiverCalibration());',
+                                           '(resetLegacyReceiverCalibration(),RADIOLIB_ERR_NONE));'),
             'receive': actual.replace('(resume && !isInRecvMode())', 'false'),
             'noise': actual.replace('return !_lab_scan_active && PulseBase::isCalibratingNoiseFloor();',
                                     'return PulseBase::isCalibratingNoiseFloor();'),
             'applied_cache': actual.replace('_dbm_applied=false; _rx_boosted_gain_applied=false;', ''),
             'dirty_pram': actual.replace('if(!isInRecvMode() || !_params_valid || _active_profile>1\n',
                                         'if(!isInRecvMode() || !_params_valid || _active_profile>1 || _profile_refresh_required\n'),
+            'frontend_secondary': actual.replace('hardware_frequencies,secondary ? 2 : 1', 'hardware_frequencies,1'),
+            'frontend_correction': actual.replace('hardwareFrequencyMHz(_profiles.params(0).freq)',
+                                                 'hardwareFrequencyMHz(hardwareFrequencyMHz(_profiles.params(0).freq))'),
+            'frontend_unset': actual.replace('if(!_params_valid) return radio->resetReceiverCalibration();', ''),
         }
         with tempfile.TemporaryDirectory(prefix='lr2021-legacy-negative-') as temp:
             folder = Path(temp)
@@ -100,11 +107,14 @@ class LR2021LegacyAGCTests(unittest.TestCase):
                                             '-I' + str(ROOT / 'src'), str(folder / 'main.cpp'), '-o', str(folder / 'test')],
                                            capture_output=True, text=True, timeout=60)
                     self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
-                    scenario = {'noise': 'noise', 'dirty_pram': 'scanner'}.get(name, 'failures')
+                    scenario = {'noise': 'noise', 'dirty_pram': 'scanner', 'frontend_secondary': 'frontend',
+                                'frontend_correction': 'frontend', 'frontend_unset': 'frontend'}.get(name, 'failures')
                     result = subprocess.run([str(folder / 'test'), scenario], capture_output=True, text=True, timeout=20)
                     self.assertNotEqual(result.returncode, 0, 'Ignored native errors must not satisfy the failure tests')
                     self.assertIn({'noise': 'isCalibratingNoiseFloor', 'applied_cache': '!w._dbm_applied',
-                                   'dirty_pram': 'result=='}.get(name, 'Result::Failed'), result.stderr)
+                                   'dirty_pram': 'result==', 'frontend_secondary': 'frontend_frequencies.size()',
+                                   'frontend_correction': 'correction_inputs.size()',
+                                   'frontend_unset': 'frontend_frequencies.empty()'}.get(name, 'Result::Failed'), result.stderr)
 
     def test_opt_in_timing_diagnostics_count_native_attempts_and_rx_without_false_credit(self):
         actual = (ROOT / 'src/helpers/radiolib/LR2021LegacyMaintenance.inc').read_text()

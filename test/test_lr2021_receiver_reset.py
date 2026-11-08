@@ -14,7 +14,7 @@ HARNESS=r"""
 #include <cstdint>
 #include <vector>
 #include <initializer_list>
-#include <helpers/radiolib/LR2021Band.h>
+#include <helpers/radiolib/LR2021CalibrationPolicy.h>
 #define RADIOLIB_ERR_NONE 0
 #define RADIOLIB_ERR_INVALID_FREQUENCY -12
 #define RADIOLIB_ERR_FRONTEND_CALIBRATION_FAILED -711
@@ -25,6 +25,7 @@ HARNESS=r"""
 #define RADIOLIB_LR2021_PLL_CALIB_ERR (1<<5)
 #define RADIOLIB_LR2021_AAF_CALIB_ERR (1<<6)
 #define RADIOLIB_LR2021_IMG_CALIB_ERR (1<<7)
+#define RADIOLIB_LR2021_RXFREQ_NO_FE_CAL_ERR (1<<9)
 #define RADIOLIB_LR2021_MEAS_UNIT_ADC_CALIB_ERR (1<<10)
 #define RADIOLIB_LR2021_PA_OFFSET_CALIB_ERR (1<<11)
 #define RADIOLIB_LR2021_PPF_CALIB_ERR (1<<12)
@@ -121,7 +122,7 @@ static void failures() {
     assert(chip.events.size()==unsigned(fail+1));
     assert(chip._activityAt==99 && chip._headerSeen);preserved(chip);
   }
-  const std::vector<uint16_t> bits={8,16,32,64,128,1024,2048,4096,8192,16384,32768};
+  const std::vector<uint16_t> bits={8,16,32,64,128,512,1024,2048,4096,8192,16384,32768};
   for(uint16_t fault:bits) {
     CustomLR2021 chip;chip.errors={fault,0,0};
     assert(chip.resetReceiverCalibration()==0);
@@ -137,20 +138,56 @@ static void failures() {
   }
   // Every unrelated or mixed preexisting fault remains observable; never clear
   // the word merely to make calibration appear successful.
-  for(uint16_t fault:{uint16_t(1),uint16_t(2),uint16_t(4),uint16_t(256),uint16_t(512),
-       uint16_t(1|8),uint16_t(0xffff)}) {
+  for(uint16_t fault:{uint16_t(1),uint16_t(2),uint16_t(4),uint16_t(256),
+       uint16_t(1|8),uint16_t(1|512),uint16_t(2|512),uint16_t(4|512),
+       uint16_t(256|512),uint16_t(0xffff)}) {
     CustomLR2021 chip;chip.errors[0]=fault;
     assert(chip.resetReceiverCalibration()==RADIOLIB_ERR_FRONTEND_CALIBRATION_FAILED);
     assert(chip.events.size()==1 && chip.errors[0]==fault);preserved(chip);
   }
 }
-int main(){frequencies();failures();}
+static void frontend_coverage() {
+  struct Case {float current,profile[3];size_t count;uint16_t expected[3];};
+  for(const Case& item:{
+      Case{909.5f,{909.5f,919.5f,0},2,{228,230,0}},
+      Case{919.5f,{909.5f,919.5f,0},2,{230,228,0}},
+      Case{910.525f,{868.0f,2400.0f,0},2,{228,217,uint16_t(0x8000|600)}},
+      Case{909.5f,{911.15f,919.5f,0},2,{228,230,0}},
+      Case{909.5f,{909.5f,911.15f,919.5f},3,{228,230,0}},
+      Case{909.5f,{868.001f,2400.001f,0},2,{228,218,uint16_t(0x8000|601)}}}) {
+    CustomLR2021 chip;chip.freqMHz=item.current;chip.errors={512,0,0};
+    assert(chip.resetReceiverCalibration(item.profile,item.count)==0);
+    assert(chip.events[1].command==LR2021::ClearErrors);
+    unsigned calibrations=0;
+    for(const Event& event:chip.events)if(event.command==LR2021::FrontEnd) {
+      ++calibrations;
+      assert(event.value==std::vector<uint16_t>({item.expected[0],item.expected[1],item.expected[2]}));
+    }
+    assert(calibrations==1 && chip.programmed_frequency==item.current);
+    preserved(chip);
+  }
+  for(float invalid:{0.0f,-1.0f,2600.1f,NAN,INFINITY}) {
+    CustomLR2021 chip;
+    assert(chip.resetReceiverCalibration(&invalid,1)==RADIOLIB_ERR_INVALID_FREQUENCY);
+    assert(chip.events.empty() && chip._activityAt==99 && chip._headerSeen);
+  }
+  CustomLR2021 missing;
+  assert(missing.resetReceiverCalibration(nullptr,1)==RADIOLIB_ERR_INVALID_FREQUENCY);
+  assert(missing.events.empty());
+  const float profiles[4]={150.0f,868.0f,2400.0f,2496.0f};
+  for(size_t count:{3U,4U}) {
+    CustomLR2021 overflow;
+    assert(overflow.resetReceiverCalibration(profiles,count)==RADIOLIB_ERR_INVALID_FREQUENCY);
+    assert(overflow.events.empty());
+  }
+}
+int main(){frequencies();failures();frontend_coverage();}
 """
 
 class LR2021ReceiverResetTests(unittest.TestCase):
     def test_actual_helper_commands_calibration_points_and_every_failure_boundary(self):
         helper=body((ROOT/'src/helpers/radiolib/CustomLR2021.h').read_text(),
-                    'int16_t resetReceiverCalibration()')
+                    'int16_t resetReceiverCalibration(')
         source=HARNESS.replace('@HELPER@',helper)
         with tempfile.TemporaryDirectory(prefix='lr2021-receiver-reset-') as temporary:
             path=Path(temporary);(path/'main.cpp').write_text(source)

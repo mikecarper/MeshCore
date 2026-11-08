@@ -27,11 +27,16 @@ struct Base {
 };
 struct CustomLR2021 {
  std::vector<std::string> calls;
+ std::vector<float> frontend_frequencies;
  bool busy=false,irq=false,receiving=false,inject_probe_irq=false,inject_standby_irq=false;
  int16_t standby_rc=0,calibration_rc=0;
  unsigned calibrations=0;
  int16_t standby(){calls.push_back("standby");if(inject_standby_irq)irq=true;return standby_rc;}
- int16_t resetReceiverCalibration(){calls.push_back("calibrate");++calibrations;return calibration_rc;}
+ int16_t resetReceiverCalibration(const float* frequencies=nullptr,size_t count=0){
+   calls.push_back("calibrate");++calibrations;assert((frequencies&&count>=1&&count<=2)||(!frequencies&&!count));
+   if(count)frontend_frequencies.assign(frequencies,frequencies+count);
+   return calibration_rc;
+ }
 };
 struct Wrapper:Base {
  using PulseBase=Base;
@@ -39,7 +44,13 @@ struct Wrapper:Base {
  CustomLR2021 radio;CustomLR2021* _radio=&radio;
  bool _params_valid=true,_profile_refresh_required=false,_profile_repair_required=false;
  uint8_t state=STATE_RX,_active_profile=0;
- struct Profiles {uint32_t generation[2]={11,22};bool active=false;bool enabled()const{return active;}} _profiles;
+ struct Profiles {
+  struct Params{float freq;};Params configured[2]={{910.525f},{911.15f}};
+  uint32_t generation[2]={11,22};bool active=false;
+  bool enabled()const{return active;}const Params& params(uint8_t p)const{assert(p<2);return configured[p];}
+ } _profiles;
+ std::vector<float> correction_inputs;
+ float hardwareFrequencyMHz(float nominal){correction_inputs.push_back(nominal);return nominal+0.125f;}
  uint32_t _profile_generation=11,_profile_retry_at=0;
  bool _cw_active=false,_beacon_owned=false,_beacon_restoring=false,_morse_owned=false,_morse_rx_owned=false;
  bool _primary_receive_preempt=false,_rx_ps_armed=false,_rx_hold_continuous=false;
@@ -118,6 +129,27 @@ static void check_saved(const Wrapper& w){
  assert(w._profiles.generation[0]==11&&w._profiles.generation[1]==22);
 }
 static size_t position(const Wrapper&w,const char*value){for(size_t i=0;i<w.radio.calls.size();++i)if(w.radio.calls[i]==value)return i;return w.radio.calls.size();}
+static void frontendCoverage(){
+ for(bool secondary:{false,true})for(bool explicit_reset:{false,true}){
+  Wrapper w;w._profiles.active=secondary;
+  // An independent current tuple must not replace the enabled profile list.
+  w._cur_freq=915.25f;
+  if(explicit_reset)w.doResetAGC();
+  else assert(w.periodicOldAGCMaintenance()==Result::Applied);
+  const size_t count=secondary?2:1;
+  assert(w.radio.calibrations==1&&w.radio.frontend_frequencies.size()==count&&w.correction_inputs.size()==count);
+  for(size_t i=0;i<count;++i){
+   assert(w.correction_inputs[i]==w._profiles.params(i).freq);
+   assert(w.radio.frontend_frequencies[i]==w._profiles.params(i).freq+0.125f);
+  }
+ }
+ for(bool secondary:{false,true}){
+  Wrapper w;w._params_valid=false;w._profiles.active=secondary;
+  w._profiles.configured[0].freq=0;w._profiles.configured[1].freq=0;
+  w.doResetAGC();
+  assert(w.radio.calibrations==1&&w.radio.frontend_frequencies.empty()&&w.correction_inputs.empty());
+ }
+}
 static void successful(){
  for(unsigned profile:{0U,1U})for(bool multi:{false,true})for(bool rxps:{false,true}){
   Wrapper w;w._active_profile=profile;w._profile_generation=w._profiles.generation[profile];w._profiles.active=profile==1;w.multi_sf=multi;w.rxps_requested=rxps;
@@ -310,7 +342,7 @@ int main(int argc,char**argv){
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
  if(name=="diagnostics"){diagnostics();return 0;}
 #endif
- if(name=="success")successful();else if(name=="guards")guards();else if(name=="ownership")ownership();else if(name=="failures")failures();else if(name=="scanner")scanner();else if(name=="noise")noiseOwnership();else assert(false);
+ if(name=="success")successful();else if(name=="frontend")frontendCoverage();else if(name=="guards")guards();else if(name=="ownership")ownership();else if(name=="failures")failures();else if(name=="scanner")scanner();else if(name=="noise")noiseOwnership();else assert(false);
 #else
  (void)argv;Wrapper w;assert(w.periodicOldAGCMaintenance()==Result::Deferred&&w.radio.calls.empty());
 #endif

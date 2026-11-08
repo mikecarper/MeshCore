@@ -10,7 +10,7 @@ from test_lr2021_receiver_reset import HARNESS
 ROOT=Path(__file__).resolve().parents[1]
 MAIN=r"""
 int main() {
-  frequencies(); failures();
+  frequencies(); failures(); frontend_coverage();
   using Device=mesh::lr2021::CalibrationDeviceStatus;
   auto& device=mesh::lr2021::calibrationDeviceStatus();
   AGCTimingDiagnostics timing;
@@ -45,11 +45,11 @@ int main() {
 class LR2021CalibrationDeviceDiagnosticsTests(unittest.TestCase):
     def test_device_fault_phase_validity_and_bounded_cli_reply(self):
         helper=body((ROOT/'src/helpers/radiolib/CustomLR2021.h').read_text(),
-                    'int16_t resetReceiverCalibration()')
+                    'int16_t resetReceiverCalibration(')
         source=('#include <cstring>\n#include <cstdio>\n'
                 '#include <helpers/radiolib/AGCTimingDiagnostics.h>\n'+
                 HARNESS.replace('@HELPER@',helper).replace(
-                    'int main(){frequencies();failures();}',MAIN))
+                    'int main(){frequencies();failures();frontend_coverage();}',MAIN))
         with tempfile.TemporaryDirectory(prefix='lr2021-device-diag-') as directory:
             root=Path(directory);(root/'test.cpp').write_text(source)
             binary=root/'test'

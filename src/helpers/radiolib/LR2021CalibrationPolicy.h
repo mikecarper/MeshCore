@@ -3,9 +3,32 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <math.h>
+#include "LR2021Band.h"
 #include "LR2021FrequencyCorrection.h"
 
 namespace mesh { namespace lr2021 {
+
+// CalibFE has three stored frequency/path slots. Replacing only slot 1 can
+// leave an enabled second profile without a suitable frontend calibration.
+// Accept physical frequencies only: the caller applies oscillator correction
+// once, before creating this plan. Match Semtech's upward 4 MHz encoding.
+struct FrontEndCalibrationPlan {
+  uint16_t frequencies[3] = {};
+  uint8_t count = 0;
+
+  bool add(float hardware_mhz) {
+    if (!isfinite(hardware_mhz) || hardware_mhz <= 0.0f || hardware_mhz > 2600.0f)
+      return false;
+    uint16_t encoded = static_cast<uint16_t>(ceilf(hardware_mhz / 4.0f));
+    if (isHighBand(hardware_mhz)) encoded |= 0x8000U;
+    for (uint8_t i = 0; i < count; ++i)
+      if (frequencies[i] == encoded) return true;
+    if (count == 3) return false;
+    frequencies[count++] = encoded;
+    return true;
+  }
+};
 
 constexpr uint8_t XoscTrimMaximum = 47;
 

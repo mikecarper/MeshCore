@@ -1,6 +1,19 @@
 // Included inside CustomLR2021Wrapper. The chip helper retains configuration
 // and PRAM; this transaction owns packet admission and checked RX restoration.
 private:
+  int16_t resetLegacyReceiverCalibration() {
+    auto* radio=static_cast<CustomLR2021*>(_radio);
+    // Explicit recovery can run before a valid host tuple exists. In that
+    // case preserve the driver's checked current-frequency-only behavior.
+    if(!_params_valid) return radio->resetReceiverCalibration();
+    // Retained calibration must cover every frequency the scanner can visit.
+    // Convert nominal profiles exactly once; the driver consumes physical MHz
+    // and separately preserves/restores its current physical frequency cache.
+    const bool secondary=_profiles.enabled();
+    const float hardware_frequencies[2]={hardwareFrequencyMHz(_profiles.params(0).freq),
+        secondary ? hardwareFrequencyMHz(_profiles.params(1).freq) : 0.0f};
+    return radio->resetReceiverCalibration(hardware_frequencies,secondary ? 2 : 1);
+  }
   void legacyCalibrationFailed(int16_t code) {
     recordApply(mesh::lr2021::ApplyStatus::Stage::Calibration, code);
     invalidateScanTuple();
@@ -24,7 +37,7 @@ public:
     // Periodic legacy maintenance below checks each result through RX restore.
     _apply_status.begin();
     invalidateScanTuple();
-    const int16_t rc=static_cast<CustomLR2021*>(_radio)->resetReceiverCalibration();
+    const int16_t rc=resetLegacyReceiverCalibration();
     if(rc!=RADIOLIB_ERR_NONE) legacyCalibrationFailed(rc);
   }
 #if MESH_ENABLE_OLD_AGC
@@ -79,9 +92,8 @@ public:
     invalidateScanTuple();
     const uint32_t generation=_profile_generation;
     const uint8_t profile=_active_profile;
-    auto* radio=static_cast<CustomLR2021*>(_radio);
     int16_t rc=recordApply(mesh::lr2021::ApplyStatus::Stage::Calibration,
-                           radio->resetReceiverCalibration());
+                           resetLegacyReceiverCalibration());
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
     // One aggregate native helper sample, not inferred per-command timing.
     _agc_timing.commandResult(AGCTimingDiagnostics::Step::Calibrate,rc);
