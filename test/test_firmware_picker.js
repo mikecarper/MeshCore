@@ -665,7 +665,7 @@ assert.deepStrictEqual(
   picker.resolveProfileAssets([standardRepeater], "").map(function (entry) {
     return entry.installKind;
   }),
-  ["merged-bin", "bin"]
+  ["bin", "merged-bin"]
 );
 
 const fullLogging = profile("Generic_ESPNOW_repeatr-full-logging");
@@ -726,6 +726,9 @@ assert.deepStrictEqual(
 );
 
 const fullCompanionSteps = picker.installSteps(v4Full, "merged-bin");
+assert(fullCompanionSteps.some(step => step.includes("pairings even without a separate erase")));
+assert(picker.installSteps(v4Full, "bin").some(step =>
+  step.includes("pairings when the Bluetooth stack and storage layout stay the same")));
 assert(fullCompanionSteps.some(function (step) {
   return step.includes("usb.logging");
 }));

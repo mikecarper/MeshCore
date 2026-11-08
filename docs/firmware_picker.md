@@ -462,13 +462,19 @@ See the [two-profile setup guide](radio_profiles.md#companion-messages-on-both-p
 
 | File | Use |
 | --- | --- |
-| <code>-merged.bin</code> | Erase/fresh install, recovery, role migration, or partition-profile change on ESP32 over USB |
 | Non-merged <code>.bin</code> | Update an existing same-board, same-role, same-partition installation |
+| <code>-merged.bin</code> | Fresh install, recovery, or partition-profile change on ESP32 over USB |
 | <code>*-expander.bin</code> or <code>*-wifi-bridge.bin</code> | Exact-board ESP32 partition expansion over Wi-Fi |
 | <code>*-expander.mota</code> or <code>*-lora-bridge.mota</code> | Exact-board ESP32 partition expansion over compatible LoRa OTA |
 | Other <code>.zip</code> firmware shown by the picker | Native nRF52 Serial DFU update package; it is not an extra archive |
 | <code>.uf2</code> | UF2 bootloader drag-and-drop install or update |
 | <code>.hex</code> | Erase/recovery flash with a supported wired programmer |
+
+For a compatible existing ESP32 installation, use the app-only `.bin` to keep
+saved settings. Bluetooth pairings also normally survive when the Bluetooth stack
+and storage layout stay the same. A merged image can overwrite settings and
+pairings even without selecting a separate erase; for a partition change, check
+the migration guide for a settings-preserving expansion image.
 
 Never send a merged ESP32 image through browser OTA or LoRa OTA. Back up the
 node identity, configuration, keys, and radio settings, and verify every

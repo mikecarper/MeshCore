@@ -9,6 +9,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class Esp32BlePowerTests(unittest.TestCase):
+    def test_bluedroid_bond_session_cleanup(self):
+        self.run_adapter("test_bluedroid_peer_cleanup.cpp", [
+            "-DCONFIG_BLUEDROID_ENABLED=1", "-DCONFIG_BT_ACL_CONNECTIONS=4",
+            "-DMESH_BLUEDROID_BOND_PROTECTION=1"],
+            ROOT / "test/fixtures/esp32_ble_power/mocks")
+
     def test_nimble_reversible_power_faults_identity_bonds_and_callbacks(self):
         self.run_adapter("test_nimble_power.cpp", ["-DMESH_USE_NIMBLE_ARDUINO=1"],
                          ROOT / "test/fixtures/nimble_companion/mocks")
@@ -41,7 +47,8 @@ class Esp32BlePowerTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             result = subprocess.run([str(binary)], text=True, capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("lifecycle suites passed", result.stdout)
+            if fixture != "test_bluedroid_peer_cleanup.cpp":
+                self.assertIn("lifecycle suites passed", result.stdout)
 
 
 if __name__ == "__main__":

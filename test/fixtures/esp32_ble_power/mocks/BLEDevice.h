@@ -31,7 +31,7 @@ constexpr int ESP_IO_CAP_OUT=0, ESP_LE_AUTH_REQ_SC_MITM_BOND=15;
 constexpr int ESP_BLE_SM_SET_STATIC_PASSKEY=20;
 struct esp_ble_auth_cmpl_t { bool success=true; int addr_type=0, fail_reason=0; uint8_t bd_addr[6]={1,2,3,4,5,6}; };
 struct esp_ble_gatts_cb_param_t {
-  struct { uint16_t conn_id=7; uint8_t remote_bda[6]={1,2,3,4,5,6}; } connect, mtu;
+  struct { uint16_t conn_id=7; uint8_t remote_bda[6]={1,2,3,4,5,6}; } connect, mtu, disconnect, write;
   struct { int status=0; esp_bt_uuid_t svc_uuid; uint8_t svc_inst_id=0; uint16_t num_handle=1; uint16_t* handles=nullptr; } add_attr_tab;
   struct { int status=0; uint16_t service_handle=0; } start, del;
 };
@@ -130,6 +130,7 @@ public:
   virtual void onConnect(BLEServer*) {}
   virtual void onConnect(BLEServer*, esp_ble_gatts_cb_param_t*) {}
   virtual void onDisconnect(BLEServer*) {}
+  virtual void onDisconnect(BLEServer*, esp_ble_gatts_cb_param_t*) {}
   virtual void onMtuChanged(BLEServer*, esp_ble_gatts_cb_param_t*) {}
 };
 class BLECharacteristicCallbacks {
@@ -242,7 +243,8 @@ public:
   BLEAdvertising* getAdvertising() { if(!fake_advertising) fake_advertising=new BLEAdvertising; return fake_advertising; }
   void setCallbacks(BLEServerCallbacks* cb) { callbacks=cb; }
   unsigned getConnectedCount() const { return connected; }
-  void disconnect(uint16_t) { ++fake_bt::disconnects; }
+  std::vector<uint16_t> disconnect_ids;
+  void disconnect(uint16_t id) { ++fake_bt::disconnects; disconnect_ids.push_back(id); }
   uint16_t getConnId() { return 7; }
   uint16_t getPeerMTU(uint16_t) { return 179; }
 };

@@ -1531,6 +1531,9 @@ jobs:
           MESH_VOICE_TEST_SANITIZERS=1 python3 -B test/test_voice_prefixes.py -v
           python3 -B test/test_nimble_companion.py
           python3 -B test/test_esp32_ble_power.py -v
+          python3 -B test/test_bluedroid_bond_policy.py
+          python3 -B test/test_bluedroid_bond_archive.py
+          python3 -B test/test_bluedroid_bond_selection.py
           python3 -B test/test_esp32_native_ble_stop.py -v
           python3 -B test/test_esp32_ble_lifecycle_fix.py -v
           python3 -B test/test_esp32_nimble_timer_fix.py -v
