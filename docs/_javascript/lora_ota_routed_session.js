@@ -93,8 +93,6 @@
         if (!noSecondary(await command('get radio2')) || !noSecondary(await command('get tempradio2')) ||
             !noSecondary(await command('get radio2.cross')))
           throw Error(label + ' must have radio2, temporary radio2 and radio2.cross off');
-        if (!/^off(?:\b|,)/i.test(await command('get radio.rxps')))
-          throw Error(label + ' must have RX power saving off');
         routedPolicy(await command('ota config'), this.hops);
         if (relay) {
           if (!/^on$/i.test(await command('get repeat'))) throw Error(label + ' must have repeating enabled');

@@ -81,11 +81,19 @@ test('all participants are checked and transfer does not mutate radios or polici
   assert.equal(f.serving,false); assert.equal(f.calls.filter(c=>c.endsWith('ota pull '+f.id.toUpperCase()+' flash')).length,1);
   assert.equal(f.calls.filter(c=>c==='proveAll').length,1);
   for (const label of ['source',first,second,target]) {
-    for (const command of ['get radio','get tempradio','get radio2','get tempradio2','get radio2.cross','get radio.rxps','ota config'])
+    for (const command of ['get radio','get tempradio','get radio2','get tempradio2','get radio2.cross','ota config'])
       assert.ok(f.calls.includes(label+':'+command),label+' missing '+command);
   }
   for(const label of [first,second]) { assert.ok(f.calls.includes(label+':get repeat')); assert.ok(f.calls.includes(label+':ota stats')); }
   assert.equal(f.calls.some(c=>/:(?:set |tempradio |normalradio|ota config (?:hops|autofetch|autoinstall) )/.test(c)),false);
+});
+
+test('routed transfer and install leave RXPS enabled on every participant', async () => {
+  const f = await fixture();
+  for (const label of ['source', first, second, target]) f.overrides.set(label + ':get radio.rxps', 'on');
+  await f.session.start();
+  assert.equal((await f.session.install()).baseHash, f.body);
+  assert.ok(!f.calls.some(command => /radio.rxps/.test(command)));
 });
 
 test('routed updates use legacy install only for an explicit unsupported probe',async()=>{
@@ -114,7 +122,6 @@ test('refuses unsafe participant state before attaching a source folder',async()
     [target+':get radio2','911.150,250,7,5,rxtx',/radio2/],
     [first+':get tempradio2','pending',/radio2/],
     [second+':get radio2.cross','on',/radio2/],
-    [first+':get radio.rxps','on',/saving/],
     [second+':ota config','autofetch=off autoinstall=off hops=1',/cover/],
     [target+':ota config','autofetch=off autoinstall=on hops=2',/automatic/],
     [first+':get repeat','off',/repeating/],

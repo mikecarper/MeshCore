@@ -15,7 +15,7 @@ def replace_once(source, old, new):
     return source.replace(old, new, 1)
 
 
-def radio_setup_harness(*, secondary_supported=True, pending_firmware=False, factory_defaults=False):
+def radio_setup_harness(*, secondary_supported=True, pending_firmware=False, factory_defaults=False, policy_failure=False):
     harness=replace_once(HARNESS,"let expected,pkg,mid=''",
         "let sourceTemp='off',targetTemp='off',selectedProfile=0,targetAcknowledgedAt=0,pendingReads=0,timeline=[],fileReads=0,packageBuilds=0;const sourcePolicy={rxps:FACTORY_DEFAULTS?'on':'unsupported',autofetch:'off',autoinstall:'off',hops:FACTORY_DEFAULTS?3:0},targetPolicy={...sourcePolicy,rxps:FACTORY_DEFAULTS?'on':'off'};let expected,pkg,mid=''")
     harness=replace_once(harness,"else if(f[0]===26){if(!guard",
@@ -28,7 +28,7 @@ def radio_setup_harness(*, secondary_supported=True, pending_firmware=False, fac
         else if(text==='get radio.rxps')reply='> '+targetPolicy.rxps+',level=6,preamble=16,rx=41704,sleep=11882,mode=continuous-fallback';
         else if(text==='set radio.rxps off'){targetPolicy.rxps='off';reply='OK';}
         else if(/^ota config (autofetch|autoinstall|hops) (off|0)$/.test(text)){
-          const [,,field,value]=text.split(' ');targetPolicy[field]=field==='hops'?Number(value):value;reply='OK';
+          const [,,field,value]=text.split(' ');if(!POLICY_FAILURE)targetPolicy[field]=field==='hops'?Number(value):value;reply=POLICY_FAILURE?'Error: settings not saved':'OK';
         }''')
     harness=replace_once(harness,"else if(text==='ota config')reply='ota config: autofetch=off autoinstall=off hops=0';",
         "else if(text==='ota config')reply='ota config: autofetch='+targetPolicy.autofetch+' autoinstall='+targetPolicy.autoinstall+' hops='+targetPolicy.hops;")
@@ -101,21 +101,22 @@ def radio_setup_harness(*, secondary_supported=True, pending_firmware=False, fac
     el('inspect').click();await wait(()=>el('status').textContent.includes('Error:'));
     const inspectStatus=el('status').textContent;
     let checked='';
-    if(!FIRMWARE_PENDING){
+    if(!FIRMWARE_PENDING&&!POLICY_FAILURE){
       if(!inspectStatus.includes('TEST_FIRMWARE_READ_AFTER_CHANNEL_READY'))throw Error(inspectStatus);
       await wait(()=>!el('radio-check').disabled);el('status').textContent='';el('radio-setup-status').textContent='';
       el('radio-check').click();await wait(()=>el('radio-setup-status').textContent.startsWith('Channel ready:')||el('status').textContent.includes('Error:'));
       if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);checked=el('radio-setup-status').textContent;
     }
     const profiles=[window.testLink.otaRadioProfile,window.testLink.otaTargetProfile];
+    const diagnosticsOpen=el('diagnostics').open,prepareDisabled=el('inspect').disabled,updateDisabled=el('update').disabled;
     el('disconnect').click();await wait(()=>!el('connect').disabled);
     await report({inspectStatus,checked,profiles,defaults,timeline,cmds,frames:port.frames,sourceSaved:radio,sourceTemp,targetTemp,sourcePolicy,targetPolicy,
-      fileReads,packageBuilds,guard,transferDisabled:el('transfer').disabled});
+      fileReads,packageBuilds,guard,diagnosticsOpen,prepareDisabled,updateDisabled,transferDisabled:el('transfer').disabled});
   }catch(e){await report({error:String(e),status:el('status').textContent,channelStatus:el('radio-setup-status')?.textContent,
     timeline,cmds,frames:port.frames,fileReads,packageBuilds});}});
 })();
 </script>'''
-    return harness.replace('SECONDARY_SUPPORTED','true'if secondary_supported else'false').replace('FIRMWARE_PENDING','true'if pending_firmware else'false').replace('FACTORY_DEFAULTS','true'if factory_defaults else'false')
+    return harness.replace('SECONDARY_SUPPORTED','true'if secondary_supported else'false').replace('FIRMWARE_PENDING','true'if pending_firmware else'false').replace('FACTORY_DEFAULTS','true'if factory_defaults else'false').replace('POLICY_FAILURE','true'if policy_failure else'false')
 
 
 class BrowserRadioSetupRuntime(unittest.TestCase):
@@ -156,18 +157,31 @@ class BrowserRadioSetupRuntime(unittest.TestCase):
     def test_normal_defaults_are_checked_and_changed_once_before_temporary_setup(self):
         result=run_harness(radio_setup_harness(factory_defaults=True),timeout=60)
         self.assert_automatic_setup(result,1)
-        timeline=result['timeline'];writes=['set radio.rxps off','ota config hops 0']
+        timeline=result['timeline'];writes=['ota config hops 0']
         first_write=min(i for i,row in enumerate(timeline)if row[0]in('local','remote')and row[1]in writes)
         for endpoint in ['local','remote']:
-            self.assertIn([endpoint,'get radio.rxps'],timeline[:first_write]);self.assertIn([endpoint,'ota config'],timeline[:first_write])
+            self.assertIn([endpoint,'ota config'],timeline[:first_write])
             for command in writes:
                 self.assertEqual(timeline.count([endpoint,command]),1,timeline)
                 self.assertLess(timeline.index([endpoint,command]),timeline.index(['remote','set tempradio2 909.950,250,7,5,rxtx,120,128']))
             for command in ['ota config autofetch off','ota config autoinstall off']:
                 self.assertNotIn([endpoint,command],timeline)
-            self.assertEqual(result['sourcePolicy'if endpoint=='local'else'targetPolicy'],{'rxps':'off','autofetch':'off','autoinstall':'off','hops':0})
+            self.assertEqual(result['sourcePolicy'if endpoint=='local'else'targetPolicy'],{'rxps':'on','autofetch':'off','autoinstall':'off','hops':0})
+        self.assertFalse(any(row[0] in ('local','remote') and 'radio.rxps' in row[1] for row in timeline))
         self.assertIn(['local','ota stats'],timeline[:first_write]);self.assertIn(['local','ota folder'],timeline[:first_write])
         self.assertIn(['remote','ota status'],timeline[:first_write]);self.assertIn(['remote','get public.key'],timeline[:first_write])
+
+    def test_unverified_policy_shows_next_action_and_log_without_enabling_transfer(self):
+        result=run_harness(radio_setup_harness(factory_defaults=True,policy_failure=True),timeout=60)
+        self.assertNotIn('error',result,result)
+        self.assertIn('Could not verify target ota.hops=0 using ota config',result['inspectStatus'])
+        self.assertIn('Select Prepare update to recheck',result['inspectStatus'])
+        self.assertNotIn('review the recorded changes before proceeding',result['inspectStatus'])
+        self.assertTrue(result['diagnosticsOpen']);self.assertFalse(result['prepareDisabled'])
+        self.assertTrue(result['updateDisabled']);self.assertTrue(result['transferDisabled'])
+        self.assertEqual((result['fileReads'],result['packageBuilds']),(0,0))
+        self.assertEqual(result['timeline'].count(['remote','ota config hops 0']),1)
+        self.assertFalse(any(row[0]in ('local','remote')and row[1].startswith(('tempradio ','set tempradio2'))for row in result['timeline']))
 
     def test_pending_radio_blocks_automatic_writes_and_firmware_processing(self):
         result=run_harness(radio_setup_harness(pending_firmware=True),timeout=60)

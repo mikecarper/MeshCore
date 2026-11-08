@@ -71,7 +71,7 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
     <label>Installed firmware (optional)<input data-role="base" type="file" accept=".bin,.zip"></label>
     <p data-role="firmware-base-status" role="status"></p>
     </details>
-    <p>Preparing loads your selected image, checks compatibility and sets up the temporary update channel when supported. Automatic setup also turns off RX power saving and automatic OTA fetch/install; any saved changes are listed in the diagnostic log.</p>
+    <p>Preparing loads your selected image, checks compatibility and sets up the temporary update channel when supported. Automatic setup turns off automatic OTA fetch/install and preserves RX power saving; any saved changes are listed in the diagnostic log.</p>
     <p class="lora-ota-actions"><button type="button" data-role="inspect" disabled>Prepare update</button></p>
   </section>
   <section class="lora-ota-step">
@@ -98,7 +98,7 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
       <label>Temporary window (minutes)<input data-role="radio-minutes" type="number" min="1" max="10080" value="120"></label>
       <p class="lora-ota-actions"><button type="button" data-role="radio-prepare" disabled>Prepare now</button> <button type="button" class="lora-ota-secondary" data-role="radio-check" disabled>Check channel</button></p>
     </details>
-    <p>Setup also turns RX power saving and automatic OTA fetch/install off and sets OTA hops to 0. These preferences are saved; any changes appear in the diagnostic log.</p>
+    <p>Setup turns automatic OTA fetch/install off and sets OTA hops to 0. These OTA preferences are saved; any changes appear in the diagnostic log. RX power saving stays unchanged.</p>
     <p data-role="radio-setup-status" role="status" aria-live="polite">Connect and choose the remote device first.</p>
     <details class="lora-ota-advanced">
       <summary>Manual setup and older firmware</summary>
@@ -186,9 +186,9 @@ The source needs a compatible USB Companion with raw packet support, or a
 Repeater with `ota.peer` and USB folder support. Older Companions use their
 shared message queue: unrelated messages moved into the browser can be
 downloaded, but cannot be restored to the Companion. The page prepares the
-update channel and required RX power saving / OTA preferences automatically on
+update channel and required OTA preferences automatically on
 compatible direct connections. The temporary channel expires; the required
-RX power saving and OTA policy changes remain saved and are listed in the diagnostic log.
+OTA policy changes remain saved and are listed in the diagnostic log. RX power saving is not changed or required to be off; radio2 handles its own receive mode. Missing setting acknowledgements are checked automatically before setup continues.
 On older Companions with USB radio controls, the page automatically aligns both
 temporary channels with the Companion's saved settings. It tests primary
 channels with a two-minute window before extending them; temporary radio2

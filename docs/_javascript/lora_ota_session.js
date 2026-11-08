@@ -114,7 +114,7 @@
         const command = async c => {
           try {
             const reply = await rawCommand(c);
-            if (c === 'get tempradio' || c === 'get radio.rxps') radioSetup().requiredReply(reply, c, source && (this.link.browserRawSource ? 'companion' : 'repeater'));
+            if (c === 'get tempradio') radioSetup().requiredReply(reply, c, source && (this.link.browserRawSource ? 'companion' : 'repeater'));
             return value(reply);
           }
           catch (error) { error.message = label + ': ' + diagnostic(error.message); throw error; }
@@ -125,7 +125,7 @@
           if (!Array.isArray(radio) || radio.length !== 4 || radio.some(v => !Number.isFinite(v) || v <= 0))
             throw Error('Cannot read the USB Companion saved radio settings');
           sourceRadio = savedSourceRadio = radio.slice(); sourceReadback = 'saved-only';
-          this.progress('The Companion reported these saved radio settings on connection. Active temporary settings, RX power saving and preamble cannot be verified on this firmware.');
+          this.progress('The Companion reported these saved radio settings on connection. Active temporary settings and preamble cannot be verified on this firmware.');
           continue;
         }
         let radio;
@@ -166,11 +166,6 @@
             error.manualRadioCommand=command;throw error;
           }
         }
-        const setup = typeof module === 'object' && module.exports ? require('./lora_ota_radio_setup.js') : globalThis.LoraOtaRadioSetup;
-        let rxps;
-        try { rxps = setup.rxps(await command('get radio.rxps')); }
-        catch (error) { error.message = label + ': ' + diagnostic(error.message); throw error; }
-        if (rxps.enabled !== 'off') throw setupRequired(label + ': RX power saving must be off before starting');
         if (!source || checkSourceOta) {
           try { policy(await command('ota config')); }
           catch (error) { error.message = label + ': ' + diagnostic(error.message); throw error; }

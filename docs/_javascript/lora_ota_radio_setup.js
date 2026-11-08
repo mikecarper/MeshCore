@@ -74,29 +74,6 @@
       ['off', 'trusted'].includes(result.autoinstall), 'Unknown OTA policy; setup cannot continue.');
     return result;
   }
-  function rxps(reply) {
-    // CompanionTransport already maps an explicitly unsupported RXPS control
-    // to this known continuous-receive state; it requires no setting write.
-    if (/^off,unsupported$/i.test(bare(reply))) return {enabled: 'off', raw: bare(reply), unsupported: true, restoreCommand: null};
-    const text = bare(reply).replace(/^radio\.rxps(?:\.config)?\s+/i, ''), m = text.match(/^(on|off)(?:,(\d+),(\d+)|,level=(\d+),preamble=(\d+),rx=(\d+),sleep=(\d+)(?:,mode=(?:continuous-fast|continuous-fallback|duty-cycle))?(?:,effective-level=(\d+))?(?:,effective-preamble=(\d+))?)?$/i);
-    need(m, 'Cannot verify RX power-saving settings.');
-    need(m.slice(2).filter(n => n !== undefined).every(n => Number.isSafeInteger(Number(n)) && Number(n) <= 0xffffffff) &&
-      (m[4] === undefined || (Number(m[4]) <= 10 && [0, 16, 32].includes(Number(m[5])))) &&
-      (m[8] === undefined || (Number(m[8]) >= 1 && Number(m[8]) <= 10)) &&
-      (m[9] === undefined || (Number(m[9]) >= 1 && Number(m[9]) <= 65535)), 'Unknown RX power-saving fields.');
-    const enabled = m[1].toLowerCase();
-    // Pair-only replies can report effective periods rather than the saved
-    // level. Do not invent a command that would overwrite that saved mode.
-    let restoreCommand = null;
-    if (enabled === 'on' && m[4] && Number(m[4]) > 0) {
-      need(Number(m[4]) <= 10 && [0, 16, 32].includes(Number(m[5])), 'Unknown RX power-saving level.');
-      restoreCommand = 'set radio.rxps level ' + Number(m[4]) + (Number(m[5]) ? ' preamble ' + Number(m[5]) : '');
-    } else if (enabled === 'on' && (m[2] || m[6])) {
-      const receive = Number(m[2] ?? m[6]), sleep = Number(m[3] ?? m[7]);
-      need(Number.isSafeInteger(receive) && Number.isSafeInteger(sleep) && receive > 0 && sleep > 0, 'Unknown custom RX power-saving periods.');
-    }
-    return {enabled, raw: text, restoreCommand};
-  }
   function keyProof(reply, key) {
     const text = bare(reply);
     need(fullKey(text) && text.toLowerCase() === key, 'The selected target did not prove its complete public key.');
@@ -183,7 +160,7 @@
       const sourceKind = label === 'source' && (companion ? 'companion' : 'repeater');
       requiredReply(temporaryPrimary.raw, 'get tempradio', sourceKind);
       need(['off', 'active'].includes(temporaryPrimary.state), label + ' has a pending or unverified primary temporary radio.');
-      const powerSaving = rxps(requiredReply(await read('get radio.rxps'), 'get radio.rxps', sourceKind)), config = await read('ota config');
+      const config = await read('ota config');
       const otaPolicy = legacy && label === 'source' && unsupported(config) ? null : policy(config);
       let existingDownload = false;
       if (label === 'source') {
@@ -229,20 +206,21 @@
       const adoptPrimary = temporaryPrimary.state === 'active' && same(temporaryPrimary.tuple, expected) && temporaryPrimary.preamble === v.preamble;
       const overlapsPrimary = Math.abs(saved[0] - v.frequency) <= (saved[1] + v.bandwidth) / 2000 + 0.001;
       return {saved, temporaryPrimary, savedSecondary, temporarySecondary, cross, schedules, secondaryFree, matchingSecondary, overlappingSecondary,
-        overlapsPrimary, adoptPrimary, adoptSecondary, powerSaving, otaPolicy, existingDownload};
+        overlapsPrimary, adoptPrimary, adoptSecondary, otaPolicy, existingDownload};
     }
     function sameSaved(a, b) {
       return same(a.saved, b.saved) && secondarySignature(a.savedSecondary) === secondarySignature(b.savedSecondary) && a.cross === b.cross &&
         JSON.stringify(a.schedules) === JSON.stringify(b.schedules);
     }
     function required(state) {
-      return state.powerSaving.enabled === 'off' && (state.otaPolicy === null || state.otaPolicy.hops === '0' &&
-        state.otaPolicy.autofetch === 'off' && state.otaPolicy.autoinstall === 'off');
+      return state.otaPolicy === null || state.otaPolicy.hops === '0' &&
+        state.otaPolicy.autofetch === 'off' && state.otaPolicy.autoinstall === 'off';
     }
     async function prerequisites(endpoint, read, before) {
       const changes = [];
-      if (before.powerSaving.enabled !== 'off') changes.push({setting: 'radio.rxps', before: before.powerSaving.enabled,
-        beforeRaw: before.powerSaving.raw, after: 'off', command: 'set radio.rxps off', restoreCommand: before.powerSaving.restoreCommand});
+      // RXPS is a user preference, not an OTA prerequisite. Radio2 suspends
+      // duty cycling itself; primary updates use the verified temporary link.
+      // Older firmware may expose RXPS differently or reject a live setter.
       for (const name of before.otaPolicy ? ['autofetch', 'autoinstall', 'hops'] : []) {
         const desired = name === 'hops' ? '0' : 'off';
         if (before.otaPolicy[name] !== desired) changes.push({setting: 'ota.' + name, before: before.otaPolicy[name], after: desired,
@@ -252,13 +230,23 @@
         const entry = {...change, endpoint, key: endpoint === 'source' ? link.sourceKey.toLowerCase() : key, confirmed: false};
         changedSettings.push(entry);
         progress('Changing saved ' + endpoint + ' setting ' + change.setting + ' to ' + change.after + '. Setup changes will be retained.');
-        try {
-          need(/^(?:>\s*)?OK(?:\s|$)/i.test(String(await read(change.command)).trim()), 'Saved prerequisite change was not acknowledged.');
-          const observed = change.setting === 'radio.rxps' ? rxps(await read('get radio.rxps')).enabled :
-            policy(await read('ota config'))[change.setting.slice(4)];
-          need(observed === change.after, 'Saved prerequisite change failed readback.');
-          entry.confirmed = true;
-        } catch (error) { entry.uncertain = true; throw error; }
+        // A lost or differently worded acknowledgement does not tell us
+        // whether a setter applied. Send it once, then resolve using GETs.
+        try { await read(change.command); } catch (_) { /* Read back below. */ }
+        for (let attempt = 0; attempt < 3 && !link.failure; attempt++) {
+          if (attempt) await wait(250);
+          try {
+            const observed = policy(await read('ota config'))[change.setting.slice(4)];
+            if (observed === change.after) { entry.confirmed = true; break; }
+          } catch (_) { /* Only read-only verification may be retried. */ }
+        }
+        if (!entry.confirmed) {
+          entry.uncertain = true;
+          throw Error('Could not verify ' + (endpoint === 'source' ? 'USB source' : 'target') + ' ' + change.setting +
+            '=' + change.after + ' using ota config. ' + (link.failure ? 'Reconnect the USB source, then select Prepare update.' :
+              'Select Prepare update to recheck the current settings.'));
+        }
+        progress((endpoint === 'source' ? 'USB source' : 'Target') + ' ' + change.setting + '=' + change.after + ' verified.');
       }
     }
     async function verifyActive(read, profile, label) {
@@ -330,7 +318,7 @@
       await link.closeRadioSession();
       await prerequisites('source', local, source);
       await link.verifyPeer(key, password); keyProof(await remote('get public.key'), key);
-      need(required({powerSaving: rxps(await remote('get radio.rxps')), otaPolicy: policy(await remote('ota config'))}), 'Target prerequisite settings changed before radio setup.');
+      need(required({otaPolicy: policy(await remote('ota config'))}), 'Target prerequisite settings changed before radio setup.');
       // The ordinary commands are deliberately sent once. A lost reply never
       // authorizes a second command, another profile or guessed restoration.
       if (!adoptTarget) {
@@ -404,12 +392,12 @@
         adoptedSource: adoptSource, adoptedTarget: adoptTarget};
     } catch (error) {
       const partial = targetAttempted || sourceAttempted ? ' Temporary setup may be partially active; check both radios before any further write. No write was retried or automatically restored.' : '';
-      const policies = changedSettings.length ? ' Saved prerequisite changes may remain applied; review the recorded changes before proceeding.' : '';
+      const policies = changedSettings.some(change => !change.confirmed) ? ' Unverified setting changes are listed in the diagnostic log.' : '';
       const result = Error((error?.message || 'Temporary channel setup failed.') + partial + policies);
       if (error.sourceUpdateRequired) result.sourceUpdateRequired = error.sourceUpdateRequired;
       result.changedSettings = changedSettings;
       result.targetSetupAttempted = targetAttempted; result.sourceSetupAttempted = sourceAttempted; throw result;
     }
   }
-  return {recommend, commands, prepare, readTemporary, formatRadio, rxps, primary, same, requiredReply};
+  return {recommend, commands, prepare, readTemporary, formatRadio, primary, same, requiredReply};
 });

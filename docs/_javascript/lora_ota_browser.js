@@ -62,13 +62,14 @@
       showAvailability(targetAvailability);invalidate();
       $('firmware-catalog-status').textContent=targetAvailability.message;
     }
-    if(/temporary radio|temporary settings|update channel|saved primary|RX power saving/i.test(error?.message || '')) {
+    if(/temporary radio|temporary settings|update channel|saved primary/i.test(error?.message || '')) {
       $('radio-setup-status').textContent=error.message;
       openDetails($('radio-setup-panel'));
       if(error?.manualRadioCommand)$('radio-commands').textContent='On the remote target first, then on the USB source:\n'+error.manualRadioCommand;
       openDetails($('radio-commands'));
       $('radio-setup-panel').scrollIntoView?.({block:'nearest',behavior:'smooth'});
     }
+    if(error?.changedSettings?.some(change=>!change.confirmed))openDetails($('diagnostics'));
     log('Error: ' + (error?.message || error));
     showSourceUpdate(error?.sourceUpdateRequired);
   };
@@ -728,7 +729,7 @@
       if(standard) {
         refreshPreservedMessages();
       }
-      add(updatesBlocked() ? 'Firmware selection and updates are disabled until LoRa update support is confirmed.' : verified ? 'Firmware compatibility: run the package check before transferring.' : 'Firmware compatibility: not checked because the target identity was not fully verified.');
+      add(updatesBlocked() ? 'Firmware selection and updates are disabled until LoRa update support is confirmed.' : verified ? 'Next: select firmware, then Prepare update. A successful check enables Update remote firmware.' : 'Firmware compatibility: not checked because the target identity was not fully verified.');
       finishInvestigationProgress(stopped ? 'Investigation stopped.' : updatesBlocked() ? (targetAvailability?.state==='unknown' ? 'LoRa update support not confirmed.' : 'LoRa updates unavailable.') : failed ? 'Investigation stopped with an error.' : complete ? 'Investigation finished.' : 'Investigation finished with incomplete checks.');
       $('investigation-stop').hidden=true;
       investigationActive=false;

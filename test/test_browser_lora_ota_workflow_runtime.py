@@ -160,14 +160,36 @@ class BrowserLoraOtaWorkflowRuntime(unittest.TestCase):
             ['remote', 'tempradio 910.525,62.5,7,5,120,128'], ['local', 'tempradio 910.525,62.5,7,5,120,128']])
         self.assertFalse(any(f[0] == 52 for f in result['frames']))
 
-    def test_rxps_on_with_matching_manual_channels_is_disabled_and_update_continues(self):
+    def test_rxps_on_with_matching_manual_channels_stays_on_and_update_completes(self):
         result = run_harness(legacy_setup_harness(rxps_on=True, matching=True), timeout=90)
         self.assertNotIn('error', result, result)
         self.assertTrue(result['installed']); self.assertTrue(result['otaData'])
-        self.assertEqual((result['sourceRxps'], result['targetRxps'], result['targetHops']), ('off', 'off', 0))
+        self.assertEqual((result['sourceRxps'], result['targetRxps'], result['targetHops']), ('on', 'on', 0))
         for endpoint in ('remote', 'local'):
-            self.assertEqual(result['timeline'].count([endpoint, 'set radio.rxps off']), 1)
+            self.assertEqual(result['timeline'].count([endpoint, 'set radio.rxps off']), 0)
         self.assertFalse(any(r[1].startswith('tempradio ') for r in result['timeline']))
+
+    def test_reported_old_companion_rxps_on_and_target_off_completes_without_rxps_setter(self):
+        script = legacy_setup_harness(rxps_on=True)
+        script = script.replace('targetRxps=sourceRxps,targetHops=true?3:0', "targetRxps='off',targetHops=0")
+        script = script.replace("sourceRxps='off';timeline.push(['local',text]);value='OK';",
+                                "throw Error('Legacy Companion rejects RXPS setter');")
+        result = run_harness(script, timeout=90)
+        self.assertNotIn('error', result, result)
+        self.assertTrue(result['installed']); self.assertTrue(result['otaData'])
+        self.assertEqual((result['sourceRxps'], result['targetRxps']), ('on', 'off'))
+        self.assertFalse(any('radio.rxps' in row[1] for row in result['timeline']))
+        self.assertEqual(result['cmds'].count('ota install'), 1)
+
+    def test_different_policy_acknowledgement_is_verified_and_update_completes(self):
+        script = legacy_setup_harness(rxps_on=True, matching=True)
+        script = script.replace("targetHops=0;timeline.push(['remote',text]);reply='OK';",
+                                "targetHops=0;timeline.push(['remote',text]);reply='hops=0 (persisted)';")
+        result = run_harness(script, timeout=90)
+        self.assertNotIn('error', result, result)
+        self.assertTrue(result['installed']); self.assertTrue(result['otaData'])
+        self.assertEqual(result['timeline'].count(['remote', 'ota config hops 0']), 1)
+        self.assertEqual((result['sourceRxps'], result['targetRxps']), ('on', 'on'))
 
     def test_repeater_source_follows_old_and_new_targets_back_to_saved_channel(self):
         for old_target in (False, True):

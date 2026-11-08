@@ -85,8 +85,8 @@ test('package-independent guarded Companion preflight accepts active off-primary
   const f=radioPreflight();const result=await f.session.inspectRadios();
   assert.deepEqual(result,{source:[906.525,250,5,5],target:[906.525,250,5,5],savedSource:[910.525,62.5,7,5],sourceReadback:'active'});
   assert.deepEqual(f.session.tempRadio,[906.525,250,5,5]);
-  assert.deepEqual(f.calls,[['source','get tempradio'],['source','get radio'],['source','get radio.rxps'],['source','ota config'],
-    ['target','get tempradio'],['target','get radio.rxps'],['target','ota config']]);
+  assert.deepEqual(f.calls,[['source','get tempradio'],['source','get radio'],['source','ota config'],
+    ['target','get tempradio'],['target','ota config']]);
 });
 test('off-primary allowance requires guarded raw Companion and target matching still fails closed', async () => {
   for(const link of [{browserRawSource:false,otaSupported:true},{browserRawSource:true,otaSupported:false},
@@ -115,8 +115,8 @@ test('radio-only preflight labels inactive source and target and bounds unexpect
     assert.match(error.message,/target: Cannot read active temporary radio settings/);
     assert(error.message.length < 200);assert(!/[\r\n\0]/.test(error.message));return true;
   });
-  for(const options of [{sourceRxps:'> on'},{targetRxps:'> on'},{policy:'autofetch=on autoinstall=off hops=0'}]) {
-    f=radioPreflight(options);await assert.rejects(f.session.inspectRadios(),/RX power saving.*off|automatic OTA fetch/i);
+  for(const options of [{policy:'autofetch=on autoinstall=off hops=0'}]) {
+    f=radioPreflight(options);await assert.rejects(f.session.inspectRadios(),/automatic OTA fetch/i);
   }
 });
 test('radio-only preflight preserves legacy cached-source fallback and explicit disclosure', async () => {
@@ -124,7 +124,7 @@ test('radio-only preflight preserves legacy cached-source fallback and explicit 
   const result=await f.session.inspectRadios();assert.equal(result.sourceReadback,'saved-only');
   assert.deepEqual(result.source,[906.525,250,5,5]);
   assert.equal(f.calls.filter(([endpoint])=>endpoint==='source').length,1);
-  assert(f.progress.some(text=>/Active temporary settings, RX power saving and preamble cannot be verified/.test(text)));
+  assert(f.progress.some(text=>/Active temporary settings and preamble cannot be verified/.test(text)));
   assert(f.calls.some(([endpoint,command])=>endpoint==='target'&&command==='ota config'));
   const invalid=radioPreflight({link:{localCliSupported:false,otaSupported:false},cached:[NaN,250,5,5]});
   await assert.rejects(invalid.session.inspectRadios(),/USB Companion saved radio settings/);
@@ -372,23 +372,25 @@ test('older raw Companion uses saved SELF_INFO and discloses unverified source s
   await assert.rejects(session.inspect(),/temporary radio window is required on the target/);
   targetTemp=radio;
   assert.equal((await session.inspect()).download,'idle');
-  assert(progress.some(s=>/Active temporary settings, RX power saving and preamble cannot be verified/.test(s)));
+  assert(progress.some(s=>/Active temporary settings and preamble cannot be verified/.test(s)));
   assert(calls.includes('ota config'));
 });
 
-test('older named RXPS off does not ask the user to disable it again', async () => {
-  for (const sourceRxps of ['radio.rxps off,level=6,preamble=16,rx=41704,sleep=11882', '> radio.rxps off,1000,2000']) {
-    const f = radioPreflight({sourceRxps});
-    assert.deepEqual((await f.session.inspectRadios()).source, [906.525, 250, 5, 5]);
+test('RXPS on or unavailable never blocks channel verification or requests a setting change', async () => {
+  for (const rxps of ['radio.rxps off,level=6,preamble=16,rx=41704,sleep=11882', 'on,65625,60000', 'unknown config: radio.rxps']) {
+    for (const secondary of [false, true]) {
+      const f = radioPreflight({sourceRxps: rxps, targetRxps: rxps, ...(secondary ? {
+        sourceTemp: 'TempRadio inactive', targetTemp: '> off',
+        link: {otaRadioProfile: 1, otaTargetProfile: 1, supportsOtaRadio2: true}
+      } : {})});
+      const result = await f.session.inspectRadios(); assert.deepEqual(result.source, result.target);
+      assert.ok(!f.calls.some(([, command]) => /radio.rxps/.test(command)));
+    }
   }
-  const on = radioPreflight({sourceRxps: 'radio.rxps on,1000,2000'});
-  await assert.rejects(on.session.inspectRadios(), error => error.radioSetupRequired === true);
-  const unknown = radioPreflight({sourceRxps: 'radio.rxps unknown'});
-  await assert.rejects(unknown.session.inspectRadios(), error => !error.radioSetupRequired);
 });
 
 test('missing framed CLI getters on older Companions retain the source-update hint', async () => {
-  for (const changes of [{sourceTemp:'Unknown command'}, {sourceRxps:'unknown config: radio.rxps'}]) {
+  for (const changes of [{sourceTemp:'Unknown command'}]) {
     const f = radioPreflight(changes);
     await assert.rejects(f.session.inspectRadios(), error => error.sourceUpdateRequired === 'companion');
   }
