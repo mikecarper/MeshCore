@@ -1,5 +1,11 @@
 #include "Button.h"
 
+#if defined(NRF52_PLATFORM)
+namespace {
+void wakeOriginalButtonPoller() {}
+}
+#endif
+
 Button::Button(uint8_t pin, bool activeState) 
     : _pin(pin), _activeState(activeState), _isAnalog(false), _analogThreshold(20) {
     _currentState = false;  // Initialize as not pressed
@@ -15,6 +21,27 @@ Button::Button(uint8_t pin, bool activeState, bool isAnalog, uint16_t analogThre
 void Button::begin() {
     _currentState = readButton();
     _lastState = _currentState;
+}
+
+void Button::resume() {
+#ifdef MESH_BUTTON_AUDIO_HIL
+    _hil_active = false;
+    _hil_down = false;
+    _hil_remaining = 0;
+#endif
+    pinMode(_pin, _isAnalog ? INPUT : (_activeState == LOW ? INPUT_PULLUP : INPUT_PULLDOWN));
+#if defined(NRF52_PLATFORM)
+    if (!_isAnalog) attachInterrupt(uint32_t(_pin), wakeOriginalButtonPoller, CHANGE);
+#endif
+    _currentState = readButton();
+    _lastState = _currentState;
+    _ignoreUntilRelease = _currentState;
+    _state = IDLE;
+    _clickCount = 0;
+    _lastEvent = NONE;
+    _stateChangeTime = millis();
+    _lastReadTime = _stateChangeTime;
+    _pressTime = _releaseTime = 0;
 }
 
 void Button::update() {
@@ -37,11 +64,16 @@ void Button::update() {
     if ((now - _stateChangeTime) > BUTTON_DEBOUNCE_TIME_MS) {
         if (newState != _currentState) {
             _currentState = newState;
-            handleStateChange();
+            if (!_ignoreUntilRelease) handleStateChange();
         }
     }
     
     _lastState = newState;
+
+    if (_ignoreUntilRelease) {
+        if (!_currentState) _ignoreUntilRelease = false;
+        return;
+    }
     
     // Handle multi-click timeout
     if (_state == WAITING_FOR_MULTI_CLICK && (now - _releaseTime) > BUTTON_CLICK_TIMEOUT_MS) {

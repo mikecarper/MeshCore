@@ -8,6 +8,9 @@ For side-by-side Companion and infrastructure commands, see
 [feature switches by role](role_feature_switches.md). MQTT and logging controls
 differ between these roles.
 
+For optional encoder, buzzer and notification/GPS/Bluetooth LED assignments,
+see [rotary controls and external notification outputs](rotary_input.md).
+
 Use the exact `companion_radio_full` image for your board. Full includes its
 supported transports and MOTA sending in one firmware; ordinary settings do
 not require rebuilding it. USB remains the normal way to update the Companion

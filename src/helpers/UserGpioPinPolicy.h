@@ -20,7 +20,50 @@
 // the firmware. Boot-selectable radio slots/families reserve their pin union.
 namespace UserGpioPinPolicy {
 
-inline bool isFirmwareReserved(uint8_t pin) {
+inline bool samePhysicalPin(uint8_t first, uint8_t second) {
+#if defined(NRF52_PLATFORM) && defined(PINS_COUNT)
+  // Arduino aliases can name the same nRF pad. Claiming an alias must never
+  // bypass a reservation made using the other Arduino number.
+  return first < PINS_COUNT && second < PINS_COUNT
+      && g_ADigitalPinMap[first] < 48
+      && g_ADigitalPinMap[first] == g_ADigitalPinMap[second];
+#elif defined(STM32_PLATFORM) && defined(NUM_DIGITAL_PINS)
+  return first < NUM_DIGITAL_PINS && second < NUM_DIGITAL_PINS
+      && digitalPinToPinName(first) != NC
+      && digitalPinToPinName(first) == digitalPinToPinName(second);
+#else
+  return first == second;
+#endif
+}
+
+inline bool isFirmwareReserved(uint8_t pin, bool allow_user_button = false) {
+#if defined(M5STACK_CARDPUTER_ADV)
+  // Cardputer-Adv's built-in IR transmitter is connected even when its driver
+  // is not compiled. Its display/audio/I2C aliases are listed below too.
+  // https://docs.m5stack.com/en/core/Cardputer-Adv (PinMap)
+  if (pin == 44) return true;
+#endif
+#if defined(LILYGO_TDECK)
+  // Audio/microphone, trackball, touch/keyboard IRQs and microSD stay wired
+  // even when their optional UI/audio drivers are absent. Vendor pin map:
+  // github.com/Xinyuan-LilyGO/T-Deck/blob/master/examples/I2SPlay/utilities.h
+  if (pin == 1 || pin == 2 || pin == 3 || pin == 5 || pin == 6 || pin == 7
+      || pin == 14 || pin == 15 || pin == 16 || pin == 21 || pin == 39
+      || pin == 46 || pin == 47 || pin == 48) return true;
+#endif
+#if defined(MESH_SENSECAP_INDICATOR)
+  // SCIndicatorDisplay uses numeric RGB data/timing and serial-panel pins;
+  // the onboard RP2040 font service also owns UART19/20. These remain wired
+  // in a headless role and must not become expansion GPIOs.
+  if (pin <= 21 || pin == 38 || pin == 39 || pin == 40 || pin == 41
+      || pin == 42 || pin == 45 || pin == 48) return true;
+#endif
+#if defined(SEEED_WIO_TRACKER_L2)
+  // WioTrackerL2Display's quad-SPI panel and Sound.cpp's ES8311 I2S bus use
+  // numeric pins rather than the common display/audio target aliases.
+  if ((pin >= 10 && pin <= 12) || pin == 16 || (pin >= 38 && pin <= 42)
+      || pin == 46) return true;
+#endif
 #if defined(OTA_RAK15002_SD_STORE)
   // The exact RAK15002 recipe claims these WisBlock nets even when no card
   // is fitted: user GPIO must not defeat card detection or a later SD/NOR/
@@ -35,7 +78,7 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #endif
   // RadioLib 7 represents its disconnected-pin sentinel as unsigned
   // 0xFFFFFFFF. Use a signed type wide enough for that value as well as the
-  // board definitions that use -1, then reject both forms with the 0..63
+  // board definitions that use -1, then reject both forms with the byte
   // range check below. A 32-bit signed initializer is a narrowing error under
   // the GCC 14 toolchain used by Arduino-ESP32 3.x.
   static const int64_t reserved[] = {
@@ -59,6 +102,12 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #endif
 #ifdef P_LORA_DIO_5
     P_LORA_DIO_5,
+#endif
+#ifdef LORA_LR1121_DIO_1
+    LORA_LR1121_DIO_1,
+#endif
+#ifdef LORA_SX1262_DIO_1
+    LORA_SX1262_DIO_1,
 #endif
 #ifdef P_LORA_NSS
     P_LORA_NSS,
@@ -110,6 +159,9 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #endif
 #ifdef SX126X_POWER_EN
     SX126X_POWER_EN,
+#endif
+#ifdef SX126X_ANT_SW
+    SX126X_ANT_SW,
 #endif
 #ifdef SX126X_RXEN
     SX126X_RXEN,
@@ -176,11 +228,23 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #ifdef PIN_BOARD_SCL1
     PIN_BOARD_SCL1,
 #endif
+#ifdef PIN_I2C_INTERNAL_SDA
+    PIN_I2C_INTERNAL_SDA,
+#endif
+#ifdef PIN_I2C_INTERNAL_SCL
+    PIN_I2C_INTERNAL_SCL,
+#endif
 #ifdef PIN_WIRE_SDA
     PIN_WIRE_SDA,
 #endif
 #ifdef PIN_WIRE_SCL
     PIN_WIRE_SCL,
+#endif
+#ifdef PIN_WIRE0_SDA
+    PIN_WIRE0_SDA,
+#endif
+#ifdef PIN_WIRE0_SCL
+    PIN_WIRE0_SCL,
 #endif
 #if ENV_HAS_SECONDARY_I2C
     ENV_PIN_SDA,
@@ -251,6 +315,9 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #ifdef GPS_RESET
     GPS_RESET,
 #endif
+#ifdef GPS_RESETB
+    GPS_RESETB,
+#endif
 #ifdef GPS_PPS
     GPS_PPS,
 #endif
@@ -300,48 +367,30 @@ inline bool isFirmwareReserved(uint8_t pin) {
     SERIAL_TX,
 #endif
 
-    // Buttons, LEDs, displays, touch, buzzers, and vibration motors.
-#ifdef PIN_USER_BTN
-    PIN_USER_BTN,
+    // Rotary channels, LEDs, displays, touch, buzzers, and vibration motors.
+#ifdef PIN_BUTTON1_A
+    PIN_BUTTON1_A,
 #endif
-#ifdef PIN_USER_BTN_ANA
-    PIN_USER_BTN_ANA,
+#ifdef PIN_BUTTON1_B
+    PIN_BUTTON1_B,
 #endif
-#ifdef PIN_BUTTON1
-    PIN_BUTTON1,
+#ifdef ENCODER_LEFT
+    ENCODER_LEFT,
 #endif
-#ifdef PIN_BUTTON2
-    PIN_BUTTON2,
-#endif
-#ifdef PIN_BUTTON3
-    PIN_BUTTON3,
-#endif
-#ifdef PIN_BUTTON4
-    PIN_BUTTON4,
-#endif
-#ifdef PIN_BUTTON5
-    PIN_BUTTON5,
-#endif
-#ifdef PIN_BUTTON6
-    PIN_BUTTON6,
-#endif
-#ifdef BUTTON_PIN
-    BUTTON_PIN,
-#endif
-#ifdef BUTTON_PIN2
-    BUTTON_PIN2,
-#endif
-#ifdef PIN_BACK_BTN
-    PIN_BACK_BTN,
-#endif
-#ifdef PIN_SIDE_BUTTON
-    PIN_SIDE_BUTTON,
-#endif
-#ifdef PIN_PWRBTN
-    PIN_PWRBTN,
+#ifdef ENCODER_RIGHT
+    ENCODER_RIGHT,
 #endif
 #ifdef PIN_STATUS_LED
     PIN_STATUS_LED,
+#endif
+#ifdef PIN_STATUS_LED_R
+    PIN_STATUS_LED_R,
+#endif
+#ifdef PIN_STATUS_LED_G
+    PIN_STATUS_LED_G,
+#endif
+#ifdef PIN_STATUS_LED_B
+    PIN_STATUS_LED_B,
 #endif
 #ifdef PIN_LED
     PIN_LED,
@@ -357,6 +406,24 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #endif
 #ifdef PIN_LED4
     PIN_LED4,
+#endif
+#ifdef PIN_LED_R
+    PIN_LED_R,
+#endif
+#ifdef PIN_LED_G
+    PIN_LED_G,
+#endif
+#ifdef PIN_LED_B
+    PIN_LED_B,
+#endif
+#ifdef PIN_LED_RED
+    PIN_LED_RED,
+#endif
+#ifdef PIN_LED_GREEN
+    PIN_LED_GREEN,
+#endif
+#ifdef PIN_LED_BLUE
+    PIN_LED_BLUE,
 #endif
 #ifdef LED_BUILTIN
     LED_BUILTIN,
@@ -379,6 +446,21 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #ifdef LED_WHITE
     LED_WHITE,
 #endif
+#ifdef LED_STATUS
+    LED_STATUS,
+#endif
+#ifdef LED_BAT1
+    LED_BAT1,
+#endif
+#ifdef LED_BAT2
+    LED_BAT2,
+#endif
+#ifdef LED_BAT3
+    LED_BAT3,
+#endif
+#ifdef LED_BAT4
+    LED_BAT4,
+#endif
 #ifdef NEOPIXEL_DATA
     NEOPIXEL_DATA,
 #endif
@@ -393,6 +475,12 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #endif
 #ifdef PIN_BUZZER_EN
     PIN_BUZZER_EN,
+#endif
+#ifdef PIN_BUZZER_VOLTAGE_MULTIPLIER_1
+    PIN_BUZZER_VOLTAGE_MULTIPLIER_1,
+#endif
+#ifdef PIN_BUZZER_VOLTAGE_MULTIPLIER_2
+    PIN_BUZZER_VOLTAGE_MULTIPLIER_2,
 #endif
 #ifdef BUZZER_PIN
     BUZZER_PIN,
@@ -418,6 +506,12 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #ifdef PIN_TFT_SCL
     PIN_TFT_SCL,
 #endif
+#ifdef PIN_TFT_SCK
+    PIN_TFT_SCK,
+#endif
+#ifdef PIN_TFT_MOSI
+    PIN_TFT_MOSI,
+#endif
 #ifdef PIN_TFT_SDA
     PIN_TFT_SDA,
 #endif
@@ -435,6 +529,21 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #endif
 #ifdef PIN_TFT_EN
     PIN_TFT_EN,
+#endif
+#ifdef PIN_AUDIO_SCLK
+    PIN_AUDIO_SCLK,
+#endif
+#ifdef PIN_AUDIO_ASDOUT
+    PIN_AUDIO_ASDOUT,
+#endif
+#ifdef PIN_AUDIO_LRCK
+    PIN_AUDIO_LRCK,
+#endif
+#ifdef PIN_AUDIO_DSDIN
+    PIN_AUDIO_DSDIN,
+#endif
+#ifdef PIN_KEYBOARD_INT
+    PIN_KEYBOARD_INT,
 #endif
 #ifdef ST7789_CS
     ST7789_CS,
@@ -462,6 +571,9 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #endif
 #ifdef DISP_POWER
     DISP_POWER,
+#endif
+#ifdef DISP_EN
+    DISP_EN,
 #endif
 #ifdef DISP_RST
     DISP_RST,
@@ -516,6 +628,24 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #ifdef PIN_PWR_EN
     PIN_PWR_EN,
 #endif
+#ifdef PIN_SOFT_SHUTDOWN
+    PIN_SOFT_SHUTDOWN,
+#endif
+#ifdef PIN_DCDC_EN_MCU_HOLD
+    PIN_DCDC_EN_MCU_HOLD,
+#endif
+#ifdef RT9080_EN
+    RT9080_EN,
+#endif
+#ifdef I2C_POWER
+    I2C_POWER,
+#endif
+#ifdef SCREEN_12V_ENABLE
+    SCREEN_12V_ENABLE,
+#endif
+#ifdef PIN_DRV_EN
+    PIN_DRV_EN,
+#endif
 #ifdef PIN_BAT_CTL
     PIN_BAT_CTL,
 #endif
@@ -525,14 +655,50 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #ifdef PIN_BAT_CHG
     PIN_BAT_CHG,
 #endif
+#ifdef PIN_BATTERY_CHARGING
+    PIN_BATTERY_CHARGING,
+#endif
+#ifdef PIN_CHARGER_FAULT
+    PIN_CHARGER_FAULT,
+#endif
+#ifdef EXT_CHRG_DETECT
+    EXT_CHRG_DETECT,
+#endif
+#ifdef EXT_PWR_DETECT
+    EXT_PWR_DETECT,
+#endif
 #ifdef PIN_VBAT_READ
     PIN_VBAT_READ,
+#endif
+#ifdef PIN_VBAT
+    PIN_VBAT,
+#endif
+#ifdef VBAT_ENABLE
+    VBAT_ENABLE,
+#endif
+#ifdef PIN_CHARGING_CURRENT
+    PIN_CHARGING_CURRENT,
+#endif
+#ifdef BAT_NOT_CHARGING
+    BAT_NOT_CHARGING,
+#endif
+#ifdef ADC_EN
+    ADC_EN,
 #endif
 #ifdef PIN_VBAT_MEAS_EN
     PIN_VBAT_MEAS_EN,
 #endif
 #ifdef PIN_ADC_CTRL
     PIN_ADC_CTRL,
+#endif
+#ifdef PIN_BAT_ADC_EN
+    PIN_BAT_ADC_EN,
+#endif
+#ifdef BATTERY_MEASUREMENT_CONTROL
+    BATTERY_MEASUREMENT_CONTROL,
+#endif
+#ifdef NTC_PIN
+    NTC_PIN,
 #endif
 #ifdef BATTERY_PIN
     BATTERY_PIN,
@@ -548,6 +714,51 @@ inline bool isFirmwareReserved(uint8_t pin) {
 #endif
 #ifdef SDCARD_CS
     SDCARD_CS,
+#endif
+#ifdef PIN_SD_CS
+    PIN_SD_CS,
+#endif
+    // Board flash remains attached even when an optional storage backend is
+    // disabled. Never drive its data or chip-select lines as user outputs.
+#if !defined(RAK_3401) && !defined(RAK_4631)
+    // These WisBlock variants define hypothetical QSPI nets despite having
+    // no onboard flash. Their actual configured OTA storage is reserved below.
+#ifdef PIN_QSPI_SCK
+    PIN_QSPI_SCK,
+#endif
+#ifdef PIN_QSPI_CS
+    PIN_QSPI_CS,
+#endif
+#ifdef PIN_QSPI_IO0
+    PIN_QSPI_IO0,
+#endif
+#ifdef PIN_QSPI_IO1
+    PIN_QSPI_IO1,
+#endif
+#ifdef PIN_QSPI_IO2
+    PIN_QSPI_IO2,
+#endif
+#ifdef PIN_QSPI_IO3
+    PIN_QSPI_IO3,
+#endif
+#endif
+#ifdef SS_FLASH
+    SS_FLASH,
+#endif
+#ifdef PIN_TXCO
+    PIN_TXCO,
+#endif
+#ifdef PIN_SPI_MISO
+    PIN_SPI_MISO,
+#endif
+#ifdef PIN_SPI_MOSI
+    PIN_SPI_MOSI,
+#endif
+#ifdef PIN_SPI_SCK
+    PIN_SPI_SCK,
+#endif
+#ifdef PIN_SPI_NSS
+    PIN_SPI_NSS,
 #endif
 #if defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
     // The raw NOR backend owns these configured pads even while its bus is
@@ -660,7 +871,73 @@ inline bool isFirmwareReserved(uint8_t pin) {
   };
 
   for (size_t i = 0; i < sizeof(reserved) / sizeof(reserved[0]); i++) {
-    if (reserved[i] >= 0 && reserved[i] <= 63 && pin == (uint8_t)reserved[i]) return true;
+    if (reserved[i] >= 0 && reserved[i] < UINT8_MAX
+        && samePhysicalPin(pin, (uint8_t)reserved[i])) return true;
+  }
+  // Reusing the existing user button as an encoder's press switch is allowed
+  // only for its exact Arduino pin number. All nonbutton hardware above must
+  // still be checked, even when a target accidentally aliases those signals.
+#ifdef PIN_USER_BTN
+  const int64_t user_button = PIN_USER_BTN;
+  if (allow_user_button && user_button >= 0 && user_button < UINT8_MAX
+      && pin == static_cast<uint8_t>(user_button)) return false;
+#else
+  (void)allow_user_button;
+#endif
+  static const int64_t buttons[] = {
+    -1,
+#ifdef PIN_USER_BTN
+    PIN_USER_BTN,
+#endif
+#ifdef PIN_USER_BTN_ANA
+    PIN_USER_BTN_ANA,
+#endif
+#ifdef PIN_BUTTON1
+    PIN_BUTTON1,
+#endif
+#ifdef PIN_BUTTON2
+    PIN_BUTTON2,
+#endif
+#ifdef PIN_BUTTON3
+    PIN_BUTTON3,
+#endif
+#ifdef PIN_BUTTON4
+    PIN_BUTTON4,
+#endif
+#ifdef PIN_BUTTON5
+    PIN_BUTTON5,
+#endif
+#ifdef PIN_BUTTON6
+    PIN_BUTTON6,
+#endif
+#ifdef ENCODER_PRESS
+    ENCODER_PRESS,
+#endif
+#ifdef BUTTON_PIN
+    BUTTON_PIN,
+#endif
+#ifdef BUTTON_PIN2
+    BUTTON_PIN2,
+#endif
+#ifdef PIN_BACK_BTN
+    PIN_BACK_BTN,
+#endif
+#ifdef PIN_SIDE_BUTTON
+    PIN_SIDE_BUTTON,
+#endif
+#ifdef PIN_PWRBTN
+    PIN_PWRBTN,
+#endif
+#ifdef PIN_TOP_BUTTON
+    PIN_TOP_BUTTON,
+#endif
+#ifdef TTP223_KEY
+    TTP223_KEY,
+#endif
+  };
+  for (size_t i = 0; i < sizeof(buttons) / sizeof(buttons[0]); ++i) {
+    if (buttons[i] >= 0 && buttons[i] < UINT8_MAX
+        && samePhysicalPin(pin, static_cast<uint8_t>(buttons[i]))) return true;
   }
   return false;
 }

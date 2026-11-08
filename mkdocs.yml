@@ -58,6 +58,7 @@ nav:
           - role_feature_switches.md
           - full_companion_features.md
           - companion_radio_full.md
+          - rotary_input.md
           - full_companion_usb_switcher.md
           - companion_offline_queue.md
           - halo_keymind_settings.md

@@ -263,7 +263,27 @@ public:
   // Returns true only for physical MCU GPIOs that are safe for the user to
   // control in this build. Board implementations must reject pins already
   // claimed by firmware or internal hardware.
+#if defined(RP2040_PLATFORM) || defined(STM32_PLATFORM)
+  virtual bool isUserGpioAvailable(uint8_t pin) const;
+  virtual bool isPeripheralOutputAvailable(uint8_t pin) const;
+  virtual bool isPeripheralPinAvailable(uint8_t pin, bool pullup = false) const;
+  virtual bool isPeripheralButtonAvailable(uint8_t pin, bool pullup = true) const;
+  virtual uint16_t peripheralPinIdentity(uint8_t pin) const;
+#else
   virtual bool isUserGpioAvailable(uint8_t pin) const { return false; }
+  virtual bool isPeripheralOutputAvailable(uint8_t pin) const { return isUserGpioAvailable(pin); }
+  // Input and output capabilities differ on some MCUs. Platform boards
+  // override this query for custom controls with optional internal pull-ups.
+  virtual bool isPeripheralPinAvailable(uint8_t pin, bool pullup = false) const {
+    (void)pullup;
+    return isUserGpioAvailable(pin);
+  }
+  virtual bool isPeripheralButtonAvailable(uint8_t pin, bool pullup = true) const {
+    return isPeripheralPinAvailable(pin, pullup);
+  }
+  // Arduino aliases of one physical pad must share one runtime claim.
+  virtual uint16_t peripheralPinIdentity(uint8_t pin) const { return pin; }
+#endif
   virtual uint8_t getStartupReason() const = 0;
   virtual bool getBootloaderVersion(char* version, size_t max_len) { return false; }
   virtual bool startOTAUpdate(const char* id, char reply[], bool force_ap = false) { return false; }   // not supported

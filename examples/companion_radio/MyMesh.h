@@ -48,6 +48,7 @@ namespace mesh { class BeaconManager; }
 #include <helpers/MeshtextDelivery.h>
 #endif
 #include <helpers/CompanionNotificationPolicy.h>
+#include <helpers/CustomPeripheralConfig.h>
 #include "NodePrefs.h"
 
 #if defined(ESP32_PLATFORM) && defined(WIFI_SSID) && !defined(WEBCONFIG_DISABLED)
@@ -331,6 +332,11 @@ public:
   void melody(const char* text) override;
   void screen(int8_t mode) override;
   bool save(const mesh::notify::Settings& settings) override;
+#if MESH_CUSTOM_PERIPHERALS
+  bool notificationGpioMask(const mesh::notify::Settings& settings, uint64_t& mask) const;
+  void releaseNotificationGpio(uint64_t mask);
+  bool claimNotificationGpio();
+#endif
   bool notificationButton() { return _notifications.button(); }
   void setNotificationOutputMute(mesh::notify::Output output, bool muted);
   #else
@@ -339,6 +345,9 @@ public:
   #endif
   bool handleNotificationCommand(const char* command, char* reply, size_t size);
   bool handleAlertCommand(const char* command, char* reply, size_t size);
+#if MESH_CUSTOM_PERIPHERALS
+  void notifyCustomMessage(bool channel);
+#endif
 #if defined(WIO_E5_MINI_HEADLESS_COMPANION_UI)
   bool handleCompactLedCommand(const char* command, char* reply, size_t size);
 #endif
@@ -726,8 +735,8 @@ private:
     preference = previous;
     return false;
   }
-  bool applyAndSaveBLEPin(uint32_t pin);
 #if defined(BLE_PIN_CODE)
+  bool applyAndSaveBLEPin(uint32_t pin);
   void servicePendingBLEPinRestore();
 #endif
   bool saveAdvertName(const char* name);
@@ -987,8 +996,8 @@ private:
   uint32_t _iter_table_revision;
   uint32_t _most_recent_lastmod;
   uint32_t _active_ble_pin;
-  bool _ble_pin_apply_failed = false;
 #if defined(BLE_PIN_CODE)
+  bool _ble_pin_apply_failed = false;
   bool _ble_random_default = false;
   bool _ble_pin_restore_pending = false;
   uint32_t _ble_pin_restore = 0;

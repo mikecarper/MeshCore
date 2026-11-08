@@ -4082,6 +4082,36 @@ the X1 is not opted in without that hardware confirmation.
 
 ---
 
+#### Configure a rotary encoder or external alert outputs
+
+Full Companion on ESP32, nRF52 and RP2040 includes optional custom peripheral
+assignments. Other Companion profiles require an explicit custom build.
+Rotary navigation also requires a supported display UI.
+
+- `get rotary` and `get rotary.pins.available`
+- `set rotary.pins <CLK>,<DT>[,<SW>]` (Arduino pins; omit SW or use `-1`)
+- `set rotary on|off`
+- `set rotary.steps <1..255>` (default `4`)
+- `set rotary.reverse on|off`
+- `set rotary.pullup on|off`
+- `get peripherals`
+- `get peripheral.pins.available`
+- `get peripheral.buzzer` / `set peripheral.buzzer <pin|off>`
+- `get peripheral.led.notify` / `set peripheral.led.notify <pin|off>`
+- `get peripheral.led.gps` / `set peripheral.led.gps <pin|off>`
+- `get peripheral.led.ble` / `set peripheral.led.ble <pin|off>`
+
+Rotary pins, steps, reverse and pull-up settings also have individual getters.
+Assignments are saved and applied immediately. Protected pins and conflicting
+physical-pad assignments are rejected across GPIO timers, notifications,
+rotary inputs and custom outputs. LEDs are active high; the Bluetooth LED
+indicates the enabled transport, including advertising. See the
+[wiring and board guide](rotary_input.md), including the Heltec V4 display/touch
+pin limits. RTTTL melodies and alert patterns use the existing
+[notification commands](notifications.md).
+
+---
+
 #### Control an exposed GPIO
 
 **Availability:** ESP32 Repeater, Room Server, Bridge, and Sensor firmware. Companion firmware does not expose these commands. On nRF52, the commands are enabled only for Sensor builds on the Heltec T096, ProMicro, RAK3401, and RAK4631. GPIO expanders are not supported.

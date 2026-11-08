@@ -101,9 +101,10 @@ struct ble_evt_t {
     } gatts_evt;
   } evt;
 };
+static bool test_link_secured = true;
 struct BLEConnection {
   bool connected() const { return true; }
-  bool secured() const { return true; }
+  bool secured() const { return test_link_secured; }
   bool bonded() const { return true; }
 };
 struct {
@@ -149,7 +150,8 @@ struct SerialBLEInterface {
   SecuritySessionTimer _security_timer;
   SecuritySessionTimer _companion_start_timer;
   ble_gap_addr_t _peer_address;
-  bool _peer_address_valid = false, _bond_removed_for_connection = false;
+  bool _peer_address_valid = false;
+  uint16_t _peer_connection_handle = BLE_CONN_HANDLE_INVALID;
   bool _bonded_only = false, _isDeviceConnected = false;
   bool _isEnabled = true;
   uint16_t _conn_handle = BLE_CONN_HANDLE_INVALID;
@@ -202,7 +204,6 @@ struct SerialBLEInterface {
   bool removeStoredBondForPeer(const char*) {
     assert(!critical_depth && _peer_address_valid);
     ++removed_bonds;
-    _bond_removed_for_connection = true;
     return true;
   }
   void requestBondedOnlyRecovery(const char*) {
@@ -425,14 +426,13 @@ static void production_connection_events_preserve_disconnect_cleanup() {
     instance = &link;
     link.recv_queue.setEnabled(true);
     link._bonded_only = true;
-    link._bond_removed_for_connection = true;
     cccd_written_this_connection = true;
     ble_evt_t event;
     event.header.evt_id = BLE_GAP_EVT_CONNECTED;
     event.evt.gap_evt.params.connected.peer_addr.addr[0] = 42;
     SerialBLEInterface::onBLEEvent(&event);
     assert(link._peer_address_valid && link._peer_address.addr[0] == 42);
-    assert(!link._bond_removed_for_connection && !cccd_written_this_connection);
+    assert(link._peer_connection_handle == 7 && !cccd_written_this_connection);
     SerialBLEInterface::onConnect(7);
     assert(link._conn_handle == 7 && link._security_timer.pending());
     link.recv_queue.secure(7);
@@ -451,10 +451,9 @@ static void production_connection_events_preserve_disconnect_cleanup() {
     assert(!link.recv_queue.current(7, generation));
     assert(link.recv_queue.push(7, generation, frame(43)) == Result::Stale);
     assert(!link._peer_address_valid && !cccd_written_this_connection);
-    const unsigned authentication_failure =
-        reason != BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION;
-    assert(link.removed_bonds == authentication_failure);
-    assert(link.bonded_recoveries == authentication_failure);
+    assert(link.removed_bonds == 0);
+    assert(link.bonded_recoveries == 0);
+    assert(link._peer_connection_handle == BLE_CONN_HANDLE_INVALID);
     SerialBLEInterface::onDisconnect(7, reason);
     assert(link._conn_handle == BLE_CONN_HANDLE_INVALID && !link._isDeviceConnected);
     assert(!link._security_timer.pending() && !link._companion_start_timer.pending());
@@ -481,6 +480,44 @@ static void production_connection_events_preserve_disconnect_cleanup() {
   SerialBLEInterface::onConnect(7);
   link.recv_queue.secure(7);
   assert(link.recv_queue.snapshot(7, generation));
+}
+
+static void stale_disconnect_cannot_clear_a_new_peer() {
+  SerialBLEInterface link;
+  instance = &link;
+  link.recv_queue.setEnabled(true);
+  ble_evt_t event;
+  event.header.evt_id = BLE_GAP_EVT_CONNECTED;
+  event.evt.gap_evt.conn_handle = 8;
+  event.evt.gap_evt.params.connected.peer_addr.addr[0] = 88;
+  SerialBLEInterface::onBLEEvent(&event);
+  cccd_written_this_connection = true;
+  event.header.evt_id = BLE_GAP_EVT_DISCONNECTED;
+  event.evt.gap_evt.conn_handle = 7;
+  event.evt.gap_evt.params.disconnected.reason = BLE_HCI_AUTHENTICATION_FAILURE;
+  SerialBLEInterface::onBLEEvent(&event);
+  assert(link._peer_address_valid && link._peer_address.addr[0] == 88);
+  assert(link._peer_connection_handle == 8 && cccd_written_this_connection);
+  assert(link.recv_queue.hasConnection(8));
+  assert(link.removed_bonds == 0 && link.bonded_recoveries == 0);
+}
+
+static void failed_security_update_preserves_bond_and_stealth() {
+  SerialBLEInterface link;
+  instance = &link;
+  link.recv_queue.setEnabled(true);
+  link._bonded_only = true;
+  ble_evt_t event;
+  event.header.evt_id = BLE_GAP_EVT_CONNECTED;
+  SerialBLEInterface::onBLEEvent(&event);
+  event.header.evt_id = BLE_GAP_EVT_CONN_SEC_UPDATE;
+  test_link_secured = false;
+  const size_t prior = disconnect_requests.size();
+  SerialBLEInterface::onBLEEvent(&event);
+  assert(disconnect_requests.size() == prior + 1);
+  assert(link.removed_bonds == 0 && link.bonded_recoveries == 0);
+  assert(link._peer_address_valid && link._peer_connection_handle == 7);
+  test_link_secured = true;
 }
 
 static void late_connect_after_disable_is_disconnected() {
@@ -515,5 +552,7 @@ int main() {
   session_reset_and_stale_handles();
   callback_read_reset_and_reconnect();
   production_connection_events_preserve_disconnect_cleanup();
+  stale_disconnect_cannot_clear_a_new_peer();
+  failed_security_update_preserves_bond_and_stealth();
   late_connect_after_disable_is_disconnected();
 }

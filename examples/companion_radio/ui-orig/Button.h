@@ -27,6 +27,7 @@ public:
     Button(uint8_t pin, bool activeState, bool isAnalog, uint16_t analogThreshold = 20);
     
     void begin();
+    void resume();
     void update();
     
     // Set callbacks for different events
@@ -38,7 +39,7 @@ public:
     void onAnyPress(EventCallback callback) { _onAnyPress = callback; }
     
     // State getters
-    bool isPressed() const { return _currentState; }
+    bool isPressed() const { return !_ignoreUntilRelease && _currentState; }
     EventType getLastEvent() const { return _lastEvent; }
 #ifdef MESH_BUTTON_AUDIO_HIL
     bool injectPresses(uint8_t clicks, uint32_t hold_ms = 120);
@@ -66,6 +67,7 @@ private:
     State _state = IDLE;
     bool _currentState;
     bool _lastState;
+    bool _ignoreUntilRelease = false;
     
     uint32_t _stateChangeTime = 0;
     uint32_t _pressTime = 0;

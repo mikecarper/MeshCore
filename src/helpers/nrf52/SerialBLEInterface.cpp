@@ -425,12 +425,7 @@ void SerialBLEInterface::onSecured(uint16_t connection_handle) {
         BLE_DEBUG_PRINTLN("SerialBLEInterface: security update did not secure the link");
         instance->_isDeviceConnected = false;
         instance->_security_timer.cancel();
-        if (conn != nullptr && conn->bonded()) {
-          instance->removeStoredBondForPeer("unsecured link");
-        }
-        if (instance->_bonded_only) {
-          instance->requestBondedOnlyRecovery("unsecured bonded-only link");
-        }
+        // A security failure may be transient; retain the peer bond.
         instance->disconnect();
         return;
       }
@@ -506,14 +501,7 @@ void SerialBLEInterface::onPairingComplete(uint16_t connection_handle, uint8_t a
           instance->noteSuccessfulConnection(conn->getPeerAddr());
         }
       } else {
-        BLE_DEBUG_PRINTLN("SerialBLEInterface: pairing failed, clearing stale bond and disconnecting");
-        if (instance->_bonded_only) {
-          instance->requestBondedOnlyRecovery("pairing failure");
-        }
-        BLEConnection* conn = Bluefruit.Connection(connection_handle);
-        if (conn != nullptr && conn->bonded()) {
-          instance->removeStoredBondForPeer("pairing failure");
-        }
+        BLE_DEBUG_PRINTLN("SerialBLEInterface: pairing failed; keeping existing bond");
         instance->_isDeviceConnected = false;
         instance->_security_timer.cancel();
         instance->disconnect();
@@ -601,7 +589,7 @@ void SerialBLEInterface::onBLEEvent(ble_evt_t* evt) {
       instance->recv_queue.connect(evt->evt.gap_evt.conn_handle);
       instance->_peer_address = connected->peer_addr;
       instance->_peer_address_valid = true;
-      instance->_bond_removed_for_connection = false;
+      instance->_peer_connection_handle = evt->evt.gap_evt.conn_handle;
 #if defined(COMPANION_RADIO_FULL) && COMPANION_RADIO_FULL
       cccd_written_this_connection = false;
       BLE_DEBUG_PRINTLN("CCCD RAM connect: cached=%u",
@@ -611,14 +599,9 @@ void SerialBLEInterface::onBLEEvent(ble_evt_t* evt) {
   } else if (evt->header.evt_id == BLE_GAP_EVT_CONN_SEC_UPDATE) {
     uint16_t conn_handle = evt->evt.gap_evt.conn_handle;
     BLEConnection* conn = Bluefruit.Connection(conn_handle);
-    if (conn != nullptr && conn->connected() && !conn->secured()) {
+    if (conn_handle == instance->_peer_connection_handle &&
+        conn != nullptr && conn->connected() && !conn->secured()) {
       BLE_DEBUG_PRINTLN("CONN_SEC_UPDATE: link is not secured, bonded=%d", conn->bonded());
-      if (conn->bonded()) {
-        instance->removeStoredBondForPeer("failed bond encryption");
-      }
-      if (instance->_bonded_only) {
-        instance->requestBondedOnlyRecovery("failed bond encryption");
-      }
       instance->_isDeviceConnected = false;
       instance->_security_timer.cancel();
       sd_ble_gap_disconnect(conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
@@ -649,18 +632,16 @@ void SerialBLEInterface::onBLEEvent(ble_evt_t* evt) {
     BLE_DEBUG_PRINTLN("CCCD RAM system attributes missing");
   } else if (evt->header.evt_id == BLE_GAP_EVT_DISCONNECTED) {
     instance->recv_queue.disconnect(evt->evt.gap_evt.conn_handle);
+    if (evt->evt.gap_evt.conn_handle != instance->_peer_connection_handle) return;
     ble_gap_evt_disconnected_t const* disconnected = &evt->evt.gap_evt.params.disconnected;
     if (isBondAuthenticationFailure(disconnected->reason)) {
-      instance->removeStoredBondForPeer("authentication disconnect");
-      if (instance->_bonded_only) {
-        instance->requestBondedOnlyRecovery(
-            "bond authentication disconnect");
-      }
+      BLE_DEBUG_PRINTLN("SerialBLEInterface: authentication disconnect; keeping bond");
     }
 #if defined(COMPANION_RADIO_FULL) && COMPANION_RADIO_FULL
     cccd_written_this_connection = false;
 #endif
     instance->_peer_address_valid = false;
+    instance->_peer_connection_handle = BLE_CONN_HANDLE_INVALID;
   } else if (evt->header.evt_id == BLE_GAP_EVT_CONN_PARAM_UPDATE_REQUEST) {
     uint16_t conn_handle = evt->evt.gap_evt.conn_handle;
     if (instance->isValidConnection(conn_handle)) {
@@ -681,24 +662,6 @@ void SerialBLEInterface::onBLEEvent(ble_evt_t* evt) {
       BLE_DEBUG_PRINTLN("CONN_PARAM_UPDATE_REQUEST: ignoring stale callback for handle=0x%04X", conn_handle);
     }
   }
-}
-
-bool SerialBLEInterface::removeStoredBondForPeer(const char* cause) {
-  if (!_peer_address_valid || _bond_removed_for_connection) {
-    return false;
-  }
-
-  ble_gap_addr_t peer_address = _peer_address;
-  bond_keys_t bond_keys;
-  if (!bond_load_keys(BLE_GAP_ROLE_PERIPH, &peer_address, &bond_keys)) {
-    BLE_DEBUG_PRINTLN("SerialBLEInterface: no stored peer bond to clear (%s)", cause);
-    return false;
-  }
-
-  bond_remove_key(BLE_GAP_ROLE_PERIPH, &bond_keys.peer_id.id_addr_info);
-  _bond_removed_for_connection = true;
-  BLE_DEBUG_PRINTLN("SerialBLEInterface: cleared stale peer bond (%s)", cause);
-  return true;
 }
 
 void SerialBLEInterface::noteSuccessfulConnection(

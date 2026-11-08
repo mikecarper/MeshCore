@@ -62,7 +62,7 @@ bool Controller::validSettings(const Settings& s) const {
     uint32_t total;
     if(!memchr(r.sound,0,sizeof(r.sound))||!soundDuration(r.sound,total))return false;
     // A pin valid on an older image may now belong to GPS or storage.
-    if(r.pin>=0&&!sink.gpioAvailable(r.pin))return false;
+    if((r.fields&FGpio)&&r.pin>=0&&!sink.gpioAvailable(r.pin))return false;
     for(unsigned j=0;j<i;++j)if(s.rules[j].used&&s.rules[j].selector==r.selector)return false;
   }
   return true;
@@ -191,7 +191,7 @@ bool Controller::handle(const char* command,char* reply,size_t size,uint32_t now
   if(f<=FGpio && strcmp(value,"off") && strcmp(value,"inherit") && !(sink.capabilities()&f)) {
     snprintf(reply,size,"Error: output unsupported on this build");return true;
   }
-  if(f==FGpio&&candidate.pin>=0&&!sink.gpioAvailable(candidate.pin)) {
+  if(f==FGpio&&(candidate.fields&FGpio)&&candidate.pin>=0&&!sink.gpioAvailable(candidate.pin)) {
     snprintf(reply,size,"Error: GPIO reserved or unavailable; use get notify.gpio.pins");return true;
   }
   uint8_t enabled=prefs.enabled;

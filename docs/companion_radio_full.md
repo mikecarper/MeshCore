@@ -24,6 +24,9 @@ For practical on/off commands and update directions, see
 Shared hardware commands include [power and watchdog diagnostics](companion_power_diagnostics.md),
 [radio recovery and RXEN diagnostics](companion_radio_diagnostics.md), and
 [SD card management on supported builds](test-results/companion_cli_parity_2026-10-23.md#shared-sd-commands).
+Optional [rotary controls, passive buzzers and status LEDs](rotary_input.md)
+have saved custom pin assignments with shared GPIO protection. The guide
+includes a native-USB Heltec V4 encoder example and its remaining pin limits.
 
 `companion_radio_full` combines every qualified Companion transport for its
 platform into one artifact and acts as a host-backed LoRa mOTA source for
@@ -781,6 +784,13 @@ Rotating MAC policies still rotate and reopen first pairing when they do;
 stealth remains enabled. Repeating `on` keeps an existing bond. Toggle `off`,
 then `on`, then reboot to reset first pairing. All flag changes need reboot.
 The node still sends directed or allowlisted BLE packets; it is not radio silent.
+
+On nRF52 and NimBLE Companions, an authentication failure does not by itself
+delete a saved bond. A phone that still has its keys can retry after a weak
+connection. Stealth remains enabled after a failure; if a reset phone can no
+longer be recognized, use an authorized local connection to turn stealth off
+before pairing again. Re-pairing and interrupted bond storage are handled by
+the platform Bluetooth stack and are not guaranteed to preserve the old key.
 
 ESP32 TCP ports 5000, 5001, and 5002 remain trusted-network services. The HTTP
 admin login protects WebConfig and runtime browser OTA, and does not protect

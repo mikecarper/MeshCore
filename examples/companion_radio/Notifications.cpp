@@ -2,6 +2,8 @@
 #include "MyMesh.h"
 #include "target.h"
 #include "NotificationSettingsFile.h"
+#include <helpers/PeripheralOutputs.h>
+#include <helpers/RuntimePinClaims.h>
 
 #if defined(WIO_E5_MINI_HEADLESS_COMPANION_UI)
 bool MyMesh::handleCompactLedCommand(const char* command, char* reply, size_t size) {
@@ -50,6 +52,9 @@ bool MyMesh::handleAlertCommand(const char* command, char* reply, size_t size) {
 #ifdef PIN_BUZZER
     supported = true;
 #endif
+#if MESH_CUSTOM_PERIPHERALS
+    supported = supported || mesh::peripherals::configuredBuzzer();
+#endif
   } else if (strncmp(name, "vibration", 9) == 0) {
     length = 9;
     quiet = &_prefs.vibe_quiet;
@@ -81,9 +86,24 @@ bool MyMesh::handleAlertCommand(const char* command, char* reply, size_t size) {
     return true;
   }
   if (_ui) _ui->syncAlertPreferences();
+#if MESH_CUSTOM_PERIPHERALS
+  mesh::peripherals::setBuzzerQuiet(_prefs.buzzer_quiet);
+#endif
   snprintf(reply, size, "OK");
   return true;
 }
+
+#if MESH_CUSTOM_PERIPHERALS
+void MyMesh::notifyCustomMessage(bool channel) {
+  uint8_t outputs = 31;
+#if COMPANION_FEATURE_NOTIFICATIONS
+  if (_notifications.settings().enabled) outputs = _notifications.settings().outputs;
+#endif
+  mesh::peripherals::setBuzzerQuiet(_prefs.buzzer_quiet);
+  mesh::peripherals::notifyMessage(channel, outputs & mesh::notify::Sound,
+      outputs & mesh::notify::Led);
+}
+#endif
 
 #if COMPANION_FEATURE_NOTIFICATIONS
 // The UI's STATUS_LED_RGB define is local to its own translation unit.
@@ -93,16 +113,30 @@ uint8_t MyMesh::capabilities() const {
     (defined(PIN_STATUS_LED_R) && defined(PIN_STATUS_LED_G) && defined(PIN_STATUS_LED_B))
   bits |= mesh::notify::Led;
 #endif
+#if MESH_CUSTOM_PERIPHERALS
+  if (mesh::peripherals::configuredBuzzer()) bits |= mesh::notify::Sound;
+  if (mesh::peripherals::configuredNotificationLed()) bits |= mesh::notify::Led;
+#endif
   for(unsigned pin=0;pin<64;++pin)if(gpioAvailable(pin)) { bits|=mesh::notify::Gpio;break; }
   return bits;
 }
-bool MyMesh::gpioAvailable(uint8_t pin) const { return board.isUserGpioAvailable(pin); }
+bool MyMesh::gpioAvailable(uint8_t pin) const {
+#if MESH_CUSTOM_PERIPHERALS
+  return board.isPeripheralOutputAvailable(pin)
+      && !mesh::pins::claimedByOther(board.peripheralPinIdentity(pin), mesh::pins::Owner::Notifications);
+#else
+  return board.isUserGpioAvailable(pin);
+#endif
+}
 void MyMesh::pulse(mesh::notify::Output output,bool on,int8_t pin) {
   if(output==mesh::notify::Gpio && pin>=0 && gpioAvailable(pin)) {
     pinMode(pin,OUTPUT);digitalWrite(pin,on?HIGH:LOW);
   } else if(output==mesh::notify::Vibration) {
     if(_ui)_ui->notificationVibration(on);
   } else if(output==mesh::notify::Led) {
+#if MESH_CUSTOM_PERIPHERALS
+    mesh::peripherals::notificationLed(on);
+#endif
     on = on && mesh::leds::enabled();
 #if defined(PIN_STATUS_LED_R) && defined(PIN_STATUS_LED_G) && defined(PIN_STATUS_LED_B)
     analogWrite(PIN_STATUS_LED_R,on?255:0);
@@ -118,11 +152,77 @@ void MyMesh::pulse(mesh::notify::Output output,bool on,int8_t pin) {
 #endif
   }
 }
-void MyMesh::melody(const char* text) { if(_ui)_ui->notificationMelody(text); }
+void MyMesh::melody(const char* text) {
+#if MESH_CUSTOM_PERIPHERALS
+  if (mesh::peripherals::configuredBuzzer()) {
+    mesh::peripherals::setBuzzerQuiet(_prefs.buzzer_quiet);
+    mesh::peripherals::playNotification(text);
+    return;
+  }
+#endif
+  if(_ui)_ui->notificationMelody(text);
+}
 void MyMesh::screen(int8_t mode) { if(_ui)_ui->notificationScreen(mode); }
 bool MyMesh::save(const mesh::notify::Settings& settings) {
+#if MESH_CUSTOM_PERIPHERALS
+  uint64_t next_mask;
+  if (!_notifications.validSettings(settings) || !notificationGpioMask(settings, next_mask)) return false;
+  const uint64_t previous_mask = mesh::pins::held(mesh::pins::Owner::Notifications);
+  if (!mesh::pins::tryClaim(mesh::pins::Owner::Notifications, next_mask)) return false;
+  FILESYSTEM* fs = _store->getPrimaryFS();
+  if (!mesh::notify::writeSettings(fs, settings)
+      || !mesh::notify::verifySettingsFile(fs, "/notify_prefs", &settings)) {
+    mesh::pins::release(mesh::pins::Owner::Notifications, next_mask & ~previous_mask);
+    return false;
+  }
+  // The controller keeps its old playing rule until save() succeeds. Stop
+  // that rule while its pins are still owned, before retiring old claims.
+  _notifications.stop();
+  releaseNotificationGpio(previous_mask & ~next_mask);
+  mesh::pins::release(mesh::pins::Owner::Notifications, previous_mask & ~next_mask);
+  return true;
+#else
   return mesh::notify::writeSettings(_store->getPrimaryFS(),settings);
+#endif
 }
+#if MESH_CUSTOM_PERIPHERALS
+bool MyMesh::notificationGpioMask(const mesh::notify::Settings& settings, uint64_t& mask) const {
+  mask = 0;
+  for (const auto& rule : settings.rules) {
+    // "inherit" clears FGpio but retains the old pin in the stored rule.
+    // An explicit <pin>:off still initializes that pad LOW on alert start.
+    if (!rule.used || !(rule.fields & mesh::notify::FGpio) || rule.pin < 0) continue;
+    if (!gpioAvailable(uint8_t(rule.pin))) return false;
+    const uint64_t bit = mesh::pins::pinMask(board.peripheralPinIdentity(uint8_t(rule.pin)));
+    if (!bit) return false;
+    mask |= bit;
+  }
+  return true;
+}
+void MyMesh::releaseNotificationGpio(uint64_t mask) {
+  if (!mask) return;
+  for (unsigned pin = 0; pin < 64; ++pin) {
+    if (!(mask & mesh::pins::pinMask(board.peripheralPinIdentity(uint8_t(pin))))
+        || !board.isPeripheralOutputAvailable(uint8_t(pin))) continue;
+    digitalWrite(pin, LOW);
+    pinMode(pin, INPUT);
+  }
+}
+bool MyMesh::claimNotificationGpio() {
+  const uint64_t previous_mask = mesh::pins::held(mesh::pins::Owner::Notifications);
+  uint64_t next_mask;
+  if (!notificationGpioMask(_notifications.settings(), next_mask)
+      || !mesh::pins::tryClaim(mesh::pins::Owner::Notifications, next_mask)) {
+    _notifications.stop();
+    releaseNotificationGpio(previous_mask);
+    mesh::pins::release(mesh::pins::Owner::Notifications, previous_mask);
+    return false;
+  }
+  releaseNotificationGpio(previous_mask & ~next_mask);
+  mesh::pins::release(mesh::pins::Owner::Notifications, previous_mask & ~next_mask);
+  return true;
+}
+#endif
 void MyMesh::setNotificationOutputMute(mesh::notify::Output output,bool muted) {
   if(!_notifications.settings().enabled)return;
   char command[40],reply[160];
