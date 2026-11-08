@@ -28,7 +28,8 @@ struct Clock : mesh::MillisecondClock {
 };
 struct Radio : mesh::Radio {
   mesh::RadioProfiles p;
-  unsigned rx=0,tx=0,calibrations=0,recoveries=0,loops=0,primary_resets=0;
+  unsigned rx=0,tx=0,calibrations=0,recoveries=0,loops=0;
+  unsigned primary_resets=0;
   bool rxps_enabled=false,continuous_fallback=false,retry_recovers=false;
   uint32_t configured_cadence=0;
   uint8_t prepared=0;
@@ -48,11 +49,14 @@ struct Radio : mesh::Radio {
     ++loops;
     if(retry_recovers) {continuous_fallback=false;retry_recovers=false;}
   }
+#if MESH_WARM_RX_REFRESH && !MESH_COMPACT_STM32_RADIO
+  // Compact radios omit RXPS; generic consumers need no warm-AGC overrides.
   bool isRxPowerSavingEnabled() const override {return rxps_enabled;}
   bool isRxPowerSavingContinuousFallback() const override {return rxps_enabled&&continuous_fallback;}
   void configureAGCMaintenance(uint32_t ms) override {configured_cadence=ms;}
   void resetAGC() override {++primary_resets;}
   bool tryResetAGC() override {resetAGC();return true;}
+#endif
   void setCADEnabled(bool value) override { cad=value; }
   bool isReceiving() override { return busy_mask & (1U << prepared); }
   void triggerNoiseFloorCalibrate(int) override { ++calibrations; }
@@ -85,6 +89,7 @@ struct Bridge : AbstractBridge {
 };
 int main() {
   using namespace mesh::radioDirection;
+#if MESH_WARM_RX_REFRESH && !MESH_COMPACT_STM32_RADIO
   for(bool adaptive:{false,true}) {
     // Saved RXPS intent alone cannot prove that the frontend already cycles.
     // Execute actual Dispatcher scheduling in fixed and device-sleep modes.
@@ -113,6 +118,7 @@ int main() {
     assert(fallback.configured_cadence==0&&fallback.primary_resets==1);
     assert(!node.getNextQueueWakeDelay(wait));
   }
+#endif
   Radio r; Clock c; StaticPoolPacketManager pool(12); Dispatcher d(r,c,pool);
   r.p.secondary.mode=mesh::RadioProfileMode::RxTx;
   r.p.cross=mesh::RadioCrossMode::On;

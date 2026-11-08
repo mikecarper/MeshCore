@@ -3,11 +3,17 @@ import os, subprocess, sys, tempfile
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'test'))
 from test_radio_direction_dispatcher import SOURCE
-src=SOURCE.replace('unsigned rx=0,tx=0,calibrations=0,recoveries=0,loops=0;', '''
-  unsigned rx=0,tx=0,calibrations=0,recoveries=0,loops=0;
+
+def replace_once(source, old, new):
+    count = source.count(old)
+    if count != 1:
+        raise ValueError(f'expected one fixture anchor {old!r}, found {count}')
+    return source.replace(old, new, 1)
+
+src=replace_once(SOURCE, 'struct Radio : mesh::Radio {', '''struct Radio : mesh::Radio {
   int remaining=0; mesh::W12PramRxSnapshot latest;
 ''')
-src=src.replace('int recvRaw(uint8_t*,int) override { ++rx; return 0; }', '''
+src=replace_once(src, 'int recvRaw(uint8_t*,int) override { ++rx; return 0; }', '''
   int recvRaw(uint8_t* bytes,int) override {
     ++rx; if (!remaining) return 0;
     uint8_t profile=remaining==2?0:1;
@@ -20,14 +26,17 @@ src=src.replace('int recvRaw(uint8_t*,int) override { ++rx; return 0; }', '''
   uint8_t receiveProfile() const override { return latest.profile; }
   bool getW12PramRxSnapshot(mesh::W12PramRxSnapshot& out) const override { out=latest; return out.valid; }
 ''')
-src=src.replace('unsigned inbound=0;', '''
+src=replace_once(src, 'unsigned inbound=0;', '''
   unsigned inbound=0; std::vector<mesh::W12PramRxSnapshot> snapshots; bool change_profile=false;
   void logRxRaw(float,float,const uint8_t*,int) override { if(change_profile) static_cast<Radio*>(_radio)->latest.profile ^= 1; }
   int calcRxDelayForPacket(const mesh::Packet*,float,uint32_t) override {return 2000;}
 ''')
-src=src.replace('++inbound; return ACTION_RETRANSMIT_DELAYED(0,0);','++inbound; snapshots.push_back(packet->w12_rx); return ACTION_RELEASE;')
-src=src.replace('onRecvPacket(mesh::Packet*)','onRecvPacket(mesh::Packet* packet)')
-src=src[:src.index('int main() {')]+'''
+src=replace_once(src, '++inbound; return ACTION_RETRANSMIT_DELAYED(0,0);','++inbound; snapshots.push_back(packet->w12_rx); return ACTION_RELEASE;')
+src=replace_once(src, 'onRecvPacket(mesh::Packet*)','onRecvPacket(mesh::Packet* packet)')
+main_anchor='int main() {'
+if src.count(main_anchor) != 1:
+    raise ValueError('expected one fixture main anchor')
+src=src[:src.index(main_anchor)]+'''
 int main() {
   Radio r; Clock c; StaticPoolPacketManager pool(5); Dispatcher d(r,c,pool);
   r.p.secondary.mode=mesh::RadioProfileMode::RxTx;
