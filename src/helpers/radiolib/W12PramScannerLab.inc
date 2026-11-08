@@ -1072,7 +1072,17 @@ public:
       if (_multi_gen0!=UINT32_MAX && (_multi_gen0!=_profiles.generation[0]
           || _multi_gen1!=_profiles.generation[1] || _multi_key_first!=cfg.first
           || _multi_key_last!=cfg.last || _multi_key_profile!=cfg.profile
-          || _multi_key_extra!=(_numSideDet!=0) || _multi_key_enabled!=cfg.enabled)) _lab_handoff_retry.cancel();
+          || _multi_key_extra!=(_numSideDet!=0) || _multi_key_enabled!=cfg.enabled)) {
+        const bool transient=_lab_handoff_retry.pending();
+        _lab_handoff_retry.cancel();
+        // This failure was recovered successfully and its retry is now
+        // superseded by an explicit new plan. Release only that failure's
+        // block; normal safe-mode, ownership, RX and user-off gates still
+        // govern whether the new plan may start.
+        if (transient && !_lab_user_auto_off && !_lab_uncertain && !_profile_repair_required
+            && _lab_auto.enabled() && _lab_auto.reason()==mesh::w12pram::AutoPolicy::Reason::Failed)
+          _lab_auto.setEnabled(true);
+      }
       _multi_gen0=_profiles.generation[0]; _multi_gen1=_profiles.generation[1];
       _multi_key_first=cfg.first; _multi_key_last=cfg.last;
       _multi_key_profile=cfg.profile; _multi_key_flags=flags;

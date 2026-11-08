@@ -25,9 +25,10 @@ namespace mesh {
 enum class RadioParamApplyResult { APPLIED, BUSY, FAILED };
 struct RadioProfileParams {};
 namespace radioDirection { enum class Mode { Rx, Both, Tx }; Mode current=Mode::Both; Mode mode() { return current; } }
-namespace w12pram { struct AutoPolicy { enum class Reason { Failed }; bool failed=false;
-  bool blocked() const { return failed; } bool enabled() const { return true; }
-  void setEnabled(bool) {} void block(Reason) { failed=true; } }; }
+namespace w12pram { struct AutoPolicy { enum class Reason { None, Off, Failed }; bool failed=false,on=true;
+  bool blocked() const { return failed; } bool enabled() const { return on; }
+  Reason reason() const { return !on ? Reason::Off : failed ? Reason::Failed : Reason::None; }
+  void setEnabled(bool value) { on=value; failed=false; } void block(Reason) { failed=true; } }; }
 namespace lr2021 {
 struct Config { bool enabled=true; uint8_t first=5,last=8,profile=0; } cfg;
 bool valid=true, safe=false;
@@ -45,10 +46,10 @@ struct Profiles { uint32_t generation[2]={1,1}; bool dual=false; bool enabled() 
 struct Fake : Base {
  Profiles _profiles;
  bool _multi_sf_enabled=false, _lab_seq_requested=false, _lab_uncertain=false, _params_valid=true;
- bool blocked=false, fail_apply=false, automatic=true;
+ bool blocked=false, fail_apply=false, automatic=true,_profile_repair_required=false;
  bool _multi_key_extra=false,_multi_key_enabled=false; unsigned _numSideDet=0;
  mesh::w12pram::AutoPolicy _lab_auto;
- struct { int cancellations=0; bool pending=false; void cancel() { ++cancellations; pending=false; } } _lab_handoff_retry;
+ struct { int cancellations=0; bool queued=false; bool pending() const { return queued; } void cancel() { ++cancellations; queued=false; } } _lab_handoff_retry;
  bool _lab_seq_tx_prepared=false,_lab_seq_tx_lease=false,_lab_scan_active=false,_lab_resume_pending=false;
  bool _lab_session_ldo=false,_lab_exclusive_restore_auto=false,_lab_user_auto_off=false;
  uint32_t _lab_exclusive_until=0;
@@ -63,7 +64,7 @@ struct Fake : Base {
    _multi_sf_enabled=on; _multi_sf_lower=first; _multi_sf_upper=last;
    return mesh::RadioParamApplyResult::APPLIED;
  }
- bool labScannerSetAutomatic(bool on) { if (blocked) return false; automatic=on; _lab_auto.failed=false;
+ bool labScannerSetAutomatic(bool on) { if (blocked) return false; automatic=on; _lab_auto.setEnabled(on);
   if (!on) { _lab_scan_active=false; _lab_session_ldo=false; } return true; }
  mesh::RadioParamApplyResult labPauseScanner(bool,uint8_t) { return mesh::RadioParamApplyResult::APPLIED; }
  bool labSequentialConfigure(int selected) {
@@ -100,9 +101,9 @@ int main() {
  f._lab_auto.failed=true; f.tick(); assert(f._multi_failed && !f._lab_seq_requested);
  assert(f.prepareTransmitProfile(0,false)==mesh::RadioParamApplyResult::APPLIED);
  ++f._profiles.generation[1]; f.tick(); assert(f._lab_seq_requested);
- f._lab_handoff_retry.pending=true;
+ f._lab_handoff_retry.queued=true;
  mesh::lr2021::cfg.profile=1; mesh::lr2021::cfg.first=6; mesh::lr2021::cfg.last=9;
- f.tick(); assert(!f._lab_handoff_retry.pending && f._lab_seq_requested && f._lab_seq_selected==1 && f._lab_seq_first==6);
+ f.tick(); assert(!f._lab_handoff_retry.pending() && f._lab_seq_requested && f._lab_seq_selected==1 && f._lab_seq_first==6);
  mesh::lr2021::cfg.enabled=false; f.tick(); assert(!f._lab_seq_requested && f.automatic);
  f._profiles.dual=false; ++f._profiles.generation[1]; mesh::lr2021::cfg.enabled=true;
  mesh::lr2021::cfg.profile=0; f.fail_apply=true; f.tick(); assert(f._multi_failed);
@@ -152,6 +153,40 @@ int main() {
  for (int i=0;i<8;++i) f.tick(); f.beacon_owned=false; f.tick();
  assert(!f._lab_seq_requested && f._lab_user_auto_off);
  assert(f.labScannerSetAutomaticManual(true)); assert(f._lab_handoff_retry.cancellations==cancellations_before_manual+2); f.tick(); assert(f._lab_seq_requested);
+ // A recovered handoff is blocked while awaiting its retry. Disabling
+ // multi-SF supersedes that retry and must release the old temporary block
+ // so the ordinary dual-profile scanner can run.
+ mesh::lr2021::cfg.enabled=true; mesh::lr2021::safe=false;
+ Fake g; g._profiles.dual=true; g.tick(); assert(g._lab_seq_requested);
+ g._lab_auto.failed=true; g._lab_handoff_retry.queued=true; g.tick();
+ assert(!g._lab_seq_requested && g._lab_auto.failed && g._lab_handoff_retry.pending());
+ mesh::lr2021::cfg.enabled=false; g.tick();
+ assert(!g._lab_handoff_retry.pending() && !g._lab_auto.failed && g._lab_auto.enabled() && !g._lab_seq_requested);
+ mesh::lr2021::cfg.enabled=true; Fake range; range._profiles.dual=true; range.tick();
+ range._lab_auto.failed=true; range._lab_handoff_retry.queued=true; range.tick();
+ ++mesh::lr2021::cfg.first; range.tick();
+ assert(!range._lab_handoff_retry.pending() && !range._lab_auto.failed && range._lab_seq_requested
+     && range._lab_seq_first==mesh::lr2021::cfg.first);
+ // A real fault without a pending successful handoff recovery stays latched.
+ mesh::lr2021::cfg.enabled=true; Fake h; h._profiles.dual=true; h.tick();
+ h._lab_auto.failed=true; h.tick(); assert(!h._lab_seq_requested && h._lab_auto.failed);
+ mesh::lr2021::cfg.enabled=false; h.tick(); assert(h._lab_auto.failed);
+ // A still-broken radio is never released by cancelling an obsolete retry.
+ mesh::lr2021::cfg.enabled=true; Fake j; j._profiles.dual=true; j.tick();
+ j._lab_auto.failed=true; j._lab_handoff_retry.queued=true; j.tick();
+ j._profile_repair_required=true; mesh::lr2021::cfg.enabled=false; j.tick();
+ assert(j._lab_auto.failed && !j._lab_handoff_retry.pending());
+ // Disabling the scanner manually remains authoritative.
+ mesh::lr2021::cfg.enabled=true; Fake k; k._profiles.dual=true; k.tick();
+ k._lab_auto.failed=true; k._lab_handoff_retry.queued=true; k.tick();
+ k._lab_user_auto_off=true; k._lab_auto.setEnabled(false);
+ mesh::lr2021::cfg.enabled=false; k.tick(); assert(!k._lab_auto.enabled() && !k._lab_handoff_retry.pending());
+ // Safe mode still prevents scanner activation after a plan change.
+ mesh::lr2021::cfg.enabled=true; Fake s; s._profiles.dual=true; s.tick();
+ s._lab_auto.failed=true; s._lab_handoff_retry.queued=true; s.tick();
+ mesh::lr2021::safe=true; mesh::lr2021::cfg.enabled=false; s.tick();
+ assert(!s._lab_seq_requested && !s._lab_scan_active && !s._lab_handoff_retry.pending());
+ mesh::lr2021::safe=false;
 }
 """.replace('@SERVICE@',service).replace('@PREPARE@',prepare).replace('@RELEASE@',release).replace('@PENDING@',pending).replace('@MANUAL@',manual).replace('@BEACON@',beacon)
 with tempfile.TemporaryDirectory() as directory:
