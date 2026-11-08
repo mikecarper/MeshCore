@@ -803,8 +803,96 @@ int main() {
     assertSentBeforeFinal(Bytes(f.wire().begin() + request_start, f.wire().end()),
                           kind, tag); ++checks;
   }
-  // An active request still rejects overlap before packet allocation/TX.
-  for (Kind kind : {Tracker::Login, Tracker::Status, Tracker::Telemetry, Tracker::Binary, Tracker::Discovery, Tracker::Trace}) {
+  // MeshCore One retransmits an unchanged login before its final timeout,
+  // then may switch from direct to flood without changing credentials.
+  for (bool tcp : {false, true}) for (bool blank : {false, true}) {
+    Fixture f(tcp);
+    f.mesh.recipient.out_path_len = 0;
+    f.mesh.cmd_frame[0] = CMD_SEND_LOGIN;
+    memcpy(f.mesh.cmd_frame + 1, f.mesh.recipient.id.pub_key, 32);
+    f.mesh.cmd_frame[33] = blank ? 0 : 'x';
+    f.mesh.handleRequestFrame(blank ? 33 : 34);
+    f.drain();
+    const unsigned sent = f.mesh.transmissions;
+    const uint8_t history = f.mesh._delayed_replies.request.history;
+    const uint32_t first_deadline = f.mesh._delayed_replies.request.radio_deadline;
+    // More retries than history slots must still use the single live login.
+    for (unsigned retry = 1; retry <= 10; ++retry) {
+      g_mock_millis += 2000;
+      f.mesh.handleRequestFrame(blank ? 33 : 34); f.drain();
+      assert(f.mesh.transmissions == sent + retry && "same-session login retry must transmit");
+      assert(f.mesh._delayed_replies.request.history == history);
+    }
+    assert(f.mesh._delayed_replies.request.radio_deadline > first_deadline);
+    f.mesh.recipient.out_path_len = OUT_PATH_UNKNOWN;
+    g_mock_millis += 1000;
+    f.mesh.handleRequestFrame(blank ? 33 : 34);
+    assert(f.mesh.transmissions == sent + 11);
+    assert(f.mesh._delayed_replies.request.flood);
+    reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    assert(count(f.wire(), RESP_CODE_ERR) == 0);
+    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1);
+    assert(!f.mesh.hasPendingReqs());
+    ++checks;
+  }
+  // A retry cannot change credentials, identity or transport, and must not
+  // discard an accepted reply or replace somebody else's live operation.
+  for (bool tcp : {false, true}) {
+    Fixture f(tcp); f.command(Tracker::Login); f.drain();
+    auto& tracker = f.mesh._delayed_replies;
+    assert(tracker.canRetryLogin(f.mesh.recipient.id.pub_key, "x", f.owner, millis()));
+    uint8_t collision[32]; memcpy(collision, f.mesh.recipient.id.pub_key, 32); collision[31] ^= 1;
+    assert(!tracker.canRetryLogin(collision, "x", f.owner, millis()));
+    assert(!tracker.canRetryLogin(f.mesh.recipient.id.pub_key, "x", &f.other, millis()));
+    assert(!tracker.canRetryLogin(f.mesh.recipient.id.pub_key, "", f.owner, millis()));
+    f.mesh.cmd_frame[33] = 'y'; f.mesh.handleRequestFrame(34); f.drain();
+    assert(f.mesh.transmissions == 1 && tracker.hasRequest());
+    assert(count(f.wire(), RESP_CODE_ERR) == 1);
+    f.otherRequest(); f.command(Tracker::Login); f.drain();
+    assert(f.mesh.transmissions == 1 && tracker.request.route == f.owner);
+    assert(count(f.other_stream.output, RESP_CODE_ERR) == 1);
+    reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1);
+    assert(count(f.other_stream.output, PUSH_CODE_LOGIN_SUCCESS) == 0);
+    assert(!tracker.canRetryLogin(f.mesh.recipient.id.pub_key, "x", f.owner, millis()));
+    ++checks;
+  }
+  for (uint32_t start : {100U, 0xfffffff0U}) {
+    Fixture f; g_mock_millis = start; f.command(Tracker::Login); f.drain();
+    const uint32_t original_deadline = f.mesh._delayed_replies.request.radio_deadline;
+    const uint8_t history = f.mesh._delayed_replies.request.history;
+    f.mesh.radio_accepts = false;
+    g_mock_millis += 1000; f.command(Tracker::Login); f.drain();
+    assert(f.mesh._delayed_replies.request.history == history);
+    assert(f.mesh._delayed_replies.request.radio_deadline == original_deadline);
+    reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1); ++checks;
+  }
+  {
+    Fixture f; f.command(Tracker::Login); assert(f.fill() == 3);
+    reply(f, Tracker::Login, nullptr, 0x11223344);
+    assert(f.mesh._delayed_replies.request.phase == Tracker::AwaitAdmission);
+    assert(!f.mesh._delayed_replies.canRetryLogin(f.mesh.recipient.id.pub_key, "x", f.owner, millis()));
+    f.drain(); assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1); ++checks;
+  }
+  {
+    Fixture f; assert(f.fill() == 4); f.command(Tracker::Login);
+    assert(f.mesh._delayed_replies.request.sent_pending);
+    f.command(Tracker::Login);
+    assert(f.mesh.transmissions == 1); // First SENT must be admitted first.
+    f.drain(); reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1); ++checks;
+  }
+  for (bool cancel : {false, true}) {
+    Fixture f; f.command(Tracker::Login); f.drain();
+    if (cancel) f.mesh.cancelSerialOperationsForRoute(f.owner);
+    else { g_mock_millis = f.mesh._delayed_replies.request.radio_deadline; f.service(); }
+    assert(!f.mesh._delayed_replies.canRetryLogin(f.mesh.recipient.id.pub_key, "x", f.owner, millis()));
+    f.command(Tracker::Login); f.drain();
+    assert(f.mesh.transmissions == 1 && count(f.wire(), RESP_CODE_ERR) == 1); ++checks;
+  }
+  // Other active request families still reject overlap before allocation/TX.
+  for (Kind kind : {Tracker::Status, Tracker::Telemetry, Tracker::Binary, Tracker::Discovery, Tracker::Trace}) {
     Fixture f; f.command(kind); assert(f.mesh.transmissions == 1 && f.mesh.allocations == 1);
     f.command(kind); assert(f.mesh.transmissions == 1 && f.mesh.allocations == 1); ++checks;
   }

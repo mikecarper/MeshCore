@@ -160,6 +160,26 @@ bool CompanionDelayedReplies::allowRequestTag(uint32_t tag) {
   return true;
 }
 
+void CompanionDelayedReplies::rememberLoginPassword(const char* password) {
+  memset(login_password, 0, sizeof(login_password));
+  login_password_valid = request.phase == Reserved && request.kind == Login
+      && !request.terminal && password != nullptr;
+  if (login_password_valid) {
+    // BaseChatMesh sends at most 15 password bytes, including for rooms.
+    strncpy(login_password, password, sizeof(login_password) - 1);
+  }
+}
+
+bool CompanionDelayedReplies::canRetryLogin(const uint8_t peer[32],
+    const char* password, BaseSerialInterface* route, uint32_t now) const {
+  return login_password_valid && password != nullptr && peer != nullptr
+      && route != nullptr && request.route == route && !request.terminal
+      && request.kind == Login && request.phase == AwaitRadio
+      && !request.sent_pending && !expired(request, now)
+      && requestMatches(peer, 0)
+      && strncmp(login_password, password, sizeof(login_password) - 1) == 0;
+}
+
 void CompanionDelayedReplies::rememberLoginTag(uint32_t tag) {
   if (request.kind == Login && request.history < HISTORY_SIZE) {
     requests[request.history].tag = tag;
@@ -176,11 +196,15 @@ void CompanionDelayedReplies::armRequest(uint32_t tag, uint32_t timeout,
 }
 
 void CompanionDelayedReplies::abandonRequest() {
+  memset(login_password, 0, sizeof(login_password));
+  login_password_valid = false;
   if (request.history < HISTORY_SIZE) requests[request.history].phase = Empty;
   reset(request);
 }
 
 void CompanionDelayedReplies::retireRequest(uint32_t now) {
+  memset(login_password, 0, sizeof(login_password));
+  login_password_valid = false;
   if (request.phase == Reserved) {
     abandonRequest();
     return;
@@ -221,7 +245,10 @@ bool CompanionDelayedReplies::blocksResponse(const uint8_t peer[32],
 }
 
 bool CompanionDelayedReplies::storeRequest(const uint8_t* frame, size_t len, uint32_t now) {
-  return store(request, frame, len, now);
+  if (!store(request, frame, len, now)) return false;
+  memset(login_password, 0, sizeof(login_password));
+  login_password_valid = false;
+  return true;
 }
 
 void CompanionDelayedReplies::serviceRequest(BaseSerialInterface* serial, uint32_t now) {

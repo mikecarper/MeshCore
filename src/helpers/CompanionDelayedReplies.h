@@ -47,6 +47,10 @@ private:
   };
   RequestGuard requests[HISTORY_SIZE] = {};
   TraceGuard traces[HISTORY_SIZE] = {};
+  // Only the active binary login may be retried. Keep the effective wire
+  // password in RAM, never history/storage, and erase it when the login ends.
+  char login_password[16] = {};
+  bool login_password_valid = false;
 
   static bool due(uint32_t now, uint32_t deadline);
   static uint32_t retirementDeadline(uint32_t now, uint32_t radio_deadline,
@@ -63,6 +67,9 @@ public:
 
   bool reserveRequest(Kind kind, const uint8_t peer[32],
                       BaseSerialInterface* route, bool terminal, uint32_t now);
+  void rememberLoginPassword(const char* password);
+  bool canRetryLogin(const uint8_t peer[32], const char* password,
+                     BaseSerialInterface* route, uint32_t now) const;
   bool allowRequestTag(uint32_t tag);
   void rememberLoginTag(uint32_t tag);
   void armRequest(uint32_t tag, uint32_t timeout, bool flood, uint32_t now);

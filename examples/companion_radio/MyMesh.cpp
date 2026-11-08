@@ -7006,8 +7006,9 @@ void MyMesh::handleCmdFrame(size_t len) {
   if (handleDirectOtaFrame(len)) return;
 #endif
   const bool starts_long_lived_request =
-      (cmd_frame[0] == CMD_SEND_LOGIN && len >= 1 + PUB_KEY_SIZE)
-      || (cmd_frame[0] == CMD_SEND_ANON_REQ && len > 1 + PUB_KEY_SIZE)
+      // Login checks its own admission below so an identical retry can keep
+      // the existing requester and correlation slot.
+      (cmd_frame[0] == CMD_SEND_ANON_REQ && len > 1 + PUB_KEY_SIZE)
       || (cmd_frame[0] == CMD_SEND_STATUS_REQ && len >= 1 + PUB_KEY_SIZE)
       || (cmd_frame[0] == CMD_SEND_PATH_DISCOVERY_REQ
           && len >= 2 + PUB_KEY_SIZE
@@ -7839,17 +7840,26 @@ void MyMesh::handleCmdFrame(size_t len) {
     char *password = (char *)&cmd_frame[1 + PUB_KEY_SIZE];
     cmd_frame[len] = 0; // ensure null terminator in password
     if (recipient) {
-#if COMPANION_FEATURE_DIRECT_OTA_ADMIN
-      _ota_direct_admin.beginLogin(recipient->id, _ms->getMillis());
-#endif
-      if (!beginPendingRequest(mesh::CompanionDelayedReplies::Login, *recipient)) {
+      const bool retry = _delayed_replies.canRetryLogin(pub_key, password,
+          _serial->captureReplyRoute(), _ms->getMillis());
+      if (!retry && !beginPendingRequest(mesh::CompanionDelayedReplies::Login, *recipient)) {
         writeErrFrame(ERR_CODE_BAD_STATE);
         return;
       }
+      if (!retry) _delayed_replies.rememberLoginPassword(password);
+#if COMPANION_FEATURE_DIRECT_OTA_ADMIN
+      _ota_direct_admin.beginLogin(recipient->id, _ms->getMillis());
+#endif
       uint32_t tag, est_timeout = 0;
       memcpy(&tag, recipient->id.pub_key, 4);
       int result = sendLogin(*recipient, password, est_timeout);
-      finishPendingRequest(result, tag, est_timeout);
+      if (retry && result == MSG_SEND_FAILED) {
+        // A failed retransmission must not discard the original request or
+        // prevent its eventual response from reaching the same app session.
+        writeErrFrame(ERR_CODE_TABLE_FULL);
+      } else {
+        finishPendingRequest(result, tag, est_timeout);
+      }
     } else {
       writeErrFrame(ERR_CODE_NOT_FOUND); // contact not found
     }
