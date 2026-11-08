@@ -22,6 +22,9 @@ test('explicit unsupported OTA status is distinct from an unanswered request', (
     'Unknown command', '> Unknown command', 'Error: unknown command',
     'ERR unsupported', 'Error: unsupported', 'Unsupported',
     'Unknown OTA command. Type `ota help`.',
+    'LoRa OTA is not included in this build; tempradio cannot enable it. Use an OTA-enabled repeater firmware',
+    'LoRa OTA absent; tempradio cannot enable it. Install OTA repeater firmware',
+    'LoRa OTA absent; use OTA repeater; tempradio cannot enable it',
   ]) assert.equal(state(reply), 'unsupported', reply);
   for (const reply of ['', undefined, null, 'Remote command timed out; result is unknown',
     'request timed out; result is unknown', 'No reply after 11 attempts'])

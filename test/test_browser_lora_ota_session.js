@@ -261,7 +261,7 @@ test('post-install uses one reset-and-proof exchange with the selected password'
       if(c==='ota status')return 'hw=board target:12345678 maxblk:1024 '+(installed?'no download':'download: ready to install id='+id);
       if(c==='ota self')return 'base_hash='+(installed?bodyHash:'1122334455667788');
       if(c==='ver')return installed?'v1.18.0.1':'v1.17.1.9';
-      if(c==='get radio'||c==='get tempradio')return radio;
+      if(c==='get radio')return radio.split(',').slice(0,4).join(',');if(c==='get tempradio')return radio;
       if(c==='get radio.rxps')return 'off';
       if(c==='ota config')return config;
       if(c==='ota installhash')return installUsage;
@@ -289,7 +289,7 @@ test('ambiguous installhash response is refused before serving or pulling', asyn
   const p=await pkg.parseMota(await pkg.buildFullMota(await image()));
   const calls=[], config='autofetch=off autoinstall=off hops=0', radio='910.525,62.5,7,5,120';
   const link={sourceKey:'aa'.repeat(32),async verifyPeer(){},async localCommand(c){calls.push('local '+c);return c==='get tempradio'||c==='get radio'?radio:c==='get radio.rxps'?'off':config;},
-    async remoteCommand(k,pw,c){calls.push(c);if(c==='ota status')return 'hw=board target:12345678 maxblk:1024 no download';if(c==='ota self')return 'base_hash=1122334455667788';if(c==='ver')return 'v1.17.1.9';if(c==='get radio'||c==='get tempradio')return radio;if(c==='get radio.rxps')return 'off';if(c==='ota config')return config;if(c==='ota installhash')return 'ERR usage: ota install';throw Error('Unexpected '+c);},
+    async remoteCommand(k,pw,c){calls.push(c);if(c==='ota status')return 'hw=board target:12345678 maxblk:1024 no download';if(c==='ota self')return 'base_hash=1122334455667788';if(c==='ver')return 'v1.17.1.9';if(c==='get radio')return radio.split(',').slice(0,4).join(',');if(c==='get tempradio')return radio;if(c==='get radio.rxps')return 'off';if(c==='ota config')return config;if(c==='ota installhash')return 'ERR usage: ota install';throw Error('Unexpected '+c);},
     async serve(){throw Error('must not serve');}};
   const session=new DirectSession(link,'bb'.repeat(32),'',p,{pollMs:1});
   await assert.rejects(session.start(),/Cannot determine whether the target supports/);
@@ -308,7 +308,7 @@ test('older target uses one legacy install after the exact staged ID is confirme
       if(c==='ota status')return 'hw=board target:12345678 maxblk:1024 '+(installed?'no download':'download: ready to install id='+id);
       if(c==='ota self')return 'base_hash='+(installed?bodyHash:'1122334455667788');
       if(c==='ver')return installed?'v1.18.0.1':'v1.17.1.9';
-      if(c==='get radio'||c==='get tempradio')return radio;
+      if(c==='get radio')return radio.split(',').slice(0,4).join(',');if(c==='get tempradio')return radio;
       if(c==='get radio.rxps')return 'off';
       if(c==='ota config')return 'autofetch=off autoinstall=off hops=0';
       if(c==='ota installhash')return 'Unknown OTA command. Type `ota help`.';
@@ -340,7 +340,7 @@ test('an uncertain legacy install is not sent again on a later attempt', async (
     async remoteCommand(k,pw,c){
       if(c==='ota status')return 'hw=board target:12345678 maxblk:1024 download: ready to install id='+id;
       if(c==='ota self')return 'base_hash=1122334455667788';if(c==='ver')return 'v1.17.1.9';
-      if(c==='get radio'||c==='get tempradio')return radio;if(c==='get radio.rxps')return 'off';
+      if(c==='get radio')return radio.split(',').slice(0,4).join(',');if(c==='get tempradio')return radio;if(c==='get radio.rxps')return 'off';
       if(c==='ota config')return 'autofetch=off autoinstall=off hops=0';
       if(c==='ota installhash')return 'Unknown command';
       if(c==='ota install'){installs++;session.stop();throw Error('Remote command timed out; result is unknown');}
@@ -385,4 +385,129 @@ test('older named RXPS off does not ask the user to disable it again', async () 
   await assert.rejects(on.session.inspectRadios(), error => error.radioSetupRequired === true);
   const unknown = radioPreflight({sourceRxps: 'radio.rxps unknown'});
   await assert.rejects(unknown.session.inspectRadios(), error => !error.radioSetupRequired);
+});
+
+test('missing framed CLI getters on older Companions retain the source-update hint', async () => {
+  for (const changes of [{sourceTemp:'Unknown command'}, {sourceRxps:'unknown config: radio.rxps'}]) {
+    const f = radioPreflight(changes);
+    await assert.rejects(f.session.inspectRadios(), error => error.sourceUpdateRequired === 'companion');
+  }
+});
+
+async function rebootFixture({sourceKind = 'guarded', oldTarget = false, differentSaved = false, lostReply = false, noControls = false, savedTargetOverride = ''} = {}) {
+  const bytes = await image(), p = await pkg.parseMota(await pkg.buildFullMota(bytes));
+  const target = 'bb'.repeat(32), source = 'aa'.repeat(32), password = 'admin';
+  const id = Buffer.from(p.merkleRoot).toString('hex'), packageHash = Buffer.from(await crypto.subtle.digest('SHA-256', p.blob)).toString('hex');
+  const bodyHash = Buffer.from(bytes.slice(-48, -40)).toString('hex');
+  const savedSource = '910.525,62.5,7,5', savedTarget = savedTargetOverride || (differentSaved ? '907.525,125,8,5' : savedSource);
+  const updateRadio = sourceKind === 'legacy' ? savedSource : '909.950,250,5,5';
+  const profile2 = sourceKind === 'radio2' || sourceKind === 'repeater';
+  let primary = profile2 ? null : updateRadio, secondary = profile2, installed = false, owned = true, session;
+  let record = {phase:'ready', target, source, id, packageHash};
+  const calls = [];
+  function reachable() {
+    const active = link.otaRadioProfile === 1 ? updateRadio : primary || savedSource;
+    if (active !== (installed ? savedTarget : updateRadio)) {
+      session.stop(); throw Error('RF channel mismatch after reboot');
+    }
+  }
+  const link = {sourceKey:source, browserRawSource:sourceKind !== 'repeater', otaSupported:sourceKind !== 'legacy',
+    localCliSupported:true, supportsOtaRadio2:profile2, otaRadioProfile:profile2 ? 1 : 0, otaTargetProfile:profile2 ? 1 : 0,
+    async verifyPeer(k, pw) { assert.equal(k, target); assert.equal(pw, password); reachable(); owned = true; calls.push('proof'); },
+    async resetRemoteSession(k, pw) {
+      if (sourceKind === 'repeater') assert.equal(owned, true, 'reset cannot reuse a released repeater session');
+      return this.verifyPeer(k, pw);
+    },
+    async closeRadioSession() { owned = false; calls.push('close'); },
+    async selectOtaRadio(profile) { assert.equal(owned, false); this.otaRadioProfile = profile; calls.push('select ' + profile); },
+    async applyTemporaryRadio(command) { return this.localCommand(command); },
+    async localCommand(command) {
+      calls.push('local ' + command);
+      if (command === 'get radio') return savedSource;
+      if (command === 'get tempradio') return primary ? 'TempRadio active: ' + primary + ' 600s left,preamble=128' : 'TempRadio inactive';
+      if (command === 'get tempradio2') return secondary ? '> ' + updateRadio + ',rxtx,128; 120 min left' : '> off';
+      if (command === 'set tempradio2 off') { secondary = false; return 'OK'; }
+      if (command === 'get radio2.status') return '> rxtx; RX=0,0 TX=0,0 switches=0 errors=0 max=0us preamble=32,128';
+      if (command === 'get radio.rxps') return 'off';
+      if (command === 'ota config') return 'autofetch=off autoinstall=off hops=0';
+      if (command === 'ota stats') return 'fetch idle';
+      if (command === 'ota folder') return 'folder=off';
+      if (command.startsWith('tempradio ')) {
+        assert.equal(installed, true, 'retuned before the install command');
+        assert.equal(command, 'tempradio ' + savedTarget + ',10,128');
+        primary = savedTarget;
+        if (lostReply) throw Error('Command timed out; result is unknown');
+        return 'OK';
+      }
+      throw Error('Unexpected source command: ' + command);
+    },
+    async remoteCommand(k, pw, command) {
+      assert.equal(k, target); assert.equal(pw, password); reachable(); calls.push('remote ' + command);
+      if (command === 'get radio') return savedTarget;
+      if (command === 'get tempradio') return profile2 ? '> off' : '> ' + updateRadio + ',128';
+      if (command === 'get tempradio2' || command === 'get radio2.status') return this.localCommand(command);
+      if (command === 'get radio.rxps' || command === 'ota config') return this.localCommand(command);
+      if (command === 'ota status') return 'hw=board target:12345678 maxblk:1024 ' + (installed ? 'no download' : 'download: ready to install id=' + id);
+      if (command === 'ota self') return 'base_hash=' + (installed ? bodyHash : '1122334455667788');
+      if (command === 'ver') return installed ? 'v1.18.0.1' : 'v1.17.1.9';
+      if (command === 'ota installhash') return oldTarget ? 'Unknown OTA command. Type `ota help`.' : installUsage;
+      if (command === (oldTarget ? 'ota install' : 'ota installhash ' + await installHash(p.blob))) {
+        installed = true;
+        if (lostReply) throw Error('Remote command timed out; result is unknown');
+        return 'OK';
+      }
+      throw Error('Unexpected target command: ' + command);
+    }
+  };
+  if (noControls) delete link.closeRadioSession;
+  session = new DirectSession(link, target, password, p, {pollMs:1, readJournal:() => record, journal:r => {record = r;}});
+  return {session, link, calls, installed:() => installed, record:() => record, savedTarget};
+}
+
+for (const sourceKind of ['legacy', 'guarded', 'radio2', 'repeater']) for (const oldTarget of [false, true]) {
+  test(sourceKind + ' source verifies reboot on the saved channel of ' + (oldTarget ? 'old' : 'new') + ' target', async () => {
+    for (const differentSaved of [false, true]) {
+      const f = await rebootFixture({sourceKind, oldTarget, differentSaved, lostReply:differentSaved});
+      await f.session.install();
+      assert.equal(f.record().phase, 'installed');
+      assert.equal(f.calls.filter(c => c === 'remote ota install' || c.startsWith('remote ota installhash ')).length, 1);
+      const writes = f.calls.filter(c => c.startsWith('local tempradio '));
+      const expectedWrites = sourceKind === 'guarded' || differentSaved ? 1 : 0;
+      assert.equal(writes.length, expectedWrites);
+      assert.equal(f.calls.filter(c => c === 'proof').length, 2, 'fresh identity proof after reboot');
+      assert(!f.calls.some(c => c.startsWith('local set radio ')));
+      if (sourceKind !== 'legacy' || differentSaved) assert.equal(f.link.otaRadioProfile, 0);
+    }
+  });
+}
+
+test('cannot install if this source cannot reach the target saved channel afterward', async () => {
+  const f = await rebootFixture({noControls:true});
+  await assert.rejects(f.session.install(), /cannot automatically reconnect/);
+  assert.equal(f.installed(), false); assert.equal(f.record().phase, 'ready');
+});
+
+test('malformed saved target channel is rejected before installation', async () => {
+  const f = await rebootFixture(), remote = f.link.remoteCommand.bind(f.link);
+  f.link.remoteCommand = (key, password, command) => command === 'get radio' ? '> unknown config: radio' : remote(key, password, command);
+  await assert.rejects(f.session.install(), /unknown config/);
+  assert.equal(f.installed(), false); assert.equal(f.record().phase, 'ready');
+});
+
+
+test('source radio2 stays selected when the reboot channel already matches', async () => {
+  const f = await rebootFixture({sourceKind:'radio2', savedTargetOverride:'909.950,250,5,5'});
+  await f.session.install();
+  assert.equal(f.record().phase, 'installed');
+  assert.equal(f.link.otaRadioProfile, 1);
+  assert(!f.calls.includes('close'));
+});
+
+test('overlapping temporary source radio2 is ended before the primary reconnect', async () => {
+  const f = await rebootFixture({sourceKind:'radio2', savedTargetOverride:'909.960,125,8,5'});
+  await f.session.install();
+  assert.equal(f.record().phase, 'installed');
+  assert.equal(f.calls.filter(c => c === 'local set tempradio2 off').length, 1);
+  assert(f.calls.indexOf('local set tempradio2 off') < f.calls.indexOf('local tempradio 909.960,125,8,5,10,128'));
+  assert(!f.calls.includes('local set radio2 off'));
 });

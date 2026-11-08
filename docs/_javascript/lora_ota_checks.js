@@ -37,7 +37,8 @@
   function availability(status, self) {
     const reply = String(status || '').trim().replace(/^>\s*/, '');
     if (/^(?:(?:err(?:or)?)[\s:–-]+)?(?:unknown(?:\s+(?:command|cmd))?|unsupported(?:\s+command)?|(?:command\s+)?not supported)[.!]?$/i.test(reply) ||
-        /^Unknown OTA command(?:\. Type `ota help`\.|; use ota help)$/i.test(reply))
+        /^Unknown OTA command(?:\. Type `ota help`\.|; use ota help)$/i.test(reply) ||
+        /^(?:LoRa OTA is not included in this build; tempradio cannot enable it\. Use an OTA-enabled repeater firmware|LoRa OTA absent; tempradio cannot enable it\. Install OTA repeater firmware|LoRa OTA absent; use OTA repeater; tempradio cannot enable it)$/.test(reply))
       return {state:'unsupported', message:'LoRa updates are not available on this target’s current firmware. Install a compatible LoRa OTA receiver build using USB or another supported update method first.'};
     if (/\bOTA\s+seeder\b|\binstall:disabled\b|\bsource-only; local install disabled\b/i.test(reply + ' ' + String(self || '')))
       return {state:'unsupported', message:'LoRa updates are not available for this target: its firmware can send updates but cannot receive or install them. Install an OTA receiver build using USB or another supported update method first.'};

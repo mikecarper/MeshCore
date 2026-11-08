@@ -178,6 +178,9 @@ Investigation retries unanswered checks. Login and update commands are not
 automatically repeated. Older targets validate the staged image with `ota install`,
 but cannot bind the full container hash before installation. The updater checks
 the reported firmware identity and body hash after reboot.
+For direct updates, it reads the target's saved channel before installing and
+automatically reconnects there after reboot. Any source retune is temporary;
+saved radio channels are unchanged.
 
 The source needs a compatible USB Companion with raw packet support, or a
 Repeater with `ota.peer` and USB folder support. Older Companions use their
@@ -191,8 +194,9 @@ temporary channels with the Companion's saved settings. It tests primary
 channels with a two-minute window before extending them; temporary radio2
 uses the full window and keeps the normal channel available. A lost setup
 reply stops the operation without repeating the command. Firmware without
-USB radio controls cannot be configured or checked automatically; update
-that Companion first. Some firmware accepts raw OTA packets from USB but
+the required USB radio readbacks cannot be configured or checked automatically;
+the page identifies the missing command and links to a Companion update.
+Some firmware accepts raw OTA packets from USB but
 suppresses their transmission without an active temporary radio.
 Existing downloads and source folders must be cleared first. If the source
 clock is wrong, set it before connecting. Multi-version updates require a

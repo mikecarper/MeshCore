@@ -6,13 +6,20 @@ import unittest
 from test_browser_lora_ota_runtime import BROWSER, HARNESS
 from test_browser_lora_ota_nrf_runtime import run_harness
 from test_browser_lora_ota_legacy_investigation_runtime import legacy_harness
+from test_browser_lora_ota_companion_runtime import HARNESS as COMPANION_HARNESS
 
 
-def workflow_harness(*, transfer_failure=False, legacy_install=False, catalog=False, staged=False):
+def workflow_harness(*, transfer_failure=False, legacy_install=False, catalog=False, staged=False, reboot_channel=False):
     script = HARNESS
     if legacy_install:
         script = script.replace("return 'ERR usage: ota installhash <64-hex-container-sha256>';", "return 'Error: unsupported';")
         script = script.replace("if(/^ota installhash [0-9a-f]{64}$/.test(cmd))", "if(cmd==='ota install')")
+    if reboot_channel:
+        script = script.replace("const radio='910.525,62.5,7,5,120';", "const radio='910.525,62.5,7,5,120';let sourceActive='910.525,62.5,7,5';")
+        script = script.replace("cmds.push('remote '+cmd);", "cmds.push('remote '+cmd);if(sourceActive!==(installed?'907.525,125,8,5':'910.525,62.5,7,5'))throw Error('RF channel mismatch');")
+        script = script.replace("if(cmd==='get radio')return radio.split(',').slice(0,4).join(',');", "if(cmd==='get radio')return '907.525,125,8,5';")
+        script = script.replace("'get tempradio':radio,'get radio':radio,", "'get tempradio':sourceActive+',128','get radio':'910.525,62.5,7,5',")
+        script = script.replace("if(cmd==='ota folder')reply=", "if(cmd.startsWith('tempradio ')){sourceActive=cmd.slice(10).split(',').slice(0,4).join(',');reply='OK';}\n      if(cmd==='ota folder')reply=")
     if transfer_failure:
         script = script.replace("state='ready';", "state='failed';")
         script = script.replace("(state==='ready'?'ready to install':'fetching')", "(state==='failed'?'failed':state==='ready'?'ready to install':'fetching')")
@@ -75,7 +82,7 @@ def workflow_harness(*, transfer_failure=False, legacy_install=False, catalog=Fa
     return script
 
 
-def legacy_setup_harness(rxps_on=False, matching=False):
+def legacy_setup_harness(rxps_on=False, matching=False, reboot_channel=False):
     """Actual UI and binary transport, with stateful legacy radio endpoints."""
     script = legacy_harness('full_transfer')
     # Shorten only the firmware-transfer polling interval; keep the real
@@ -127,6 +134,9 @@ def legacy_setup_harness(rxps_on=False, matching=False):
     el('update').click();await wait(()=>el('workflow-status').dataset.state==='complete'||el('workflow-status').dataset.state==='error');
     if(el('workflow-status').dataset.state!=='complete')throw Error(el('workflow-status').textContent);"""+script[end:]
     script = script.replace("investigateClicks,beforeActionFrames,installed,", "timeline,sourceRxps,targetRxps,targetHops,sourceTemp,targetTemp,frequency:el('radio-frequency').value,investigateClicks,beforeActionFrames,installed,")
+    if reboot_channel:
+        script = script.replace("else if(text==='get radio')reply='> 910.5250244,62.5,7,5';", "else if(text==='get radio')reply='> 907.525,125,8,5';")
+        script = script.replace("installed=true;", "installed=true;targetTemp='907.525,125,8,5';")
     return script
 
 
@@ -158,6 +168,38 @@ class BrowserLoraOtaWorkflowRuntime(unittest.TestCase):
         for endpoint in ('remote', 'local'):
             self.assertEqual(result['timeline'].count([endpoint, 'set radio.rxps off']), 1)
         self.assertFalse(any(r[1].startswith('tempradio ') for r in result['timeline']))
+
+    def test_repeater_source_follows_old_and_new_targets_back_to_saved_channel(self):
+        for old_target in (False, True):
+            with self.subTest(old_target=old_target):
+                result = run_harness(workflow_harness(legacy_install=old_target, reboot_channel=True), timeout=45)
+                self.assertNotIn('error', result, result)
+                self.assertEqual(result['journal']['phase'], 'installed')
+                self.assertEqual(result['cmds'].count('local tempradio 907.525,125,8,5,10,128'), 1)
+                installs = [c for c in result['cmds'] if c == 'remote ota install' or c.startswith('remote ota installhash ')]
+                self.assertEqual(len(installs), 1)
+
+    def test_legacy_companion_reconnects_after_target_loses_temporary_channel_on_reboot(self):
+        result = run_harness(legacy_setup_harness(reboot_channel=True), timeout=90)
+        self.assertNotIn('error', result, result)
+        self.assertTrue(result['installed'])
+        self.assertEqual(result['sourceTemp'], '907.525,125,8,5')
+        self.assertEqual(result['targetTemp'], result['sourceTemp'])
+        self.assertEqual(result['timeline'].count(['local', 'tempradio 907.525,125,8,5,10,128']), 1)
+        self.assertEqual(result['cmds'].count('ota install'), 1)
+
+    def test_guarded_companion_retunes_under_guard_and_reauthenticates_after_reboot(self):
+        script = COMPANION_HARNESS.replace("let expected,pkg,", "let sourceActive=radio;let expected,pkg,")
+        script = script.replace("const f=bytes.slice(3);this.frames.push(Array.from(f));let out;", """const f=bytes.slice(3);this.frames.push(Array.from(f));let out;
+          if([2,26,65].includes(f[0])&&sourceActive!==(installed?'907.525,125,8,5':radio))throw Error('RF channel mismatch');""")
+        script = script.replace("else if(text==='get tempradio'||text==='get radio')reply='> '+radio;", "else if(text==='get radio')reply='> 907.525,125,8,5';else if(text==='get tempradio')reply='> '+radio;")
+        script = script.replace("else if(text==='get tempradio')value='TempRadio active: '+radio+' 100s left,preamble=32';", """else if(text==='get tempradio')value='TempRadio active: '+sourceActive+' 600s left,preamble=128';
+          else if(text.startsWith('tempradio ')){if(!guard)throw Error('Unguarded local retune');sourceActive=text.slice(10).split(',').slice(0,4).join(',');value='OK';}""")
+        result = run_harness(script, timeout=90)
+        self.assertNotIn('error', result, result)
+        self.assertIn('Installed and verified:', result['status'])
+        self.assertEqual(sum(c.startswith('ota installhash ') for c in result['cmds']), 1)
+        self.assertFalse(result['guard'])
 
     def test_single_action_transfers_installs_and_verifies_once(self):
         result = run_harness(workflow_harness(), timeout=40)

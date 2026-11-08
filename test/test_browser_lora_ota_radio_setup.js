@@ -433,3 +433,28 @@ test('legacy prefixed RXPS off replies are accepted; unknown or contradictory va
   assert.equal(setup.formatRadio([910.525024414, 250, 5, 5]), '910.525,250,5,5');
   assert.equal(setup.formatRadio([909.95, 62.5, 7, 5]), '909.950,62.5,7,5');
 });
+
+test('old CommonCLI unknown-config replies disable optional radio2 without blocking primary setup', async () => {
+  const f = fixture({legacy: true, sourceSupports: false, targetSecondary: false});
+  for (const endpoint of ['source', 'target']) for (const name of ['radio2', 'tempradio2', 'radio2.cross', 'radioat2', 'tempradioat2'])
+    f.overrides.set(endpoint + ':get ' + name, 'unknown config: ' + name);
+  const result = await setup.prepare(f.link, key, 'pw', selected, f.options);
+  assert.equal(result.sourceProfile, 0); assert.equal(result.targetProfile, 0);
+  assert.equal(result.ready, true);
+});
+
+test('missing old source getters require an upgrade; timeouts are never treated as unsupported', async () => {
+  for (const command of ['get tempradio', 'get radio.rxps']) for (const reply of ['Unknown command', 'unknown config', 'unknown config: ' + command.slice(4)]) {
+    const f = fixture({legacy: true, overrides: [['source:' + command, reply]]});
+    await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options), error => {
+      assert.equal(error.sourceUpdateRequired, 'companion');
+      assert.match(error.message, /Update its firmware/); return true;
+    });
+    assert.equal(f.writes().length, 0);
+  }
+  for (const reply of ['unknown config: unrelated', 'Access denied', 'request timed out']) {
+    const f = fixture({overrides: [['target:get radio2', reply]]});
+    await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options));
+    assert.equal(f.writes().length, 0);
+  }
+});

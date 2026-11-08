@@ -7,6 +7,7 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (checks) {
   'use strict';
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const radioSetup = () => typeof module === 'object' && module.exports ? require('./lora_ota_radio_setup.js') : globalThis.LoraOtaRadioSetup;
   const formatRadio = tuple => [Number(tuple[0]).toFixed(3), ...tuple.slice(1)].join(',');
   function setupRequired(message) { const error = Error(message); error.radioSetupRequired = true; return error; }
   function value(text) { const s = String(text).trim().replace(/^>\s*/, ''); if (!s || /^(error|err\b|unknown\b|unsupported\b)/i.test(s)) throw Error(s || 'Empty response'); return s; }
@@ -111,8 +112,12 @@
           catch (error) { throw Error(label + ': ' + diagnostic(error.message)); }
         };
         const command = async c => {
-          try { return value(await rawCommand(c)); }
-          catch (error) { throw Error(label + ': ' + diagnostic(error.message)); }
+          try {
+            const reply = await rawCommand(c);
+            if (c === 'get tempradio' || c === 'get radio.rxps') radioSetup().requiredReply(reply, c, source && (this.link.browserRawSource ? 'companion' : 'repeater'));
+            return value(reply);
+          }
+          catch (error) { error.message = label + ': ' + diagnostic(error.message); throw error; }
         };
         if (source && this.link.browserRawSource && this.link.localCliSupported === false) {
           if (profile !== 0) throw Error('The USB Companion cannot verify an active temporary radio2 without local CLI');
@@ -164,7 +169,7 @@
         const setup = typeof module === 'object' && module.exports ? require('./lora_ota_radio_setup.js') : globalThis.LoraOtaRadioSetup;
         let rxps;
         try { rxps = setup.rxps(await command('get radio.rxps')); }
-        catch (error) { throw Error(label + ': ' + diagnostic(error.message)); }
+        catch (error) { error.message = label + ': ' + diagnostic(error.message); throw error; }
         if (rxps.enabled !== 'off') throw setupRequired(label + ': RX power saving must be off before starting');
         if (!source || checkSourceOta) {
           try { policy(await command('ota config')); }
@@ -266,15 +271,77 @@
         if (this.serving) { try { await this.link.stopServing(); this.serving = false; } catch (error) { this.progress('Could not detach the package: ' + error.message); } }
       }
     }
+    async planRebootChannel() {
+      // Temporary profiles do not survive a target reboot. Read its saved
+      // primary before installation, while the update channel still works.
+      const setup = radioSetup(), savedTarget = setup.primary(await this.remote('get radio'));
+      const selected = this.link.otaRadioProfile ?? 0;
+      if (setup.same(savedTarget, this.tempRadio)) return {savedTarget, change: false};
+      if ((this.link.browserRawSource && this.link.localCliSupported === false) ||
+          typeof this.link.closeRadioSession !== 'function' || typeof this.link.selectOtaRadio !== 'function' ||
+          (this.link.browserRawSource && typeof this.link.applyTemporaryRadio !== 'function')) {
+        const error = Error('This USB source cannot automatically reconnect on the target saved channel after installation. Update the source firmware first.');
+        error.sourceUpdateRequired = this.link.browserRawSource ? 'companion' : 'repeater';
+        throw error;
+      }
+      const savedSource = setup.primary(await this.local('get radio'));
+      const primary = await setup.readTemporary(c => this.link.localCommand(c), 0);
+      if (!['off', 'active'].includes(primary.state)) throw Error('Cannot verify the source primary channel before installation.');
+      const tune = !setup.same(primary.state === 'active' ? primary.tuple : savedSource, savedTarget);
+      const clearSecondary = selected === 1 && tune && Math.abs(this.tempRadio[0] - savedTarget[0]) <= (this.tempRadio[1] + savedTarget[1]) / 2000 + 0.001;
+      const command = setup.commands({frequency:savedTarget[0], bandwidth:savedTarget[1], sf:savedTarget[2], cr:savedTarget[3], minutes:10, preamble:128}).source;
+      return {savedTarget, savedSource, change:true, tune, clearSecondary, command};
+    }
+    async reconnectChannel(plan) {
+      const setup = radioSetup();
+      this.progress('Reconnecting on the target saved channel: ' + formatRadio(plan.savedTarget) + '.');
+      await this.link.closeRadioSession();
+      await this.link.selectOtaRadio(0);
+      this.link.otaTargetProfile = 0;
+      if (plan.clearSecondary) {
+        // End only the selected temporary update lease when it would overlap
+        // the reconnect channel. Never disable the saved secondary profile.
+        try { await this.local('set tempradio2 off'); }
+        catch (error) { if (!/timeout|timed out|disconnect|result is unknown/i.test(String(error.message))) throw error; }
+        if ((await setup.readTemporary(c => this.link.localCommand(c), 1)).state !== 'off')
+          throw Error('Source temporary radio2 did not stop before reconnecting.');
+      }
+      if (plan.tune) {
+        // One local, temporary write only. A lost acknowledgement is resolved
+        // by readback, never by repeating the write or changing saved settings.
+        try {
+          const reply = await (this.link.browserRawSource ? this.link.applyTemporaryRadio(plan.command) : this.link.localCommand(plan.command));
+          if (!/^(?:>\s*)?OK(?:\s|$)/i.test(String(reply).trim())) throw Error('Source did not accept the post-install channel: ' + diagnostic(reply));
+        } catch (error) {
+          if (!/timeout|timed out|disconnect|result is unknown/i.test(String(error.message))) throw error;
+        }
+      }
+      const deadline = Date.now() + 35000;
+      do {
+        const current = await setup.readTemporary(c => this.link.localCommand(c), 0);
+        const saved = setup.primary(await this.local('get radio'));
+        if (!setup.same(saved, plan.savedSource)) throw Error('Source saved channel changed during post-install reconnect.');
+        if ((current.state === 'active' && setup.same(current.tuple, plan.savedTarget)) ||
+            (!plan.tune && current.state === 'off' && setup.same(saved, plan.savedTarget))) return;
+        await sleep(500);
+      } while (Date.now() < deadline && !this.cancelled);
+      throw Error('Source did not switch to the target saved channel for post-install verification.');
+    }
     async install() {
       const id = checks.hex(this.info.merkleRoot), before = await this.inspect({allowExisting:true}), current = await this.readDownload();
       if (before.download !== 'ready' || current.id !== id || current.state !== 'ready') throw Error('The selected package is not ready to install');
-      this.journal({phase: 'install attempted', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, bodyHash: this.bodyHash});
+      const rebootChannel = await this.planRebootChannel();
+      this.journal({phase: 'install attempted', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, bodyHash: this.bodyHash, savedTargetRadio:rebootChannel.savedTarget});
       const command = this.installMode === 'hash' ? 'ota installhash ' + this.installHash : this.installMode === 'legacy' ? 'ota install' : null;
       if (!command) throw Error('Target installation capability is unknown');
       try { await this.remote(command); } catch (error) {
         if (!/timeout|timed out|disconnect|result is unknown/i.test(String(error.message))) throw error;
         this.progress('Install reply was lost; checking the running firmware');
+      }
+      let freshSession = false;
+      if (rebootChannel.change) {
+        await this.reconnectChannel(rebootChannel);
+        freshSession = true;
       }
       const deadline = Date.now() + 300000;
       while (Date.now() < deadline && !this.cancelled) {
@@ -282,8 +349,10 @@
         try {
           // The target reboot loses its learned return path. Reset and prove
           // once, rather than using a cached session or sending two logins.
-          if (typeof this.link.resetRemoteSession === 'function') await this.link.resetRemoteSession(this.key, this.password);
+          if (freshSession && !this.link.browserRawSource) await this.link.verifyPeer(this.key, this.password);
+          else if (typeof this.link.resetRemoteSession === 'function') await this.link.resetRemoteSession(this.key, this.password);
           else await this.link.verifyPeer(this.key, this.password);
+          freshSession = false;
           const d = checks.destination(await this.remote('ota status'), await this.remote('ota self'), await this.remote('ver'));
           if (d.targetId === this.info.targetId && d.hwId === this.info.hwId && d.version === this.info.fwVersion && d.baseHash === this.bodyHash) {
             this.journal({phase: 'installed', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, bodyHash: this.bodyHash}); return d;

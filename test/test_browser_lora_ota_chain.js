@@ -167,7 +167,7 @@ test('actual DirectSession installs a two-image chain with independent journals'
       if(c==='ota self')return 'base_hash='+node.bodyHash;
       if(c==='ver')return version(node.version);
       if(c==='get bootloader.ver')return 'ERR unsupported';
-      if(c==='get radio'||c==='get tempradio')return radio;
+      if(c==='get radio')return radio.split(',').slice(0,4).join(',');if(c==='get tempradio')return radio;
       if(c==='get radio.rxps')return 'off';if(c==='ota config')return config;
       if(c==='ota installhash')return 'ERR usage: ota installhash <64-hex-container-sha256>';
       if(c==='ota ls')return id;

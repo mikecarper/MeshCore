@@ -101,12 +101,23 @@
     const text = bare(reply);
     need(fullKey(text) && text.toLowerCase() === key, 'The selected target did not prove its complete public key.');
   }
-  function unsupported(reply) {
-    return /^(?:Error: (?:unsupported|radio profiles unsupported|profiles unsupported)|ERR:? unsupported|unsupported|Unknown command)$/i.test(bare(reply));
+  function unsupported(reply, command = '') {
+    const text = bare(reply).toLowerCase();
+    return /^(?:error: (?:unsupported|radio profiles unsupported|profiles unsupported)|err:? unsupported|unsupported|unknown command)$/.test(text) ||
+      !!command && (text === 'unknown config' || text === 'unknown config: ' + command.replace(/^get /, '').toLowerCase());
   }
-  function secondary(reply) {
+  function requiredReply(reply, command, source = false) {
+    if (unsupported(reply, command)) {
+      const error = Error((source ? 'USB ' + (source === 'repeater' ? 'Repeater' : 'Companion') : 'Target') + ' firmware cannot report ' + command +
+        '. Update its firmware using USB or another supported method before using automatic LoRa updates.');
+      if (source) error.sourceUpdateRequired = source === 'repeater' ? 'repeater' : 'companion';
+      throw error;
+    }
+    return reply;
+  }
+  function secondary(reply, command = 'get radio2') {
     const text = bare(reply);
-    if (unsupported(reply)) return {state: 'unsupported'};
+    if (unsupported(reply, command)) return {state: 'unsupported'};
     if (off(reply)) return {state: 'off', intent: text.toLowerCase()};
     const m = text.match(/^(\d+(?:\.\d+)?),(\d+(?:\.\d+)?),(\d+),(\d+),(rx|rxtx),(\d+)( \(auto\))?((?:;[^\r\n]*)?)$/i);
     need(m, 'Cannot verify secondary radio settings.');
@@ -118,9 +129,9 @@
   async function readTemporary(read, profile) {
     need(profile === 0 || profile === 1, 'Invalid OTA radio profile.');
     const raw = await read(profile ? 'get tempradio2' : 'get tempradio');
-    if (unsupported(raw)) return {state: 'unsupported', profile, raw};
+    if (unsupported(raw, profile ? 'get tempradio2' : 'get tempradio')) return {state: 'unsupported', profile, raw};
     if (!profile) { const state = temporary(raw); return {...state, radio: state.tuple, profile, raw}; }
-    const config = secondary(raw);
+    const config = secondary(raw, 'get tempradio2');
     if (config.state === 'off') return {state: 'off', profile, raw};
     need(config.state === 'configured' && config.mode === 'rxtx', 'Temporary secondary radio must use RXTX mode.');
     const liveStatus = await read('get radio2.status'), text = bare(liveStatus);
@@ -134,8 +145,8 @@
     const active = m[1].toLowerCase() === 'rxtx' && Number(m[3]) === config.preamble;
     return {state: active ? 'active' : 'pending', tuple: config.tuple, radio: config.tuple, preamble: config.preamble, profile, raw, liveStatus};
   }
-  function schedule(reply) {
-    if (unsupported(reply)) return {unsupported: true};
+  function schedule(reply, command) {
+    if (unsupported(reply, command)) return {unsupported: true};
     if (emptySchedule(reply)) return {empty: true};
     const text = bare(reply);
     need(/^slots:(?: \d+@\d+)*$/.test(text) || /^\d+:[0-9.,@ -]+$/.test(text), 'Cannot verify scheduled radio settings.');
@@ -146,7 +157,7 @@
     return JSON.stringify({...config, preamble: config.automatic ? 0 : config.preamble});
   }
   function crossing(reply) {
-    if (unsupported(reply)) return 'unsupported';
+    if (unsupported(reply, 'get radio2.cross')) return 'unsupported';
     const result = bare(reply).toLowerCase();
     need(['off', 'on', 'auto'].includes(result), 'Cannot verify secondary crossing policy.');
     return result;
@@ -169,8 +180,10 @@
     async function baseline(label, read) {
       const saved = primary(await read('get radio'));
       const temporaryPrimary = await readTemporary(read, 0);
+      const sourceKind = label === 'source' && (companion ? 'companion' : 'repeater');
+      requiredReply(temporaryPrimary.raw, 'get tempradio', sourceKind);
       need(['off', 'active'].includes(temporaryPrimary.state), label + ' has a pending or unverified primary temporary radio.');
-      const powerSaving = rxps(await read('get radio.rxps')), config = await read('ota config');
+      const powerSaving = rxps(requiredReply(await read('get radio.rxps'), 'get radio.rxps', sourceKind)), config = await read('ota config');
       const otaPolicy = legacy && label === 'source' && unsupported(config) ? null : policy(config);
       let existingDownload = false;
       if (label === 'source') {
@@ -185,17 +198,17 @@
         need(idle || existingDownload, 'Target OTA download state cannot be verified.');
       }
       const savedSecondary = secondary(await read('get radio2'));
-      const temporarySecondary = secondary(await read('get tempradio2'));
+      const temporarySecondary = secondary(await read('get tempradio2'), 'get tempradio2');
       const cross = crossing(await read('get radio2.cross'));
       need(cross !== 'on', 'Automatic setup cannot use existing radio2 crossing on; turn crossing off or use manual setup.');
       need(cross !== 'auto' || temporarySecondary.state !== 'configured',
         'Automatic crossing with an existing temporary radio2 would duplicate OTA traffic; turn crossing off or use manual setup.');
       const schedules = {};
       for (const command of ['get radioat', 'get tempradioat', 'get radioat2', 'get tempradioat2']) {
-        const reply = await read(command), status = schedule(reply);
+        const reply = await read(command), status = schedule(reply, command);
         // Full Companion implements no primary scheduler. Its exact shared
         // callback rejection is a known absence, not an unknown-state bypass.
-        const absentPrimary = companion && label === 'source' && (command === 'get radioat' || command === 'get tempradioat') && unsupported(reply);
+        const absentPrimary = companion && label === 'source' && (command === 'get radioat' || command === 'get tempradioat') && unsupported(reply, command);
         if (command === 'get radioat' || command === 'get tempradioat')
           need(absentPrimary || status.empty === true, label + ' has scheduled or unverified primary settings.');
         else need(!status.unsupported || savedSecondary.state === 'unsupported' || temporarySecondary.state === 'unsupported',
@@ -262,7 +275,7 @@
         secondarySignature(secondary(await read('get radio2'))) === secondarySignature(before.savedSecondary) &&
         crossing(await read('get radio2.cross')) === before.cross,
         label + ' saved primary, secondary or crossing settings changed.');
-      if (!chosen) need(secondarySignature(secondary(await read('get tempradio2'))) === secondarySignature(before.temporarySecondary),
+      if (!chosen) need(secondarySignature(secondary(await read('get tempradio2'), 'get tempradio2')) === secondarySignature(before.temporarySecondary),
         label + ' existing temporary secondary settings changed.');
     }
     try {
@@ -393,9 +406,10 @@
       const partial = targetAttempted || sourceAttempted ? ' Temporary setup may be partially active; check both radios before any further write. No write was retried or automatically restored.' : '';
       const policies = changedSettings.length ? ' Saved prerequisite changes may remain applied; review the recorded changes before proceeding.' : '';
       const result = Error((error?.message || 'Temporary channel setup failed.') + partial + policies);
+      if (error.sourceUpdateRequired) result.sourceUpdateRequired = error.sourceUpdateRequired;
       result.changedSettings = changedSettings;
       result.targetSetupAttempted = targetAttempted; result.sourceSetupAttempted = sourceAttempted; throw result;
     }
   }
-  return {recommend, commands, prepare, readTemporary, formatRadio, rxps};
+  return {recommend, commands, prepare, readTemporary, formatRadio, rxps, primary, same, requiredReply};
 });
