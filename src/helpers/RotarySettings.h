@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
 #include <helpers/IdentityStore.h>
 #include <helpers/CustomPeripheralConfig.h>
 

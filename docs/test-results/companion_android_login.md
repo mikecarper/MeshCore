@@ -18,6 +18,8 @@ Validation: 7 November 2026 (8 November UTC).
 - The app completed admin login with **Direct** displayed and fetched live
   repeater status, including battery voltage, uptime and radio statistics.
   Admin login and status retrieval succeeded again after the Companion reboot.
+- After an application-only USB update from `f31c6b6cb` to `3144d2d30`, Android
+  reconnected with the same bond and fetched fresh repeater status again.
 - Initial no-reply tests were setup failures: the old repeater needed a restart
   after changing its channel. The USB control login succeeded after that restart,
   followed by the Android test. An earlier pairing attempt also used the wrong
@@ -25,7 +27,7 @@ Validation: 7 November 2026 (8 November UTC).
 
 This verifies Android MeshCore Open on the tested V4.2. It does not establish
 MeshCore One/iOS behavior or physical T096/T114 behavior. The Android bond was
-created during this test; preservation of its pre-upgrade bond is not claimed.
+created during this test; preservation from stock firmware is not claimed.
 The earlier independent Pi-central upgrade test is recorded in
 [Bluedroid bond preservation](bluedroid_bond_preservation.md).
 
@@ -49,3 +51,7 @@ the complete output bytes against the approved messages. The existing source
 fingerprint still covers the surrounding control flow. Delayed reply production,
 retry ownership, direct-admin guards, help output/stack and identity CLI tests
 also passed, including sanitizer coverage where supported.
+
+The later Companion OTA include test exposed a missing `<stdint.h>` include in
+`RotarySettings.h`. The header now declares its own integer-type dependency;
+all three production include configurations pass without transitive definitions.
