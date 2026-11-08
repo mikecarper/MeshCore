@@ -104,3 +104,18 @@
 @media (max-width: 40rem) {
   [data-lora-ota] .lora-ota-actions button { flex: 1 1 100%; }
 }
+
+[data-lora-ota] [hidden] { display: none !important; }
+[data-lora-ota] .lora-ota-notice {
+  padding: 0.9rem 1rem;
+  border-left: 0.25rem solid var(--md-primary-fg-color);
+  background: var(--md-code-bg-color);
+  overflow-wrap: anywhere;
+}
+[data-lora-ota] .lora-ota-notice[data-state="error"] { border-color: #b45309; }
+[data-lora-ota] [data-role="update-summary"] { overflow-wrap: anywhere; }
+[data-lora-ota] .lora-ota-step details { margin-top: 0.8rem; }
+
+[data-lora-ota] details { box-shadow: none; border-color: var(--md-default-fg-color--lightest); }
+[data-lora-ota] details > summary { background: transparent; padding-left: 0.6rem; }
+[data-lora-ota] details > summary::before { display: none; }

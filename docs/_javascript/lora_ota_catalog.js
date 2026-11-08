@@ -121,8 +121,12 @@
     const fetchImpl=options.fetchImpl||fetch,index=await json('firmware/index.json',4*1024*1024,fetchImpl),image=await download(candidate,index,fetchImpl);
     if(image.targetId!==dest.targetId||image.hwId!==dest.hwId||image.fwVersion<=dest.version||image.fwVersion!==checks.version(candidate.version))throw Error('Downloaded firmware identity does not match this target');
     const body=image.image,has=text=>{const needle=new TextEncoder().encode(text);outer:for(let i=0;i<=body.length-needle.length;i++){for(let j=0;j<needle.length;j++)if(body[i+j]!==needle[j])continue outer;return true;}return false;};
-    if(!has('OTA: status')||!has('get <id> flash | install')||!has('ota installhash <64-hex-container-sha256>'))throw Error('The downloaded firmware does not confirm LoRa OTA and verified-install support for future updates');
-    return {name:candidate.name.replace(/\.zip$/i,'.bin'),bytes:image.image,identity:image};
+    // Released receivers predate installhash. Keep checking the mirror digest,
+    // EndF identity and receiver evidence; the live session selects the supported
+    // installer and verifies the running firmware after reboot.
+    if(!has('OTA: status')||!has('get <id> flash | install'))throw Error('The downloaded firmware does not contain LoRa OTA receiver support');
+    return {name:candidate.name.replace(/\.zip$/i,'.bin'),bytes:image.image,identity:image,
+      installHashSupported:has('ota installhash <64-hex-container-sha256>')};
   }
   async function findInstalled(dest,role,versionReply,options={}){
     validateDest(dest);const roles={repeater:'repeater',room:'roomServer',sensor:'sensor'};
