@@ -16,9 +16,24 @@ SELECTION = re.compile(
     r'MESH_CLI_REPLY_TEXT\(("(?:\\.|[^"\\])*"),\s*("(?:\\.|[^"\\])*")\)')
 TOKENS = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|'
                     r'//[^\n]*|/\*.*?\*/|[A-Za-z_][A-Za-z_0-9]*|[^\s]', re.S)
+SHARED_TERMINAL_ERROR = re.compile(
+    r'terminalOutput\(\)\.printf\("  ERROR: %s",\s*'
+    r'MESH_CLI_REPLY_TEXT\(("(?:\\.|[^"\\])*"),\s*("(?:\\.|[^"\\])*")\)\)')
+
+
+def expand_shared_terminal_errors(source):
+    # This one reviewed storage change shares a fixed prefix through printf.
+    # Reconstruct its original literal print for the existing whole-source and
+    # message guards. The executable test below checks the real formatted bytes.
+    def expand(match):
+        messages = [json.dumps('  ERROR: ' + json.loads(value))
+                    for value in match.groups()]
+        return 'terminalOutput().print(MESH_CLI_REPLY_TEXT(%s, %s))' % tuple(messages)
+    return SHARED_TERMINAL_ERROR.sub(expand, source)
 
 
 def original_tokens(source):
+    source = expand_shared_terminal_errors(source)
     source = re.sub(r'^#include [<"](?:helpers/)?CLIReplyText\.h[>"]\s*\n',
                     '', source, flags=re.M)
     source = SELECTION.sub(lambda match: match.group(1), source)
@@ -60,7 +75,7 @@ class CliReplyTextTests(unittest.TestCase):
         for file, messages in expected.items():
             source = (ROOT / file).read_text()
             actual = {(json.loads(match.group(1)), json.loads(match.group(2)))
-                      for match in SELECTION.finditer(source)}
+                      for match in SELECTION.finditer(expand_shared_terminal_errors(source))}
             self.assertEqual(actual, messages, file)
             # Substituting each original literal recovers every original C++
             # token, including command tests, branches, calls and arguments.
@@ -68,6 +83,39 @@ class CliReplyTextTests(unittest.TestCase):
             # hash; keep their tokens covered by this guard as well.
             self.assertEqual(hashlib.sha256(original_tokens(source)).hexdigest(),
                              fixture['noncompact_tokens_sha256'][file], file)
+
+    def test_shared_terminal_error_prefix_keeps_every_output_byte(self):
+        compiler = os.environ.get('CXX') or shutil.which('g++') or shutil.which('clang++')
+        if not compiler:
+            self.skipTest('host C++ compiler required')
+        source = (ROOT / 'examples/companion_radio/MyMesh.cpp').read_text()
+        calls = list(SHARED_TERMINAL_ERROR.finditer(source))
+        self.assertEqual(len(calls), 57)
+        approved = {(row['verbose'], row['concise']) for row in
+                    json.loads(FIXTURE.read_text())['messages']
+                    if row['file'] == 'examples/companion_radio/MyMesh.cpp'}
+        for call in calls:
+            self.assertIn(tuple('  ERROR: ' + json.loads(value)
+                                for value in call.groups()), approved)
+        harness = ('#include <cstdio>\n#include <CLIReplyText.h>\n'
+                   '#ifdef _WIN32\n#include <fcntl.h>\n#include <io.h>\n#endif\n'
+                   'int main() {\n#ifdef _WIN32\n_setmode(_fileno(stdout), _O_BINARY);\n#endif\n' +
+                   '\n'.join(call.group().replace('terminalOutput().printf', 'std::printf')
+                             + ';' for call in calls) + '\n}\n')
+        with tempfile.TemporaryDirectory(prefix='terminal-error-prefix-') as folder:
+            work = Path(folder)
+            (work / 'test.cpp').write_text(harness)
+            for compact in (0, 1):
+                result = subprocess.run([compiler, '-std=c++11', '-Os', '-Wall',
+                    '-Wextra', '-Werror', '-DMESH_CLI_COMPACT_REPLIES='+str(compact),
+                    '-I'+str(ROOT/'src/helpers'), str(work/'test.cpp'),
+                    '-o', str(work/'test')], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+                result = subprocess.run([str(work/'test')], capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                expected = ''.join('  ERROR: ' + json.loads(call.group(compact+1))
+                                   for call in calls).encode()
+                self.assertEqual(result.stdout, expected)
 
     def test_ota_prose_keeps_discovery_and_retry_parser_keywords(self):
         messages = {row['verbose']: row['concise']
