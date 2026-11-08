@@ -101,6 +101,7 @@ struct Radio:LRxxxxPulseWrapper<Chip> {
 struct Pram:Radio {
  using Radio::Radio;using PulseBase=Radio;
  bool _agc_pram_paused=false,_agc_pram_restore_owned=false;
+ bool _lab_resume_pending=false;uint32_t _lab_resume_at=0;
  uint32_t _agc_pram_generations[2]={0,0};
  bool _lab_scan_active=true,_lab_uncertain=false,_lab_pram_loaded=true,fail_resume=false;
  struct {bool enabled_=true;bool enabled()const{return enabled_;}}_lab_auto;
@@ -108,7 +109,7 @@ struct Pram:Radio {
  unsigned pauses=0,starts=0,cold_resets=0;
  mesh::RadioParamApplyResult pause_result=mesh::RadioParamApplyResult::APPLIED;
  mesh::RadioParamApplyResult labPauseScanner(bool,uint8_t){++pauses;if(pause_result==mesh::RadioParamApplyResult::APPLIED)_lab_scan_active=false;return pause_result;}
- bool labScannerStart(bool automatic){assert(automatic);assert(_agc_pram_restore_owned);++starts;if(fail_resume)return false;_lab_scan_active=true;_lab_status.hooked=true;return true;}
+ bool labScannerStart(bool automatic){assert(automatic);assert(_agc_pram_restore_owned);++starts;if(fail_resume)return false;_lab_scan_active=true;_lab_status.hooked=true;_lab_resume_pending=false;return true;}
  ACTUAL_PRAM_PERIODIC
  ACTUAL_PRAM_FINISH
 };
@@ -156,6 +157,8 @@ int main(){
   assert(r._rxps_pulse.takeCompletion()==RxpsPulse::Result::Failed);}
  {Chip c;Pram r(c,board);r.periodicAGCMaintenance(false);assert(r.pauses==1&&!r._lab_scan_active&&r._rxps_pulse.pending);cycle(r,c);assert(r.starts==1&&r._lab_scan_active&&r._lab_pram_loaded&&!r.cold_resets&&r._rxps_pulse.ok==1);}
  {Chip c;Pram r(c,board);r._lab_scan_active=false;r.periodicAGCMaintenance(false);cycle(r,c);assert(!r.pauses&&!r.starts&&r._rxps_pulse.ok==1);}
+ {Chip c;Pram r(c,board);r._lab_auto.enabled_=false;r.periodicAGCMaintenance(false);assert(r._lab_resume_pending);cycle(r,c);assert(r.starts==1&&r._lab_scan_active&&!r._lab_resume_pending&&!r._lab_auto.enabled_&&r._rxps_pulse.ok==1);}
+ {Chip c;Pram r(c,board);r.periodicAGCMaintenance(false);r._lab_resume_pending=false;cycle(r,c);assert(!r.starts&&!r._lab_scan_active&&!r._agc_pram_paused&&!r._rxps_pulse.ok&&r._rxps_pulse.cancel);}
  {Chip c;Pram r(c,board);r.pause_result=mesh::RadioParamApplyResult::FAILED;assert(r.periodicAGCMaintenance(false)==mesh::AGCMaintenanceResult::Failed);assert(!c.module.writes&&!r._rxps_pulse.ok);}
  {Chip c;Pram r(c,board);r.fail_resume=true;r.periodicAGCMaintenance(false);cycle(r,c);assert(!r._rxps_pulse.ok);for(int i=0;i<4;++i)r.serviceAGCPulse();assert(r._rxps_pulse.fail==1&&!r._rxps_pulse.ok&&!r.cold_resets);}
  {Chip c;Pram r(c,board);r.periodicAGCMaintenance(false);++r._profiles.generation[1];cycle(r,c);assert(!r.starts&&!r._rxps_pulse.ok&&r._rxps_pulse.cancel);}

@@ -307,6 +307,7 @@ public:
       if(paused==mesh::RadioParamApplyResult::BUSY) return Result::Deferred;
       if(paused!=mesh::RadioParamApplyResult::APPLIED) return Result::Failed;
       _agc_pram_paused=true;
+      _lab_resume_pending=true; _lab_resume_at=millis();
       _agc_pram_generations[0]=_profiles.generation[0];
       _agc_pram_generations[1]=_profiles.generation[1];
     }
@@ -1076,8 +1077,7 @@ public:
 
   uint8_t getSpreadingFactor() const override { return ((CustomLR2021 *)_radio)->getSpreadingFactor(); }
 
-  bool supportsOldAGC() const override { return false; }
-  void doResetAGC() override { }
+#include "LR2021LegacyMaintenance.inc"
 
   bool supportsRxBoostedGainMode() const override { return true; }
   bool getRxBoostedGainMode() const override {
@@ -1090,8 +1090,8 @@ protected:
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
     if(!_agc_pram_paused) return RADIOLIB_ERR_NONE;
     if(!_profiles.enabled() || _profiles.generation[0]!=_agc_pram_generations[0]
-        || _profiles.generation[1]!=_agc_pram_generations[1] || !_lab_auto.enabled()) {
-      _rxps_pulse.cancelRequest();_agc_pram_paused=false;return RADIOLIB_ERR_NONE;
+        || _profiles.generation[1]!=_agc_pram_generations[1] || !_lab_resume_pending) {
+      _rxps_pulse.cancelRequest();_agc_pram_paused=false;_lab_resume_pending=false;return RADIOLIB_ERR_NONE;
     }
     if(_lab_uncertain || !_lab_pram_loaded) return RADIOLIB_ERR_UNKNOWN;
     _agc_pram_restore_owned=true;

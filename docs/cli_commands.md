@@ -4473,8 +4473,8 @@ The old half waits for an idle primary visit without repeating the completed
 pulse. Changing or disabling the interval discards the outstanding completion.
 The scheduler advances after both halves complete; legacy completion still
 means admission, not checked success of every calibration command. Failed or
-unconfirmed pulses do not trigger this automatic full reset. LR2021 and builds
-with `MESH_ENABLE_OLD_AGC=0` retain only the new method; other drivers without
+unconfirmed pulses do not trigger this automatic full reset. Builds with
+`MESH_ENABLE_OLD_AGC=0` retain only the new method; other drivers without
 receive-refresh support retain their existing behavior.
 
 Active duty-cycle RXPS automatically suspends the primary AGC timer on every
@@ -4534,6 +4534,13 @@ SDK's 1 ms entry reserve and 501 us margin, followed by a separate nonblocking
 method as `hostsleep`; it does not increment BUSY-edge or RTC-cleanup counters.
 These software checks establish command/timer behavior, not measured analog
 gain or equal receive sensitivity across radio families.
+
+LR2021 supports the same saved old-reset policy using its native calibration
+commands. It retains PRAM and oscillator settings, safely pauses/restarts an
+active scanner and restores the current RX profile. Failed commands/restoration
+are reported through `get radio.apply`, receive no success credit, and wait the
+normal old-reset interval; busy admission retries after 250 ms. See the
+[LR2021 sequence and qualification limits](radio_agc.md#automatic-selection).
 
 An independent full-reset timer remains available through the Repeater, Room
 Server, Sensor and Companion text parsers:

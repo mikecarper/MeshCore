@@ -1214,6 +1214,10 @@ void Dispatcher::loop() {
         : _radio->periodicOldAGCMaintenance();
     const uint32_t finished=_ms->getMillis();
     if(result==AGCMaintenanceResult::Applied) old_agc_reset.noteAttempt(finished);
+    // A checked reset can fail after touching the chip. Preserve its failure
+    // and leave recovery to the receiver instead of retrying calibration at
+    // 4 Hz. Busy ownership still gets the short deferred retry.
+    else if(result==AGCMaintenanceResult::Failed) old_agc_reset.noteSkipped(finished);
     else old_agc_reset.noteDeferred(finished,250);
   }
 #else

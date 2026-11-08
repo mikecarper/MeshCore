@@ -18,6 +18,7 @@
 #endif
 #include "../MorseRx.h"
 #include <stdio.h>
+#include <math.h>
 
 #ifndef LR2021_TX_BUSY_TIMEOUT_MS
 #define LR2021_TX_BUSY_TIMEOUT_MS 1000UL
@@ -433,6 +434,69 @@ class CustomLR2021 : public LR2021 {
         return setLoRaSideDetConfig(nullptr, 0);
       }
       return LR2021::setSideDetector(cfg, numDetectors);
+    }
+
+    // The wrapper admits this only after preserving packet/FIFO ownership and
+    // pausing any PRAM scanner. Retention sleep keeps its image and configuration;
+    // never use begin()/reset()/setTCXO(0), which would destroy that state.
+    int16_t resetReceiverCalibration() {
+      const float hardware_frequency = freqMHz;
+      if (!isfinite(hardware_frequency) || hardware_frequency <= 0.0f
+          || hardware_frequency > 2600.0f) return RADIOLIB_ERR_INVALID_FREQUENCY;
+      constexpr uint16_t calibration_errors = RADIOLIB_LR2021_LF_RC_CALIB_ERR
+          | RADIOLIB_LR2021_HF_RC_CALIB_ERR | RADIOLIB_LR2021_PLL_CALIB_ERR
+          | RADIOLIB_LR2021_AAF_CALIB_ERR | RADIOLIB_LR2021_IMG_CALIB_ERR
+          | RADIOLIB_LR2021_MEAS_UNIT_ADC_CALIB_ERR | RADIOLIB_LR2021_PA_OFFSET_CALIB_ERR
+          | RADIOLIB_LR2021_PPF_CALIB_ERR | RADIOLIB_LR2021_SRC_CALIB_ERR
+          | RADIOLIB_LR2021_SRC_SATURATION_CALIB_ERR | RADIOLIB_LR2021_SRC_TOLERANCE_CALIB_ERR;
+      uint16_t errors = 0;
+      int16_t status = getErrors(&errors);
+      if (status != RADIOLIB_ERR_NONE) return status;
+      // ClearErrors clears the entire word. Preserve unrelated device faults
+      // rather than erasing them just to obtain fresh calibration diagnostics.
+      if (errors & ~calibration_errors) return RADIOLIB_ERR_FRONTEND_CALIBRATION_FAILED;
+      if (errors) {
+        status = clearErrors();
+        if (status != RADIOLIB_ERR_NONE) return status;
+      }
+      status = standby();
+      if (status != RADIOLIB_ERR_NONE) return status;
+      status = LR2021::sleep(true, 0);
+      if (status != RADIOLIB_ERR_NONE) return status;
+      status = standby();
+      if (status != RADIOLIB_ERR_NONE) return status;
+      status = calibrate(RADIOLIB_LR2021_CALIBRATE_ALL);
+      if (status != RADIOLIB_ERR_NONE) return status;
+      status = getErrors(&errors);
+      if (status != RADIOLIB_ERR_NONE) return status;
+      if (errors) return RADIOLIB_ERR_FRONTEND_CALIBRATION_FAILED;
+      // Semtech's CalibFE helper rounds UP to the next 4 MHz point, selecting
+      // LF/HF in bit 15. Use the actual programmed frequency (after correction),
+      // and force calibration: setFrequency() skips it for an unchanged cache.
+      uint16_t frequencies[3] = {static_cast<uint16_t>(ceilf(hardware_frequency / 4.0f)), 0, 0};
+      if (mesh::lr2021::isHighBand(hardware_frequency))
+        frequencies[0] |= RADIOLIB_LR2021_CALIBRATE_FE_HF_PATH;
+      status = calibrateFrontEnd(frequencies);
+      if (status != RADIOLIB_ERR_NONE) return status;
+      status = getErrors(&errors);
+      if (status != RADIOLIB_ERR_NONE) return status;
+      if (errors) return RADIOLIB_ERR_FRONTEND_CALIBRATION_FAILED;
+      // CalibFE visits a rounded calibration point. Explicitly restore the
+      // physical RF setting; bypass our nominal-frequency correction override
+      // and skip another frontend calibration for this same cached frequency.
+      status = LR2021::setFrequency(hardware_frequency, true);
+      if (status != RADIOLIB_ERR_NONE) return status;
+      // Native calibration does not cold-reset modem, oscillator or regulator
+      // settings. Reassert the configured RF routing and current band's exact
+      // gain level while still in standby, then let the wrapper restore RX.
+      status = restoreRfSwitchTable();
+      if (status != RADIOLIB_ERR_NONE) return status;
+      status = LR2021::setRxBoostedGainMode(
+          mesh::lr2021::isHighBand(hardware_frequency) ? gainModeHf : gainModeLf);
+      if (status != RADIOLIB_ERR_NONE) return status;
+      _activityAt = 0;
+      _headerSeen = false;
+      return RADIOLIB_ERR_NONE;
     }
 
     float getFreqMHz() const { return freqMHz; }

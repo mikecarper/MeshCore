@@ -51,6 +51,19 @@ class Dispatcher:public mesh::Dispatcher {
  int getAGCResetInterval()const override{return primary_ms;}
 };
 struct Fixture {Clock c;Radio r;StaticPoolPacketManager m{4};Dispatcher d{r,c,m};void loop(uint32_t n){c.now=n;d.loop();}void begin(uint32_t n=0){c.now=n;d.begin();loop(n);}};
+#if MESH_ENABLE_OLD_AGC && (!MESH_COMPACT_STM32_RADIO || MESH_WARM_RX_REFRESH)
+// A checked chip implementation can distinguish a hardware failure from a
+// busy owner. Compile it through the real virtual Radio/Dispatcher boundary.
+class CheckedRadio:public Radio {
+ public:
+ mesh::AGCMaintenanceResult result=mesh::AGCMaintenanceResult::Failed;
+ unsigned attempts=0,applied=0;
+ mesh::AGCMaintenanceResult periodicOldAGCMaintenance() override {
+  ++attempts;if(result==mesh::AGCMaintenanceResult::Applied)++applied;return result;
+ }
+};
+struct CheckedFixture {Clock c;CheckedRadio r;StaticPoolPacketManager m{4};Dispatcher d{r,c,m};void loop(uint32_t n){c.now=n;d.loop();}void begin(){d.begin();loop(0);}};
+#endif
 int main(int argc,char**argv){assert(argc==2);const char*s=argv[1];
  if(!strcmp(s,"default_range")){Radio r;assert(r.supportsOldAGC()&&r.getOldAGCInterval()==mesh::AGC_OLD_AUTO);assert(r.setOldAGCInterval(86400));assert(r.getOldAGCInterval()==86400);assert(!r.setOldAGCInterval(86401));assert(r.getOldAGCInterval()==86400);assert(r.setOldAGCInterval(0));assert(r.getOldAGCInterval()==0);assert(r.setOldAGCInterval(mesh::AGC_OLD_AUTO));assert(mesh::oldAGCIntervalMillis(r.getOldAGCInterval())==0);Radio fresh;assert(fresh.getOldAGCInterval()==mesh::AGC_OLD_AUTO);}
  else if(!strcmp(s,"old_only_wake")){Fixture f;assert(f.r.setOldAGCInterval(4));f.begin(100);uint32_t delta=0;assert(f.d.getNextQueueWakeDelay(delta)&&delta==4000);f.loop(4099);assert(f.r.old_resets==0);f.loop(4100);assert(f.r.old_resets==1&&f.r.primary_resets==0);f.loop(4100);assert(f.r.old_resets==1);}
@@ -59,6 +72,18 @@ int main(int argc,char**argv){assert(argc==2);const char*s=argv[1];
  else if(!strcmp(s,"both_due")){Fixture f;f.d.primary_ms=8000;f.r.setOldAGCInterval(8);f.begin();f.loop(8001);assert(f.r.old_resets==1&&f.r.primary_resets==0);f.loop(8252);assert(f.r.old_resets==1&&f.r.primary_resets==1);}
  else if(!strcmp(s,"disable_reenable_wrap")){Fixture f;const uint32_t start=0xfffffff0U;f.r.setOldAGCInterval(2);f.begin(start);f.loop(uint32_t(start+1999));assert(!f.r.old_resets);f.loop(uint32_t(start+2000));assert(f.r.old_resets==1);f.r.setOldAGCInterval(0);f.loop(uint32_t(start+2001));f.loop(uint32_t(start+9000));assert(f.r.old_resets==1);f.r.setOldAGCInterval(2);f.loop(uint32_t(start+9001));f.loop(uint32_t(start+11000));assert(f.r.old_resets==1);f.loop(uint32_t(start+11001));assert(f.r.old_resets==2);}
 #if MESH_ENABLE_OLD_AGC && (!MESH_COMPACT_STM32_RADIO || MESH_WARM_RX_REFRESH)
+ else if(!strcmp(s,"checked_failure")) {
+  using Result=mesh::AGCMaintenanceResult;CheckedFixture f;assert(f.r.setOldAGCInterval(2));f.begin();
+  f.loop(2000);assert(f.r.attempts==1&&!f.r.applied);uint32_t delay=0;
+  assert(f.d.getNextQueueWakeDelay(delay)&&delay==2000);
+  f.loop(2250);f.loop(3999);assert(f.r.attempts==1&&!f.r.applied);
+  f.r.result=Result::Deferred;f.loop(4000);assert(f.r.attempts==2&&!f.r.applied);
+  assert(f.d.getNextQueueWakeDelay(delay)&&delay==250);
+  f.loop(4249);assert(f.r.attempts==2);f.r.result=Result::Applied;f.loop(4250);
+  assert(f.r.attempts==3&&f.r.applied==1);
+  assert(f.d.getNextQueueWakeDelay(delay)&&delay==2000);
+  f.loop(6249);assert(f.r.attempts==3);f.loop(6250);assert(f.r.attempts==4&&f.r.applied==2);
+ }
  else if(!strcmp(s,"unsupported")){Unsupported r;assert(!r.supportsOldAGC()&&!r.setOldAGCInterval(600)&&r.getOldAGCInterval()==0);assert(r.periodicOldAGCMaintenance()==mesh::AGCMaintenanceResult::Deferred&&!r.checked_old);}
 #endif
  else if(!strcmp(s,"rxps_suspends_primary_only")){Fixture f;f.d.primary_ms=16000;f.r.rxps=true;f.begin();f.loop(50000);assert(!f.r.primary_resets);uint32_t delay=0;assert(!f.d.getNextQueueWakeDelay(delay));assert(f.d.primary_ms==16000);f.r.setOldAGCInterval(2);f.loop(50001);f.loop(52001);assert(f.r.old_resets==1&&!f.r.primary_resets);f.r.setOldAGCInterval(0);f.r.rxps=false;f.loop(52002);f.loop(68001);assert(!f.r.primary_resets);f.loop(68003);assert(f.r.primary_resets==1&&f.d.primary_ms==16000);}
@@ -82,7 +107,9 @@ class OldAGCAllRadios(unittest.TestCase):
  def setUpClass(cls):
   c=os.environ.get('CXX')or shutil.which('g++')or shutil.which('clang++');assert c
   cls.tmp=tempfile.TemporaryDirectory(prefix='meshcore-old-all-');cls.addClassCleanup(cls.tmp.cleanup);w=Path(cls.tmp.name);h=(ROOT/'src/helpers/radiolib/RadioLibWrappers.h').read_text();cpp=(ROOT/'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()
-  unsupported=body((ROOT/'src/helpers/radiolib/CustomLR2021Wrapper.h').read_text(),'bool supportsOldAGC(')
+  # A synthetic no-op backend stays unsupported independently of LR2021's
+  # evolving hardware implementation. Concrete LR capability has its own tests.
+  unsupported='bool supportsOldAGC() const override { return false; }'
   compact_cap=body((ROOT/'src/helpers/radiolib/CustomSTM32WLxWrapper.h').read_text(),'bool supportsRxPowerSaving(')
   methods='\n'.join(body(h,s).replace(' override','')for s in('bool supportsOldAGC(','bool setOldAGCInterval(','uint32_t getOldAGCInterval('))+'\n'+body(cpp,'mesh::AGCMaintenanceResult RadioLibWrapper::periodicOldAGCMaintenance(').replace('RadioLibWrapper::','')
   # Compile the production conditional around its actual field and methods;
@@ -109,12 +136,14 @@ class OldAGCAllRadios(unittest.TestCase):
    if (name=='disabled_api')==enabled:continue
    if name=='rxps_suspends_primary_only'and (mode.startswith('wio')or mode.startswith('stm32')):continue
    if name=='unsupported'and mode!='normal':continue
+   if name=='checked_failure'and mode in ('wio','stm32_companion'):continue
    with self.subTest(mode=mode):
     run=subprocess.run([str(exe),name],capture_output=True,text=True,timeout=10);self.assertEqual(run.returncode,0,run.stdout+run.stderr)
  def test_default_range_and_reboot_off(self):self.scenario('default_range')
  def test_old_only_wakes_without_primary(self):self.scenario('old_only_wake')
  def test_disabled(self):self.scenario('disabled')
  def test_ownership_defer_and_exact_long_cadence(self):self.scenario('deferred')
+ def test_checked_failure_uses_normal_cadence_while_busy_retries_and_success_advances(self):self.scenario('checked_failure')
  def test_both_due_never_reset_twice_in_one_loop(self):self.scenario('both_due')
  def test_disable_reenable_and_millis_wrap(self):self.scenario('disable_reenable_wrap')
  def test_rxps_suspends_primary_but_not_old_or_preferences(self):self.scenario('rxps_suspends_primary_only')

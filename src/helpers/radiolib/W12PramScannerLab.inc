@@ -912,7 +912,9 @@ public:
     // Effective automatic preambles can change without a profile generation
     // change. Clear only this eligibility result; never clear a failed reset.
     _lab_auto.clearUnsupported();
-    if (!_lab_auto.enabled() || _lab_auto.blocked()) return;
+    // A retained scanner lease must also resume when started manually. An
+    // explicit stop already clears _lab_resume_pending.
+    if ((!_lab_auto.enabled() && !_lab_resume_pending) || _lab_auto.blocked()) return;
     if (mesh::w12pram::mayResume(_lab_resume_pending,_lab_sleeping,rx_allowed,state==3,radio_owned,
             _profile_repair_required,(int32_t)(millis()-_lab_resume_at)>=0)) {
       const uint32_t recoveries=_lab_recoveries;

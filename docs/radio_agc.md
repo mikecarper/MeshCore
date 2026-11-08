@@ -48,14 +48,29 @@ The combined operation first requires a witnessed refresh and checked RX
 reentry. Its old-reset half then waits for an idle primary visit, without
 repeating the pulse or interrupting a packet. Changing or disabling the interval
 discards an outstanding completion. The next interval starts after both halves
-complete; the legacy helper still reports admission rather than checked success
-of every calibration command. Failed or unconfirmed pulses do not trigger the
+complete. Most legacy helpers report admission rather than checked success of
+every calibration command; the LR2021 periodic path checks command and restore
+results. Failed or unconfirmed pulses do not trigger the
 automatic old reset.
 
-LR2021 has no working legacy-reset implementation, so it continues using only
-the new method. Builds that omit legacy support with `MESH_ENABLE_OLD_AGC=0`,
-including the default compact STM32 builds, also retain the new method alone.
-Drivers without receive-refresh support keep their existing method.
+LR2021 also supports the old-reset policy. Its checked native sequence uses
+retained sleep, RC standby, `Calibrate(0x6F)` and forced frontend calibration at
+the actual programmed frequency. It restores the modem, protocol, power, gain
+and receive mode, including multi-SF or RXPS. A PRAM scanner is warm-paused and
+rehooked without reloading its image. Noise-floor refresh stays queued for the
+next host sampling window while PRAM owns reception. A busy receiver or pending packet defers
+the operation; failed calibration/restoration gets no success credit and waits
+the normal reset interval before another attempt. Device faults remain visible
+through the existing LR2021 radio-apply diagnostics.
+
+The command mask, frontend frequency encoding and retained-sleep behavior follow
+[Semtech's LR20xx driver](https://github.com/Lora-net/usp/tree/main/smtc_rac_lib/radio_drivers/lr20xx_driver).
+
+This LR2021 implementation has host command/fault/ownership tests and build
+checks; it has not yet been verified for sensitivity or timing on hardware.
+Builds that omit legacy support with `MESH_ENABLE_OLD_AGC=0`, including the
+default compact STM32 builds, retain the new method alone. Drivers without
+receive-refresh support keep their existing method.
 
 ## Settings
 
