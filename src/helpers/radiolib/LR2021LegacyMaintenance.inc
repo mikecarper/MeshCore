@@ -30,6 +30,10 @@ public:
 #if MESH_ENABLE_OLD_AGC
   mesh::AGCMaintenanceResult periodicOldAGCMaintenance() override {
     using Result=mesh::AGCMaintenanceResult;
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    AGCTimingDiagnostics::PeriodicRequest diagnostic_request(_agc_timing);
+    _agc_timing.sequenceRequest();
+#endif
 #if MESH_WARM_RX_REFRESH
     if(_rxps_pulse.pending) return Result::Deferred;
 #endif
@@ -65,12 +69,21 @@ public:
     const uint8_t resume=beginReconfigure();
     if(resume==2) return Result::Deferred;
     if(resume>2) { legacyCalibrationFailed(RADIOLIB_ERR_UNKNOWN);return Result::Failed; }
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    _agc_timing.admit(static_cast<uint32_t>(micros()));
+#endif
     invalidateScanTuple();
     const uint32_t generation=_profile_generation;
     const uint8_t profile=_active_profile;
     auto* radio=static_cast<CustomLR2021*>(_radio);
     int16_t rc=recordApply(mesh::lr2021::ApplyStatus::Stage::Calibration,
                            radio->resetReceiverCalibration());
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    // One aggregate native helper sample, not inferred per-command timing.
+    _agc_timing.commandResult(AGCTimingDiagnostics::Step::Calibrate,rc);
+    _agc_timing.helperFinished(static_cast<uint32_t>(micros()));
+    const bool native_helper_failed=rc!=RADIOLIB_ERR_NONE;
+#endif
     if(rc==RADIOLIB_ERR_NONE && !applyParams(_cur_freq,_cur_bw,_cur_sf,_cur_cr)) rc=RADIOLIB_ERR_UNKNOWN;
 #if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE || MESH_ENABLE_HOST_KISS
     if(rc==RADIOLIB_ERR_NONE && !applyProtocol(_physical_protocol)) rc=RADIOLIB_ERR_UNKNOWN;
@@ -83,12 +96,22 @@ public:
       _rx_boosted_gain_applied=applyRxBoostedGainMode(_cur_rx_boosted_gain);
       if(!_rx_boosted_gain_applied) rc=RADIOLIB_ERR_UNKNOWN;
     }
-    if(rc!=RADIOLIB_ERR_NONE) { legacyCalibrationFailed(rc);return Result::Failed; }
+    if(rc!=RADIOLIB_ERR_NONE) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      // Restoration is an aggregate failure here; radio.apply retains its
+      // precise stage. Do not count the native helper error a second time.
+      if(!native_helper_failed) _agc_timing.commandResult(AGCTimingDiagnostics::Step::None,rc);
+#endif
+      legacyCalibrationFailed(rc);return Result::Failed;
+    }
     // Reenter through the ordinary path: it reinstates side detectors,
     // multi-SF, RXPS and the checked IRQ/RF routing for the current profile.
     endReconfigure(resume);
     if((resume && !isInRecvMode()) || profile!=_active_profile
         || generation!=_profile_generation || generation!=_profiles.generation[profile]) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      _agc_timing.commandResult(AGCTimingDiagnostics::Step::None,RADIOLIB_ERR_UNKNOWN);
+#endif
       legacyCalibrationFailed(RADIOLIB_ERR_UNKNOWN);return Result::Failed;
     }
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
@@ -98,6 +121,9 @@ public:
       if(!labScannerStart(true) || !_lab_scan_active || !_lab_status.hooked) {
         if(!_lab_uncertain) { _lab_resume_pending=true;_lab_resume_at=millis()+250UL; }
         recordApply(mesh::lr2021::ApplyStatus::Stage::Restore,RADIOLIB_ERR_UNKNOWN);
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+        _agc_timing.commandResult(AGCTimingDiagnostics::Step::None,RADIOLIB_ERR_UNKNOWN);
+#endif
         return Result::Failed;
       }
     }

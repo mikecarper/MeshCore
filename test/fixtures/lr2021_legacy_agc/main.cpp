@@ -5,6 +5,7 @@
 #include <vector>
 #include <initializer_list>
 #include <helpers/radiolib/LR2021ApplyStatus.h>
+#include <helpers/radiolib/AGCTimingDiagnostics.h>
 #include <helpers/OldAGCPolicy.h>
 #define RADIOLIB_ERR_NONE 0
 #define RADIOLIB_ERR_UNKNOWN -1
@@ -61,6 +62,9 @@ struct Wrapper:Base {
  bool scan_tuple=true,multi_sf=false,rxps_requested=false;
  unsigned side_detector_restores=0;bool restored_multi_sf=false;
  mesh::lr2021::ApplyStatus _apply_status;
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+ AGCTimingDiagnostics _agc_timing;
+#endif
  void invalidateScanTuple(){scan_tuple=false;}
  int16_t recordApply(mesh::lr2021::ApplyStatus::Stage stage,int16_t code){return _apply_status.record(stage,code);}
  bool hasPendingRadioInterrupt(){return radio.irq;}
@@ -93,6 +97,9 @@ struct Wrapper:Base {
  bool applyRxBoostedGainMode(bool value){radio.calls.push_back("gain");++gain_calls;assert(value==_cur_rx_boosted_gain);return gain_ok;}
  void startRecv(){
    radio.calls.push_back("receive");++receive_calls;
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+   _agc_timing.receiveEntry(receive_ok?0:RADIOLIB_ERR_UNKNOWN,micros());
+#endif
    if(!receive_ok){state=STATE_IDLE;return;}
    ++side_detector_restores;restored_multi_sf=multi_sf;
    _rx_ps_armed=rxps_requested&&!multi_sf&&!_profiles.enabled();state=STATE_RX;
@@ -253,10 +260,44 @@ static void noiseOwnership(){
  w.nf_requested=false;assert(!w.isCalibratingNoiseFloor());
 #endif
 }
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+static void diagnostics(){
+ {Wrapper w;w.radio.busy=true;assert(w.periodicOldAGCMaintenance()==Result::Deferred);
+  const auto& d=w._agc_timing;assert(d.periodic_requests==1&&d.periodic_admitted==0&&d.periodic_skipped==1);
+  assert(d.helper_us.count==0&&d.rx_gap_us.count==0&&d.command_failures==0);}
+ {Wrapper w;assert(w.periodicOldAGCMaintenance()==Result::Applied);const auto& d=w._agc_timing;
+  assert(d.periodic_requests==1&&d.periodic_admitted==1&&d.periodic_skipped==0);
+  assert(d.helper_us.count==1&&d.rx_gap_us.count==1&&!d.pending);
+  assert(d.command_failures==0&&d.failed_sequences==0&&d.shared_requests==0&&d.shared_admitted==0);}
+ {Wrapper w;w.radio.calibration_rc=-706;assert(w.periodicOldAGCMaintenance()==Result::Failed);const auto& d=w._agc_timing;
+  assert(d.periodic_requests==1&&d.periodic_admitted==1&&d.helper_us.count==1&&d.rx_gap_us.count==0&&d.pending);
+  assert(d.command_failures==1&&d.failed_sequences==1&&d.last_error==-706&&d.last_error_step==AGCTimingDiagnostics::Step::Calibrate);
+  assert(d.rearm_failures==0);w.startRecv();assert(d.rx_gap_us.count==1&&!d.pending&&d.command_failures==1);}
+ {Wrapper w;w.params_ok=false;assert(w.periodicOldAGCMaintenance()==Result::Failed);const auto& d=w._agc_timing;
+  assert(d.periodic_admitted==1&&d.helper_us.count==1&&d.rx_gap_us.count==0&&d.pending);
+  assert(d.command_failures==1&&d.failed_sequences==0&&d.last_error_step==AGCTimingDiagnostics::Step::None);}
+ {Wrapper w;w.receive_ok=false;assert(w.periodicOldAGCMaintenance()==Result::Failed);const auto& d=w._agc_timing;
+  assert(d.helper_us.count==1&&d.rx_gap_us.count==0&&d.rearm_failures==1&&d.pending);
+  assert(d.command_failures==1&&d.failed_sequences==0);}
+ {Wrapper w;w._profiles.active=true;w._lab_scan_active=true;w._lab_status.hooked=true;w.restart_result=false;
+  assert(w.periodicOldAGCMaintenance()==Result::Failed);const auto& d=w._agc_timing;
+  // Continuous RX genuinely restarted; this is not evidence that PRAM rehooked.
+  assert(d.helper_us.count==1&&d.rx_gap_us.count==1&&!d.pending&&d.command_failures==1);
+  assert(w._lab_resume_pending&&!w._lab_scan_active);}
+ {Wrapper w;w._profiles.active=true;w._lab_scan_active=true;w._lab_status.hooked=true;
+  assert(w.periodicOldAGCMaintenance()==Result::Applied);now+=4000;
+  assert(w.periodicOldAGCMaintenance()==Result::Applied);const auto& d=w._agc_timing;
+  assert(d.periodic_admitted==2&&d.helper_us.count==2&&d.rx_gap_us.count==2&&w.radio.calibrations==2);
+  assert(!d.pending&&d.command_failures==0&&d.failed_sequences==0&&d.superseded_pending==0);}
+}
+#endif
 int main(int argc,char**argv){
  assert(argc==2);assert(Wrapper().supportsOldAGC()==bool(MESH_ENABLE_OLD_AGC));
 #if MESH_ENABLE_OLD_AGC
  const std::string name=argv[1];
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+ if(name=="diagnostics"){diagnostics();return 0;}
+#endif
  if(name=="success")successful();else if(name=="guards")guards();else if(name=="ownership")ownership();else if(name=="failures")failures();else if(name=="scanner")scanner();else if(name=="noise")noiseOwnership();else assert(false);
 #else
  (void)argv;Wrapper w;assert(w.periodicOldAGCMaintenance()==Result::Deferred&&w.radio.calls.empty());

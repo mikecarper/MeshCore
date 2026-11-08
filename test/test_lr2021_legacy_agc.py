@@ -102,6 +102,36 @@ class LR2021LegacyAGCTests(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0, 'Ignored native errors must not satisfy the failure tests')
                     self.assertIn({'noise': 'isCalibratingNoiseFloor', 'applied_cache': '!w._dbm_applied'}.get(name, 'Result::Failed'), result.stderr)
 
+    def test_opt_in_timing_diagnostics_count_native_attempts_and_rx_without_false_credit(self):
+        actual = (ROOT / 'src/helpers/radiolib/LR2021LegacyMaintenance.inc').read_text()
+        marker = '_agc_timing.helperFinished(static_cast<uint32_t>(micros()));'
+        self.assertIn(marker, actual)
+        with tempfile.TemporaryDirectory(prefix='lr2021-legacy-diagnostics-') as temp:
+            folder = Path(temp)
+            override = folder / 'helpers/radiolib'
+            override.mkdir(parents=True)
+            (folder / 'main.cpp').write_text(self.source)
+            for mutation in (False, True):
+                code = actual.replace(marker, '(void)0;') if mutation else actual
+                (override / 'LR2021LegacyMaintenance.inc').write_text(code)
+                built = subprocess.run([self.compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                    '-Wno-unused-function', '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
+                    '-fno-pie', '-no-pie', '-DUSE_LR2021=1', '-DMESH_ENABLE_OLD_AGC=1',
+                    '-DMESH_WARM_RX_REFRESH=1', '-DMESH_W12_PRAM_EXPERIMENT=1',
+                    '-DMESH_ENABLE_HOST_KISS=1', '-DMESH_ENABLE_RADIO_DIRECTION=1',
+                    '-DMESH_ENABLE_CARRIER_TOOLS=1', '-DMESH_ENABLE_MORSE_RX=1',
+                    '-DMESH_ENABLE_TX_BEACONS=1', '-DMESH_AGC_TIMING_DIAGNOSTICS=1',
+                    '-I' + str(folder), '-I' + str(ROOT / 'src'), str(folder / 'main.cpp'),
+                    '-o', str(folder / 'test')], capture_output=True, text=True, timeout=60)
+                self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+                result = subprocess.run([str(folder / 'test'), 'diagnostics'], capture_output=True,
+                                        text=True, timeout=20)
+                if mutation:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('helper_us.count==1', result.stderr)
+                else:
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_manual_scanner_lease_resumes_without_enabling_automatic_mode(self):
         # Reuse the scanner auto fixture's hardware boundary with the actual
         # service method. A mutation proves its old auto-only gate loses a lease.
