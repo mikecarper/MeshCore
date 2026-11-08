@@ -1,0 +1,32 @@
+{
+  "source_sha256": {
+    "scan.c": "01d328a66b803618bfd44fc7c43948d53085780a54ae79c2fde486e9c8abe0b7",
+    "scan_hdr.S": "45c60ff7112312f3346f82922c15e31e02c56a7d0dbd807ddb494596870b453e",
+    "pram.ld": "fc001f068de14da6e6462d5cabee48dc609b037cb49e30dc3dca343790c257c6"
+  },
+  "blob_sha256": "fd1fda9da053a064e2bea0834604e738368fc02b2c9b20ee62c340202a795965",
+  "blob_bytes": 2864,
+  "install_disassembly_sha256": "045b1b8c1deeffd9adb5d0c334c52abe59c18b990e98fef9a73bb090491f9c4a",
+  "toolchain": "arc-linux-gnu-gcc (GCC) 13.3.0",
+  "cpu_flags": [
+    "-mcpu=em4_dmips",
+    "-mrf16"
+  ],
+  "c_flags": [
+    "-mno-sdata",
+    "-Os",
+    "-ffreestanding",
+    "-fno-builtin",
+    "-fno-tree-loop-distribute-patterns",
+    "-fno-pic",
+    "-fcall-saved-blink"
+  ],
+  "link_flags": [
+    "-EL",
+    "-T",
+    "pram.ld"
+  ],
+  "bss_bytes": 0,
+  "scope": "Custom SCN3 header identity; does not include or claim the Semtech vendor patch.",
+  "source_text_normalization": "CRLF to LF"
+}

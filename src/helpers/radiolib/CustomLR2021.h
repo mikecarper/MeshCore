@@ -438,8 +438,8 @@ class CustomLR2021 : public LR2021 {
     }
 
     // The wrapper admits this only after preserving packet/FIFO ownership and
-    // pausing any PRAM scanner. A resident scanner must stay in checked RC
-    // standby: SetSleep makes its custom commands unavailable on this chip.
+    // pausing any PRAM scanner. A resident scanner can use checked RC standby
+    // without an additional sleep/wake transition during full calibration.
     // Never use begin()/reset()/setTCXO(0), which would destroy that state.
     int16_t resetReceiverCalibration(const float* hardware_mhz=nullptr, size_t count=0,
                                      bool retained_sleep=true) {

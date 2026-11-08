@@ -1105,7 +1105,7 @@ jobs:
           test_agc_driver_capability test_agc_compact_state
           test_sx126x_rxps_pulse_commands test_lr_agc_pulse test_lr2021_receiver_reset
           test_lr2021_calibration_device_diagnostics
-          test_lr2021_legacy_agc test_lr2021_handoff_diagnostics test_sx1276_agc_pulse
+          test_lr2021_legacy_agc test_lr2021_handoff_diagnostics test_lr2021_pram_install test_sx1276_agc_pulse
           test_rxps_pulse_fsm test_rxps_pulse_integration test_rxps_pulse_timing
           test_indicator_agc_stale_irq
           test_rxps_pulse_cli test_cli_maintenance_guard test_warm_rx_refresh

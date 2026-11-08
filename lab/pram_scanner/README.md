@@ -8,7 +8,9 @@ An RX-only hardware trial saw packets on both profiles with correct attribution,
 
 The scanner derives from Alex Beal's MIT-licensed https://github.com/beala/lr2021-re, commit 20b2a85efc206eaf7bbaedcfb8b7985b0a620aab; its copyright and license are in LICENSE. scan.c, scan_hdr.S and pram.ld are the lab source; changes include guarded stop and timing command. scan-safe.bin is the corresponding image; src/helpers/radiolib/W12PramScannerBlob.h contains the same bytes as little-endian words. The exact ROM checks in the host are required; do not transplant these commands to other chip revisions.
 
-Base MeshCore commit: 28da91a6e0854552a5f92e8df85963974bd982c5. Upstream unmodified scanner SHA-256: ecbf4e2c677156ab21469cffb4c973645e40bc9903c324391432e959586f292f. Lab scanner SHA-256: ba72c715592f4a16a27c5d83c6f83232f73436aff58137f8a8a739b3bfa13b89.
+Base MeshCore commit: 28da91a6e0854552a5f92e8df85963974bd982c5. Upstream unmodified scanner SHA-256: ecbf4e2c677156ab21469cffb4c973645e40bc9903c324391432e959586f292f. Lab scanner SHA-256: fd1fda9da053a064e2bea0834604e738368fc02b2c9b20ee62c340202a795965.
+
+The custom install entry now copies its own magic and header word into the ROM's retained identity locations (0x800FF8/0x800FFC), following the stock patch's marker publication. It keeps the ROM JLI table and changes no auxiliary bank registers. This marker-only sleep/wake candidate requires hardware qualification; it does not establish retention or advertise vendor patch fixes. The image is 2864 bytes; `scan-build.json` records source/blob hashes and toolchain flags, and `scan-install.lst` is its actual ARC install disassembly.
 
 ## Rebuild and test
 
