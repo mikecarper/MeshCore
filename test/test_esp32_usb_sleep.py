@@ -1098,7 +1098,9 @@ int main() {
             guard = main.split("#if defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP)", 1)[1]
             guard = guard.split("#endif", 1)[0]
             if role == "companion_radio":
-                self.assertIn("if (!sleep_reason && user_btn.needsPolling())", guard)
+                self.assertRegex(guard, r"if\s*\(!sleep_reason\s*&&\s*"
+                                 r"!mesh::ui::rotaryOwnsButtonPin\(PIN_USER_BTN\)\s*&&\s*"
+                                 r"user_btn\.needsPolling\(\)\)")
                 self.assertIn("sleep_reason = mask(Reason::Button);", guard)
                 self.assertIn("const bool can_sleep = sleep_reason == 0;", main)
             else:
