@@ -27,6 +27,10 @@ class LR2021LegacyAGCTests(unittest.TestCase):
         for token, signature in (('@BEGIN_RECONFIGURE@', 'uint8_t RadioLibWrapper::beginReconfigure('),
                                  ('@END_RECONFIGURE@', 'void RadioLibWrapper::endReconfigure(')):
             code = code.replace(token, body(actual, signature).replace('RadioLibWrapper::', ''))
+        code=code.replace('@BASE_PERIODIC@', body(actual,'mesh::AGCMaintenanceResult RadioLibWrapper::periodicAGCMaintenance(').replace('RadioLibWrapper::periodicAGCMaintenance','basePeriodicAGCMaintenance'))
+        wrapper=(ROOT/'src/helpers/radiolib/CustomLR2021Wrapper.h').read_text()
+        code=code.replace('@PRAM_PERIODIC@',body(wrapper,'mesh::AGCMaintenanceResult periodicAGCMaintenance(').replace('PulseBase::periodicAGCMaintenance(adaptive)','basePeriodicAGCMaintenance(adaptive)'))
+        code=code.replace('@PRAM_FINISH@',body(wrapper,'int16_t finishAGCPulseOwner(').replace(' override',''))
         cls.compiler = compiler
         cls.source = code
         (folder / 'main.cpp').write_text(code)
@@ -76,14 +80,19 @@ class LR2021LegacyAGCTests(unittest.TestCase):
     def test_pram_owns_rf_while_host_noise_request_remains_queued(self):
         self.scenario('noise')
 
+    def test_real_combined_dispatch_after_primary_completion_keeps_queued_nf_without_starving_old_half(self):
+        self.scenario('combined')
+
     def test_ignored_errors_or_noise_ownership_are_rejected_by_negative_controls(self):
         actual = (ROOT / 'src/helpers/radiolib/LR2021LegacyMaintenance.inc').read_text()
         mutations = {
             'calibration': actual.replace('resetLegacyReceiverCalibration());',
                                            '(resetLegacyReceiverCalibration(),RADIOLIB_ERR_NONE));'),
             'receive': actual.replace('(resume && !isInRecvMode())', 'false'),
-            'noise': actual.replace('return !_lab_scan_active && PulseBase::isCalibratingNoiseFloor();',
-                                    'return PulseBase::isCalibratingNoiseFloor();'),
+            'noise': actual.replace('if(_lab_scan_active) return false;',
+                                    'if(_lab_scan_active) return PulseBase::isCalibratingNoiseFloor();'),
+            'combined_queue': actual.replace('if(_agc_pram_paused && _lab_resume_pending',
+                                            'if(false && _agc_pram_paused && _lab_resume_pending'),
             'applied_cache': actual.replace('_dbm_applied=false; _rx_boosted_gain_applied=false;', ''),
             'dirty_pram': actual.replace('if(!isInRecvMode() || !_params_valid || _active_profile>1\n',
                                         'if(!isInRecvMode() || !_params_valid || _active_profile>1 || _profile_refresh_required\n'),
@@ -114,7 +123,8 @@ class LR2021LegacyAGCTests(unittest.TestCase):
                     self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
                     scenario = {'noise': 'noise', 'dirty_pram': 'scanner', 'frontend_secondary': 'frontend',
                                 'frontend_correction': 'frontend', 'frontend_unset': 'frontend',
-                                'retention_known': 'retention', 'retention_unknown': 'retention'}.get(name, 'failures')
+                                'retention_known': 'retention', 'retention_unknown': 'retention',
+                                'combined_queue': 'combined'}.get(name, 'failures')
                     result = subprocess.run([str(folder / 'test'), scenario], capture_output=True, text=True, timeout=20)
                     self.assertNotEqual(result.returncode, 0, 'Ignored native errors must not satisfy the failure tests')
                     self.assertIn({'noise': 'isCalibratingNoiseFloor', 'applied_cache': '!w._dbm_applied',
@@ -122,7 +132,8 @@ class LR2021LegacyAGCTests(unittest.TestCase):
                                    'frontend_correction': 'correction_inputs.size()',
                                    'frontend_unset': 'frontend_frequencies.empty()',
                                    'retention_known': 'used_retained_sleep==expect_sleep',
-                                   'retention_unknown': 'used_retained_sleep==expect_sleep'}.get(name, 'Result::Failed'), result.stderr)
+                                   'retention_unknown': 'used_retained_sleep==expect_sleep',
+                                   'combined_queue': 'Result::Applied'}.get(name, 'Result::Failed'), result.stderr)
 
     def test_opt_in_timing_diagnostics_count_native_attempts_and_rx_without_false_credit(self):
         actual = (ROOT / 'src/helpers/radiolib/LR2021LegacyMaintenance.inc').read_text()

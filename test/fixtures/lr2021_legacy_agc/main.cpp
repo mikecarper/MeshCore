@@ -7,6 +7,9 @@
 #include <helpers/radiolib/LR2021ApplyStatus.h>
 #include <helpers/radiolib/AGCTimingDiagnostics.h>
 #include <helpers/OldAGCPolicy.h>
+#include <helpers/radiolib/RxpsPulse.h>
+#include <helpers/radiolib/RxpsPulseScanLease.h>
+#include <helpers/radiolib/W12PramAutoPolicy.h>
 #define RADIOLIB_ERR_NONE 0
 #define RADIOLIB_ERR_UNKNOWN -1
 static uint32_t now=1234;
@@ -24,6 +27,7 @@ struct Base {
  virtual bool isCalibratingNoiseFloor()const{return nf_active||nf_requested;}
  virtual void doResetAGC(){}
  virtual mesh::AGCMaintenanceResult periodicOldAGCMaintenance(){return mesh::AGCMaintenanceResult::Deferred;}
+ virtual mesh::AGCMaintenanceResult periodicAGCMaintenance(bool){return mesh::AGCMaintenanceResult::Deferred;}
 };
 struct CustomLR2021 {
  std::vector<std::string> calls;
@@ -59,10 +63,18 @@ struct Wrapper:Base {
  uint32_t _profile_generation=11,_profile_retry_at=0;
  bool _cw_active=false,_beacon_owned=false,_beacon_restoring=false,_morse_owned=false,_morse_rx_owned=false;
  bool _primary_receive_preempt=false,_rx_ps_armed=false,_rx_hold_continuous=false;
- struct Pulse {bool pending=false;} _rxps_pulse;
+ RxpsPulse _rxps_pulse;
+ RxpsPulseScanLease _agc_scan_lease;
+ bool& _nf_calib_active=nf_active;bool& _nf_refresh_requested=nf_requested;
+ bool _nf_window_armed=false,_rx_ps_enabled=false,_rx_ps_continuous_fallback=false,_rx_retry_pending=false;
+ bool _profile_rxps_suspended=true;
+ uint32_t _profile_scan_generation[2]={11,22};
  struct Warm {bool attempting=false;void transition(uint32_t,bool){assert(false);}} _warm_refresh;
  bool _lab_uncertain=false,_lab_sleeping=false,_lab_scan_active=false,_lab_resume_pending=false;
  bool _agc_pram_paused=false;
+ bool _agc_pram_restore_owned=false,_agc_pram_cold_restore_owned=false,_agc_pram_cold_tried=false,_agc_pram_arm_issued=false;
+ uint32_t _agc_pram_generations[2]={11,22};
+ mesh::w12pram::AutoPolicy _lab_auto;
  bool auto_enabled=true,_lab_pram_loaded=true,_lab_session_ldo=true;
  uint32_t _lab_resume_at=0;
  struct Status{bool hooked=false;} _lab_status;
@@ -101,7 +113,6 @@ struct Wrapper:Base {
    radio.calls.push_back("scanner");assert(warm);
    if(inject_restart_irq)radio.irq=true;
    if(!restart_result||radio.irq||radio.busy||!_lab_pram_loaded)return false;
-   if(radio.activatePram()!=RADIOLIB_ERR_NONE){_lab_uncertain=true;_lab_resume_pending=false;_profile_repair_required=true;return false;}
    if(!radio.pram_registered)return false;
    radio.calls.push_back("hook");
    _lab_scan_active=true;_lab_status.hooked=true;_lab_resume_pending=false;return true;
@@ -126,8 +137,18 @@ struct Wrapper:Base {
  }
  bool isInRecvMode()const{return state==STATE_RX;}
  void recalibrateNoiseFloor(){++noise_requests;nf_requested=true;_noise_floor_valid=false;_noise_floor_secondary_valid=false;}
+ bool supportsWarmRxRefresh()const{return true;}
+ uint32_t getOldAGCInterval()const{return mesh::AGC_OLD_AUTO;}
+ bool startAGCPulse(){assert(false);return false;} // combined test begins with a real completed pulse
+ bool tryResetAGC(){assert(false);return false;}
+ bool resetAGCIfIdle(){assert(false);return false;}
  @BEGIN_RECONFIGURE@
  @END_RECONFIGURE@
+#if MESH_WARM_RX_REFRESH
+ @BASE_PERIODIC@
+ @PRAM_PERIODIC@
+ @PRAM_FINISH@
+#endif
  #include <helpers/radiolib/LR2021LegacyMaintenance.inc>
 };
 using Result=mesh::AGCMaintenanceResult;
@@ -318,7 +339,7 @@ static void retainedSleepEligibility(){
  for(bool automatic:{false,true}){
   Wrapper w;w.auto_enabled=automatic;w._profiles.active=true;w._lab_scan_active=true;w._lab_status.hooked=true;
   assert(w.periodicOldAGCMaintenance()==Result::Applied);
-  assert(w.radio.calibrations==1&&!w.radio.used_retained_sleep&&w.radio.activations==1&&w.radio.pram_registered);
+  assert(w.radio.calibrations==1&&!w.radio.used_retained_sleep&&w.radio.activations==0&&w.radio.pram_registered);
   assert(w._lab_scan_active&&w._lab_status.hooked&&!w._lab_uncertain&&w._lab_pram_loaded);
  }
 #endif
@@ -344,6 +365,43 @@ static void noiseOwnership(){
  assert(w.isCalibratingNoiseFloor());
  assert(w.periodicOldAGCMaintenance()==Result::Deferred&&w.radio.calibrations==2);
  w.nf_requested=false;assert(!w.isCalibratingNoiseFloor());
+#endif
+}
+static void combinedQueuedNoise(){
+#if MESH_WARM_RX_REFRESH && MESH_W12_PRAM_EXPERIMENT
+ const auto completed_primary=[](Wrapper& w){
+  w._profiles.active=true;w._lab_scan_active=true;w._lab_status.hooked=true;
+  // A checked cold primary rebuild requests NF refresh before it hooks PRAM.
+  w.nf_requested=true;w._profile_refresh_required=true;
+  w._rxps_pulse.cadence(240000);w._rxps_pulse.request(micros());w._rxps_pulse.admitted(micros());
+  w._rxps_pulse.had_cycle=true;w._rxps_pulse.rearming();w._rxps_pulse.receiveEntry(0,micros());
+  assert(w._rxps_pulse.fullResetDue()&&!w._rxps_pulse.pending);
+ };
+ {Wrapper w;completed_primary(w);
+  // Run both real scheduling layers. The outer PRAM pause precedes the base
+  // combined dispatch, reproducing the hardware's queued-NF starvation.
+  assert(w.periodicAGCMaintenance(false)==Result::Applied);
+  assert(w.radio.calibrations==1&&w.radio.activations==0&&w.noise_requests==1);
+  assert(w._lab_scan_active&&w._lab_status.hooked&&!w._agc_pram_paused&&!w._rxps_pulse.fullResetDue());
+  assert(w.nf_requested&&!w.nf_active&&!w._nf_window_armed);
+  assert(position(w,"pause")<position(w,"calibrate")&&position(w,"calibrate")<position(w,"hook"));}
+ for(bool window:{false,true}){Wrapper w;completed_primary(w);w.nf_active=!window;w._nf_window_armed=window;
+  assert(w.isCalibratingNoiseFloor());
+  assert(w.periodicAGCMaintenance(false)==Result::Deferred&&w.radio.calibrations==0);
+  assert(w.nf_requested&&w._rxps_pulse.fullResetDue());}
+#endif
+#if MESH_W12_PRAM_EXPERIMENT
+ for(unsigned blocker=0;blocker<7;++blocker){Wrapper w;w._profiles.active=true;w.nf_requested=true;
+  w._agc_pram_paused=true;w._lab_resume_pending=true;
+  if(blocker==0)w._agc_pram_paused=false;
+  if(blocker==1)w._lab_resume_pending=false;
+  if(blocker==2)w._lab_uncertain=true;
+  if(blocker==3)w._lab_sleeping=true;
+  if(blocker==4)++w._agc_pram_generations[1];
+  if(blocker==5)w._lab_pram_loaded=false;
+  if(blocker==6)w._lab_session_ldo=false;
+  assert(w.isCalibratingNoiseFloor());
+  assert(w.periodicOldAGCMaintenance()==Result::Deferred&&w.radio.calibrations==0&&w.radio.calls.empty());}
 #endif
 }
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
@@ -384,7 +442,7 @@ int main(int argc,char**argv){
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
  if(name=="diagnostics"){diagnostics();return 0;}
 #endif
- if(name=="success")successful();else if(name=="frontend")frontendCoverage();else if(name=="guards")guards();else if(name=="ownership")ownership();else if(name=="failures")failures();else if(name=="scanner")scanner();else if(name=="retention")retainedSleepEligibility();else if(name=="noise")noiseOwnership();else assert(false);
+ if(name=="success")successful();else if(name=="frontend")frontendCoverage();else if(name=="guards")guards();else if(name=="ownership")ownership();else if(name=="failures")failures();else if(name=="scanner")scanner();else if(name=="retention")retainedSleepEligibility();else if(name=="noise")noiseOwnership();else if(name=="combined")combinedQueuedNoise();else assert(false);
 #else
  (void)argv;Wrapper w;assert(w.periodicOldAGCMaintenance()==Result::Deferred&&w.radio.calls.empty());
 #endif
