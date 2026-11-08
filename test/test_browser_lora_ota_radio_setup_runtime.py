@@ -49,8 +49,8 @@ def radio_setup_harness(*, secondary_supported=True, pending_firmware=False, fac
         else if(text==='get radio2.status')reply='> rxtx; RX=0,0 TX=0,0 switches=8 errors=0 max=200us preamble=32,128; test=4/4,4/4 ready budget=220us';
         else if(text==='get radioat'||text==='get tempradioat')reply='> -none-';
         else if(text==='get radioat2'||text==='get tempradioat2')reply=SECONDARY_SUPPORTED?'> -none-':'Error: unsupported';
-        else if(text==='set tempradio2 909.95,250,7,5,rxtx,120,128'||text==='tempradio 909.95,250,7,5,120,128'){
-          if(targetTemp!=='off'||text.startsWith('set ')!==SECONDARY_SUPPORTED)throw Error('Unsafe target setup');
+        else if(text==='set tempradio2 909.950,250,7,5,rxtx,120,128'||['tempradio 909.950,250,7,5,2,128','tempradio 909.950,250,7,5,120,128'].includes(text)){
+          if((targetTemp!=='off'&&!text.endsWith(',120,128'))||text.startsWith('set ')!==SECONDARY_SUPPORTED)throw Error('Unsafe target setup');
           targetTemp='active';targetAcknowledgedAt=Date.now();reply='OK - temporary channel applying';
         }''')
     harness=replace_once(harness,"} else if(f[0]===66){const text=dec.decode(f.slice(1));let value;",
@@ -76,8 +76,8 @@ def radio_setup_harness(*, secondary_supported=True, pending_firmware=False, fac
         }
         else if(text==='get radioat'||text==='get tempradioat')value='Error: unsupported';
         else if(text==='get radioat2'||text==='get tempradioat2')value=SECONDARY_SUPPORTED?'> -none-':'Error: unsupported';
-        else if(text==='set tempradio2 909.95,250,7,5,rxtx,120,128'||text==='tempradio 909.95,250,7,5,120,128'){
-          if(!guard||sourceTemp!=='off'||targetTemp!=='active'||text.startsWith('set ')!==SECONDARY_SUPPORTED)throw Error('Unsafe source setup');
+        else if(text==='set tempradio2 909.950,250,7,5,rxtx,120,128'||['tempradio 909.950,250,7,5,2,128','tempradio 909.950,250,7,5,120,128'].includes(text)){
+          if(!guard||(sourceTemp!=='off'&&!text.endsWith(',120,128'))||targetTemp!=='active'||text.startsWith('set ')!==SECONDARY_SUPPORTED)throw Error('Unsafe source setup');
           sourceTemp='pending';value='OK - temporary channel applying';
         }''')
     marker="  window.addEventListener('load',async()=>{try{"
@@ -127,14 +127,15 @@ class BrowserRadioSetupRuntime(unittest.TestCase):
     def assert_automatic_setup(self,result,profile):
         self.assertNotIn('error',result,result)
         self.assertIn('TEST_FIRMWARE_READ_AFTER_CHANNEL_READY',result['inspectStatus'],result)
-        self.assertIn('909.95 MHz, BW250, SF7, CR4/5',result['checked'],result)
-        self.assertEqual(result['defaults'],{'radio-frequency':'909.95','radio-bandwidth':'250','radio-sf':'7','radio-cr':'5','radio-minutes':'120','radio-preamble':'128'})
+        self.assertIn('909.950 MHz, BW250, SF7, CR4/5',result['checked'],result)
+        self.assertEqual(result['defaults'],{'radio-frequency':'909.950','radio-bandwidth':'250','radio-sf':'7','radio-cr':'5','radio-minutes':'120','radio-preamble':'128'})
         self.assertEqual((result['fileReads'],result['packageBuilds']),(1,0),result)
         self.assertEqual(result['sourceSaved'],'910.525,62.5,7,5');self.assertEqual(result['profiles'],[profile,profile])
         self.assertEqual((result['sourceTemp'],result['targetTemp']),('active','active'))
-        timeline=result['timeline'];command='set tempradio2 909.95,250,7,5,rxtx,120,128'if profile else'tempradio 909.95,250,7,5,120,128'
+        timeline=result['timeline'];command='set tempradio2 909.950,250,7,5,rxtx,120,128'if profile else'tempradio 909.950,250,7,5,120,128'
         self.assertEqual(timeline.count(['remote',command]),1);self.assertEqual(timeline.count(['local',command]),1)
-        target_at=timeline.index(['remote',command]);source_at=timeline.index(['local',command]);file_at=timeline.index(['file-read'])
+        trial=command if profile else command.replace(',120,128',',2,128')
+        target_at=timeline.index(['remote',trial]);source_at=timeline.index(['local',trial]);file_at=timeline.index(['file-read'])
         self.assertTrue(any(row==['guard-close']for row in timeline[target_at+1:source_at]),timeline)
         pending_at=timeline.index(['source-pending']);active_at=timeline.index(['source-active'])
         self.assertLess(source_at,pending_at);self.assertLess(pending_at,active_at);self.assertLess(active_at,file_at)
@@ -149,7 +150,7 @@ class BrowserRadioSetupRuntime(unittest.TestCase):
     def test_firmware_check_automatically_prepares_unused_radio2_before_package(self):
         self.assert_automatic_setup(run_harness(radio_setup_harness(),timeout=60),1)
 
-    def test_older_profile_capabilities_use_single_primary_commands_automatically(self):
+    def test_older_profile_capabilities_test_short_primary_before_full_window(self):
         self.assert_automatic_setup(run_harness(radio_setup_harness(secondary_supported=False),timeout=60),0)
 
     def test_normal_defaults_are_checked_and_changed_once_before_temporary_setup(self):
@@ -161,7 +162,7 @@ class BrowserRadioSetupRuntime(unittest.TestCase):
             self.assertIn([endpoint,'get radio.rxps'],timeline[:first_write]);self.assertIn([endpoint,'ota config'],timeline[:first_write])
             for command in writes:
                 self.assertEqual(timeline.count([endpoint,command]),1,timeline)
-                self.assertLess(timeline.index([endpoint,command]),timeline.index(['remote','set tempradio2 909.95,250,7,5,rxtx,120,128']))
+                self.assertLess(timeline.index([endpoint,command]),timeline.index(['remote','set tempradio2 909.950,250,7,5,rxtx,120,128']))
             for command in ['ota config autofetch off','ota config autoinstall off']:
                 self.assertNotIn([endpoint,command],timeline)
             self.assertEqual(result['sourcePolicy'if endpoint=='local'else'targetPolicy'],{'rxps':'off','autofetch':'off','autoinstall':'off','hops':0})

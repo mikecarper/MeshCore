@@ -86,14 +86,14 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
   <details class="lora-ota-advanced" data-role="advanced-tools"><summary>Advanced settings and diagnostics</summary>
   <details class="lora-ota-advanced" data-role="radio-setup-panel">
     <summary>Update channel and manual radio setup</summary>
-    <p>The page prepares this automatically when you check the firmware. It prefers unused temporary radio2 on each end and falls back to the primary temporary channel. Saved normal channels stay unchanged.</p>
-    <p>For 902-928 MHz radios, the default is 909.950 MHz, or a separated alternate if that overlaps the normal channel. For other regions, choose a suitable frequency below.</p>
+    <p>Prepare update configures both radios and tests the link automatically. It checks temporary radio2 first on each device, using the full window when available. Primary-channel fallback starts with a two-minute trial and extends only after the target responds on the new channel. Saved normal channels stay unchanged.</p>
+    <p>For 902-928 MHz radios, the default is 909.950 MHz, or a separated alternate. Older Companions use their saved channel for compatibility; both temporary windows are aligned automatically. Other regions keep the saved channel unless you choose another below.</p>
     <details class="lora-ota-advanced">
       <summary>Update channel options</summary>
       <label>Update frequency (MHz)<input data-role="radio-frequency" type="number" min="150" max="2500" step="0.001" placeholder="Choose a frequency"></label>
-      <label>Bandwidth (kHz)<select data-role="radio-bandwidth"><option value="125">125</option><option value="250" selected>250</option><option value="500">500</option></select></label>
+      <label>Bandwidth (kHz)<select data-role="radio-bandwidth"><option value="7.8">7.8</option><option value="10.4">10.4</option><option value="15.6">15.6</option><option value="20.8">20.8</option><option value="31.25">31.25</option><option value="41.7">41.7</option><option value="62.5">62.5</option><option value="125">125</option><option value="250" selected>250</option><option value="500">500</option></select></label>
       <label>Spreading factor<select data-role="radio-sf"><option value="5">SF5</option><option value="6">SF6</option><option value="7" selected>SF7</option><option value="8">SF8</option><option value="9">SF9</option><option value="10">SF10</option><option value="11">SF11</option><option value="12">SF12</option></select></label>
-      <label>Coding rate<select data-role="radio-cr"><option value="5" selected>4/5</option><option value="6">4/6</option><option value="7">4/7</option><option value="8">4/8</option></select></label>
+      <label>Coding rate<select data-role="radio-cr"><option value="4">4/4</option><option value="5" selected>4/5</option><option value="6">4/6</option><option value="7">4/7</option><option value="8">4/8</option></select></label>
       <label>Preamble<input data-role="radio-preamble" type="number" min="1" max="65535" value="128"></label>
       <label>Temporary window (minutes)<input data-role="radio-minutes" type="number" min="1" max="10080" value="120"></label>
       <p class="lora-ota-actions"><button type="button" data-role="radio-prepare" disabled>Prepare now</button> <button type="button" class="lora-ota-secondary" data-role="radio-check" disabled>Check channel</button></p>
@@ -102,8 +102,8 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
     <p data-role="radio-setup-status" role="status" aria-live="polite">Connect and choose the remote device first.</p>
     <details class="lora-ota-advanced">
       <summary>Manual setup and older firmware</summary>
-      <p>Automatic setup works with a guarded USB Companion or a compatible USB Repeater on a direct connection. The page checks which temporary profiles each device supports. Older Companions need manual setup; update the USB Companion to prepare a separate channel without changing saved settings.</p>
-      <p>Apply the command on the target first, then the USB source, and check the channel. Every relay also needs matching settings; automatic route preparation is not supported.</p>
+      <p>No manual channel commands are needed for direct updates with USB radio controls, including older Companions. Firmware without those controls needs a Companion update for automatic setup.</p>
+      <p>For manual setup, apply the command on the target first, then the USB source. Every relay also needs matching settings; automatic route preparation is not supported.</p>
       <pre data-role="radio-commands">Choose the update frequency to show the temporary command.</pre>
     </details>
   </details>
@@ -185,14 +185,14 @@ shared message queue: unrelated messages moved into the browser can be
 downloaded, but cannot be restored to the Companion. The page prepares the
 update channel and required RX power saving / OTA preferences automatically on
 compatible direct connections. The temporary channel expires; the required
-RX power saving and OTA policy changes remain saved and are listed in the diagnostic log. On older Companions, manual TempRadio on both devices must match the USB
-Companion's saved `get radio` settings. Using the same different temporary
-frequency on both ends is not enough for that compatibility mode. The page
-shows the exact command using the saved channel; apply it to the target first,
-then to the source. Otherwise update the Companion to firmware with guarded
-channel setup support. The browser can read the saved radio settings but
-cannot confirm active temporary settings, RX power saving or preamble; check
-these on the device. Some firmware accepts raw OTA packets from USB but
+RX power saving and OTA policy changes remain saved and are listed in the diagnostic log.
+On older Companions with USB radio controls, the page automatically aligns both
+temporary channels with the Companion's saved settings. It tests primary
+channels with a two-minute window before extending them; temporary radio2
+uses the full window and keeps the normal channel available. A lost setup
+reply stops the operation without repeating the command. Firmware without
+USB radio controls cannot be configured or checked automatically; update
+that Companion first. Some firmware accepts raw OTA packets from USB but
 suppresses their transmission without an active temporary radio.
 Existing downloads and source folders must be cleared first. If the source
 clock is wrong, set it before connecting. Multi-version updates require a

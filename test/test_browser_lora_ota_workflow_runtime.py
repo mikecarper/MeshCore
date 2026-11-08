@@ -75,6 +75,61 @@ def workflow_harness(*, transfer_failure=False, legacy_install=False, catalog=Fa
     return script
 
 
+def legacy_setup_harness(rxps_on=False, matching=False):
+    """Actual UI and binary transport, with stateful legacy radio endpoints."""
+    script = legacy_harness('full_transfer')
+    # Shorten only the firmware-transfer polling interval; keep the real
+    # temporary-channel settling delays and USB/LoRa request sequence.
+    script = script.replace('(()=>{', '(()=>{const timer=window.setTimeout;window.setTimeout=(fn,ms,...args)=>timer(fn,ms===20000?10:ms,...args);', 1)
+    script = script.replace("let inbox=[],", """let sourceTemp=MATCHING?'910.525,62.5,7,5':'909.950,250,5,5',targetTemp=sourceTemp,
+      sourceRxps=RXPS_ON?'on':'off',targetRxps=sourceRxps,targetHops=RXPS_ON?3:0,
+      timeline=[],trialProof=false;let inbox=[],""")
+    script = script.replace('MATCHING', 'true' if matching else 'false').replace('RXPS_ON', 'true' if rxps_on else 'false')
+    script = script.replace("const f=bytes.slice(3);this.frames.push(Array.from(f));let out;", """const f=bytes.slice(3);this.frames.push(Array.from(f));let out;
+      if([2,26,65].includes(f[0])&&sourceTemp!==targetTemp)throw Error('RF attempted on mismatched channels');""")
+    script = script.replace("if(text==='get public.key')reply='> '+key;", """if(text==='get public.key'){
+          if(sourceTemp==='910.525,62.5,7,5'&&timeline.some(r=>r[1]==='tempradio 910.525,62.5,7,5,2,128'))trialProof=true;
+          timeline.push(['remote-proof',sourceTemp]);reply='> '+key;
+        }""")
+    script = script.replace("else if(text==='get tempradio'||text==='get radio')reply='> '+radio;", """
+        else if(text==='get radio')reply='> 910.5250244,62.5,7,5';
+        else if(text==='get tempradio')reply='> '+targetTemp+',128';
+        else if(['get radio2','get tempradio2','get radio2.cross','get radioat2','get tempradioat2'].includes(text))reply='Error: unsupported';
+        else if(['get radioat','get tempradioat'].includes(text))reply='> -none-';
+        else if(text.startsWith('tempradio ')){
+          timeline.push(['remote',text]);if(text.endsWith(',120,128')&&!trialProof)throw Error('Long lease before trial proof');
+          targetTemp=text.slice(10).split(',').slice(0,4).join(',');reply='OK - temporary channel applying';
+        }
+        else if(text==='set radio.rxps off'){targetRxps='off';timeline.push(['remote',text]);reply='OK';}
+        else if(text==='ota config hops 0'){targetHops=0;timeline.push(['remote',text]);reply='OK';}""")
+    script = script.replace("else if(text==='get radio.rxps')reply='> off,1000,1000';", "else if(text==='get radio.rxps')reply='> '+targetRxps+',1000,1000';")
+    script = script.replace("else if(text==='ota config')reply='ota config: autofetch=off autoinstall=off hops=0';", "else if(text==='ota config')reply='ota config: autofetch=off autoinstall=off hops='+targetHops;")
+    script = script.replace("else if(text==='get radio')value='> '+radio;", "else if(text==='get radio')value='> 910.5250244,62.5,7,5';")
+    script = script.replace("else if(text==='get tempradio')value='TempRadio active: '+radio+' 100s left,preamble=32';", """
+        else if(text==='get tempradio')value='TempRadio active: '+sourceTemp+' 7200s left,preamble=128';
+        else if(['get radio2','get tempradio2','get radio2.cross','get radioat','get tempradioat','get radioat2','get tempradioat2'].includes(text))value='Error: unsupported';
+        else if(text.startsWith('tempradio ')){
+          timeline.push(['local',text]);if(text.endsWith(',120,128')&&!trialProof)throw Error('Long source lease before trial proof');
+          sourceTemp=text.slice(10).split(',').slice(0,4).join(',');value='OK - temporary channel applying';
+        }
+        else if(text==='set radio.rxps off'){sourceRxps='off';timeline.push(['local',text]);value='OK';}""")
+    script = script.replace("else if(text==='get radio.rxps')value='Error: RX power saving is unsupported on this radio';",
+        "else if(text==='get radio.rxps')value='radio.rxps '+sourceRxps+',level=6,preamble=16,rx=41704,sleep=11882,mode=continuous-fast';")
+    script = script.replace("else if(text==='ota config')value='ota config: speed=1x packet=1x mode=seeder-only autofetch=off autoinstall=off checkpoint=4 advert=0min hops=0';",
+        "else if(text==='ota config')value='Unknown command';")
+    script = script.replace("else if(text==='ota stats')value='OTA | fetch idle';", "else if(text==='ota stats')value='Unknown command';")
+    script = script.replace("else if(text==='ota folder')value='folder=off serving=0:';", "else if(text==='ota folder')value='Unknown command';")
+    # Use only the ordinary update action; no manual channel controls.
+    start=script.index("    el('transfer').click();await wait(()=>!el('install').disabled",script.index("const chosen=new DataTransfer()"))
+    end=script.index("if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);",script.index("el('install').click();",start))
+    end += len("if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);")
+    script = script[:start]+"""    if(el('radio-setup-panel').open)throw Error('Manual channel setup was shown');
+    el('update').click();await wait(()=>el('workflow-status').dataset.state==='complete'||el('workflow-status').dataset.state==='error');
+    if(el('workflow-status').dataset.state!=='complete')throw Error(el('workflow-status').textContent);"""+script[end:]
+    script = script.replace("investigateClicks,beforeActionFrames,installed,", "timeline,sourceRxps,targetRxps,targetHops,sourceTemp,targetTemp,frequency:el('radio-frequency').value,investigateClicks,beforeActionFrames,installed,")
+    return script
+
+
 class BrowserLoraOtaWorkflowRuntime(unittest.TestCase):
     def setUp(self):
         if not BROWSER:
@@ -82,24 +137,27 @@ class BrowserLoraOtaWorkflowRuntime(unittest.TestCase):
                 self.fail('Chromium required')
             self.skipTest('Chromium unavailable')
 
-    def test_legacy_temporary_channel_mismatch_shows_exact_recovery_without_writes(self):
-        script = legacy_harness('package').replace(
-            "value='TempRadio active: '+radio+' 100s left,preamble=32'",
-            "value='TempRadio active: 909.950,250,7,5 7200s left,preamble=128'")
-        old = "if(el('transfer').disabled||!el('resume').disabled||!el('install').disabled)throw Error('validated legacy OTA preflight did not enable transfer');"
-        self.assertEqual(script.count(old), 1)
-        script = script.replace(old, """await report({notice:el('workflow-status').textContent,manual:el('radio-commands').textContent,
-          advancedOpen:el('advanced-tools').open,radioOpen:el('radio-setup-panel').open,
-          updateDisabled:el('update').disabled,cmds,frames:port.frames});return;""")
-        result = run_harness(script, timeout=90)
+    def test_legacy_manual_windows_are_aligned_then_transferred_without_manual_setup(self):
+        result = run_harness(legacy_setup_harness(), timeout=90)
         self.assertNotIn('error', result, result)
-        self.assertIn('Saved: 910.525,62.5,7,5; temporary: 909.95,250,7,5', result['notice'])
-        self.assertIn('tempradio 910.525,62.5,7,5,120,128', result['manual'])
-        self.assertTrue(result['advancedOpen'])
-        self.assertTrue(result['radioOpen'])
-        self.assertTrue(result['updateDisabled'])
-        self.assertFalse(any(frame[0] == 65 for frame in result['frames']))
-        self.assertFalse(any(command.startswith(('set ', 'tempradio ', 'ota pull ')) for command in result['cmds']))
+        self.assertTrue(result['installed']); self.assertTrue(result['otaData'])
+        self.assertEqual(result['sourceTemp'], '910.525,62.5,7,5')
+        self.assertEqual(result['targetTemp'], result['sourceTemp'])
+        self.assertEqual(result['frequency'], '910.525')
+        writes = [r for r in result['timeline'] if r[0] in ('remote', 'local') and r[1].startswith('tempradio ')]
+        self.assertEqual(writes, [
+            ['remote', 'tempradio 910.525,62.5,7,5,2,128'], ['local', 'tempradio 910.525,62.5,7,5,2,128'],
+            ['remote', 'tempradio 910.525,62.5,7,5,120,128'], ['local', 'tempradio 910.525,62.5,7,5,120,128']])
+        self.assertFalse(any(f[0] == 52 for f in result['frames']))
+
+    def test_rxps_on_with_matching_manual_channels_is_disabled_and_update_continues(self):
+        result = run_harness(legacy_setup_harness(rxps_on=True, matching=True), timeout=90)
+        self.assertNotIn('error', result, result)
+        self.assertTrue(result['installed']); self.assertTrue(result['otaData'])
+        self.assertEqual((result['sourceRxps'], result['targetRxps'], result['targetHops']), ('off', 'off', 0))
+        for endpoint in ('remote', 'local'):
+            self.assertEqual(result['timeline'].count([endpoint, 'set radio.rxps off']), 1)
+        self.assertFalse(any(r[1].startswith('tempradio ') for r in result['timeline']))
 
     def test_single_action_transfers_installs_and_verifies_once(self):
         result = run_harness(workflow_harness(), timeout=40)

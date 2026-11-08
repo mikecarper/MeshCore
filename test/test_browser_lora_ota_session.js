@@ -33,7 +33,7 @@ async function image() {
 test('validates temporary radio, policy and download identity conservatively', () => {
   assert.deepEqual(temp('> 910.525,62.5,7,5,100'), [910.525,62.5,7,5]);
   assert.throws(() => temp('pending'), /active/);
-  assert.throws(() => policy('autofetch=on autoinstall=off hops=0'), /automatic/);
+  assert.throws(() => policy('autofetch=on autoinstall=off hops=0'), /automatic/i);
   policy('autofetch=off autoinstall=off hops=0');
   assert.deepEqual(download('no download'), {state:'idle'});
   assert.deepEqual(download('download: ready to install id=ABCDEF01 |'), {state:'ready',id:'abcdef01'});
@@ -109,14 +109,14 @@ test('radio-only preflight labels inactive source and target and bounds unexpect
   let f=radioPreflight({sourceTemp:'TempRadio pending: 906.525,250.00,5,5,preamble=32'});
   await assert.rejects(f.session.inspectRadios(),/active temporary radio window is required on the USB Companion/);
   f=radioPreflight({targetTemp:'TempRadio inactive'});
-  await assert.rejects(f.session.inspectRadios(),/required on the target.*tempradio 906.525,250,5,5/);
+  await assert.rejects(f.session.inspectRadios(),/required on the target/);
   f=radioPreflight({targetTemp:'not-a-radio\r\n\0'+ 'x'.repeat(500)});
   await assert.rejects(f.session.inspectRadios(),error=>{
     assert.match(error.message,/target: Cannot read active temporary radio settings/);
     assert(error.message.length < 200);assert(!/[\r\n\0]/.test(error.message));return true;
   });
   for(const options of [{sourceRxps:'> on'},{targetRxps:'> on'},{policy:'autofetch=on autoinstall=off hops=0'}]) {
-    f=radioPreflight(options);await assert.rejects(f.session.inspectRadios(),/RX power saving off|automatic OTA fetch/);
+    f=radioPreflight(options);await assert.rejects(f.session.inspectRadios(),/RX power saving.*off|automatic OTA fetch/i);
   }
 });
 test('radio-only preflight preserves legacy cached-source fallback and explicit disclosure', async () => {
@@ -369,9 +369,20 @@ test('older raw Companion uses saved SELF_INFO and discloses unverified source s
       if(c==='ota installhash')return installUsage;throw Error('Unexpected '+c);
     }};
   const session=new DirectSession(link,'bb'.repeat(32),'',p,{progress:s=>progress.push(s)});
-  await assert.rejects(session.inspect(),/temporary radio window is required on the target.*tempradio 910.525,62.5,7,5/);
+  await assert.rejects(session.inspect(),/temporary radio window is required on the target/);
   targetTemp=radio;
   assert.equal((await session.inspect()).download,'idle');
   assert(progress.some(s=>/Active temporary settings, RX power saving and preamble cannot be verified/.test(s)));
   assert(calls.includes('ota config'));
+});
+
+test('older named RXPS off does not ask the user to disable it again', async () => {
+  for (const sourceRxps of ['radio.rxps off,level=6,preamble=16,rx=41704,sleep=11882', '> radio.rxps off,1000,2000']) {
+    const f = radioPreflight({sourceRxps});
+    assert.deepEqual((await f.session.inspectRadios()).source, [906.525, 250, 5, 5]);
+  }
+  const on = radioPreflight({sourceRxps: 'radio.rxps on,1000,2000'});
+  await assert.rejects(on.session.inspectRadios(), error => error.radioSetupRequired === true);
+  const unknown = radioPreflight({sourceRxps: 'radio.rxps unknown'});
+  await assert.rejects(unknown.session.inspectRadios(), error => !error.radioSetupRequired);
 });

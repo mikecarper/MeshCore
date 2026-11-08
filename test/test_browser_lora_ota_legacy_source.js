@@ -151,7 +151,7 @@ async function run(){
   // Local temporary setup protects the shared queue without sending RF,
   // authenticating, or retrying an uncertain write.
   for(const lost of [false,true]){
-    const temporary=new CompanionTransport({},{});temporary.otaSupported=true;
+    const temporary=new CompanionTransport({},{});temporary.otaSupported=true;temporary.localCliSupported=true;
     const events=[];
     temporary.guardMode=async mode=>{events.push(['guard',mode]);};
     temporary.localCommand=async command=>{
@@ -168,6 +168,18 @@ async function run(){
       await assert.rejects(()=>temporary.applyTemporaryRadio(command),/Cannot prepare/);
     assert.equal(events.length,count);
   }
+
+  // Older USB CLI sources can arm primary TempRadio without a nonexistent
+  // guard command. They cannot select radio2 or change persistent channels.
+  const legacyTemporary=new CompanionTransport({},{});
+  legacyTemporary.localCliSupported=true;legacyTemporary.otaSupported=false;
+  const legacyWrites=[];
+  legacyTemporary.localCommand=async command=>{legacyWrites.push(command);return 'OK';};
+  legacyTemporary.guardMode=async()=>{throw Error('Legacy firmware has no guard API');};
+  assert.equal(await legacyTemporary.applyTemporaryRadio('tempradio 910.525,62.5,7,5,2,128'),'OK');
+  for(const command of ['set tempradio2 909.950,250,7,5,rxtx,120,128','set radio 909.950,250,7,5'])
+    await assert.rejects(()=>legacyTemporary.applyTemporaryRadio(command),/Cannot prepare/);
+  assert.deepEqual(legacyWrites,['tempradio 910.525,62.5,7,5,2,128']);
 
   // Radio2 pacing and every subsequent send use the active selected lease;
   // primary off and a slower saved mesh are expected in this mode.

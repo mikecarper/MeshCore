@@ -19,12 +19,21 @@
   function packet(payload){if(!payload.length||payload.length>300)throw Error('Invalid Companion frame size');return join(Uint8Array.of(60,payload.length&255,payload.length>>8),payload);}
   const INBOX_KEY='meshcore-lora-ota-preserved-inbox-v1';
   const READ_ONLY=new Set(['get public.key','ota status','ota self','ver','get bootloader.ver',
-    'ota bootloader status','ota config','ota key list','get tempradio','get radio','get radio.rxps','ota installhash','ota qspi','ota stats','ota ls']);
+    'ota bootloader status','ota config','ota key list','get tempradio','get radio','get radio.rxps','ota installhash','ota qspi','ota stats','ota ls',
+    'get radio2','get tempradio2','get radio2.cross','get radio2.status','get radioat','get tempradioat','get radioat2','get tempradioat2']);
   // Legacy OTA commands are deliberately narrow; changing operations are
   // sent at most once and the target must still verify the staged image.
   function legacyOtaCommand(text){
-    return READ_ONLY.has(text)||/^ota pull [a-f0-9]{8} flash$/i.test(text)||
-      /^ota installhash [a-f0-9]{64}$/i.test(text)||text==='ota install';
+    if(READ_ONLY.has(text)||/^ota pull [a-f0-9]{8} flash$/i.test(text)||
+      /^ota installhash [a-f0-9]{64}$/i.test(text)||text==='ota install'||text==='set radio.rxps off'||
+      /^ota config (?:(?:autofetch|autoinstall) off|hops 0)$/.test(text))return true;
+    const temp=/^(?:tempradio |set tempradio2 )(\d+(?:\.\d+)?),(\d+(?:\.\d+)?),(\d+),(\d+),(?:rxtx,)?(\d+),(\d+)$/.exec(text);
+    if(!temp)return false;
+    try{
+      const [frequency,bandwidth,sf,cr,minutes,preamble]=temp.slice(1).map(Number), profile=text.startsWith('set ')?1:0;
+      const expected=radioSetup().commands({frequency,bandwidth,sf,cr,minutes,preamble},{targetProfile:profile}).target;
+      return text===expected;
+    }catch(_){return false;}
   }
   function sourceTemp(text){
     const s=String(text).trim().replace(/^>\s*/, '').replace(/^TempRadio active:\s*/i,'');
@@ -504,9 +513,14 @@
       this.otaRadioProfile=profile;
     }
     async applyTemporaryRadio(command){
-      if(!this.otaSupported||this.serving||!/^tempradio [\d.,]+$|^set tempradio2 [\d.,]+,rxtx,[\d.,]+$/.test(command))
+      if(!this.localCliSupported||this.serving||!/^tempradio [\d.,]+$|^set tempradio2 [\d.,]+,rxtx,[\d.,]+$/.test(command)||
+          (!this.otaSupported&&!command.startsWith('tempradio ')))
         throw Error('Cannot prepare this Companion temporary radio automatically');
       return this.withAdmin(async()=>{
+        // Compatibility sources have a verified USB CLI but no guard API.
+        // Their primary channel is checked against the saved tuple by setup
+        // and again before every raw-packet transmission.
+        if(!this.otaSupported)return this.localCommand(command);
         // Arming locally sends no RF. It prevents shared-inbox eviction while
         // the firmware reserves its OTA context for the temporary window.
         if(!this.guard){await this.guardMode(1,Uint8Array.of(this.peerType));this.guard=true;}

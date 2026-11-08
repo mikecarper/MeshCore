@@ -9,6 +9,7 @@
   const fullKey = value => typeof value === 'string' && /^[0-9a-f]{64}$/i.test(value);
   const bare = value => String(value).trim().replace(/^>\s*/, '').trim();
   const same = (a, b) => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) <= (i === 0 ? 0.001 : 0.00001));
+  const formatRadio = tuple => [Number(tuple[0]).toFixed(3), ...tuple.slice(1)].join(',');
   function need(ok, message) { if (!ok) throw Error(message); }
   function settings(value) {
     need(value && typeof value === 'object' && !Array.isArray(value), 'Choose temporary radio settings.');
@@ -24,7 +25,7 @@
   function commands(value, {sourceProfile = 0, targetProfile = 0} = {}) {
     const v = settings(value);
     need([sourceProfile, targetProfile].every(n => n === 0 || n === 1), 'Invalid OTA radio profile.');
-    const tuple = [v.frequency, v.bandwidth, v.sf, v.cr];
+    const tuple = [v.frequency.toFixed(3), v.bandwidth, v.sf, v.cr];
     const primaryCommand = 'tempradio ' + [...tuple, v.minutes, v.preamble].join(',');
     const secondaryCommand = 'set tempradio2 ' + [...tuple, 'rxtx', v.minutes, v.preamble].join(',');
     return {target: targetProfile ? secondaryCommand : primaryCommand,
@@ -77,7 +78,7 @@
     // CompanionTransport already maps an explicitly unsupported RXPS control
     // to this known continuous-receive state; it requires no setting write.
     if (/^off,unsupported$/i.test(bare(reply))) return {enabled: 'off', raw: bare(reply), unsupported: true, restoreCommand: null};
-    const text = bare(reply), m = text.match(/^(on|off)(?:,(\d+),(\d+)|,level=(\d+),preamble=(\d+),rx=(\d+),sleep=(\d+)(?:,mode=(?:continuous-fast|continuous-fallback|duty-cycle))?(?:,effective-level=(\d+))?(?:,effective-preamble=(\d+))?)?$/i);
+    const text = bare(reply).replace(/^radio\.rxps(?:\.config)?\s+/i, ''), m = text.match(/^(on|off)(?:,(\d+),(\d+)|,level=(\d+),preamble=(\d+),rx=(\d+),sleep=(\d+)(?:,mode=(?:continuous-fast|continuous-fallback|duty-cycle))?(?:,effective-level=(\d+))?(?:,effective-preamble=(\d+))?)?$/i);
     need(m, 'Cannot verify RX power-saving settings.');
     need(m.slice(2).filter(n => n !== undefined).every(n => Number.isSafeInteger(Number(n)) && Number(n) <= 0xffffffff) &&
       (m[4] === undefined || (Number(m[4]) <= 10 && [0, 16, 32].includes(Number(m[5])))) &&
@@ -150,11 +151,13 @@
     need(['off', 'on', 'auto'].includes(result), 'Cannot verify secondary crossing policy.');
     return result;
   }
-  async function prepare(link, key, password, value, {progress = () => {}, wait = ms => new Promise(r => setTimeout(r, ms)), now = () => Date.now()} = {}) {
-    const v = settings(value), expected = [v.frequency, v.bandwidth, v.sf, v.cr], companion = link?.browserRawSource === true;
+  async function prepare(link, key, password, value, {progress = () => {}, useActivePrimary = false,
+      wait = ms => new Promise(r => setTimeout(r, ms)), now = () => Date.now()} = {}) {
+    let v = settings(value), expected = [v.frequency, v.bandwidth, v.sf, v.cr];
+    const companion = link?.browserRawSource === true, legacy = companion && link.otaSupported === false;
     need(link && !link.serving && !link.failure && (!link.relays || (Array.isArray(link.relays) && link.relays.length === 0)) &&
-      (!companion || (link.localCliSupported === true && link.otaSupported === true && (link.otaMode === undefined || link.otaMode === 'guarded'))),
-      'Automatic channel setup requires an idle guarded direct connection.');
+      (!companion || (link.localCliSupported === true && (legacy || (link.otaSupported === true && (link.otaMode === undefined || link.otaMode === 'guarded'))))),
+      'Automatic channel setup requires an idle direct connection with USB radio controls.');
     need(fullKey(key) && fullKey(link.sourceKey) && fullKey(link.knownRepeater) && key.toLowerCase() === link.knownRepeater.toLowerCase() &&
       key.toLowerCase() !== link.sourceKey.toLowerCase(), 'Select the complete target public key before preparing the channel.');
     for (const method of ['localCommand', 'remoteCommand', 'verifyPeer', 'closeRadioSession', 'resetRemoteSession', 'selectOtaRadio',
@@ -165,13 +168,16 @@
     const changedSettings = [];
     async function baseline(label, read) {
       const saved = primary(await read('get radio'));
-      need((await readTemporary(read, 0)).state === 'off', label + ' already has an active or pending primary temporary radio.');
-      const powerSaving = rxps(await read('get radio.rxps')), otaPolicy = policy(await read('ota config'));
+      const temporaryPrimary = await readTemporary(read, 0);
+      need(['off', 'active'].includes(temporaryPrimary.state), label + ' has a pending or unverified primary temporary radio.');
+      const powerSaving = rxps(await read('get radio.rxps')), config = await read('ota config');
+      const otaPolicy = legacy && label === 'source' && unsupported(config) ? null : policy(config);
       let existingDownload = false;
       if (label === 'source') {
         const stats = bare(await read('ota stats')), fetch = [...stats.matchAll(/\bfetch\s+([a-z]+)\b/gi)];
-        need(fetch.length === 1 && fetch[0][1].toLowerCase() === 'idle', 'Source has an active or unverified OTA download.');
-        need(/^folder=off(?:\s|$)/i.test(bare(await read('ota folder'))), 'Source has an attached or unverified OTA folder.');
+        need(legacy && unsupported(stats) || fetch.length === 1 && fetch[0][1].toLowerCase() === 'idle', 'Source has an active or unverified OTA download.');
+        const folder = bare(await read('ota folder'));
+        need(legacy && unsupported(folder) || /^folder=off(?:\s|$)/i.test(folder), 'Source has an attached or unverified OTA folder.');
       } else {
         const status = bare(await read('ota status'));
         const idle = /\bno download\b/i.test(status) && !/\bdownload:/i.test(status);
@@ -189,7 +195,7 @@
         const reply = await read(command), status = schedule(reply);
         // Full Companion implements no primary scheduler. Its exact shared
         // callback rejection is a known absence, not an unknown-state bypass.
-        const absentPrimary = companion && label === 'source' && (command === 'get radioat' || command === 'get tempradioat') && bare(reply) === 'Error: unsupported';
+        const absentPrimary = companion && label === 'source' && (command === 'get radioat' || command === 'get tempradioat') && unsupported(reply);
         if (command === 'get radioat' || command === 'get tempradioat')
           need(absentPrimary || status.empty === true, label + ' has scheduled or unverified primary settings.');
         else need(!status.unsupported || savedSecondary.state === 'unsupported' || temporarySecondary.state === 'unsupported',
@@ -207,22 +213,24 @@
           same(temporarySecondary.tuple, expected) && temporarySecondary.preamble === v.preamble && temporarySecondary.mode === 'rxtx') {
         adoptSecondary = (await readTemporary(read, 1)).state === 'active';
       }
-      return {saved, savedSecondary, temporarySecondary, cross, schedules, secondaryFree, matchingSecondary, overlappingSecondary,
-        adoptSecondary, powerSaving, otaPolicy, existingDownload};
+      const adoptPrimary = temporaryPrimary.state === 'active' && same(temporaryPrimary.tuple, expected) && temporaryPrimary.preamble === v.preamble;
+      const overlapsPrimary = Math.abs(saved[0] - v.frequency) <= (saved[1] + v.bandwidth) / 2000 + 0.001;
+      return {saved, temporaryPrimary, savedSecondary, temporarySecondary, cross, schedules, secondaryFree, matchingSecondary, overlappingSecondary,
+        overlapsPrimary, adoptPrimary, adoptSecondary, powerSaving, otaPolicy, existingDownload};
     }
     function sameSaved(a, b) {
       return same(a.saved, b.saved) && secondarySignature(a.savedSecondary) === secondarySignature(b.savedSecondary) && a.cross === b.cross &&
         JSON.stringify(a.schedules) === JSON.stringify(b.schedules);
     }
     function required(state) {
-      return state.powerSaving.enabled === 'off' && state.otaPolicy.hops === '0' &&
-        state.otaPolicy.autofetch === 'off' && state.otaPolicy.autoinstall === 'off';
+      return state.powerSaving.enabled === 'off' && (state.otaPolicy === null || state.otaPolicy.hops === '0' &&
+        state.otaPolicy.autofetch === 'off' && state.otaPolicy.autoinstall === 'off');
     }
     async function prerequisites(endpoint, read, before) {
       const changes = [];
       if (before.powerSaving.enabled !== 'off') changes.push({setting: 'radio.rxps', before: before.powerSaving.enabled,
         beforeRaw: before.powerSaving.raw, after: 'off', command: 'set radio.rxps off', restoreCommand: before.powerSaving.restoreCommand});
-      for (const name of ['autofetch', 'autoinstall', 'hops']) {
+      for (const name of before.otaPolicy ? ['autofetch', 'autoinstall', 'hops'] : []) {
         const desired = name === 'hops' ? '0' : 'off';
         if (before.otaPolicy[name] !== desired) changes.push({setting: 'ota.' + name, before: before.otaPolicy[name], after: desired,
           command: 'ota config ' + name + ' ' + desired, restoreCommand: 'ota config ' + name + ' ' + before.otaPolicy[name]});
@@ -246,6 +254,9 @@
         label + ' selected temporary radio differs from the requested settings.');
       return state;
     }
+    function samePrimary(a, b) {
+      return a.state === b.state && (a.state === 'off' || same(a.tuple, b.tuple) && a.preamble === b.preamble);
+    }
     async function preserved(read, before, chosen, label) {
       need(same(primary(await read('get radio')), before.saved) &&
         secondarySignature(secondary(await read('get radio2'))) === secondarySignature(before.savedSecondary) &&
@@ -258,9 +269,31 @@
       progress('Checking both radios before changing the temporary channel.');
       if (typeof link.probeOtaRadio === 'function') await link.probeOtaRadio();
       await link.verifyPeer(key, password); keyProof(await remote('get public.key'), key);
+      // Legacy raw-packet transmission is tied to the saved primary tuple.
+      // Align both temporary windows automatically; never rewrite that tuple.
+      // Modern sources can keep a user's already-active temporary channel.
+      const current = useActivePrimary && !legacy ? await readTemporary(local, 0) : null;
+      if (legacy || current?.state === 'active') {
+        expected = legacy ? primary(await local('get radio')) : current.tuple;
+        v = settings({...v, frequency: expected[0], bandwidth: expected[1], sf: expected[2], cr: expected[3],
+          preamble: legacy ? v.preamble : current.preamble});
+      }
+      progress('Preparing both radios on ' + formatRadio(expected) + (legacy ? ' (Companion compatibility channel).' : '.'));
       const source = await baseline('source', local), target = await baseline('target', remote);
-      const sourceProfile = link.supportsOtaRadio2 === true && (source.secondaryFree || source.adoptSecondary) ? 1 : 0;
-      const targetProfile = target.secondaryFree || target.adoptSecondary ? 1 : 0;
+      need(!legacy || same(source.saved, expected), 'Companion saved channel changed during setup.');
+      const sourceProfile = !legacy && source.temporaryPrimary.state === 'off' && link.supportsOtaRadio2 === true &&
+        (source.adoptSecondary || source.secondaryFree && !source.overlapsPrimary) ? 1 : 0;
+      const targetProfile = target.temporaryPrimary.state === 'off' &&
+        (target.adoptSecondary || target.secondaryFree && !target.overlapsPrimary) ? 1 : 0;
+      const adoptSource = sourceProfile ? source.adoptSecondary : source.adoptPrimary;
+      const adoptTarget = targetProfile ? target.adoptSecondary : target.adoptPrimary;
+      for (const [label, state, profile] of [['USB source', source, sourceProfile], ['Target', target, targetProfile]]) {
+        if (profile) progress(label + ': using temporary radio2; the normal channel stays available.');
+        else progress(label + ': using a primary-channel trial (' + (state.temporaryPrimary.state === 'active' ? 'primary temporary channel already active' :
+          state.overlapsPrimary ? 'update channel overlaps the normal channel' :
+          state.savedSecondary.state === 'unsupported' || state.temporarySecondary.state === 'unsupported' ? 'radio2 unsupported' :
+          label === 'USB source' && link.supportsOtaRadio2 !== true ? 'firmware cannot select radio2 for OTA' : 'radio2 already in use') + ').');
+      }
       need(!source.matchingSecondary || (sourceProfile === 1 && source.adoptSecondary), 'An existing matching source secondary must be confirmed and selected; no duplicate primary window was created.');
       need(!target.matchingSecondary || (targetProfile === 1 && target.adoptSecondary), 'An existing matching target secondary must be confirmed and selected; no duplicate primary window was created.');
       need(sourceProfile !== 0 || !source.overlappingSecondary, 'The chosen channel overlaps an existing source secondary; choose another channel before setup.');
@@ -269,9 +302,14 @@
       // the leases and download survive. Adopt those exact live leases without
       // changing a setting; package/journal matching remains Session.inspect's
       // separate allowExisting check before any data is sent.
-      need(!target.existingDownload || (sourceProfile === 1 && targetProfile === 1 && source.adoptSecondary && target.adoptSecondary &&
-        required(source) && required(target)), 'Target has an existing OTA download; only unchanged matching active secondary leases can be adopted.');
+      need(!target.existingDownload || (adoptSource && adoptTarget && required(source) && required(target)),
+        'Target has an existing OTA download; only unchanged matching active temporary channels can be adopted.');
       const write = commands(v, {sourceProfile, targetProfile});
+      // A failed primary-channel trial must return the remote to its normal
+      // channel promptly. Radio2 retains the normal channel throughout.
+      const trialMinutes = Math.min(2, v.minutes);
+      const short = commands({...v, minutes: trialMinutes}, {sourceProfile, targetProfile});
+      const trial = {target: targetProfile ? write.target : short.target, source: sourceProfile ? write.source : short.source};
       // Both complete baselines and the selected full key precede every saved
       // prerequisite write. Target changes come first; source changes cannot
       // invalidate a still-needed guarded remote exchange.
@@ -282,19 +320,21 @@
       need(required({powerSaving: rxps(await remote('get radio.rxps')), otaPolicy: policy(await remote('ota config'))}), 'Target prerequisite settings changed before radio setup.');
       // The ordinary commands are deliberately sent once. A lost reply never
       // authorizes a second command, another profile or guessed restoration.
-      if (!target.adoptSecondary) {
+      if (!adoptTarget) {
         targetAttempted = true;
-        need(/^(?:>\s*)?OK(?:\s|$)/i.test(String(await remote(write.target)).trim()), 'Target temporary setup was not confirmed.');
+        progress(targetProfile ? 'Opening the target temporary radio2 update window.' : 'Testing the target primary channel with a ' + trialMinutes + '-minute temporary window.');
+        need(/^(?:>\s*)?OK(?:\s|$)/i.test(String(await remote(trial.target)).trim()), 'Target temporary setup was not confirmed.');
       }
       const acknowledgedAt = now(); need(Number.isFinite(acknowledgedAt), 'Invalid temporary-channel clock.');
       await link.closeRadioSession();
       const sourceFresh = await baseline('source', local);
-      need(sameSaved(sourceFresh, source) && secondarySignature(sourceFresh.temporarySecondary) === secondarySignature(source.temporarySecondary) &&
+      need(sameSaved(sourceFresh, source) && samePrimary(sourceFresh.temporaryPrimary, source.temporaryPrimary) &&
+        secondarySignature(sourceFresh.temporarySecondary) === secondarySignature(source.temporarySecondary) &&
         (!sourceProfile || sourceFresh.secondaryFree || sourceFresh.adoptSecondary) && required(sourceFresh), 'Source radio or prerequisite settings changed before setup; no source write was sent.');
       progress('Preparing the source on the selected temporary profile.');
-      if (!source.adoptSecondary) {
+      if (!adoptSource) {
         sourceAttempted = true;
-        const reply = await (companion ? link.applyTemporaryRadio(write.source) : local(write.source));
+        const reply = await (companion ? link.applyTemporaryRadio(trial.source) : local(trial.source));
         need(/^(?:>\s*)?OK(?:\s|$)/i.test(String(reply).trim()), 'Source temporary setup was not confirmed.');
       }
       const start = now(); need(Number.isFinite(start) && start >= acknowledgedAt, 'Invalid temporary-channel clock.');
@@ -328,11 +368,27 @@
       if (targetProfile) need((await readTemporary(remote, 0)).state === 'off', 'Target primary temporary radio changed.');
       if (sourceProfile) need((await readTemporary(local, 0)).state === 'off', 'Source primary temporary radio changed.');
       await preserved(local, source, sourceProfile, 'Source'); await preserved(remote, target, targetProfile, 'Target');
+      // Only a fresh authenticated round trip on the new channel permits a
+      // longer primary lease. These are deliberate extensions, not retries.
+      if (v.minutes > trialMinutes && ((!targetProfile && !adoptTarget) || (!sourceProfile && !adoptSource))) {
+        progress('Link test passed. Extending the primary update window to ' + v.minutes + ' minutes.');
+        if (!targetProfile && !adoptTarget)
+          need(/^(?:>\s*)?OK(?:\s|$)/i.test(String(await remote(write.target)).trim()), 'Target update-window extension was not confirmed.');
+        await link.closeRadioSession();
+        if (!sourceProfile && !adoptSource) {
+          const reply = await (companion ? link.applyTemporaryRadio(write.source) : local(write.source));
+          need(/^(?:>\s*)?OK(?:\s|$)/i.test(String(reply).trim()), 'Source update-window extension was not confirmed.');
+        }
+        await wait(2500);
+        if (companion) await link.resetRemoteSession(key, password);
+        await link.verifyPeer(key, password); keyProof(await remote('get public.key'), key);
+        await verifyActive(remote, targetProfile, 'Target'); await verifyActive(local, sourceProfile, 'Source');
+      }
       progress('Both temporary profiles verified. Saved radio channels are unchanged.');
       return {ready: true, source: expected.slice(), target: expected.slice(), savedSource: source.saved, savedTarget: target.saved,
         savedSourceSecondary: source.savedSecondary, savedTargetSecondary: target.savedSecondary,
         sourceProfile, targetProfile, preamble: v.preamble, minutes: v.minutes, changedSettings,
-        adoptedSource: source.adoptSecondary, adoptedTarget: target.adoptSecondary};
+        adoptedSource: adoptSource, adoptedTarget: adoptTarget};
     } catch (error) {
       const partial = targetAttempted || sourceAttempted ? ' Temporary setup may be partially active; check both radios before any further write. No write was retried or automatically restored.' : '';
       const policies = changedSettings.length ? ' Saved prerequisite changes may remain applied; review the recorded changes before proceeding.' : '';
@@ -341,5 +397,5 @@
       result.targetSetupAttempted = targetAttempted; result.sourceSetupAttempted = sourceAttempted; throw result;
     }
   }
-  return {recommend, commands, prepare, readTemporary};
+  return {recommend, commands, prepare, readTemporary, formatRadio, rxps};
 });

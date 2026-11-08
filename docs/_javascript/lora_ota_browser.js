@@ -113,25 +113,30 @@
   }
   function canPrepareRadioChannel() {
     return !!link && !link.relays?.length && typeof link.closeRadioSession==='function' &&
-      (!link.browserRawSource || (link.otaSupported===true && link.localCliSupported===true));
+      (!link.browserRawSource || link.localCliSupported===true);
   }
   function suggestRadioChannel() {
     if(!$('radio-frequency').value && Array.isArray(link?.radio)) {
       const frequency=LoraOtaRadioSetup.recommend(link.radio);
-      if(frequency!==null)$('radio-frequency').value=String(frequency);
+      if(frequency!==null)$('radio-frequency').value=frequency.toFixed(3);
     }
     showRadioCommands();
     $('radio-setup-status').textContent=canPrepareRadioChannel()
       ? 'The update channel will be prepared automatically when you check the firmware. Temporary radio2 is preferred when available and unused.'
-      : 'This source uses manual setup: both temporary profiles must match the USB source saved primary settings. Open Manual setup and older firmware, or update the USB Companion for automatic setup.';
+      : 'Update this Companion to enable automatic channel setup: its firmware cannot read and set temporary channels over USB.';
   }
-  async function prepareRadioChannel(target,password) {
-    if(!$('radio-frequency').value) {
+  async function prepareRadioChannel(target,password,options={}) {
+    if(!$('radio-frequency').value || link.browserRawSource && link.otaSupported!==true) {
       const reply=String(await link.localCommand('get radio')).trim().replace(/^>\s*/,'');
       const match=/^(\d+(?:\.\d+)?),(\d+(?:\.\d+)?),(\d+),(\d+)$/.exec(reply);
-      const frequency=match ? LoraOtaRadioSetup.recommend(match.slice(1).map(Number)) : null;
-      if(frequency===null)throw Error('Choose an update frequency suitable for your region in Update channel options.');
-      $('radio-frequency').value=String(frequency);showRadioCommands();
+      if(!match)throw Error('Cannot read the Companion saved radio settings for automatic setup.');
+      const saved=match.slice(1).map(Number), compatibility=link.browserRawSource && link.otaSupported!==true;
+      const frequency=compatibility ? saved[0] : LoraOtaRadioSetup.recommend(saved);
+      $('radio-frequency').value=(frequency??saved[0]).toFixed(3);
+      if(compatibility || frequency===null) {
+        $('radio-bandwidth').value=String(saved[1]);$('radio-sf').value=String(saved[2]);$('radio-cr').value=String(saved[3]);
+      }
+      showRadioCommands();
     }
     const showChanges=changes=>{
       for(const change of changes||[]){
@@ -141,9 +146,12 @@
       }
     };
     try{
-      const result=await LoraOtaRadioSetup.prepare(link,target,password,radioOptions(),{progress:message=>{
-        $('radio-setup-status').textContent=message;log(message);
+      const result=await LoraOtaRadioSetup.prepare(link,target,password,radioOptions(),{...options,progress:message=>{
+        $('radio-setup-status').textContent=message;status(message);log(message);
       }});
+      $('radio-frequency').value=result.source[0].toFixed(3);
+      $('radio-bandwidth').value=String(result.source[1]);$('radio-sf').value=String(result.source[2]);$('radio-cr').value=String(result.source[3]);
+      $('radio-preamble').value=String(result.preamble);showRadioCommands();
       showChanges(result.changedSettings);return result;
     }catch(error){showChanges(error.changedSettings);throw error;}
   }
@@ -151,10 +159,10 @@
     const probe=new LoraOtaSession.DirectSession(link,target,password,null,{progress:log});
     try{return await probe.inspectRadios();}
     catch(error) {
-      // Only a missing window starts setup. Existing mismatches, unknown
-      // replies and transport failures do not authorize another radio write.
-      if(!canPrepareRadioChannel() || !/active temporary radio window is required/i.test(error.message))throw error;
-      await prepareRadioChannel(target,password);
+      // Fix verified setup requirements automatically. The setup preflight
+      // still refuses pending/unknown state and transport failures.
+      if(!canPrepareRadioChannel() || !error.radioSetupRequired)throw error;
+      await prepareRadioChannel(target,password,{useActivePrimary:true});
       const result=await probe.inspectRadios();
       $('radio-setup-status').textContent='Update channel ready. Source: '+(link.otaRadioProfile===1?'temporary radio2':'temporary primary')+
         '; target: '+(link.otaTargetProfile===1?'temporary radio2':'temporary primary')+'.';
@@ -172,7 +180,7 @@
       if(prepare)await prepareRadioChannel(target,password);
       const probe=new LoraOtaSession.DirectSession(link,target,password,null,{progress:log});
       const result=await probe.inspectRadios();
-      const description=result.source[0]+' MHz, BW'+result.source[1]+', SF'+result.source[2]+', CR4/'+result.source[3];
+      const description=result.source[0].toFixed(3)+' MHz, BW'+result.source[1]+', SF'+result.source[2]+', CR4/'+result.source[3];
       const message=result.sourceReadback==='saved-only'
         ? 'Target channel matches the Companion saved settings ('+description+'). This Companion cannot confirm its active temporary settings; check them on the device.'
         : (prepare?'Channel prepared: ':'Channel ready: ')+description+'. Both radios report matching active temporary settings.';

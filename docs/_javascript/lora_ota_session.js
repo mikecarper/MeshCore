@@ -7,6 +7,8 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (checks) {
   'use strict';
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const formatRadio = tuple => [Number(tuple[0]).toFixed(3), ...tuple.slice(1)].join(',');
+  function setupRequired(message) { const error = Error(message); error.radioSetupRequired = true; return error; }
   function value(text) { const s = String(text).trim().replace(/^>\s*/, ''); if (!s || /^(error|err\b|unknown\b|unsupported\b)/i.test(s)) throw Error(s || 'Empty response'); return s; }
   function diagnostic(text) {
     const clean = String(text).replace(/[^\x20-\x7e]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -33,8 +35,8 @@
     return {id: m[1].toLowerCase(), state: /^failed\b/i.test(section) ? 'failed' : /^(?:ready to install|done)\b/i.test(section) ? 'ready' : 'active'};
   }
   function policy(config) {
-    if (!/\bhops=0\b/i.test(config)) throw Error('Set OTA hops to 0 on both radios for a direct update');
-    if (!/mode=seeder-only/i.test(config) && (!/\bautofetch=off\b/i.test(config) || !/\bautoinstall=off\b/i.test(config))) throw Error('Turn off automatic OTA fetch and install before starting');
+    if (!/\bhops=0\b/i.test(config)) throw setupRequired('OTA hops must be 0 on both radios for a direct update');
+    if (!/mode=seeder-only/i.test(config) && (!/\bautofetch=off\b/i.test(config) || !/\bautoinstall=off\b/i.test(config))) throw setupRequired('Automatic OTA fetch and install must be off before starting');
   }
   async function expectedBody(info, image) {
     let data = info.isFull ? info.payload : image;
@@ -139,8 +141,7 @@
         }
         catch (error) {
           if (/active temporary radio window is required/i.test(String(error.message))) {
-            const hint = !source && profile === 0 && sourceRadio ? ' Run `tempradio '+sourceRadio.join(',')+',<minutes>` on the target, matching the Companion.' : '';
-            throw Error('An active temporary radio window is required on the '+label+(profile ? ' radio2' : '')+' for LoRa OTA.'+hint);
+            throw setupRequired('An active temporary radio window is required on the '+label+(profile ? ' radio2' : '')+' for LoRa OTA.');
           }
           if (String(error.message).startsWith(label + ': ')) throw error;
           throw Error(label + ': ' + diagnostic(error.message));
@@ -154,25 +155,26 @@
           const verifiedSecondary = profile === 1 && this.link.supportsOtaRadio2 === true;
           const nativeRepeater = !this.link.browserRawSource && this.link.supportsOtaRadio2 === true;
           if (!guardedCompanion && !verifiedSecondary && !nativeRepeater && radio.some((v, i) => Math.abs(v - savedSourceRadio[i]) > 0.001)) {
-            const command='tempradio '+savedSourceRadio.join(',')+',120,128';
-            const error=Error('The '+label+' temporary radio must match its saved primary channel in compatibility mode. '+
-              'Saved: '+savedSourceRadio.join(',')+'; temporary: '+radio.join(',')+'. '+
-              'Apply `'+command+'` to the remote target first, then the USB source. '+
-              'Or update the source to firmware with automatic channel setup. Matching two different temporary channels alone does not satisfy this older-source check.');
+            const command='tempradio '+formatRadio(savedSourceRadio)+',120,128';
+            const error=setupRequired('The '+label+' temporary radio must match its saved primary channel in compatibility mode. '+
+              'Saved: '+formatRadio(savedSourceRadio)+'; temporary: '+formatRadio(radio)+'. Automatic setup will align both radios.');
             error.manualRadioCommand=command;throw error;
           }
         }
-        const rxps = await command('get radio.rxps');
-        if (!/^off\b/i.test(rxps)) throw Error(label + ': Turn RX power saving off before starting');
+        const setup = typeof module === 'object' && module.exports ? require('./lora_ota_radio_setup.js') : globalThis.LoraOtaRadioSetup;
+        let rxps;
+        try { rxps = setup.rxps(await command('get radio.rxps')); }
+        catch (error) { throw Error(label + ': ' + diagnostic(error.message)); }
+        if (rxps.enabled !== 'off') throw setupRequired(label + ': RX power saving must be off before starting');
         if (!source || checkSourceOta) {
           try { policy(await command('ota config')); }
-          catch (error) { throw Error(label + ': ' + diagnostic(error.message)); }
+          catch (error) { error.message = label + ': ' + diagnostic(error.message); throw error; }
         }
         if (source) sourceRadio = radio;
         else targetRadio = radio;
       }
       if (targetRadio.some((v, i) => Math.abs(v - sourceRadio[i]) > 0.001))
-        throw Error('Temporary radio settings do not match between '+(this.link.browserRawSource ? 'USB Companion' : 'source')+' and target');
+        throw setupRequired('Temporary radio settings do not match between '+(this.link.browserRawSource ? 'USB Companion' : 'source')+' and target');
       this.tempRadio = sourceRadio.slice();
       return {source:sourceRadio, target:targetRadio, savedSource:savedSourceRadio, sourceReadback};
     }
