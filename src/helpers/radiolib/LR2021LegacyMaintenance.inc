@@ -70,7 +70,11 @@ public:
     if(_lab_uncertain || _lab_sleeping) return Result::Deferred;
     const bool scanner_owned=_lab_scan_active;
     if(scanner_owned) {
-      const auto paused=labPauseScanner(false,0);
+      const auto paused=labPauseScanner(false,0
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+          ,"old"
+#endif
+          );
       if(paused==mesh::RadioParamApplyResult::BUSY) return Result::Deferred;
       if(paused!=mesh::RadioParamApplyResult::APPLIED) return Result::Failed;
       // Also restore after a late FIFO or a failed command. The ordinary safe
@@ -135,6 +139,9 @@ public:
       // A completion racing RX reentry retains its FIFO; retry the scanner
       // separately rather than recalibrating or clearing the packet here.
       if(!labScannerStart(true) || !_lab_scan_active || !_lab_status.hooked) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+        labCaptureHandoffFailure(2,0,!_lab_uncertain && !_lab_scan_active);
+#endif
         if(!_lab_uncertain) { _lab_resume_pending=true;_lab_resume_at=millis()+250UL; }
         recordApply(mesh::lr2021::ApplyStatus::Stage::Restore,RADIOLIB_ERR_UNKNOWN);
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS

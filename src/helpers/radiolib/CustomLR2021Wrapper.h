@@ -14,6 +14,9 @@
 #endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
 #include "W12PramScannerCodec.h"
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+#include "LR2021HandoffDiagnostics.h"
+#endif
 #include "W12PramAutoPolicy.h"
 #include "W12PramScannerBlob.h"
 #include "LR2021SafeMode.h"

@@ -78,6 +78,9 @@ protected:
   void unregisterInterruptAction();
   bool hasAssertedRadioInterrupt() const;
   bool hasPendingRadioInterrupt() const;
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  bool hasPendingSoftwareRadioInterrupt() const;
+#endif
   bool claimRadioInterrupt();
   PhysicalLayer* _radio;
 #if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY

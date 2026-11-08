@@ -227,6 +227,12 @@ bool RadioLibWrapper::hasPendingRadioInterrupt() const {
       || hasAssertedRadioInterrupt();
 }
 
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+bool RadioLibWrapper::hasPendingSoftwareRadioInterrupt() const {
+  return _loop_event_pending || (_interrupt_slot < RADIO_INTERRUPT_SLOT_COUNT && radio_interrupt_events[_interrupt_slot].pending());
+}
+#endif
+
 bool RadioLibWrapper::claimRadioInterrupt() {
   const bool startup = _loop_event_pending;
   _loop_event_pending = false;

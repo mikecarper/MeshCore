@@ -37,6 +37,7 @@ struct Radio {
   void formatW12MultiSf(char* b,size_t n) { snprintf(b,n,"single active"); }
   void labScannerStatus(char* b,size_t n) { snprintf(b,n,"scanner status"); }
   void labScannerRecoveryDiag(char* b,size_t n) { snprintf(b,n,"recovery diag"); }
+  void labScannerHandoffDiag(char* b,size_t n) { snprintf(b,n,"handoff diag"); }
   void labScannerLast(char* b,size_t n) { snprintf(b,n,"last"); }
   void labScannerDiag(char* b,size_t n) { snprintf(b,n,"diag"); }
   void labScannerTiming(char* b,size_t n) { snprintf(b,n,"timing"); }
@@ -57,7 +58,7 @@ int main() {
     "set radio.multisf radio", "set radio.multisf radio1", "set radio.multisf radio2",
     "set radio.multisf 5-8", "set radio.multisf 6-9", "set radio.multisf 7-10",
     "get pramscan", "get pramscan.last", "get pramscan.diag", "get pramscan.timing",
-    "get pramscan.recovery", "set pramscan on", "set pramscan off", "set pramscan recover"};
+    "get pramscan.recovery", "get pramscan.handoff", "set pramscan on", "set pramscan off", "set pramscan recover"};
   for (auto s:valid) assert(allowed(s));
   const char* invalid[]={"", "ota status", "get tx", "set radio.safe", "set radio.safe on extra",
     "set radio.multisf 4-7", "set radio.multisf 5-9", "set radio.multisf 8-7",
@@ -79,6 +80,7 @@ int main() {
   assert(run("set radio.multisf 6-9") && !strncmp(reply,"OK",2));
   assert(run("get pramscan") && strstr(reply,"scanner status"));
   assert(run("get pramscan.recovery") && strstr(reply,"recovery diag"));
+  assert(run("get pramscan.handoff") && strstr(reply,"handoff diag"));
   assert(run("get pramscan.last") && strstr(reply,"last"));
   assert(run("get pramscan.diag") && strstr(reply,"diag"));
   assert(run("get pramscan.timing") && strstr(reply,"timing"));
@@ -89,6 +91,7 @@ int main() {
   assert(run("set radio.safe off") && !mesh::lr2021::safe);
   r.uncertain=true;
   assert(run("get pramscan") && strstr(reply,"scanner status"));
+  assert(run("get pramscan.handoff") && strstr(reply,"handoff diag"));
   assert(run("get radio.safe") && strstr(reply,"off"));
   assert(run("set radio.safe on") && mesh::lr2021::safe);
   assert(run("set pramscan recover") && r.recovers==1);
@@ -132,6 +135,7 @@ struct Radio {
   void formatW12MultiSf(char* p,size_t n) { snprintf(p,n,"inactive"); }
   void labScannerStatus(char* p,size_t n) { snprintf(p,n,"scanner"); }
   void labScannerRecoveryDiag(char* p,size_t n) { snprintf(p,n,"recovery"); }
+  void labScannerHandoffDiag(char* p,size_t n) { snprintf(p,n,"handoff"); }
   void labScannerLast(char* p,size_t n) { snprintf(p,n,"last"); }
   void labScannerDiag(char* p,size_t n) { snprintf(p,n,"diag"); }
   void labScannerTiming(char* p,size_t n) { snprintf(p,n,"timing"); }

@@ -84,7 +84,8 @@ struct Wrapper:Base {
  bool warmRxRefreshUsesFs(){return false;}
  void claimRadioInterrupt(){++claims;radio.irq=false;}
  void noteReconfigureAdmission(const char*,int16_t){}
- mesh::RadioParamApplyResult labPauseScanner(bool=false,uint8_t target=0){
+ void labCaptureHandoffFailure(uint8_t,uint8_t,bool){}
+ mesh::RadioParamApplyResult labPauseScanner(bool=false,uint8_t target=0,const char* =nullptr){
    if(radio.irq||radio.busy)return mesh::RadioParamApplyResult::BUSY;
    radio.calls.push_back("pause");assert(target==0);
    if(pause_result==mesh::RadioParamApplyResult::APPLIED){_lab_scan_active=false;_lab_status.hooked=false;_active_profile=0;_profile_generation=_profiles.generation[0];_profile_refresh_required=false;}

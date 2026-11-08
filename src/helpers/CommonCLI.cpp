@@ -3788,7 +3788,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 #endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
     if (radio_driver.labScannerUncertain() && strcmp(command,"get pramscan") && strcmp(command,"get pramscan.last")
-        && strcmp(command,"get pramscan.timing") && strcmp(command,"get pramscan.bench") && strcmp(command,"get pramscan.diag") && strcmp(command,"get pramscan.sleep") && strcmp(command,"get pramscan.recovery")
+        && strcmp(command,"get pramscan.timing") && strcmp(command,"get pramscan.bench") && strcmp(command,"get pramscan.diag") && strcmp(command,"get pramscan.sleep") && strcmp(command,"get pramscan.recovery") && strcmp(command,"get pramscan.handoff")
         && strcmp(command,"set pramscan recover") && strcmp(command,"get radio.safe") && strcmp(command,"set radio.safe on") && strcmp(command,"ver") && strcmp(command,"reboot")) {
       snprintf(reply,160,"ERR - ambiguous RX FIFO retained; use get pramscan or set pramscan recover"); return;
     }
@@ -3941,6 +3941,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     if (mesh::lr2021::handleSafeModeCommand(command, reply, 160)) return;
     if (strcmp(command,"get pramscan") == 0) { radio_driver.labScannerStatus(reply,160); return; }
     if (strcmp(command,"get pramscan.recovery") == 0) { radio_driver.labScannerRecoveryDiag(reply,160); return; }
+    if (strcmp(command,"get pramscan.handoff") == 0) { radio_driver.labScannerHandoffDiag(reply,160); return; }
 #if defined(ESP32_PLATFORM)
     if (strcmp(command,"get pramscan.sleep") == 0) { mesh::w12pram::sleepDiag().format(reply,160); return; }
 #endif

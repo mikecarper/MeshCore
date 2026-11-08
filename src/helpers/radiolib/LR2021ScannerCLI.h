@@ -21,7 +21,7 @@ inline bool isScannerFrameCommandAllowed(const uint8_t* bytes, size_t length) {
     "set radio.multisf on", "set radio.multisf off", "set radio.multisf radio",
     "set radio.multisf radio1", "set radio.multisf radio2", "get pramscan",
     "get pramscan.last", "get pramscan.diag", "get pramscan.timing",
-    "get pramscan.recovery", "set pramscan on", "set pramscan off", "set pramscan recover"
+    "get pramscan.recovery", "get pramscan.handoff", "set pramscan on", "set pramscan off", "set pramscan recover"
   };
   for (const char* allowed : exact) if (!strcmp(command, allowed)) return true;
   static const char range[] = "set radio.multisf ";
@@ -49,7 +49,7 @@ bool handleScannerCommand(const char* command, char* reply, size_t capacity, Rad
       && strcmp(command, "get radio.safe") && strcmp(command, "set radio.safe on")
       && strcmp(command, "get pramscan") && strcmp(command, "get pramscan.last")
       && strcmp(command, "get pramscan.diag") && strcmp(command, "get pramscan.timing")
-      && strcmp(command, "get pramscan.recovery") && strcmp(command, "set pramscan recover")) {
+      && strcmp(command, "get pramscan.recovery") && strcmp(command, "get pramscan.handoff") && strcmp(command, "set pramscan recover")) {
     snprintf(reply, capacity, "ERR - ambiguous RX FIFO; use set pramscan recover");
     return true;
   }
@@ -69,6 +69,7 @@ bool handleScannerCommand(const char* command, char* reply, size_t capacity, Rad
   if (!strcmp(command, "get pramscan.diag")) { radio.labScannerDiag(reply, capacity); return true; }
   if (!strcmp(command, "get pramscan.timing")) { radio.labScannerTiming(reply, capacity); return true; }
   if (!strcmp(command, "get pramscan.recovery")) { radio.labScannerRecoveryDiag(reply, capacity); return true; }
+  if (!strcmp(command, "get pramscan.handoff")) { radio.labScannerHandoffDiag(reply, capacity); return true; }
   if (!strcmp(command, "set pramscan on")) {
     snprintf(reply, capacity, safeMode() ? "ERR - radio.safe on; set radio.safe off first"
         : radio.labScannerSetAutomaticManual(true) ? "OK - PRAM auto on; check get pramscan"
