@@ -4425,8 +4425,11 @@ the short alias uses that same parser and saved setting.
 **Default:** `16` seconds for new configurations on every board and role.
 Existing saved values, including `0` (disabled), are retained.
 
-Normal RXPS automatically suspends the primary AGC timer on every board. The
-configured interval is retained; turning RXPS off starts a fresh interval.
+Active duty-cycle RXPS automatically suspends the primary AGC timer on every
+board. Continuous RX fallback still runs the configured maintenance because
+that mode does not sleep/wake the frontend. The saved RXPS preference and AGC
+interval remain unchanged; successful duty-cycle recovery suspends maintenance
+again, and returning to continuous RX starts a fresh interval.
 The optional `agc.old` timer remains an independent, explicitly enabled reset.
 
 On builds using the `CustomSX1262`, `CustomSX1268`, `CustomLLCC68`,

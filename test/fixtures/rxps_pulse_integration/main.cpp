@@ -149,7 +149,7 @@ public:
   float _cur_bw=62.5f;
   uint32_t _profile_generation=0,_profile_retry_at=0,_rx_retry_delay_ms=0,_nf_sample_from=0;
   bool _profile_repair_required=false,_profile_refresh_required=false,_profile_rxps_suspended=false;
-  bool _rx_retry_pending=false,_params_valid=true,_rx_ps_enabled=false,_rx_ps_armed=false;
+  bool _rx_retry_pending=false,_params_valid=true,_rx_ps_enabled=false,_rx_ps_armed=false,_rx_ps_continuous_fallback=false;
   bool _rx_hold_continuous=false,_nf_calib_active=false,_nf_window_armed=false;
   bool _cw_active=false,_morse_owned=false,_morse_rx_owned=false,_beacon_owned=false,supported=true;
   unsigned legacy=0,scan_spy=0;
@@ -444,6 +444,31 @@ static void admission() {
   assert(unsupported.periodicAGCMaintenance(false)==mesh::AGCMaintenanceResult::Applied && unsupported.legacy==1 && unsupported.module.calls.empty());
 }
 
+static void rxpsFallback() {
+  Wrapper w;w._rx_ps_enabled=w._rx_ps_continuous_fallback=true;
+  begin(w);assert(w._rxps_pulse.pending&&w._rxps_pulse.req==1);
+  naturalWake(w);
+  assert(w._rxps_pulse.ok==1&&w._rxps_pulse.cycles==1&&w._rxps_pulse.verified==1);
+  assert(w._rxps_pulse.fail==0&&!w._rxps_pulse.pending);
+  assert(w._rx_ps_enabled&&w._rx_ps_continuous_fallback&&!w._rx_ps_armed);
+  assert(w.periodicAGCMaintenance(false)==mesh::AGCMaintenanceResult::Applied);
+  // Continuous fallback is not permission to take an armed duty cycle,
+  // packet extension, calibration, BUSY or disabled-RX owner.
+  for(unsigned owner=0;owner<4;++owner) {
+    Wrapper blocked;blocked._rx_ps_enabled=blocked._rx_ps_continuous_fallback=true;
+    if(owner==0)blocked._rx_ps_armed=true;
+    if(owner==1)blocked._rx_hold_continuous=true;
+    if(owner==2)blocked._nf_calib_active=true;
+    if(owner==3)blocked.module.busy=true;
+    begin(blocked);
+    assert(blocked.module.calls.empty()&&!blocked._rxps_pulse.pending&&blocked._rxps_pulse.defer==1);
+  }
+  Wrapper disabled;disabled._rx_ps_enabled=disabled._rx_ps_continuous_fallback=true;
+  mesh::radioDirection::allowed=false;
+  disabled.periodicAGCMaintenance(false);
+  assert(disabled.module.calls.empty()&&!disabled._rxps_pulse.pending&&disabled._rxps_pulse.defer==1);
+}
+
 static void dualSetup(Wrapper& w,uint8_t profile=0) {
   w._profiles.active=true;w._profile_rxps_suspended=true;
   w._profiles.generation[0]=5;w._profiles.generation[1]=9;
@@ -639,6 +664,7 @@ int main(int argc,char** argv) {
   else if(name=="sleep") sleep();else if(name=="bounded") bounded();else if(name=="geometry") geometry();
   else if(name=="invalid_geometry") invalidGeometry();else if(name=="mode") mode();else if(name=="iq") iq();
   else if(name=="budget") budget();else if(name=="admission") admission();else if(name=="margin") margin();
+  else if(name=="rxps_fallback") rxpsFallback();
   else if(name=="arm_latency") armLatency();else if(name=="coarse_clock") coarseClock();else if(name=="unqualified_witness") unqualifiedWitness();
   else if(name=="dual_normal") dualNormal();else if(name=="dual_secondary") dualSecondary();
   else if(name=="dual_stale") dualStale();else if(name=="dual_packet") dualPacket();

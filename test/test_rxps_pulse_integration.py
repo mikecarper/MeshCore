@@ -132,6 +132,9 @@ class PulseIntegrationTest(unittest.TestCase):
     def test_actual_periodic_admission_and_single_use_failure_completion(self):
         self.run_case("admission")
 
+    def test_continuous_rxps_fallback_gets_checked_maintenance_without_losing_saved_intent(self):
+        self.run_case("rxps_fallback")
+
     def test_dual_primary_pulse_preserves_visit_clock_and_busy_silence(self):
         self.run_case("dual_normal")
 

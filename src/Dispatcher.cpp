@@ -771,7 +771,9 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
   uint32_t lab_interval_ms=0;
   const bool lab_timer_active=_radio->supportsWarmRxRefresh()
       && _radio->getWarmRxLabInterval(lab_interval_ms);
-  if(radioDirection::radioReceiveAllowed() && radio_available && !_radio->isRxPowerSavingEnabled() && lab_timer_active && lab_interval_ms) {
+  if(radioDirection::radioReceiveAllowed() && radio_available
+      && (!_radio->isRxPowerSavingEnabled() || _radio->isRxPowerSavingContinuousFallback())
+      && lab_timer_active && lab_interval_ms) {
     uint32_t lab_delay;
     if(agc_reset.nextDelay(now,lab_delay)) {
       if(!found || lab_delay<shortest_delay) shortest_delay=lab_delay;
@@ -780,7 +782,9 @@ bool Dispatcher::getNextQueueWakeDelay(uint32_t& delay_millis) const {
   }
 #endif
   // Preserve the legacy queue-only query when power saving is off.
-  if (radioDirection::radioReceiveAllowed() && radio_available && !_radio->isRxPowerSavingEnabled() && useAdaptiveAGC()
+  if (radioDirection::radioReceiveAllowed() && radio_available
+      && (!_radio->isRxPowerSavingEnabled() || _radio->isRxPowerSavingContinuousFallback())
+      && useAdaptiveAGC()
 #if MESH_WARM_RX_LAB_TIMER
       && !lab_timer_active
 #endif
@@ -902,12 +906,13 @@ void Dispatcher::expireLabBlockedSends() {
 
 void Dispatcher::loop() {
 #if defined(MESH_WARM_RX_REFRESH) && MESH_WARM_RX_REFRESH
-  uint32_t primary_cadence_ms=radioDirection::radioReceiveAllowed() && !_radio->isRxPowerSavingEnabled()
+  uint32_t primary_cadence_ms=radioDirection::radioReceiveAllowed()
+      && (!_radio->isRxPowerSavingEnabled() || _radio->isRxPowerSavingContinuousFallback())
       ? (uint32_t)getAGCResetInterval() : 0;
 #if MESH_WARM_RX_LAB_TIMER
   uint32_t lab_cadence_ms=0;
   if(_radio->getWarmRxLabInterval(lab_cadence_ms) && radioDirection::radioReceiveAllowed()
-      && !_radio->isRxPowerSavingEnabled()) primary_cadence_ms=lab_cadence_ms;
+      && (!_radio->isRxPowerSavingEnabled() || _radio->isRxPowerSavingContinuousFallback())) primary_cadence_ms=lab_cadence_ms;
 #endif
   _radio->configureAGCMaintenance(primary_cadence_ms);
   if(_radio->isAGCMaintenanceActive()) {
@@ -960,9 +965,11 @@ void Dispatcher::loop() {
 
   const unsigned long now = _ms->getMillis();
   const bool receive_allowed = radioDirection::radioReceiveAllowed();
-  // Ordinary RXPS already sleeps/wakes the frontend. Suspend only the primary
-  // maintenance timer, preserving its saved interval and the independent old timer.
-  const bool primary_agc_allowed=receive_allowed && !_radio->isRxPowerSavingEnabled();
+  // Actual RXPS already sleeps/wakes the frontend; continuous fallback does
+  // not. Keep maintenance while preserving the saved RXPS intent/AGC interval
+  // and independent old timer. A successful RXPS retry suppresses it again.
+  const bool primary_agc_allowed=receive_allowed
+      && (!_radio->isRxPowerSavingEnabled() || _radio->isRxPowerSavingContinuousFallback());
   int agc_interval = primary_agc_allowed ? getAGCResetInterval() : 0;
   bool adaptive = receive_allowed && useAdaptiveAGC();
 #if MESH_WARM_RX_LAB_TIMER

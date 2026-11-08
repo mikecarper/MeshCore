@@ -29,9 +29,10 @@ namespace radioDirection = mesh::radioDirection;
 struct Profiles { bool active = false; bool enabled() const { return active; } };
 struct Radio {
   Profiles profile;
-  bool receive_retry = false, maintenance = false, rxps_enabled = false;
+  bool receive_retry = false, maintenance = false, rxps_enabled = false, rxps_fallback = false;
   bool isAGCMaintenancePending() const { return maintenance; }
   bool isRxPowerSavingEnabled() const { return rxps_enabled; }
+  bool isRxPowerSavingContinuousFallback() const { return rxps_enabled && rxps_fallback; }
   uint32_t receive_delay = 0, recovery = 0;
   Profiles* profiles() { return &profile; }
   bool getReceiveRetryDelay(uint32_t, uint32_t& out) const {
@@ -209,6 +210,9 @@ int main() {
     // maintenance retry can still wake before the scanner's visit deadline.
     radio.rxps_enabled = true;
     assert(node.getNextQueueWakeDelay(delay) && delay == 37);
+    radio.rxps_fallback = true;
+    assert(node.getNextQueueWakeDelay(delay) && delay == 8);
+    radio.rxps_fallback = false;
     radio.rxps_retry = true; radio.rxps_delay = 5;
     assert(node.getNextQueueWakeDelay(delay) && delay == 5);
     radio.rxps_retry = false;

@@ -1886,7 +1886,7 @@ mesh::AGCMaintenanceResult RadioLibWrapper::periodicAGCMaintenance(bool adaptive
       || (_profiles.enabled() ? (!_profile_rxps_suspended
           || _profile_scan_generation[0]!=_profiles.generation[0]
           || _profile_scan_generation[1]!=_profiles.generation[1]) : _profile_rxps_suspended)
-      || _rx_ps_enabled || _rx_ps_armed || _rx_hold_continuous
+      || (_rx_ps_enabled && !_rx_ps_continuous_fallback) || _rx_ps_armed || _rx_hold_continuous
       || _rx_retry_pending || _nf_calib_active || _nf_window_armed || _cw_active || _morse_owned
 #if MESH_ENABLE_MORSE_RX
       || _morse_rx_owned
