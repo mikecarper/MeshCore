@@ -633,8 +633,15 @@ void MyMesh::releaseOfflineQueueFromOta(void* owner) {
 
 void MyMesh::initializeOfflineQueue() {
 #if defined(OTA_SHARED_COMPANION_QUEUE)
+#if defined(OTA_PRESERVE_UNREAD_ON_BORROW) && OTA_PRESERVE_UNREAD_ON_BORROW
+  // A full queue must be synced by the app before borrowing its storage.
+  // A null drain callback covers every OTA entry point, including tempradio.
+  mesh::ota::ota_set_context_storage(this, acquireOfflineQueueForOta,
+                                     releaseOfflineQueueFromOta, nullptr);
+#else
   mesh::ota::ota_set_context_storage(this, acquireOfflineQueueForOta,
                                      releaseOfflineQueueFromOta, drainOfflineQueueForOta);
+#endif
 #elif defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
   if (offline_queue != offline_queue_fallback || OFFLINE_QUEUE_SIZE <= offline_queue_capacity) return;
 

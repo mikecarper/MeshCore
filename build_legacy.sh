@@ -4688,11 +4688,11 @@ apply_companion_radio_full_profile() {
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=150"
       # Retain 256 frames normally and 128 while mOTA borrows the workspace.
       # Each RTC bank holds 32 retained frames; the RGB565 display is intact.
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_SHARED_COMPANION_QUEUE=1 -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_SHARED_COMPANION_QUEUE=1 -DOTA_PRESERVE_UNREAD_ON_BORROW=1 -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32"
       record_build_reduction \
         "companion.capacity limited to 150 contacts for runtime RAM; 256 queued frames and all Full transports retained"
       record_build_reduction \
-        "Companion Full: 256 offline frames normally; 128 while mOTA borrows queue storage"
+        "Companion Full: 256 offline frames normally; 128 while mOTA borrows queue storage; preserve unread on admission"
       ;;
     mke_s3_companion_radio_full|\
     thinknode_m2_companion_radio_full|\
@@ -4733,9 +4733,9 @@ apply_companion_radio_full_profile() {
     nibble_screen_connect_companion_radio_full_|nibble_zero_connect_companion_radio_full_)
       # The source workspace borrows idle queue slots under the same guarded
       # admission used by other Full Companions. Preserve normal capacity.
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_SHARED_COMPANION_QUEUE=1"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_SHARED_COMPANION_QUEUE=1 -DOTA_PRESERVE_UNREAD_ON_BORROW=1"
       record_build_reduction \
-        "Companion Full: 256 offline frames normally; 128 while mOTA borrows queue storage"
+        "Companion Full: 256 offline frames normally; 128 while mOTA borrows queue storage; preserve unread on admission"
       ;;
   esac
 

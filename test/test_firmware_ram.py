@@ -1829,10 +1829,7 @@ printf '%s\\n' "$PLATFORMIO_BUILD_FLAGS"
                 self.assertNotIn("-DONE_KEY_DM_COMPACT_HELD", result.stdout)
             if target == "Heltec_Wireless_Paper_companion_radio_full":
                 self.assertIn("-DONE_KEY_DM_COMPACT_HELD=1", result.stdout)
-                if target in ("Heltec_Wireless_Tracker_companion_radio_full",
-                              "nibble_screen_connect_companion_radio_full_",
-                              "nibble_zero_connect_companion_radio_full_"):
-                    self.assertIn("-DOTA_SHARED_COMPANION_QUEUE=1", result.stdout)
+            self.assertNotIn("-DOTA_PRESERVE_UNREAD_ON_BORROW=1", result.stdout)
             if target == "Heltec_ct62_companion_radio_full":
                 self.assertIn("-DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32", result.stdout)
             self.assertIn("-DWIFI_OTA_SEEDER=1", result.stdout)
@@ -1860,6 +1857,13 @@ apply_companion_radio_full_profile "$1" "$1"
 printf '%s\\n' "$PLATFORMIO_BUILD_FLAGS"
 ''', "test", target, platform], cwd=ROOT, text=True, capture_output=True, check=True)
                 self.assertIn("-DONE_KEY_DM_COMPACT_HELD=1", result.stdout)
+                if target in ("Heltec_Wireless_Tracker_companion_radio_full",
+                              "nibble_screen_connect_companion_radio_full_",
+                              "nibble_zero_connect_companion_radio_full_"):
+                    self.assertIn("-DOTA_SHARED_COMPANION_QUEUE=1", result.stdout)
+                    self.assertIn("-DOTA_PRESERVE_UNREAD_ON_BORROW=1", result.stdout)
+                else:
+                    self.assertNotIn("-DOTA_PRESERVE_UNREAD_ON_BORROW=1", result.stdout)
 
     def test_missing_and_truncated_elf_are_rejected(self):
         with tempfile.TemporaryDirectory() as temp:

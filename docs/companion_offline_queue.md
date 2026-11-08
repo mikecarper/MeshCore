@@ -42,10 +42,16 @@ USB/Bluetooth source returns all 256 slots; a discovery-only session returns
 them when TempRadio ends. This shares a fixed memory region and avoids heap
 fragmentation from resizing.
 
-Existing unread messages retain their order. If more than 128 frames are
-pending, mOTA refuses the loan and asks you to sync messages with a Companion
-app first. While the loan is active, the overflow policy below applies at 128
-frames. The original `26303793` 1.17.1.5 builds reserve the queue and mOTA state
+In existing shared-queue profiles, some explicit mOTA or TempRadio operations
+can remove the oldest queued messages to make room. Sync unread messages with
+an app first. Read-only mOTA queries do not request this removal.
+
+Heltec Wireless Tracker Full and Nibble Screen/Zero Full instead refuse to
+start mOTA or TempRadio when more than 128 messages are pending; sync them with
+an app and retry. They do not discard messages to acquire the workspace. While
+any shared loan is active, the overflow policy below applies at 128 frames, so
+new messages can still overflow the smaller queue. The original `26303793`
+1.17.1.5 builds reserve the queue and mOTA state
 separately. Sharing recovers about 19 KiB on nRF52 Full. The ST7735 color-display
 Full profiles require at least 72 KiB of heap space at link time; OLED and
 headless profiles use their own [memory budgets](research/firmware_memory_budget.md).
