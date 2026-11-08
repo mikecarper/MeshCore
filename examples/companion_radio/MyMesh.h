@@ -735,8 +735,8 @@ private:
     preference = previous;
     return false;
   }
-  bool applyAndSaveBLEPin(uint32_t pin);
 #if defined(BLE_PIN_CODE)
+  bool applyAndSaveBLEPin(uint32_t pin);
   void servicePendingBLEPinRestore();
 #endif
   bool saveAdvertName(const char* name);
@@ -996,8 +996,8 @@ private:
   uint32_t _iter_table_revision;
   uint32_t _most_recent_lastmod;
   uint32_t _active_ble_pin;
-  bool _ble_pin_apply_failed = false;
 #if defined(BLE_PIN_CODE)
+  bool _ble_pin_apply_failed = false;
   bool _ble_random_default = false;
   bool _ble_pin_restore_pending = false;
   uint32_t _ble_pin_restore = 0;

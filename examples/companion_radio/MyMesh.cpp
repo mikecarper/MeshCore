@@ -5158,9 +5158,18 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
         || parsed < 0 || parsed > 999999) {
       mesh::cli::formatError(reply, reply_size, "pin must be 0-999999");
     } else {
-      if (!applyAndSaveBLEPin(static_cast<uint32_t>(parsed))) {
+#if defined(BLE_PIN_CODE)
+      const bool saved = applyAndSaveBLEPin(static_cast<uint32_t>(parsed));
+#else
+      const bool saved = savePreference(_prefs.ble_pin, static_cast<uint32_t>(parsed));
+#endif
+      if (!saved) {
+#if defined(BLE_PIN_CODE)
         mesh::cli::formatError(reply, reply_size,
                                _ble_pin_apply_failed ? "could not apply pin" : "could not save pin");
+#else
+        mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("could not save pin", "save failed"));
+#endif
       } else {
         snprintf(reply, reply_size, "> pin is now %06lu",
                  (unsigned long)_prefs.ble_pin);
@@ -5676,11 +5685,9 @@ uint32_t MyMesh::getBLEPin() {
 
 #if defined(BLE_PIN_CODE)
 extern bool companionApplyBluetoothPin(uint32_t pin);
-#endif
 
 bool MyMesh::applyAndSaveBLEPin(uint32_t pin) {
   _ble_pin_apply_failed = false;
-#if defined(BLE_PIN_CODE)
   if (_ble_pin_restore_pending) {
     _ble_pin_apply_failed = true;
     return false;
@@ -5727,13 +5734,9 @@ bool MyMesh::applyAndSaveBLEPin(uint32_t pin) {
     _common_ble_pin_warning_in_flight = false;
     _common_ble_pin_warning_route = nullptr;
   }
-#else
-  if (!savePreference(_prefs.ble_pin, pin)) return false;
-#endif
   return true;
 }
 
-#if defined(BLE_PIN_CODE)
 void MyMesh::servicePendingBLEPinRestore() {
   if (!_ble_pin_restore_pending) return;
   const uint32_t now = _ms->getMillis();
@@ -8116,12 +8119,17 @@ void MyMesh::handleCmdFrame(size_t len) {
 
     // ensure pin is zero, or a valid 6 digit pin
     if (pin == 0 || (pin >= 100000 && pin <= 999999)) {
+#if defined(BLE_PIN_CODE)
       if (applyAndSaveBLEPin(pin)) {
         writeOKFrame();
-#if defined(BLE_PIN_CODE)
         scheduleCommonBlePinWarning(_serial->captureReplyRoute());
+      } else {
+        writeErrFrame(_ble_pin_apply_failed ? ERR_CODE_BAD_STATE : ERR_CODE_FILE_IO_ERROR);
+      }
+#else
+      if (savePreference(_prefs.ble_pin, pin)) writeOKFrame();
+      else writeErrFrame(ERR_CODE_FILE_IO_ERROR);
 #endif
-      } else writeErrFrame(_ble_pin_apply_failed ? ERR_CODE_BAD_STATE : ERR_CODE_FILE_IO_ERROR);
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     }

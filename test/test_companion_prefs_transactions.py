@@ -24,6 +24,7 @@ HARNESS = r'''
 #include <vector>
 #include <algorithm>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/CLIReplyText.h>
 #include <helpers/radiolib/RXPowerSaving.h>
 namespace mesh { enum class RadioParamApplyResult { APPLIED, BUSY, FAILED }; }
 using Apply=mesh::RadioParamApplyResult;
@@ -136,7 +137,6 @@ struct MyMesh {
   void servicePendingTxPower() {}
   void servicePendingLocalRadioSettings();
   Prefs _prefs,durable;
-  bool _ble_pin_apply_failed=false;
   double durable_lat=10,durable_lon=20;
   bool storage_accepts=true,_radio_available=true;
   unsigned saves=0,gps_policy_updates=0;
@@ -151,7 +151,6 @@ struct MyMesh {
   @SAVE_PREFERENCE@
   bool saveAdvertName(const char*);
   bool saveAdvertLocation(double,double);
-  bool applyAndSaveBLEPin(uint32_t);
   bool applyAndSaveRxPowerSaving(const char*,char*);
   bool applyAndSavePowerSaving(const char*,char*);
   bool applyAndSaveRxBoostedGain(bool);
@@ -171,6 +170,11 @@ struct MyMesh {
   void frame(size_t len) { @FRAMES@ }
   void web(const char* key,const char* value,char* reply) { @WEB@ }
   void terminal(const char* config) { @TERMINAL@ }
+  bool localPin(const char* command,char* reply) {
+    const size_t reply_size=160;
+    @LOCAL_PIN@
+    return false;
+  }
   bool gps(const char* gps_value,char* reply) {
 #if ENV_INCLUDE_GPS == 1
     const size_t reply_size=160;
@@ -267,6 +271,16 @@ int main() {
     MyMesh m;m.storage_accepts=save_ok;m.terminal(command);++checks;
     assert(error(m.output.c_str())!=save_ok && m.saves==1);
     if(!save_ok)m.laterSaveCannotResurrectFailure();
+  }
+  // USB-only Companions retain the same saved-PIN CLI, including rollback
+  // after a storage failure and six-digit formatting of leading zeroes.
+  for(bool save_ok:{false,true}) {
+    MyMesh m;char reply[160]={};m.storage_accepts=save_ok;
+    assert(m.localPin("set pin 42",reply));++checks;
+    assert(m.saves==1 && m._prefs.ble_pin==(save_ok?42u:123456u));
+    assert(m.durable.ble_pin==m._prefs.ble_pin);
+    if(save_ok)assert(!strcmp(reply,"> pin is now 000042"));
+    else {assert(error(reply));m.laterSaveCannotResurrectFailure();}
   }
   for(const auto& bytes:std::vector<std::vector<uint8_t>>{
         {CMD_SET_PATH_HASH_MODE,0,3},{CMD_SET_TUNING_PARAMS},{CMD_SET_OTHER_PARAMS},
@@ -455,7 +469,6 @@ class CompanionPrefsTransactionTests(unittest.TestCase):
             '@GPS_METHOD@': extract_braced(text, 'bool MyMesh::setGpsEnabled('),
             '@METHODS@': '\n'.join(extract_braced(text,sig) for sig in (
                 'bool MyMesh::saveAdvertName(', 'bool MyMesh::saveAdvertLocation(',
-                'bool MyMesh::applyAndSaveBLEPin(',
                 'bool MyMesh::applyAndSaveRxPowerSaving(',
                 'bool MyMesh::applyAndSaveRxBoostedGain(',
                 'bool MyMesh::applyAndSavePowerSaving(',
@@ -467,6 +480,7 @@ class CompanionPrefsTransactionTests(unittest.TestCase):
             '@WEB@': ' else '.join(extract_braced(text,f'if ({expr})') for expr in web),
             '@TERMINAL@': ' else '.join(extract_braced(text,f'if ({expr})') for expr in terminal),
             '@GPS@': extract_braced(text,'if (gps_value)'),
+            '@LOCAL_PIN@': extract_braced(text,'if (strncmp(command, "set pin", 7) == 0'),
         }
         harness = HARNESS
         for marker,value in replacements.items():
