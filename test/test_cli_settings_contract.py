@@ -43,6 +43,12 @@ def methods(text, prefix):
 def full_command_keys(text):
     comparisons = re.findall(
         r'(?:strcmp|strncmp|memcmp)\((?:command|cmd|text),\s*"(get|set) ([a-z][\w.]*)[ "]', text)
+    # Setters can reuse a named prefix for matching and value offsets. Count
+    # those only when the prefix is actually compared against command input;
+    # declarations used solely by help text do not establish parser coverage.
+    for name, key in re.findall(r'\bconst\s+char\s+(\w+)\s*\[\]\s*=\s*"set ([a-z][\w.]*) ?"', text):
+        if re.search(r'(?:strcmp|strncmp|memcmp)\((?:command|cmd|text),\s*' + re.escape(name) + r'\b', text):
+            comparisons.append(('set', key))
     return tuple({key for kind, key in comparisons if kind == verb} for verb in ('set', 'get'))
 
 
@@ -96,6 +102,15 @@ OBSERVER_QUERY_EXCEPTIONS = {
 
 
 class CLISettingsContractTest(unittest.TestCase):
+    def test_named_set_prefix_requires_actual_command_comparison(self):
+        source = r'''static const char setter[] = "set ota.direct.radio";
+static const char help[] = "set help.only";
+static const char other[] = "set value.only";
+const bool set = !strncmp(command, setter, sizeof(setter) - 1);
+const bool value = !strcmp(value, other);
+const bool get = !strcmp(command, "get ota.direct.radio");'''
+        self.assertEqual(full_command_keys(source), ({'ota.direct.radio'}, {'ota.direct.radio'}))
+
     def test_shared_primary_parser_can_be_skipped_without_changing_other_commands(self):
         harness = r'''
 #include <cassert>

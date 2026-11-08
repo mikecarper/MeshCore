@@ -132,9 +132,11 @@ bool RAK13800EthernetInterface::tryDisable() {
     _spiError = "OTA storage busy"; return false;
   }
 #endif
-  SerialEthernetInterface::disable();
+  // Base disable invokes disconnectClient(), which wakes the worker. Publish
+  // stop first so a DHCP retry cannot start another blocking vendor call.
   _wanted.store(false);
   _state.store(State::Stopping);
+  SerialEthernetInterface::disable();
   notifyWorker();
   if (finishRelease()) _state.store(State::Off);
   _spiError = status();
@@ -177,9 +179,11 @@ bool RAK13800EthernetInterface::terminalShutdown(void* context, uint32_t timeout
 
 bool RAK13800EthernetInterface::shutdownForPowerOff(uint32_t timeout_ms) {
   _terminalStopping = true;
-  SerialEthernetInterface::disable();
+  // Base disable invokes disconnectClient(), which wakes the worker. Publish
+  // stop first so a DHCP retry cannot start another blocking vendor call.
   _wanted.store(false);
   _state.store(State::Stopping);
+  SerialEthernetInterface::disable();
   notifyWorker();
   const uint32_t started = millis();
   do {

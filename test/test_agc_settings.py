@@ -33,6 +33,17 @@ HARNESS = r"""
 #include "store_under_test.cpp"
 int main() {
   using namespace mesh;
+#if !MESH_ENABLE_OLD_AGC
+  MemoryFS fs; Radio radio; radio.supported=false; char reply[160];
+  assert(beginAGCSettings(&radio,&fs) && fs.files.empty());
+  for(const char* command:{"set agc.old 4","set agc.old auto","get agc.old"}) {
+    assert(!handleStoredOldAGCCommand(&radio,command,reply,sizeof(reply)));
+    assert(handleAGCMaintenanceCommand(&radio,command,0,reply,sizeof(reply)));
+    assert(!strcmp(reply,"Error: unsupported"));
+  }
+  assert(!setStoredOldAGCInterval(&radio,"4",reply,sizeof(reply)));
+  assert(!strcmp(reply,"Error: unsupported") && fs.files.empty());
+#else
   MemoryFS fs;
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   fs.rename_replaces=true;
@@ -98,6 +109,7 @@ int main() {
   char small[4]={'X','X','X','Z'};
   assert(handleStoredOldAGCCommand(&radio,"set agc.old off",small,3));
   assert(small[2]==0 && small[3]=='Z');
+#endif
 }
 """
 
@@ -121,14 +133,15 @@ class AGCSettingsTests(unittest.TestCase):
             (work/"store_under_test.cpp").write_text(store)
             (work/"test.cpp").write_text(HARNESS)
             for platform in ("ESP32_PLATFORM","RP2040_PLATFORM","NRF52_PLATFORM","STM32_PLATFORM"):
-                with self.subTest(platform=platform):
-                    binary=work/platform
-                    built=subprocess.run([os.environ.get("CXX","g++"),"-std=c++17","-O1","-Wall","-Wextra","-Werror",
-                        "-Wno-sign-compare","-Wno-unused-parameter","-fsanitize=address,undefined","-fno-sanitize-recover=all",
-                        "-fno-pie","-no-pie","-DMESH_ENABLE_OLD_AGC=1","-D"+platform,
-                        "-I"+str(work),"-I"+str(ROOT/"src"),str(work/"test.cpp"),"-o",str(binary)],capture_output=True,text=True,timeout=60)
-                    self.assertEqual(built.returncode,0,built.stdout+built.stderr)
-                    result=subprocess.run([str(binary)],capture_output=True,text=True,timeout=20)
-                    self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+                for enabled in (0,1):
+                    with self.subTest(platform=platform,old_agc=enabled):
+                        binary=work/(platform+str(enabled))
+                        built=subprocess.run([os.environ.get("CXX","g++"),"-std=c++17","-O1","-Wall","-Wextra","-Werror",
+                            "-Wno-sign-compare","-Wno-unused-parameter","-fsanitize=address,undefined","-fno-sanitize-recover=all",
+                            "-fno-pie","-no-pie","-DMESH_ENABLE_OLD_AGC="+str(enabled),"-D"+platform,
+                            "-I"+str(work),"-I"+str(ROOT/"src"),str(work/"test.cpp"),"-o",str(binary)],capture_output=True,text=True,timeout=60)
+                        self.assertEqual(built.returncode,0,built.stdout+built.stderr)
+                        result=subprocess.run([str(binary)],capture_output=True,text=True,timeout=20)
+                        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
 if __name__=="__main__":unittest.main()

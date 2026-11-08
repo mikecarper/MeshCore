@@ -111,10 +111,31 @@ class RakCompanionEthernetWorkerTests(unittest.TestCase):
                     (33, "direct restart cancels stopped-fault session"),
                     (35, "unACKed head survives priority insertion and full queue"),
                     (36, "priority queue survives unACKed head reconnect"),
-                    (37, "ACKed but unretired head remains pinned")):
+                    (37, "ACKed but unretired head remains pinned"),
+                    (38, "terminal OFF publishes stop before disconnect wake")):
                 with self.subTest(scenario=description):
                     result = subprocess.run([str(binary), str(scenario)], text=True, capture_output=True, timeout=10)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_stop_notification_before_publication_negative_controls(self):
+        driver = ROOT / "src/helpers/ethernet/RAK13800/RAK13800EthernetInterface.cpp"
+        source = driver.read_text()
+        ordered = ("  _wanted.store(false);\n  _state.store(State::Stopping);\n"
+                   "  SerialEthernetInterface::disable();")
+        unsafe = ("  SerialEthernetInterface::disable();\n  _wanted.store(false);\n"
+                  "  _state.store(State::Stopping);")
+        for signature, scenario in (("bool RAK13800EthernetInterface::tryDisable()", 17),
+                ("bool RAK13800EthernetInterface::shutdownForPowerOff(", 38)):
+            with self.subTest(shutdown=signature), tempfile.TemporaryDirectory(
+                    prefix="meshcore-ethernet-stop-order-") as folder:
+                method = extract_braced(source, signature)
+                self.assertEqual(method.count(ordered), 1)
+                mutation = source.replace(method, method.replace(ordered, unsafe))
+                binary = build_worker(self, folder, mutation)
+                result = subprocess.run([str(binary), str(scenario)], text=True,
+                                        capture_output=True, timeout=10)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Ethernet.begin_count == 1", result.stderr)
 
     def test_synchronous_start_and_busy_disconnect_negative_controls(self):
         driver = ROOT / "src/helpers/ethernet/RAK13800/RAK13800EthernetInterface.cpp"

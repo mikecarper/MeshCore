@@ -6638,7 +6638,11 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     }
 #endif
   } else if(configKeyEquals(config,"agc.old")) {
-    mesh::handleOldAGCIntervalCommand(_callbacks->getProfileRadio(), "get agc.old", reply, 160);
+    // The key was already checked here; avoid a second command-parser call.
+    const auto* radio=_callbacks->getProfileRadio();
+    if(!radio || !radio->supportsOldAGC()) mesh::cli::formatError(reply,160,"unsupported");
+    else if(radio->getOldAGCInterval()==mesh::AGC_OLD_AUTO) strcpy(reply,"> auto");
+    else sprintf(reply,"> %lu",(unsigned long)radio->getOldAGCInterval());
 #if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC && !MESH_WARM_RX_REFRESH
   } else if(miniUnsupportedWarmAgcGet(config)) {
     mesh::cli::formatError(reply,160,"unsupported");

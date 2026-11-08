@@ -300,8 +300,20 @@ static void feed(uint8_t s, const Bytes& bytes) {
 }
 static Bytes output(uint8_t s) { std::lock_guard<std::mutex> lock(sockets[s].mutex); return sockets[s].output; }
 static bool other_owner(void*, uint32_t) { return true; }
+// Force the worker to service the base-disable notification before the main
+// thread continues. This exposes notification-before-stop ordering reliably.
+struct StopObservedEthernet : RAK13800EthernetInterface {
+  bool observe_stop = false;
+protected:
+  void disconnectClient() override {
+    RAK13800EthernetInterface::disconnectClient();
+    if (observe_stop) wait_until([] {
+      return parked_tasks.load() != 0 || Ethernet.begin_count.load() > 1;
+    });
+  }
+};
 struct Fixture {
-  RAK13800EthernetInterface owner;
+  StopObservedEthernet owner;
   MultiSerialInterface routes;
   uint8_t received[MAX_FRAME_SIZE] = {};
   bool prepare_allowed = true, off_allowed = true, release_allowed = true, pending = false;
@@ -514,7 +526,16 @@ int main(int argc, char** argv) {
     case 17: { // OFF wakes the 30-second DHCP retry without waiting for its timer.
       Ethernet.begin_result.store(0); assert(f.owner.tryEnable());
       wait_until([&] { return std::strcmp(f.owner.status(), "retrying") == 0; }, [&] { f.tick(); });
+      f.owner.observe_stop = true;
       f.off(); assert(Ethernet.begin_count == 1); break;
+    }
+    case 38: { // Terminal shutdown must publish stop before the same base wake.
+      Ethernet.begin_result.store(0); assert(f.owner.tryEnable());
+      wait_until([&] { return std::strcmp(f.owner.status(), "retrying") == 0; }, [&] { f.tick(); });
+      f.owner.observe_stop = true;
+      assert(mesh::nrf52::terminalEthernetShutdown(100));
+      assert(Ethernet.begin_count == 1 && !live_tasks && !spi_active);
+      break;
     }
     case 18: { // An occupied OTA owner rejects OFF without cancelling the connected session.
       f.online(); f.connect(); f.off_allowed = false; f.pending = true;

@@ -167,6 +167,14 @@ struct MyMesh {
 #endif
   MyMesh& terminalOutput() { return *this; }
   void print(const char* value) { output+=value; }
+  template<typename... Args> size_t printf(const char* format,Args... args) {
+    const int count=std::snprintf(nullptr,0,format,args...);
+    assert(count>=0);
+    std::vector<char> text(size_t(count)+1);
+    assert(std::snprintf(text.data(),text.size(),format,args...)==count);
+    output.append(text.data(),size_t(count));
+    return size_t(count);
+  }
   void frame(size_t len) { @FRAMES@ }
   void web(const char* key,const char* value,char* reply) { @WEB@ }
   void terminal(const char* config) { @TERMINAL@ }
@@ -271,6 +279,18 @@ int main() {
     MyMesh m;m.storage_accepts=save_ok;m.terminal(command);++checks;
     assert(error(m.output.c_str())!=save_ok && m.saves==1);
     if(!save_ok)m.laterSaveCannotResurrectFailure();
+  }
+  // Exercise the formatted terminal errors themselves, including the compact
+  // prose used by constrained boards. Invalid values must not touch storage.
+  const char* invalid_terminal[][2]={
+    {"af -1",MESH_CLI_REPLY_TEXT("airtime factor must be 0-9", "airtime factor 0-9")},
+    {"lat -91",MESH_CLI_REPLY_TEXT("latitude must be -90 to 90", "latitude -90 to 90")},
+    {"lon 181",MESH_CLI_REPLY_TEXT("longitude must be -180 to 180", "longitude -180 to 180")},
+  };
+  for(const auto& command:invalid_terminal) {
+    MyMesh m;m.terminal(command[0]);++checks;
+    assert(m.output==std::string("  ERROR: ")+command[1]+"\r\n");
+    assert(m.saves==0);m.expectOriginal();
   }
   // USB-only Companions retain the same saved-PIN CLI, including rollback
   // after a storage failure and six-digit formatting of leading zeroes.
@@ -492,11 +512,13 @@ class CompanionPrefsTransactionTests(unittest.TestCase):
             cpp.write_text(harness,encoding='utf-8')
             binary = root/('test.exe' if os.name=='nt' else 'test')
             for gps in (0,1):
-                with self.subTest(gps=gps):
-                    subprocess.run([os.environ.get('CXX','g++'),'-std=c++17','-Wall','-Wextra','-Werror',
-                                    '-Wno-sign-compare','-Wno-type-limits',f'-DENV_INCLUDE_GPS={gps}',
-                                    '-I',str(root),'-I',str(ROOT/'src'),str(cpp),'-o',str(binary)],check=True)
-                    subprocess.run([str(binary)],check=True)
+                for compact in (0,1):
+                    with self.subTest(gps=gps,compact=compact):
+                        subprocess.run([os.environ.get('CXX','g++'),'-std=c++17','-Wall','-Wextra','-Werror',
+                                        '-Wno-sign-compare','-Wno-type-limits',f'-DENV_INCLUDE_GPS={gps}',
+                                        f'-DMESH_CLI_COMPACT_REPLIES={compact}',
+                                        '-I',str(root),'-I',str(ROOT/'src'),str(cpp),'-o',str(binary)],check=True)
+                        subprocess.run([str(binary)],check=True)
 
 
 if __name__=='__main__':

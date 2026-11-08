@@ -50,6 +50,11 @@ struct MorseReplyHandoff {
 };
 template <typename Radio>
 bool handleMorseReplyCommand(MorseReplyHandoff&, Radio*, const char*, char*, size_t, uint32_t) { return false; }
+// Saved AGC parsing/storage runs in its dedicated persistence and bridge
+// suites. Like other maintenance seams here, decline commands without
+// claiming success, emitting a reply, or changing the access-test state.
+template <typename Radio>
+bool handleStoredOldAGCCommand(Radio*, const char*, char*, size_t) { return false; }
 template <typename Radio>
 bool handleAGCMaintenanceCommand(Radio*, const char*, uint32_t, char*, size_t) { return false; }
 struct RadioProfileCLI {

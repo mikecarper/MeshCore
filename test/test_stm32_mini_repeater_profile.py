@@ -135,19 +135,14 @@ class MiniRepeaterProfileTest(unittest.TestCase):
         harness = r'''
 #include <cassert>
 #include <cstring>
-#include <helpers/CLICommandUtils.h>
+#include <helpers/AGCSettings.h>
+#define ATOMIC_FILE_WRITER_IMPLEMENTATION
+#include <helpers/AtomicFileWriter.h>
+#include "agc_settings_under_test.cpp"
+using Radio = mesh::Radio;
 @EQUALS@
 @MATCHES@
 @SPACES@
-struct Radio {
-  bool supported = false;
-  uint32_t interval = 0;
-  mutable unsigned reads = 0;
-  unsigned writes = 0;
-  bool supportsOldAGC() const { return supported; }
-  uint32_t getOldAGCInterval() const { ++reads; return interval; }
-  bool setOldAGCInterval(uint32_t value) { ++writes; interval = value; return true; }
-};
 struct Callbacks { Radio* radio; Radio* getProfileRadio() const { return radio; } };
 struct CLI {
   Callbacks* _callbacks;
@@ -166,7 +161,9 @@ int main() {
   for (const char* key : {"agc", "agc.reset.interval", "agc.old", "agc.old   ", "agc.old.status", "agc.oldx",
                           "agc.status x", "agc.statusx", "agc.old\t", "other"})
     assert(!miniUnsupportedWarmAgcGet(key));
+  MemoryFS fs; fs.rename_replaces = true;
   Radio radio; Callbacks callbacks{&radio}; CLI cli{&callbacks};
+  assert(mesh::beginAGCSettings(&radio, &fs));
   for (Radio* available : {&radio, static_cast<Radio*>(nullptr)}) {
     callbacks.radio = available;
     for (const char* command : {"agc.old ", "agc.old 0", "agc.old 999999999999"}) {
@@ -176,11 +173,17 @@ int main() {
       char reply[160] = {}; cli.get_old(key, reply); assert(!strcmp(reply, "Error: unsupported"));
     }
   }
-  assert(!radio.reads && !radio.writes);
+  assert(!radio.writes && fs.files.empty());
   callbacks.radio = &radio; radio.supported = true;
-  char reply[160] = {}; cli.get_old("agc.old", reply); assert(!strcmp(reply, "> 0"));
+#if MESH_ENABLE_OLD_AGC
+  assert(mesh::beginAGCSettings(&radio, &fs));
+  radio.writes = 0;
+  char reply[160] = {}; cli.get_old("agc.old", reply); assert(!strcmp(reply, "> auto"));
   for (const char* command : {"agc.old 0", "agc.old 16", "agc.old 86400"}) {
     cli.set_old(command, reply); assert(!strncmp(reply, "OK - ", 5));
+    assert(strstr(reply, "(saved)"));
+    Radio rebooted; rebooted.supported = true;
+    assert(mesh::beginAGCSettings(&rebooted, &fs) && rebooted.interval == radio.interval);
   }
   assert(radio.interval == 86400 && radio.writes == 3);
   for (const char* command : {"agc.old ", "agc.old -1", "agc.old 86401", "agc.old 999999999999", "agc.old 1x"}) {
@@ -189,18 +192,51 @@ int main() {
   }
   reply[0] = 0; cli.set_old("agc.oldx 1", reply); assert(!reply[0]);
   cli.get_old("agc.old extra", reply); assert(!reply[0]);
+#else
+  char reply[160] = {};
+  cli.set_old("agc.old 4", reply); assert(!strcmp(reply, "Error: unsupported"));
+  cli.get_old("agc.old", reply); assert(!strcmp(reply, "Error: unsupported"));
+  assert(!radio.writes && fs.files.empty());
+#endif
 }
 '''.replace('@EQUALS@', equals).replace('@MATCHES@', matches).replace('@SPACES@', spaces).replace(
             '@SET_BRANCH@', set_branch).replace('@GET_BRANCH@', get_branch)
         with tempfile.TemporaryDirectory(prefix='mini-agc-unsupported-') as directory:
             path = Path(directory)
             (path / 'main.cpp').write_text('#include <initializer_list>\n' + harness, encoding='utf-8')
-            result = subprocess.run([compiler, '-std=c++17', '-DWIO_E5_MINI_COMPACT_UNSUPPORTED_AGC=1',
-                                     '-I', str(ROOT / 'src'), str(path / 'main.cpp'), '-o', str(path / 'test')],
-                                    capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            result = subprocess.run([str(path / 'test')], capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            (path / 'Dispatcher.h').write_text(r'''#pragma once
+#include <cstdint>
+#include <cstddef>
+#include <helpers/OldAGCPolicy.h>
+namespace mesh { struct Radio {
+  bool supported = false;
+  uint32_t interval = AGC_OLD_AUTO;
+  mutable unsigned reads = 0;
+  unsigned writes = 0;
+  bool supportsOldAGC() const { return MESH_ENABLE_OLD_AGC && supported; }
+  uint32_t getOldAGCInterval() const { ++reads; return interval; }
+  bool setOldAGCInterval(uint32_t value) { ++writes; interval = value; return true; }
+  bool formatWarmRxRefresh(uint8_t,uint32_t,char*,size_t) const { return false; }
+}; }
+''', encoding='utf-8')
+            # Model only the hardware filesystem boundary; execute the actual
+            # shared CLI and atomic save code for default-off and opt-in builds.
+            store = (ROOT / 'src/helpers/AGCSettings.cpp').read_text()
+            for header in ('AGCSettings.h','CheckedSettingsFile.h',
+                           'PersistentStoreFormat.h','AtomicFileWriter.h'):
+                store = store.replace(f'#include "{header}"', f'#include <helpers/{header}>')
+            (path / 'agc_settings_under_test.cpp').write_text(store, encoding='utf-8')
+            for enabled in (0, 1):
+                with self.subTest(old_agc=enabled):
+                    result = subprocess.run([compiler, '-std=c++17', '-DSTM32_PLATFORM=1',
+                        '-DWIO_E5_MINI_COMPACT_UNSUPPORTED_AGC=1',
+                        '-DMESH_ENABLE_OLD_AGC='+str(enabled),
+                        '-I', str(path), '-I', str(ROOT / 'test/fixtures/radio_profiles/mocks'),
+                        '-I', str(ROOT / 'src'), str(path / 'main.cpp'), '-o', str(path / 'test')],
+                        capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    result = subprocess.run([str(path / 'test')], capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_mini_shortcuts_only_methods_with_inherited_noop_defaults(self):
         """The compact route is valid only while Mini has no maintenance lease."""
