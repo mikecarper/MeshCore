@@ -37,7 +37,7 @@ public:
 #if MESH_WARM_RX_REFRESH
     if(_rxps_pulse.pending) return Result::Deferred;
 #endif
-    if(!isInRecvMode() || !_params_valid || _active_profile>1 || _profile_refresh_required
+    if(!isInRecvMode() || !_params_valid || _active_profile>1
         || _profile_repair_required || _profile_retry_at || isCalibratingNoiseFloor()
         || _profile_generation!=_profiles.generation[_active_profile] || _cw_active) return Result::Deferred;
 #if MESH_ENABLE_TX_BEACONS
@@ -65,6 +65,10 @@ public:
       _lab_resume_pending=true; _lab_resume_at=millis();
     }
 #endif
+    // A cold PRAM start deliberately leaves the host tuple dirty. Its checked
+    // pause republishes that tuple before maintenance; rejecting the flag
+    // earlier would starve legacy maintenance for the scanner's whole lease.
+    if(_profile_refresh_required) return Result::Deferred;
     _apply_status.begin();
     const uint8_t resume=beginReconfigure();
     if(resume==2) return Result::Deferred;

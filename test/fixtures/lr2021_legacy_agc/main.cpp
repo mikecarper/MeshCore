@@ -76,7 +76,7 @@ struct Wrapper:Base {
  mesh::RadioParamApplyResult labPauseScanner(bool=false,uint8_t target=0){
    if(radio.irq||radio.busy)return mesh::RadioParamApplyResult::BUSY;
    radio.calls.push_back("pause");assert(target==0);
-   if(pause_result==mesh::RadioParamApplyResult::APPLIED){_lab_scan_active=false;_lab_status.hooked=false;_active_profile=0;_profile_generation=_profiles.generation[0];}
+   if(pause_result==mesh::RadioParamApplyResult::APPLIED){_lab_scan_active=false;_lab_status.hooked=false;_active_profile=0;_profile_generation=_profiles.generation[0];_profile_refresh_required=false;}
    return pause_result;
  }
  bool labReconfigureBlocked(){return _lab_uncertain||_lab_scan_active;}
@@ -146,7 +146,7 @@ static void guards(){
   if(guard==0)w.state=Wrapper::STATE_IDLE;
   if(guard==1)w._params_valid=false;
   if(guard==2)w._active_profile=2;
-  if(guard==3)w._profile_refresh_required=true;
+  if(guard==3){w._profile_refresh_required=true;w._lab_scan_active=false;}
   if(guard==4)w._profile_repair_required=true;
   if(guard==5)w._profile_retry_at=123;
   if(guard==6){w.nf_active=true;w._lab_scan_active=false;}
@@ -211,11 +211,23 @@ static void failures(){
 }
 static void scanner(){
 #if MESH_W12_PRAM_EXPERIMENT
- for(bool automatic:{false,true})for(bool outer:{false,true}){
+ // Cold scanner initialization intentionally leaves the host tuple dirty.
+ // Only its successful checked pause may clear the host refresh requirement.
+ for(const auto pause:{mesh::RadioParamApplyResult::APPLIED,mesh::RadioParamApplyResult::BUSY,mesh::RadioParamApplyResult::FAILED}){
+  Wrapper w;w._profiles.active=true;w._lab_scan_active=true;w._lab_status.hooked=true;w._profile_refresh_required=true;w.pause_result=pause;
+  const auto result=w.periodicOldAGCMaintenance();
+  assert(result==(pause==mesh::RadioParamApplyResult::APPLIED?Result::Applied:pause==mesh::RadioParamApplyResult::BUSY?Result::Deferred:Result::Failed));
+  assert(w.radio.calibrations==(pause==mesh::RadioParamApplyResult::APPLIED?1u:0u));
+  if(pause==mesh::RadioParamApplyResult::APPLIED)assert(!w._profile_refresh_required&&w._lab_scan_active&&w._lab_status.hooked);
+  else assert(w._profile_refresh_required&&w._lab_scan_active);
+ }
+ for(bool automatic:{false,true})for(bool outer:{false,true})for(uint8_t last_profile:{0,1}){
   Wrapper w;w.auto_enabled=automatic;w._profiles.active=true;w._lab_scan_active=true;w._lab_status.hooked=true;w._agc_pram_paused=outer;
+  w._active_profile=last_profile;w._profile_generation=w._profiles.generation[last_profile];
   assert(w.periodicOldAGCMaintenance()==Result::Applied);
   assert(w._lab_scan_active&&w._lab_status.hooked&&w._lab_pram_loaded&&!w._lab_resume_pending);
   assert(w.auto_enabled==automatic&&w._agc_pram_paused==outer&&w.radio.calibrations==1);
+  assert(w._active_profile==0&&w._profile_generation==w._profiles.generation[0]);
   assert(position(w,"pause")<position(w,"calibrate")&&position(w,"receive")<position(w,"scanner"));check_saved(w);
  }
  for(unsigned failure=0;failure<7;++failure){

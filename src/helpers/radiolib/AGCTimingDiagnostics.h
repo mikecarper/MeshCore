@@ -3,6 +3,9 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
+#if defined(USE_LR2021)
+#include "LR2021CalibrationDiagnostics.h"
+#endif
 
 // Lab-only software timing. Admission and command acknowledgements do not
 // measure analog readiness or prove that a sleep command powered down RX.
@@ -126,8 +129,15 @@ public:
           (unsigned long)rx_gap_us.count, (unsigned long)rx_gap_us.last,
           (unsigned long)rx_gap_us.minimum, (unsigned long)rx_gap_us.maximum);
     } else if (page == 2) {
+#if defined(USE_LR2021) && defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      const auto& device=mesh::lr2021::calibrationDeviceStatus();
+      snprintf(reply, capacity,
+          "> v=1,dev=%04X,dphase=%u,dvalid=%u,cmdfail=%lu,seqfail=%lu,rc=%d,step=%s,poll=%lu,overlap=%lu,skip=%s",
+          unsigned(device.errors), unsigned(device.phase), unsigned(device.valid),
+#else
       snprintf(reply, capacity,
           "> v=1,cmdfail=%lu,seqfail=%lu,rc=%d,step=%s,poll=%lu,overlap=%lu,skip=%s",
+#endif
           (unsigned long)command_failures, (unsigned long)failed_sequences,
           (int)last_error, stepName(last_error_step), (unsigned long)poll_timeouts,
           (unsigned long)superseded_pending, skipName(last_skip));

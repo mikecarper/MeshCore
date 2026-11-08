@@ -79,6 +79,8 @@ class LR2021LegacyAGCTests(unittest.TestCase):
             'noise': actual.replace('return !_lab_scan_active && PulseBase::isCalibratingNoiseFloor();',
                                     'return PulseBase::isCalibratingNoiseFloor();'),
             'applied_cache': actual.replace('_dbm_applied=false; _rx_boosted_gain_applied=false;', ''),
+            'dirty_pram': actual.replace('if(!isInRecvMode() || !_params_valid || _active_profile>1\n',
+                                        'if(!isInRecvMode() || !_params_valid || _active_profile>1 || _profile_refresh_required\n'),
         }
         with tempfile.TemporaryDirectory(prefix='lr2021-legacy-negative-') as temp:
             folder = Path(temp)
@@ -98,9 +100,11 @@ class LR2021LegacyAGCTests(unittest.TestCase):
                                             '-I' + str(ROOT / 'src'), str(folder / 'main.cpp'), '-o', str(folder / 'test')],
                                            capture_output=True, text=True, timeout=60)
                     self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
-                    result = subprocess.run([str(folder / 'test'), 'noise' if name == 'noise' else 'failures'], capture_output=True, text=True, timeout=20)
+                    scenario = {'noise': 'noise', 'dirty_pram': 'scanner'}.get(name, 'failures')
+                    result = subprocess.run([str(folder / 'test'), scenario], capture_output=True, text=True, timeout=20)
                     self.assertNotEqual(result.returncode, 0, 'Ignored native errors must not satisfy the failure tests')
-                    self.assertIn({'noise': 'isCalibratingNoiseFloor', 'applied_cache': '!w._dbm_applied'}.get(name, 'Result::Failed'), result.stderr)
+                    self.assertIn({'noise': 'isCalibratingNoiseFloor', 'applied_cache': '!w._dbm_applied',
+                                   'dirty_pram': 'result=='}.get(name, 'Result::Failed'), result.stderr)
 
     def test_opt_in_timing_diagnostics_count_native_attempts_and_rx_without_false_credit(self):
         actual = (ROOT / 'src/helpers/radiolib/LR2021LegacyMaintenance.inc').read_text()

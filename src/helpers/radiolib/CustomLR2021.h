@@ -12,6 +12,7 @@
 #include "W12PramLabTrace.h"
 #endif
 #include "LR2021CalibrationPolicy.h"
+#include "LR2021CalibrationDiagnostics.h"
 #if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
 #include "LR2021PacketFrequency.h"
 #include "LR2021FrequencyCorrection.h"
@@ -440,6 +441,10 @@ class CustomLR2021 : public LR2021 {
     // pausing any PRAM scanner. Retention sleep keeps its image and configuration;
     // never use begin()/reset()/setTCXO(0), which would destroy that state.
     int16_t resetReceiverCalibration() {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      auto& device_diagnostic=mesh::lr2021::calibrationDeviceStatus();
+      device_diagnostic.begin();
+#endif
       const float hardware_frequency = freqMHz;
       if (!isfinite(hardware_frequency) || hardware_frequency <= 0.0f
           || hardware_frequency > 2600.0f) return RADIOLIB_ERR_INVALID_FREQUENCY;
@@ -451,6 +456,9 @@ class CustomLR2021 : public LR2021 {
           | RADIOLIB_LR2021_SRC_SATURATION_CALIB_ERR | RADIOLIB_LR2021_SRC_TOLERANCE_CALIB_ERR;
       uint16_t errors = 0;
       int16_t status = getErrors(&errors);
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      device_diagnostic.record(mesh::lr2021::CalibrationDeviceStatus::Before,errors,status);
+#endif
       if (status != RADIOLIB_ERR_NONE) return status;
       // ClearErrors clears the entire word. Preserve unrelated device faults
       // rather than erasing them just to obtain fresh calibration diagnostics.
@@ -468,6 +476,9 @@ class CustomLR2021 : public LR2021 {
       status = calibrate(RADIOLIB_LR2021_CALIBRATE_ALL);
       if (status != RADIOLIB_ERR_NONE) return status;
       status = getErrors(&errors);
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      device_diagnostic.record(mesh::lr2021::CalibrationDeviceStatus::AfterBase,errors,status);
+#endif
       if (status != RADIOLIB_ERR_NONE) return status;
       if (errors) return RADIOLIB_ERR_FRONTEND_CALIBRATION_FAILED;
       // Semtech's CalibFE helper rounds UP to the next 4 MHz point, selecting
@@ -479,6 +490,9 @@ class CustomLR2021 : public LR2021 {
       status = calibrateFrontEnd(frequencies);
       if (status != RADIOLIB_ERR_NONE) return status;
       status = getErrors(&errors);
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      device_diagnostic.record(mesh::lr2021::CalibrationDeviceStatus::AfterFrontEnd,errors,status);
+#endif
       if (status != RADIOLIB_ERR_NONE) return status;
       if (errors) return RADIOLIB_ERR_FRONTEND_CALIBRATION_FAILED;
       // CalibFE visits a rounded calibration point. Explicitly restore the
