@@ -126,7 +126,7 @@ class BrowserLoraOtaChainRuntimeTest(unittest.TestCase):
     def test_actual_planner_and_two_simulated_installs(self):
         result=run_harness(chain_harness(),timeout=120)
         self.assertNotIn('error',result,result)
-        self.assertIn('base → intermediate-1 (delta); intermediate-1 → goal (delta)',result['planned'])
+        self.assertIn('base -> intermediate-1 (delta); intermediate-1 -> goal (delta)',result['planned'])
         self.assertIn('Update sequence complete; verified 2 installation(s)',result['status'])
         self.assertEqual(result['stageIndex'],2)
         self.assertEqual(result['actualApplications'],2)

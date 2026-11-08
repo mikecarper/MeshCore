@@ -9,7 +9,21 @@
   let catalogFile=null, catalogBaseFile=null, catalogDest=null, catalogVersion='', catalogInstallSupported=false, catalogCandidates=[], catalogGeneration=0;
   let preservedCount=0, preservedExportSnapshot=null, preservedExportToken=null, preservedExportInterrupted=false;
   let investigationTimer=null, investigationStage='', investigationStopping=false, investigationActive=false;
-  let sourceOtaUnsupported=false, targetAvailability=null;
+  let sourceOtaUnsupported=false, targetAvailability=null, preparedDownload=null, uiBusy=false, updatePhase='';
+  function status(message, state='working') {
+    $('workflow-status').textContent=message;
+    $('workflow-status').dataset.state=state;
+    if(updatePhase){$('update-progress').hidden=false;$('update-progress').textContent=message;}
+  }
+  function openDetails(element) {
+    for(let node=element;node && node!==ui;node=node.parentElement)if(node.tagName==='DETAILS')node.open=true;
+  }
+  function updateButton() {
+    $('update').disabled=uiBusy || !link || !session || !preparedDownload || updatesBlocked();
+    $('update').textContent=preparedDownload==='active' ? 'Resume and install update' :
+      preparedDownload==='ready' ? 'Install and verify update' : 'Update remote firmware';
+  }
+  $('browser-support').hidden=!!navigator.serial;
   const updatesBlocked = () => sourceOtaUnsupported || !!targetAvailability && targetAvailability.state !== 'supported';
   function showAvailability(result) {
     const notice=$('ota-availability');
@@ -19,9 +33,15 @@
     if(result && result.state!=='supported')notice.scrollIntoView?.({block:'nearest',behavior:'smooth'});
   }
   function requireUpdatesAvailable() {
-    if(updatesBlocked())throw Error($('ota-availability').textContent || 'LoRa updates are unavailable. Investigate the target again.');
+    if(updatesBlocked())throw Error($('ota-availability').textContent || 'LoRa updates are unavailable. Select Find matching firmware to check the device again.');
   }
-  const log = text => { $('status').textContent += String(text) + '\n'; $('status').scrollTop = $('status').scrollHeight; };
+  const log = text => {
+    $('status').textContent += String(text) + '\n'; $('status').scrollTop = $('status').scrollHeight;
+    if(updatePhase==='transfer') {
+      const percent=/\bdownload:.*?\((\d{1,3})%\)/i.exec(String(text));
+      if(percent && Number(percent[1])<=100)status('Transferring firmware over LoRa: '+Number(percent[1])+'%. Keep this page open.');
+    }
+  };
   function showSourceUpdate(kind) {
     if(kind==='companion' || kind==='repeater') {
       const role=kind==='companion'?'companionFull':'repeater';
@@ -31,6 +51,7 @@
     }
   }
   const fail = error => {
+    status(error?.message || String(error), 'error');
     if(error?.sourceUpdateRequired==='companion' && link?.rawPacketSupport==='unsupported') {
       sourceOtaUnsupported=true;invalidate();
       showAvailability({state:'unsupported',message:'LoRa updates are unavailable with this USB Companion: its firmware cannot send OTA packets. Update the source Companion firmware first.'});
@@ -43,6 +64,9 @@
     }
     if(/temporary radio|temporary settings|update channel|saved primary|RX power saving/i.test(error?.message || '')) {
       $('radio-setup-status').textContent=error.message;
+      openDetails($('radio-setup-panel'));
+      if(error?.manualRadioCommand)$('radio-commands').textContent='On the remote target first, then on the USB source:\n'+error.manualRadioCommand;
+      openDetails($('radio-commands'));
       $('radio-setup-panel').scrollIntoView?.({block:'nearest',behavior:'smooth'});
     }
     log('Error: ' + (error?.message || error));
@@ -77,7 +101,13 @@
   }
   function showRadioCommands() {
     try {
-      const command=LoraOtaRadioSetup.commands(radioOptions());
+      const options=radioOptions();
+      if(link?.browserRawSource && link.otaSupported!==true && Array.isArray(link.radio)) {
+        // Older source firmware cannot bind a different temporary channel.
+        // Suggest the usable saved tuple, not the separate-channel default.
+        [options.frequency,options.bandwidth,options.sf,options.cr]=link.radio;
+      }
+      const command=LoraOtaRadioSetup.commands(options);
       $('radio-commands').textContent=command.manual;
     } catch(error) { $('radio-commands').textContent=error.message; }
   }
@@ -93,7 +123,7 @@
     showRadioCommands();
     $('radio-setup-status').textContent=canPrepareRadioChannel()
       ? 'The update channel will be prepared automatically when you check the firmware. Temporary radio2 is preferred when available and unused.'
-      : 'This source needs manual channel setup. See Manual setup and older firmware below, or update the USB Companion for automatic setup.';
+      : 'This source uses manual setup: both temporary profiles must match the USB source saved primary settings. Open Manual setup and older firmware, or update the USB Companion for automatic setup.';
   }
   async function prepareRadioChannel(target,password) {
     if(!$('radio-frequency').value) {
@@ -105,7 +135,7 @@
     }
     const showChanges=changes=>{
       for(const change of changes||[]){
-        log((change.endpoint==='source'?'USB source':'Target')+' saved '+change.setting+': '+change.before+' → '+change.after+
+        log((change.endpoint==='source'?'USB source':'Target')+' saved '+change.setting+': '+change.before+' -> '+change.after+
           (change.confirmed?' (verified)':' (result uncertain)')+'.');
         if(change.restoreCommand)log('Previous setting: '+change.restoreCommand);
       }
@@ -152,6 +182,9 @@
   }
   function busy(active) {
     if(link && $('source').value==='companion' && (link.guard || link.authenticated || link.investigationEnabled || link.investigationAuthenticated || link.serving))targetLocked=true;
+    uiBusy=active;updateButton();
+    $('target-controls').hidden=!link && $('source').value==='companion';
+    $('disconnect').disabled=!link && !connectController;
     for (const name of editable) $(name).disabled = active || (updatesBlocked() && ['file','base','image','signer','chain-files','chain-attest','chain-objective','chain-preamble','chain-minutes'].includes(name)) || (!!link && (name === 'source' || name === 'acl' || name === 'relays' || (name === 'key' && ($('source').value === 'repeater' || targetLocked))));
     $('contact-search').disabled = active || !link || $('source').value !== 'companion' || targetLocked;
     updateContactButtons();
@@ -171,7 +204,10 @@
     $('chain-run').disabled = active || !link || !chainPrepared || !chainConfig || !!pending && pending.phase !== 'complete';
     $('chain-resume').disabled = active || !link || !chainPrepared || !chainConfig || !pending || pending.phase === 'complete';
   }
-  function invalidate() { session = info = chainPrepared = chainConfig = null; $('transfer').disabled = true; $('resume').disabled = true;
+  function invalidate() { preparedDownload=null; $('update').disabled=true;
+    $('update-progress').hidden=true;
+    $('update-summary').textContent='Prepare the firmware first. The update will transfer, install and verify the running firmware.';
+    session = info = chainPrepared = chainConfig = null; $('transfer').disabled = true; $('resume').disabled = true;
     $('install').disabled = true; $('chain-run').disabled = true; $('chain-resume').disabled = true; }
   function showInvestigationProgress(label, timeoutMs) {
     const progress=$('investigation-progress'); if(progress.hidden)return;
@@ -202,16 +238,16 @@
       return;
     }
     const labels={
-      'checking-clock':'Checking Companion clock…',
-      'refreshing-contacts':'Refreshing contacts…',
-      'checking-acl':'Checking existing access without a password…',
-      'sending-login':'Sending login…',
-      'waiting-login':'Waiting for login response…',
-      identity:'Checking target identity…',
-      'sending-command':'Sending request to target…',
-      'command-sent':'Waiting for target reply…',
-      'waiting-reply':'Waiting for target reply…',
-      'retrying-command':'No reply; retrying…'
+      'checking-clock':'Checking Companion clock...',
+      'refreshing-contacts':'Refreshing contacts...',
+      'checking-acl':'Checking existing access without a password...',
+      'sending-login':'Sending login...',
+      'waiting-login':'Waiting for login response...',
+      identity:'Checking target identity...',
+      'sending-command':'Sending request to target...',
+      'command-sent':'Waiting for target reply...',
+      'waiting-reply':'Waiting for target reply...',
+      'retrying-command':'No reply; retrying...'
     };
     const label=labels[event.stage];if(!label)return;
     const command=typeof event.command==='string' && /^[a-z0-9. ]{1,40}$/i.test(event.command) ? ' ('+event.command+')' : '';
@@ -239,7 +275,7 @@
         const parts=[String(message.at||''),String(message.kind||'message')];
         if(message.sender)parts.push('from '+message.sender);
         if(message.channel!==undefined && message.channel!==null)parts.push('channel '+message.channel);
-        return parts.filter(Boolean).join(' · ')+'\n'+String(message.text||message.warning||'[Raw message included in download]');
+        return parts.filter(Boolean).join('  /  ')+'\n'+String(message.text||message.warning||'[Raw message included in download]');
       }).join('\n\n');
       $('legacy-inbox-export').disabled=!preservedCount || !!activeTask;
       $('legacy-inbox-clear').disabled=!preservedCount || !preservedExportSnapshot || !!activeTask;
@@ -276,6 +312,7 @@
     targetAvailability=null;
     showAvailability(sourceOtaUnsupported ? {state:'unsupported',message:'LoRa updates are unavailable with this USB Companion: its firmware cannot send OTA packets. Update the source Companion firmware first.'} : null);
     $('investigation').hidden = true; $('investigation').textContent = '';
+    $('investigation-details').hidden=true;
     finishInvestigationProgress('');$('investigation-progress').hidden=true;
     $('investigation-stop').hidden=true; investigationStopping=false;
     $('legacy-warning').hidden = !usesSharedCompanionInbox();
@@ -284,7 +321,7 @@
     $('firmware-role-wrap').hidden=true; $('firmware-role').value='';
     $('firmware-choice-wrap').hidden=true; $('firmware-choice').replaceChildren();
     $('firmware-download').hidden=true; $('firmware-download').disabled=true;
-    $('firmware-catalog-status').textContent='Investigate the target to find matching firmware.';
+    $('firmware-catalog-status').textContent='Select the remote device, then choose Find matching firmware.';
     $('firmware-base-status').textContent='';
     ui.dispatchEvent(new CustomEvent('lora-ota-investigation-clear'));
   }
@@ -319,13 +356,17 @@
   $('password').addEventListener('input',clearInvestigation);
   $('file').addEventListener('change',()=>{
     catalogFile=null;
-    if($('file').files[0])$('firmware-catalog-status').textContent='Using your selected firmware file; check it against the target before transferring.';
+    if($('file').files[0])$('firmware-catalog-status').textContent='Using your selected firmware file. Choose Prepare update.';
   });
   $('base').addEventListener('change',()=>{
     $('firmware-base-status').textContent=$('base').files[0] ? 'Using your selected installed firmware file.' :
       catalogBaseFile ? 'Using the downloaded installed firmware matching the reported target hash.' : '';
   });
-  $('source').addEventListener('change',()=>{$('source-update-help').hidden=true;clearInvestigation();if(!link)$('acl').checked=$('source').value==='repeater';});
+  $('source').addEventListener('change',()=>{
+    $('source-update-help').hidden=true;clearInvestigation();
+    if(!link){$('acl').checked=$('source').value==='repeater';$('target-controls').hidden=$('source').value==='companion';}
+    if($('source').value==='repeater')openDetails($('key'));
+  });
   $('acl').checked=false;
   function selectTarget() {
     const key=$('key').value.trim();
@@ -347,11 +388,12 @@
     if (connectController) connectController.abort();
     if (session) session.stop();
     if (preparing) preparing.abort();
-    if (activeTask) { log('Waiting for the current radio request to finish…'); await activeTask.catch(() => {}); }
+    if (activeTask) { log('Waiting for the current radio request to finish...'); await activeTask.catch(() => {}); }
     if (link) await link.close();
     sourceOtaUnsupported=false;
     link = session = chainPrepared = chainConfig = null;contacts=[];targetLocked=false;contactKey='';
     $('source-info').hidden=true; $('source-info').textContent='';
+    preparedDownload=null;status('Disconnected. Connect your USB radio to start another update.', 'ready');
     $('key').value='';$('password').value='';$('contact-search').value='';clearInvestigation();renderContacts();busy(false); $('connect').disabled = false; $('inspect').disabled = true; $('find-route').disabled = true;
     $('chain-plan').disabled = true; $('chain-run').disabled = true; $('chain-resume').disabled = true;
     $('transfer').disabled = true; $('resume').disabled = true; $('install').disabled = true;
@@ -359,24 +401,24 @@
   async function connect() {
     const controller = connectController = new AbortController();
     $('source-update-help').hidden=true;
-    $('connect').disabled = true; $('connect').textContent = 'Connecting…'; busy(true);
-    $('contact-status').textContent = 'Choose a USB device…';
+    $('connect').disabled = true; $('connect').textContent = 'Connecting...'; busy(true);
+    $('contact-status').textContent = 'Choose a USB device...';
     try {
-      if (!navigator.serial) throw Error('Web Serial is unavailable. Use a supported browser on a secure page.');
+      if (!navigator.serial) throw Error('USB access is unavailable. Open this page in Chrome or Edge on a computer; Firefox does not support this USB connection.');
       const companion=$('source').value==='companion', key = $('key').value.trim();
-      if (!companion && !/^[0-9a-f]{64}$/i.test(key)) throw Error('Enter the target’s complete public key.');
+      if (!companion && !/^[0-9a-f]{64}$/i.test(key)) throw Error('Enter the target\'s complete public key.');
       const relays = $('relays').value.trim() ? $('relays').value.trim().split(/[\s,]+/) : [];
       if (companion && relays.length) throw Error('Companion updates currently require a zero-hop connection.');
       if (relays.length && !$('acl').checked) throw Error('Routed updates require existing ACL access on every relay and the target.');
       if (relays.some(r => !/^[0-9a-f]{64}$/i.test(r)) || relays.length > 8) throw Error('Enter up to eight full relay public keys.');
       const port = await navigator.serial.requestPort();
       if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
-      $('contact-status').textContent = 'Connecting to radio…';
+      $('contact-status').textContent = 'Connecting to radio...';
       if(companion)$('acl').checked=false;
       const openOptions = {openSignal:controller.signal, onOpenAttempt:(attempt,maxAttempts)=>{
-        if(!controller.signal.aborted) $('contact-status').textContent='Opening USB port (attempt '+attempt+' of '+maxAttempts+')…';
+        if(!controller.signal.aborted) $('contact-status').textContent='Opening USB port (attempt '+attempt+' of '+maxAttempts+')...';
       }, onOpenSuccess:()=>{
-        if(!controller.signal.aborted) $('contact-status').textContent='Connecting to radio…';
+        if(!controller.signal.aborted) $('contact-status').textContent='Connecting to radio...';
       }};
       const direct = companion
         ? new LoraOtaCompanion.CompanionTransport(port, {...openOptions, remoteTimeout:75000, onPreserved:refreshPreservedMessages, onInvestigationProgress})
@@ -392,12 +434,12 @@
           showAvailability({state:'unsupported',message:'LoRa updates are unavailable with this USB Companion: its firmware cannot send OTA packets. Update the source Companion firmware first.'});
           showSourceUpdate('companion');
         }
-        const sourceVersion=link.firmwareVersion ? link.firmwareVersion+(link.firmwareVersionTruncated?'…':'') : 'version unavailable';
+        const sourceVersion=link.firmwareVersion ? link.firmwareVersion+(link.firmwareVersionTruncated?'...':'') : 'version unavailable';
         const sourceMode=link.rawPacketSupport==='unsupported' ? 'OTA packet sending unsupported' :
           link.otaMode==='guarded' ? 'guarded OTA selected automatically' : 'raw-packet OTA compatibility selected automatically';
-        $('source-info').textContent='Companion firmware: '+sourceVersion+' · '+sourceMode+'.';
+        $('source-info').textContent='Companion firmware: '+sourceVersion+'  /  '+sourceMode+'.';
         $('source-info').hidden=false;
-        $('contact-status').textContent = 'Loading contacts…';
+        $('contact-status').textContent = 'Loading contacts...';
         contacts=await link.contacts();
         if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
         renderContacts();
@@ -410,6 +452,7 @@
       $('chain-plan').disabled = updatesBlocked();
       $('find-route').disabled = !link.aclOnly || !link.supportsRoutedPath || !!link.relays;
       log('Connected to source ' + link.sourceKey + '.');
+      status('Connected. Choose the remote device and select Find matching firmware.', 'ready');
     } catch (error) {
       if(!controller.signal.aborted && error?.name!=='NotFoundError')fail(error);
       if (link) { try { await link.close(); } catch (_) {} }
@@ -427,7 +470,7 @@
   async function loadCatalogCandidate(candidate, generation) {
     requireUpdatesAvailable();
     catalogFile=null; invalidate();
-    $('firmware-catalog-status').textContent='Downloading and checking firmware…';
+    $('firmware-catalog-status').textContent='Downloading and checking firmware...';
     const result=await LoraOtaCatalog.load(candidate,catalogDest);
     if(generation!==catalogGeneration || !link)throw Error('Target changed while firmware was downloading');
     if(!(result.bytes instanceof Uint8Array) || !result.bytes.length || !/\.bin$/i.test(result.name))throw Error('The downloaded firmware is invalid');
@@ -435,8 +478,10 @@
     $('file').value=''; invalidate();
     const deltaHelp=catalogDest.nrf && !catalogDest.external && !catalogDest.sd
       ? ($('base').files[0] || catalogBaseFile ? ' An installed image is selected for the required in-place differential.'
-        : ' This target needs an in-place differential; also select the exact installed firmware below.') : '';
-    $('firmware-catalog-status').textContent='Downloaded '+result.name+'; hardware identity verified. Check firmware and target before transferring.'+deltaHelp;
+        : ' This target needs an in-place differential; select the exact installed firmware under local file options.') : '';
+    $('firmware-catalog-status').textContent='Downloaded '+result.name+'; hardware identity verified. Select Prepare update.'+deltaHelp;
+    if(catalogDest.nrf && !catalogDest.external && !catalogDest.sd && !catalogBaseFile && !$('base').files[0])openDetails($('base'));
+    status('Matching firmware loaded. Select Prepare update to check the device and channel.', 'ready');
   }
   async function discoverCatalog(role) {
     requireUpdatesAvailable();
@@ -444,7 +489,7 @@
     if(!catalogDest || !role)return;
     if(catalogDest.nrf && !catalogDest.sd && (catalogDest.codecs & 4) && !$('base').files[0] && typeof LoraOtaCatalog.findInstalled==='function') {
       const baseHelp=catalogDest.external ? 'You can select it manually to make a differential.' : 'Select it manually for the required differential.';
-      $('firmware-base-status').textContent='Looking for the installed firmware…';
+      $('firmware-base-status').textContent='Looking for the installed firmware...';
       try {
         const base=await LoraOtaCatalog.findInstalled(catalogDest,role,catalogVersion);
         if(generation!==catalogGeneration || !link)return;
@@ -457,7 +502,7 @@
         $('firmware-base-status').textContent='Could not find the exact installed firmware: '+(error?.message||error)+'. '+baseHelp;
       }
     }
-    $('firmware-catalog-status').textContent='Finding matching firmware…';
+    $('firmware-catalog-status').textContent='Finding matching firmware...';
     const candidates=await LoraOtaCatalog.discover(catalogDest,role);
     if(generation!==catalogGeneration || !link)return;
     catalogCandidates=candidates;
@@ -478,23 +523,24 @@
       select.value=String(index);
       await loadCatalogCandidate(recommended,generation);
     }else{
-      $('firmware-catalog-status').textContent=$('file').files[0] ? 'Using your selected firmware file. Matching downloads are also listed.' : 'Choose a matching firmware version to download.';
+      $('firmware-catalog-status').textContent=$('file').files[0] ? 'Using your selected firmware file. Matching downloads are also listed.' : 'Choose a matching firmware version, then select Load selected firmware.';
     }
   }
   async function investigate() {
     const standard = usesSharedCompanionInbox();
+    status('Checking the remote device and finding compatible firmware...');
     clearInvestigation(); invalidate(); busy(true); $('inspect').disabled = true;
     const output = $('investigation'), replies = {};
     let target = '', complete = false, verified = false, stopped = false, failed = false;
     let repeaterTimeout = null, restoreRepeaterTimeout = false;
     let investigationTimeoutMs = 20000;
-    output.hidden = false;
-    output.textContent = 'Investigating target…\n';
+    output.hidden = false;$('investigation-details').hidden=false;
+    output.textContent = 'Investigating target...\n';
     $('investigation-progress').hidden=false;
     investigationStopping=false;investigationActive=true;
     $('investigation-stop').hidden=!($('source').value==='companion' && typeof link?.cancelInvestigation==='function');
     $('investigation-stop').disabled=false;
-    showInvestigationProgress('Preparing target connection…');
+    showInvestigationProgress('Preparing target connection...');
     const add = text => { output.textContent += text + '\n'; };
     const checks = [
       ['OTA status', 'ota status'], ['OTA storage and image', 'ota self'],
@@ -542,7 +588,7 @@
       target = selectTarget().toLowerCase();
       if(!companion) {
         if(!link.relays?.length && await link.localCommand('ota.peer path')==='OTApeer path=off')investigationTimeoutMs=7000;
-        showInvestigationProgress('Setting the source reply timeout…');
+        showInvestigationProgress('Setting the source reply timeout...');
         repeaterTimeout = await sourceTimeout();
         const seconds=investigationTimeoutMs/1000;
         if(repeaterTimeout!==seconds) {
@@ -555,14 +601,14 @@
       if(standard) {
         add('Companion: using the shared message queue and raw packets. Keep other apps disconnected during the update.');
         await link.enableStandardInvestigation();
-        showInvestigationProgress(link.investigationAuthenticated ? 'Checking target identity…' : noPassword ? 'Checking existing access without a password…' : 'Logging in and checking target identity…');
+        showInvestigationProgress(link.investigationAuthenticated ? 'Checking target identity...' : noPassword ? 'Checking existing access without a password...' : 'Logging in and checking target identity...');
         await link.investigateVerifyPeer(target, password);
       } else if(companion) {
-        showInvestigationProgress(link.authenticated ? 'Checking target identity…' : noPassword ? 'Checking existing access without a password…' : 'Logging in and checking target identity…');
+        showInvestigationProgress(link.authenticated ? 'Checking target identity...' : noPassword ? 'Checking existing access without a password...' : 'Logging in and checking target identity...');
         await link.investigateVerifyPeer(target, password);
       } else {
         if($('source').value!=='companion' && !link.authenticated && !noPassword)add('> login (password hidden)');
-        showInvestigationProgress(link.authenticated ? 'Checking target identity…' : noPassword ? 'Checking existing access without a password…' : 'Logging in and checking target identity…');
+        showInvestigationProgress(link.authenticated ? 'Checking target identity...' : noPassword ? 'Checking existing access without a password...' : 'Logging in and checking target identity...');
         if(noPassword) await repeaterRead('Checking target identity', () => link.verifyPeer(target, password), () => true);
         else await link.verifyPeer(target, password);
       }
@@ -580,7 +626,7 @@
           if(esp32Target===undefined)esp32Target=await LoraOtaChecks.isKnownEsp32(replies['ota status']||'',replies['ota self']||'');
           if(esp32Target){add(label+': Skipped (ESP32)');continue;}
         }
-        showInvestigationProgress('Checking '+label.toLowerCase()+'…');
+        showInvestigationProgress('Checking '+label.toLowerCase()+'...');
         let reply;
         try { reply = String(await readCommand(command)).trim(); }
         catch(error) {
@@ -614,7 +660,7 @@
       if (/\bqspi\b/i.test((replies['ota status'] || '') + ' ' + (replies['ota self'] || ''))) {
         try {
           checkStopped();
-          showInvestigationProgress('Checking external flash…');
+          showInvestigationProgress('Checking external flash...');
           const qspi = String(await readCommand('ota qspi')).trim();
           replies['ota qspi'] = qspi;
           const normalized = qspi.replace(/^>\s*/, '');
@@ -638,15 +684,16 @@
           $('firmware-catalog-status').textContent='Choose the target type to find matching firmware.';
         }else if(!globalThis.LoraOtaCatalog){
           $('firmware-catalog-status').textContent='Firmware catalog is unavailable. Choose a file manually.';
-        }else { showInvestigationProgress('Finding matching firmware…'); await discoverCatalog(role); }
+        }else { showInvestigationProgress('Finding matching firmware...'); await discoverCatalog(role); }
       } catch(error) {
         $('firmware-catalog-status').textContent='Could not select firmware automatically: '+(error?.message || error)+'. You can choose a file manually.';
+        openDetails($('file'));
       } else $('firmware-catalog-status').textContent=updatesBlocked() ? $('ota-availability').textContent : 'Target identity is not fully verified; firmware selection and updates are disabled.';
     } catch (error) {
       stopped=investigationStopping && /^(?:Investigation canceled\.|Investigation stopped by user)/.test(error?.message||'');
       failed=!stopped;
       if(!stopped && !targetAvailability && !sourceOtaUnsupported) {
-        targetAvailability={state:'unknown',message:'LoRa update support could not be confirmed. Check the target’s access and connectivity, then investigate again.'};
+        targetAvailability={state:'unknown',message:'LoRa update support could not be confirmed. Check the target\'s access and connectivity, then select Find matching firmware.'};
         showAvailability(targetAvailability);
       }
       if(updatesBlocked())$('firmware-catalog-status').textContent=$('ota-availability').textContent;
@@ -662,7 +709,7 @@
     } finally {
       if(restoreRepeaterTimeout) {
         try {
-          showInvestigationProgress('Restoring the source reply timeout…');
+          showInvestigationProgress('Restoring the source reply timeout...');
           await sourceTimeout(repeaterTimeout);
           if(await sourceTimeout()!==repeaterTimeout)throw Error('Timeout verification failed');
         } catch(error) {
@@ -678,6 +725,8 @@
       $('investigation-stop').hidden=true;
       investigationActive=false;
       ui.dispatchEvent(new CustomEvent('lora-ota-investigated', {detail:{target,replies,complete,verified}}));
+      if(!failed && !stopped && !updatesBlocked())status(catalogFile ? 'Matching firmware loaded. Select Prepare update.' : $('firmware-catalog-status').textContent, 'ready');
+      if(stopped)status('Device check stopped.');
       busy(false); $('inspect').disabled = !link || updatesBlocked();
     }
   }
@@ -691,7 +740,7 @@
       if (allowlist.some(k => !/^[0-9a-f]{64}$/.test(k)) || new Set(allowlist).size !== allowlist.length) throw Error('Enter unique full keys for candidate repeaters.');
       const minSnrDb = Number($('snr').value), hours = Number($('age').value);
       if (!Number.isFinite(minSnrDb) || !Number.isFinite(hours) || hours <= 0 || hours > 168) throw Error('Enter a valid SNR floor and observation age.');
-      log('Checking cached neighbor observations and ACL access…');
+      log('Checking cached neighbor observations and ACL access...');
       const observed = await LoraOtaCollect.collectAdminNeighbors({link,allowlist,minSnrDb,maxAgeSeconds:Math.floor(hours*3600),maxRelays:8,
         progress:event => log('Checked neighbor table ' + event.queries + '.')});
       const ranked = LoraOtaDiscovery.rankRoutes({source:link.sourceKey,target,allowlist,observations:observed.observations,
@@ -710,16 +759,22 @@
     finally { busy(false); $('inspect').disabled = !link || updatesBlocked(); $('find-route').disabled = !link || !!link.relays || !link.aclOnly || !link.supportsRoutedPath; }
   }
   async function inspect() {
+    status('Preparing the update: checking firmware, access and the radio channel...');
     invalidate(); busy(true); $('inspect').disabled = true;
     try {
       if (!link) throw Error('Connect a source radio first.');
       requireUpdatesAvailable();
       const targetKey=selectTarget(), password=$('acl').checked ? '' : $('password').value;
       const standard=$('source').value==='companion' && link.otaSupported===false;
-      if(standard && (!link.investigationAuthenticated || link.investigationVerified!==true))throw Error('Run Investigate and verify the target’s full public key before checking firmware.');
+      if(standard && (!link.investigationAuthenticated || link.investigationVerified!==true))throw Error('Select Find matching firmware to verify the target\'s full public key first.');
       const verify=()=>standard ? link.investigateVerifyPeer(targetKey,password) : link.verifyPeer(targetKey,password);
       const remote=command=>standard ? link.investigateCommand(targetKey,password,command) : link.remoteCommand(targetKey,password,command);
-      const file = catalogFile || $('file').files[0]; if (!file) throw Error('Choose a firmware .bin or .mota file.');
+      let file = catalogFile || $('file').files[0];
+      if(!file && $('firmware-choice').value && catalogDest) {
+        const candidate=catalogCandidates[Number($('firmware-choice').value)];
+        if(candidate) { await loadCatalogCandidate(candidate,catalogGeneration);file=catalogFile;status('Preparing the update: checking the device and radio channel...'); }
+      }
+      if (!file) { openDetails($('file'));throw Error('Find matching firmware first, or choose a local firmware file.'); }
       // Catch missing/pending channels before reading large files or building a delta.
       if(!link.relays?.length) {
         await verify();
@@ -759,7 +814,7 @@
             }
           } else await LoraOtaChecks.ensureSequentialTarget(status, self, () => remote('get bootloader.ver'));
           preparing = new AbortController();
-          log('Preparing the differential package in this browser…');
+          log('Preparing the differential package in this browser...');
           const delta = await MeshCoreLoraDelta.buildInWorker(base, input, {...deltaOptions, signal:preparing.signal});
           if (inplacePlan) inplacePlan.memorySize = delta.memorySize;
           preparing = null;
@@ -785,6 +840,10 @@
         compress:supportedCompression(), progress:log, journal, readJournal
       });
       const dest = await session.inspect({allowExisting:true});
+      preparedDownload=['idle','active','ready'].includes(dest.download)?dest.download:null;
+      const targetName=contacts.find(c=>String(c.publicKey).toLowerCase()===targetKey.toLowerCase())?.name || dest.hwId;
+      $('update-summary').textContent=targetName+' ('+dest.hwId+'): '+file.name+' / '+(info.isFull?'full':'differential')+' update, '+Math.ceil(info.blob.length/1024)+' KB. Keep this page open until verification finishes.';
+      status(dest.download==='installed' ? 'This update is already installed and verified.' : 'Ready. Select '+(dest.download==='active'?'Resume and install update':dest.download==='ready'?'Install and verify update':'Update remote firmware')+'.', 'ready');
       log('Verified ' + dest.hwId + '; ' + (info.isFull ? 'full' : 'differential') + ' package ' + LoraOtaChecks.hex(info.merkleRoot).toUpperCase() + '.');
       log(info.signed ? (expectedSigner ? 'Package signature matches your trusted key.' : 'Package signature is valid; no trusted signing key was supplied.') : 'This package is unsigned.');
       $('transfer').disabled = dest.download !== 'idle';
@@ -801,12 +860,41 @@
     finally { preparing = null; busy(false); $('inspect').disabled = !link || updatesBlocked(); }
   }
   async function transfer(resume) {
+    preparedDownload=null;
     $('transfer').disabled = true; $('resume').disabled = true; $('inspect').disabled = true; busy(true);
-    try { await session.start({resume}); log('Transfer complete. Check the target and select Install.'); $('install').disabled = false; }
+    try { await session.start({resume}); preparedDownload='ready';log('Transfer complete. Check the target and select Install.'); $('install').disabled = false;status('Transfer complete. Select Install and verify update.', 'ready'); }
     catch (error) { fail(error); }
     finally { busy(false); $('inspect').disabled = !link || updatesBlocked(); }
   }
+  async function updateRemote() {
+    if(uiBusy || !session || !preparedDownload || updatesBlocked())return;
+    const job=session, download=preparedDownload;
+    preparedDownload=null;busy(true);
+    for(const name of ['inspect','transfer','resume','install'])$(name).disabled=true;
+    try {
+      if(download!=='ready') {
+        updatePhase='transfer';
+        status(download==='active'?'Resuming the transfer over LoRa...':'Transferring firmware over LoRa. Keep this page open...');
+        await job.start({resume:download==='active'});
+        log('Transfer complete. Installing the verified package.');
+      }
+      // Use the session's fresh identity, staged-package and journal checks.
+      // An uncertain write is never repeated by this UI action.
+      updatePhase='install';
+      status('Installing on the remote device, then checking it after reboot...');
+      const result=await job.install();
+      log('Installed and verified: '+result.hwId+' '+result.baseHash.toUpperCase());
+      status('Update complete. The remote device is running the verified firmware.', 'complete');
+      $('update-summary').textContent='Installed and verified on '+result.hwId+'. You can disconnect the USB radio.';
+    } catch(error) {
+      fail(error);
+      $('update-summary').textContent='Update stopped. Select Prepare update to read the device state and recover this same update. Keep the same firmware selected.';
+    } finally {
+      updatePhase='';busy(false);$('inspect').disabled=!link || updatesBlocked();
+    }
+  }
   function run(task) { activeTask = task.finally(() => { activeTask = null; }); return activeTask; }
+  $('update').addEventListener('click',()=>run(updateRemote()));
   $('firmware-role').addEventListener('change',()=>run((async()=>{
     catalogGeneration++;catalogFile=null;catalogBaseFile=null;catalogCandidates=[];invalidate();
     $('firmware-base-status').textContent='';
@@ -818,16 +906,16 @@
     finally{busy(false);$('inspect').disabled=!link || updatesBlocked();}
   })()));
   $('firmware-choice').addEventListener('change',()=>{
-    catalogFile=null;invalidate();
+    catalogFile=null;$('file').value='';invalidate();
     $('firmware-download').disabled=!$('firmware-choice').value;
-    if($('firmware-choice').value)$('firmware-catalog-status').textContent='Download the selected firmware, then check it against the target.';
+    if($('firmware-choice').value)$('firmware-catalog-status').textContent='Select Prepare update to load and check this firmware.';
   });
   $('firmware-download').addEventListener('click',()=>run((async()=>{
     const index=Number($('firmware-choice').value),generation=catalogGeneration;
     if(!$('firmware-choice').value || !Number.isInteger(index) || !catalogCandidates[index])return;
     busy(true);$('inspect').disabled=true;
     try{await loadCatalogCandidate(catalogCandidates[index],generation);}
-    catch(error){$('firmware-catalog-status').textContent='Firmware download failed: '+(error?.message||error)+'. You can choose a file manually.';}
+    catch(error){$('firmware-catalog-status').textContent='Could not load the selected firmware: '+(error?.message||error)+'. Choose another matching image or use a local file.';status($('firmware-catalog-status').textContent,'error');openDetails($('file'));}
     finally{busy(false);$('inspect').disabled=!link || updatesBlocked();}
   })()));
   $('connect').addEventListener('click', () => run(connect()));
@@ -839,7 +927,7 @@
   $('investigation-stop').addEventListener('click',()=>{
     if(!link || typeof link.cancelInvestigation!=='function')return;
     investigationStopping=true;$('investigation-stop').disabled=true;
-    showInvestigationProgress('Stopping safely…');
+    showInvestigationProgress('Stopping safely...');
     try { link.cancelInvestigation(); } catch(error) { fail(error); }
   });
   $('inspect').addEventListener('click', () => run(inspect()));
@@ -864,8 +952,9 @@
   $('repeat-off').addEventListener('click', () => run(forwarding('off')));
   $('repeat-on').addEventListener('click', () => run(forwarding('on')));
   async function install() {
+    preparedDownload=null;
     $('install').disabled = true; $('inspect').disabled = true; busy(true);
-    try { const result = await session.install(); log('Installed and verified: ' + result.hwId + ' ' + result.baseHash.toUpperCase()); }
+    try { const result = await session.install(); preparedDownload=null;log('Installed and verified: ' + result.hwId + ' ' + result.baseHash.toUpperCase());status('Update complete. The remote device is running the verified firmware.', 'complete'); }
     catch (error) { fail(error); }
     finally { busy(false); $('inspect').disabled = !link || updatesBlocked(); }
   }
@@ -926,16 +1015,16 @@
       }
       const radio={bandwidth:sourceRadio[1],sf:sourceRadio[2],cr:sourceRadio[3],preamble};
       preparing=new AbortController();
-      log('Comparing update paths in this browser…');
+      log('Comparing update paths in this browser...');
       chainPrepared=await LoraOtaCandidates.prepare({images,current,goal:'goal',objective,radio,kinds:['delta'],
         relays:link.relays?.length||0,restartSeconds:60,signal:preparing.signal,progress:log},
         {compressBlock:supportedCompression()});
       preparing=null;
-      log('Simulating each differential with the matching bootloader…');
+      log('Simulating each differential with the matching bootloader...');
       await LoraOtaSim.simulate(bootProfile,chainPrepared,caps.runtimeStageCeiling);
       chainConfig={source:link.sourceKey,target,current,caps,baseImageHash:LoraOtaChecks.hex(first.imageHash),objective,preamble,minutes,sourceRadio,targetPreamble,bootProfile};
       const route=chainPrepared.route;
-      log('Selected path: '+route.steps.map(s=>s.from+' → '+s.to+' ('+s.kind+')').join('; ')+'.');
+      log('Selected path: '+route.steps.map(s=>s.from+' -> '+s.to+' ('+s.kind+')').join('; ')+'.');
       log('Estimate: '+route.totals.rfTransmissions+' radio transmissions'+
         (route.totals.rfAirtimeSeconds===null?'':', '+route.totals.rfAirtimeSeconds.toFixed(1)+' seconds of radio airtime')+
         '; '+route.totals.installs+' installation(s)'+

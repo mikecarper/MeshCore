@@ -153,8 +153,14 @@
           // retain the original saved-primary equality requirement.
           const verifiedSecondary = profile === 1 && this.link.supportsOtaRadio2 === true;
           const nativeRepeater = !this.link.browserRawSource && this.link.supportsOtaRadio2 === true;
-          if (!guardedCompanion && !verifiedSecondary && !nativeRepeater && radio.some((v, i) => Math.abs(v - savedSourceRadio[i]) > 0.001))
-            throw Error('The '+label+' temporary radio must match its saved primary channel');
+          if (!guardedCompanion && !verifiedSecondary && !nativeRepeater && radio.some((v, i) => Math.abs(v - savedSourceRadio[i]) > 0.001)) {
+            const command='tempradio '+savedSourceRadio.join(',')+',120,128';
+            const error=Error('The '+label+' temporary radio must match its saved primary channel in compatibility mode. '+
+              'Saved: '+savedSourceRadio.join(',')+'; temporary: '+radio.join(',')+'. '+
+              'Apply `'+command+'` to the remote target first, then the USB source. '+
+              'Or update the source to firmware with automatic channel setup. Matching two different temporary channels alone does not satisfy this older-source check.');
+            error.manualRadioCommand=command;throw error;
+          }
         }
         const rxps = await command('get radio.rxps');
         if (!/^off\b/i.test(rxps)) throw Error(label + ': Turn RX power saving off before starting');

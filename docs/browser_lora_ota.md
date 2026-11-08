@@ -2,26 +2,29 @@
 <p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/browser_lora_ota/">View this page on MeshCore Docs</a>.</p>
 <!-- meshcore-hosted-doc-link:end -->
 
-# Browser LoRa updater (experimental)
+# Update remote firmware over LoRa
 
-- Chrome or Edge on a computer.
-- A Companion or Repeater connected by USB.
-- A target reachable over LoRa, with admin access.
-- Admin access on a shared starting channel; the page prepares the update channel.
-- Keep this page open during the transfer.
+Connect a USB radio, choose the remote device, then prepare and start its update.
+Keep the browser open until the new firmware is verified. This updater is experimental.
+Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
 
 <div data-lora-ota>
+  <p data-role="workflow-status" class="lora-ota-notice" role="status" aria-live="polite">Connect your USB radio to get started.</p>
+  <p data-role="browser-support" class="lora-ota-notice" role="alert" hidden>USB access is unavailable in this browser. Open this page in Chrome or Edge on a computer. Firefox does not provide the Web Serial connection this updater needs.</p>
   <section class="lora-ota-step">
-    <h2>1. Connect your radio</h2>
+    <h2>1. Connect and choose the remote device</h2>
+    <details class="lora-ota-advanced"><summary>USB connection type (Companion by default)</summary>
     <label>USB device
       <select data-role="source"><option value="companion">Companion</option><option value="repeater">Repeater</option></select>
     </label>
-    <p>Plug in your USB radio, then connect it and choose the device to update.</p>
-    <p>Investigate checks LoRa update support first. If the target cannot receive updates or its OTA storage or bootloader is not ready, the page stops and explains what needs attention before you choose firmware.</p>
-    <p class="lora-ota-actions"><button type="button" data-role="connect">Connect USB source</button> <button type="button" data-role="disconnect" class="lora-ota-secondary">Disconnect</button></p>
+    </details>
+    <p>The USB radio sends the update to the remote device over LoRa.</p>
+    <p>Choose a device and enter its admin password if needed. The page checks update support and finds matching firmware.</p>
+    <p class="lora-ota-actions"><button type="button" data-role="connect">Connect USB source</button> <button type="button" data-role="disconnect" class="lora-ota-secondary" disabled>Disconnect</button></p>
     <p data-role="source-info" role="status" hidden></p>
     <p data-role="ota-availability" class="lora-ota-availability" role="status" aria-live="polite" hidden></p>
     <p data-role="source-update-help" role="status" hidden>This source needs updated firmware for this OTA workflow. If it is still connected here, disconnect it before opening the flasher. <a data-role="source-update-link" href="https://mikecarper.github.io/meshfirmware/" target="_blank" rel="noopener noreferrer">Update source firmware</a></p>
+    <section data-role="target-controls" hidden>
     <label>Search contacts by name or public-key prefix<input data-role="contact-search" autocomplete="off" spellcheck="false" disabled></label>
     <p><strong>Device to update</strong></p>
     <p data-role="contact-status" role="status">Connect a Companion to load contacts.</p>
@@ -33,14 +36,15 @@
       <label>Target public key (64 hex characters)<input data-role="key" size="64" autocomplete="off" spellcheck="false"></label>
       <p>For a USB Repeater source, enter the target key here before connecting.</p>
     </details>
+    </section>
     <section data-role="legacy-warning" hidden>
-      <p>Investigate reads this Companion’s shared message queue. Pending unrelated messages will move from the Companion to this browser and cannot be restored to the Companion. They are stored unencrypted in this browser profile and can be downloaded below. Closing the browser while a message is being received can lose that message.</p>
+      <p>Checking the device reads this Companion's shared message queue. Pending unrelated messages will move from the Companion to this browser and cannot be restored to the Companion. They are stored unencrypted in this browser profile and can be downloaded below. Closing the browser while a message is being received can lose that message.</p>
       <p>Keep other apps disconnected while using this Companion.</p>
     </section>
-    <p class="lora-ota-actions"><button type="button" data-role="investigate" disabled>Investigate</button></p>
+    <p class="lora-ota-actions"><button type="button" data-role="investigate" disabled>Find matching firmware</button></p>
     <p data-role="investigation-progress" hidden><span data-role="investigation-progress-label" role="status" aria-live="polite"></span> <span data-role="investigation-progress-elapsed" aria-live="off"></span></p>
     <p><button type="button" class="lora-ota-secondary" data-role="investigation-stop" hidden>Stop investigation</button></p>
-    <pre data-role="investigation" role="status" aria-live="polite" hidden></pre>
+    <details data-role="investigation-details" hidden><summary>Device check details</summary><pre data-role="investigation" hidden></pre></details>
     <section data-role="legacy-inbox" hidden>
       <p data-role="legacy-inbox-status" role="status"></p>
       <details><summary>Messages saved in this browser</summary><pre data-role="legacy-inbox-messages"></pre></details>
@@ -49,10 +53,41 @@
       <button type="button" class="lora-ota-secondary" data-role="legacy-inbox-clear" disabled>Clear saved browser copies</button>
     </section>
   </section>
-  <section class="lora-ota-step" data-role="radio-setup-panel">
-    <h2>2. Update channel</h2>
+  <section class="lora-ota-step">
+    <h2>2. Prepare firmware</h2>
+    <p data-role="legacy-source-block" hidden>This Companion uses its shared message queue and raw packets.</p>
+    <p data-role="firmware-catalog-status" role="status">Select the remote device, then choose Find matching firmware.</p>
+    <section data-role="firmware-role-wrap" hidden><label>Target type
+      <select data-role="firmware-role"><option value="">Choose a type</option><option value="repeater">Repeater</option><option value="room">Room</option><option value="sensor">Sensor</option></select>
+    </label></section>
+    <section data-role="firmware-choice-wrap" hidden><label>Matching firmware
+      <select data-role="firmware-choice"></select>
+    </label></section>
+    <p><button type="button" data-role="firmware-download" hidden disabled>Load selected firmware</button></p>
+    <details class="lora-ota-advanced" data-role="manual-firmware"><summary>Use a local file or an installed firmware image</summary>
+    <label>Choose a firmware file (.bin, .zip, or .mota)<input data-role="file" type="file" accept=".bin,.zip,.mota"></label>
+    <p><a href="https://github.com/mikecarper/MeshCore/releases">Get firmware from GitHub releases</a></p>
+    <p>To make a smaller differential update, also select the exact firmware currently installed on the target.</p>
+    <label>Installed firmware (optional)<input data-role="base" type="file" accept=".bin,.zip"></label>
+    <p data-role="firmware-base-status" role="status"></p>
+    </details>
+    <p>Preparing loads your selected image, checks compatibility and sets up the temporary update channel when supported. Automatic setup also turns off RX power saving and automatic OTA fetch/install; any saved changes are listed in the diagnostic log.</p>
+    <p class="lora-ota-actions"><button type="button" data-role="inspect" disabled>Prepare update</button></p>
+  </section>
+  <section class="lora-ota-step">
+    <h2>3. Update the remote device</h2>
+    <p data-role="update-summary">Prepare the firmware first. The update will transfer, install and verify the running firmware.</p>
+    <p data-role="update-progress" role="status" aria-live="polite" hidden></p>
+    <p class="lora-ota-actions"><button type="button" data-role="update" disabled>Update remote firmware</button></p>
+    <details class="lora-ota-advanced"><summary>Separate transfer, resume and install controls</summary>
+    <p class="lora-ota-actions"><button type="button" data-role="transfer" disabled>Transfer</button> <button type="button" data-role="resume" class="lora-ota-secondary" disabled>Resume</button> <button type="button" data-role="install" disabled>Install and verify</button></p>
+    </details>
+  </section>
+  <details class="lora-ota-advanced" data-role="advanced-tools"><summary>Advanced settings and diagnostics</summary>
+  <details class="lora-ota-advanced" data-role="radio-setup-panel">
+    <summary>Update channel and manual radio setup</summary>
     <p>The page prepares this automatically when you check the firmware. It prefers unused temporary radio2 on each end and falls back to the primary temporary channel. Saved normal channels stay unchanged.</p>
-    <p>For 902–928 MHz radios, the default is 909.950 MHz, or a separated alternate if that overlaps the normal channel. For other regions, choose a suitable frequency below.</p>
+    <p>For 902-928 MHz radios, the default is 909.950 MHz, or a separated alternate if that overlaps the normal channel. For other regions, choose a suitable frequency below.</p>
     <details class="lora-ota-advanced">
       <summary>Update channel options</summary>
       <label>Update frequency (MHz)<input data-role="radio-frequency" type="number" min="150" max="2500" step="0.001" placeholder="Choose a frequency"></label>
@@ -63,38 +98,16 @@
       <label>Temporary window (minutes)<input data-role="radio-minutes" type="number" min="1" max="10080" value="120"></label>
       <p class="lora-ota-actions"><button type="button" data-role="radio-prepare" disabled>Prepare now</button> <button type="button" class="lora-ota-secondary" data-role="radio-check" disabled>Check channel</button></p>
     </details>
-    <p>Setup also turns RX power saving and automatic OTA fetch/install off and sets OTA hops to 0. These preferences are saved; any changes appear in Status.</p>
-    <p data-role="radio-setup-status" role="status" aria-live="polite">Connect and investigate the target first.</p>
+    <p>Setup also turns RX power saving and automatic OTA fetch/install off and sets OTA hops to 0. These preferences are saved; any changes appear in the diagnostic log.</p>
+    <p data-role="radio-setup-status" role="status" aria-live="polite">Connect and choose the remote device first.</p>
     <details class="lora-ota-advanced">
       <summary>Manual setup and older firmware</summary>
       <p>Automatic setup works with a guarded USB Companion or a compatible USB Repeater on a direct connection. The page checks which temporary profiles each device supports. Older Companions need manual setup; update the USB Companion to prepare a separate channel without changing saved settings.</p>
       <p>Apply the command on the target first, then the USB source, and check the channel. Every relay also needs matching settings; automatic route preparation is not supported.</p>
       <pre data-role="radio-commands">Choose the update frequency to show the temporary command.</pre>
     </details>
-  </section>
-  <section class="lora-ota-step">
-    <h2>3. Choose firmware</h2>
-    <p data-role="legacy-source-block" hidden>This Companion uses its shared message queue and raw packets.</p>
-    <p data-role="firmware-catalog-status" role="status">Investigate the target to find matching firmware.</p>
-    <section data-role="firmware-role-wrap" hidden><label>Target type
-      <select data-role="firmware-role"><option value="">Choose a type</option><option value="repeater">Repeater</option><option value="room">Room</option><option value="sensor">Sensor</option></select>
-    </label></section>
-    <section data-role="firmware-choice-wrap" hidden><label>Matching firmware
-      <select data-role="firmware-choice"></select>
-    </label></section>
-    <p><button type="button" data-role="firmware-download" hidden disabled>Download selected firmware</button></p>
-    <label>Or choose a firmware file (.bin, .zip, or .mota)<input data-role="file" type="file" accept=".bin,.zip,.mota"></label>
-    <p><a href="https://github.com/mikecarper/MeshCore/releases">Get firmware from GitHub releases</a></p>
-    <p>To make a smaller differential update, also select the exact firmware currently installed on the target.</p>
-    <label>Installed firmware (optional)<input data-role="base" type="file" accept=".bin,.zip"></label>
-    <p data-role="firmware-base-status" role="status"></p>
-    <p class="lora-ota-actions"><button type="button" data-role="inspect" disabled>Check firmware and target</button></p>
-  </section>
-  <section class="lora-ota-step">
-    <h2>4. Send and install</h2>
-    <p>Keep this page open during the transfer. Check the status below before installing.</p>
-    <p class="lora-ota-actions"><button type="button" data-role="transfer" disabled>Transfer</button> <button type="button" data-role="resume" class="lora-ota-secondary" disabled>Resume</button> <button type="button" data-role="install" disabled>Install and verify</button></p>
-  </section>
+  </details>
+
   <details class="lora-ota-advanced">
     <summary>Advanced connection and firmware options</summary>
     <p><label><input type="checkbox" data-role="acl" checked> Source is already in the target ACL</label></p>
@@ -133,11 +146,14 @@
     <p><button type="button" data-role="chain-plan" disabled>Compare paths</button> <button type="button" data-role="chain-run" disabled>Run selected path</button> <button type="button" data-role="chain-resume" disabled>Resume saved path</button></p>
     <p>Estimates exclude retries, status polls and congestion. Use the single-update controls for an actual update.</p>
   </details>
-  <section class="lora-ota-step">
-    <h2>Status</h2>
-    <pre data-role="status" role="status" aria-live="polite"></pre>
-  </section>
+  <details class="lora-ota-advanced" data-role="diagnostics"><summary>Diagnostic log</summary>
+    <pre data-role="status"></pre>
+  </details>
+  </details>
 </div>
+
+<details markdown="1">
+<summary>Compatibility and advanced update details</summary>
 
 ## About guarded OTA
 
@@ -169,7 +185,12 @@ shared message queue: unrelated messages moved into the browser can be
 downloaded, but cannot be restored to the Companion. The page prepares the
 update channel and required RX power saving / OTA preferences automatically on
 compatible direct connections. The temporary channel expires; the required
-RX power saving and OTA policy changes remain saved and are listed in Status. On older Companions, the browser can read the saved radio settings but
+RX power saving and OTA policy changes remain saved and are listed in the diagnostic log. On older Companions, manual TempRadio on both devices must match the USB
+Companion's saved `get radio` settings. Using the same different temporary
+frequency on both ends is not enough for that compatibility mode. The page
+shows the exact command using the saved channel; apply it to the target first,
+then to the source. Otherwise update the Companion to firmware with guarded
+channel setup support. The browser can read the saved radio settings but
 cannot confirm active temporary settings, RX power saving or preamble; check
 these on the device. Some firmware accepts raw OTA packets from USB but
 suppresses their transmission without an active temporary radio.
@@ -207,6 +228,8 @@ can use a compatible prebuilt `.mota`.
 Preparing a differential for a large image can use substantial browser memory;
 if preparation fails, remove the old image to use a full package instead.
 
+
+</details>
 
 <script src="../_javascript/lora_ota_checks.js"></script>
 <script src="../_javascript/lora_ota_package.js"></script>

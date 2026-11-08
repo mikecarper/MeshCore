@@ -4,10 +4,10 @@ const {createHash}=require('node:crypto');
 const {gzipSync}=require('node:zlib');
 const catalog=require('../docs/_javascript/lora_ota_catalog.js');
 const hash=b=>createHash('sha256').update(b).digest('hex');
-async function fixture({hw='test-board',markers=true}={}){
+async function fixture({hw='test-board',markers=true,installHash=true}={}){
   const env='test_board_repeater',targetId=await catalog.idForEnv(env),version='v1.18.0.2';
   const name=env+'-ota-'+version+'.bin',url='https://github.com/mikecarper/MeshCore/releases/download/'+version+'/'+name;
-  const body=Buffer.from(markers?'OTA: status\0get <id> flash | install\0ota installhash <64-hex-container-sha256>':'no ota');
+  const body=Buffer.from(markers?'OTA: status\0get <id> flash | install'+(installHash?'\0ota installhash <64-hex-container-sha256>':''):'no ota');
   const trailer=Buffer.alloc(56);trailer.write('EndF');trailer.writeUInt32LE(body.length,4);Buffer.from(hash(body),'hex').copy(trailer,8,0,8);trailer.writeUInt32LE(0x01120002,16);trailer.writeUInt32LE(targetId,20);trailer.write(hw,24,'ascii');
   const image=Buffer.concat([body,trailer]),gz=gzipSync(image),piece={sha256:hash(image),size:image.length,gzipSha256:hash(gz),gzipSize:gz.length,path:hash(image)+'.gz'};
   const controls={familyTag:version,profiles:{[env]:{otaRole:'lora-receiver',updateMethods:['lora']}}};
@@ -32,7 +32,7 @@ test('rejects tampered mirror, wrong hardware, absent OTA evidence and downgrade
   await assert.rejects(catalog.load(choice,{...f.dest,targetId:f.dest.targetId+1},{fetchImpl:f.fetchImpl}),/identity/);
   await assert.rejects(catalog.load(choice,{...f.dest,version:0x01120002},{fetchImpl:f.fetchImpl}),/identity/);
   const no=await fixture({markers:false}),[candidate]=await catalog.discover(no.dest,'repeater',{fetchImpl:no.fetchImpl});
-  await assert.rejects(catalog.load(candidate,no.dest,{fetchImpl:no.fetchImpl}),/verified-install/);
+  await assert.rejects(catalog.load(candidate,no.dest,{fetchImpl:no.fetchImpl}),/LoRa OTA receiver support/);
 });
 test('excludes missing LoRa qualification and bootloader or merged artifacts',async()=>{
   const f=await fixture();
@@ -64,4 +64,14 @@ test('installed base lookup requires exact version, role, hardware and reported 
   assert.equal(await catalog.findInstalled({...dest,hwId:'wrong'},'repeater',f.item.version,{fetchImpl:f.fetchImpl}),null);
   assert.equal(await catalog.findInstalled(dest,'room',f.item.version,{fetchImpl:f.fetchImpl}),null);
   assert.equal(await catalog.findInstalled(dest,'repeater','v1.18.0.1 (Build: old)',{fetchImpl:f.fetchImpl}),null);
+});
+
+test('released OTA receivers without installhash remain downloadable with full identity and hash checks',async()=>{
+  const f=await fixture({installHash:false});
+  const [choice]=await catalog.discover(f.dest,'repeater',{fetchImpl:f.fetchImpl});
+  const image=await catalog.load(choice,f.dest,{fetchImpl:f.fetchImpl});
+  assert.equal(image.installHashSupported,false);assert.equal(hash(image.bytes),hash(f.image));
+  await assert.rejects(catalog.load(choice,{...f.dest,hwId:'wrong-board'},{fetchImpl:f.fetchImpl}),/identity/);
+  const modern=await fixture(),[next]=await catalog.discover(modern.dest,'repeater',{fetchImpl:modern.fetchImpl});
+  assert.equal((await catalog.load(next,modern.dest,{fetchImpl:modern.fetchImpl})).installHashSupported,true);
 });
