@@ -1,4 +1,5 @@
 #pragma once
+#include <helpers/OldAGCPolicy.h>
 
 #include <MeshCore.h>
 #include <Identity.h>
@@ -400,11 +401,11 @@ public:
   uint32_t getAGCPulseSleep() const { return 0; }
 #if MESH_ENABLE_OLD_AGC
 private:
-  uint32_t _compact_old_agc_seconds = 0;
+  uint32_t _compact_old_agc_seconds = AGC_OLD_AUTO;
 public:
   bool supportsOldAGC() const { return true; }
   bool setOldAGCInterval(uint32_t seconds) {
-    if(seconds>86400) return false;
+    if(!validOldAGCInterval(seconds)) return false;
     _compact_old_agc_seconds=seconds; return true;
   }
   uint32_t getOldAGCInterval() const { return _compact_old_agc_seconds; }

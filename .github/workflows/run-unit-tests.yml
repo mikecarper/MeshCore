@@ -1105,7 +1105,7 @@ jobs:
           test_rxps_pulse_fsm test_rxps_pulse_integration test_rxps_pulse_timing
           test_indicator_agc_stale_irq
           test_rxps_pulse_cli test_cli_maintenance_guard test_warm_rx_refresh
-          test_old_agc_all_radios test_radio_maintenance_fastlane_roles test_agc_defaults
+          test_old_agc_all_radios test_agc_settings test_radio_maintenance_fastlane_roles test_agc_defaults
           test_stm32_lora_driver test_stm32_companion_profile test_sx126x_receive_mode
 
       - name: Verify dual-profile switching and chirp timing

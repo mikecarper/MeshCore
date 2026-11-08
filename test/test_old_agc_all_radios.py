@@ -52,8 +52,8 @@ class Dispatcher:public mesh::Dispatcher {
 };
 struct Fixture {Clock c;Radio r;StaticPoolPacketManager m{4};Dispatcher d{r,c,m};void loop(uint32_t n){c.now=n;d.loop();}void begin(uint32_t n=0){c.now=n;d.begin();loop(n);}};
 int main(int argc,char**argv){assert(argc==2);const char*s=argv[1];
- if(!strcmp(s,"default_range")){Radio r;assert(r.supportsOldAGC()&&r.getOldAGCInterval()==0);assert(r.setOldAGCInterval(86400));assert(r.getOldAGCInterval()==86400);assert(!r.setOldAGCInterval(86401));assert(r.getOldAGCInterval()==86400);assert(r.setOldAGCInterval(0));assert(r.getOldAGCInterval()==0);Radio fresh;assert(fresh.getOldAGCInterval()==0);}
- else if(!strcmp(s,"old_only_wake")){Fixture f;assert(f.r.setOldAGCInterval(600));f.begin(100);uint32_t delta=0;assert(f.d.getNextQueueWakeDelay(delta)&&delta==600000);f.loop(600099);assert(f.r.old_resets==0);f.loop(600100);assert(f.r.old_resets==1&&f.r.primary_resets==0);f.loop(600100);assert(f.r.old_resets==1);}
+ if(!strcmp(s,"default_range")){Radio r;assert(r.supportsOldAGC()&&r.getOldAGCInterval()==mesh::AGC_OLD_AUTO);assert(r.setOldAGCInterval(86400));assert(r.getOldAGCInterval()==86400);assert(!r.setOldAGCInterval(86401));assert(r.getOldAGCInterval()==86400);assert(r.setOldAGCInterval(0));assert(r.getOldAGCInterval()==0);assert(r.setOldAGCInterval(mesh::AGC_OLD_AUTO));assert(mesh::oldAGCIntervalMillis(r.getOldAGCInterval())==0);Radio fresh;assert(fresh.getOldAGCInterval()==mesh::AGC_OLD_AUTO);}
+ else if(!strcmp(s,"old_only_wake")){Fixture f;assert(f.r.setOldAGCInterval(4));f.begin(100);uint32_t delta=0;assert(f.d.getNextQueueWakeDelay(delta)&&delta==4000);f.loop(4099);assert(f.r.old_resets==0);f.loop(4100);assert(f.r.old_resets==1&&f.r.primary_resets==0);f.loop(4100);assert(f.r.old_resets==1);}
  else if(!strcmp(s,"disabled")){Fixture f;f.begin();f.loop(999999);assert(!f.r.old_resets&&!f.r.checked_old);uint32_t delta=99;assert(!f.d.getNextQueueWakeDelay(delta));}
  else if(!strcmp(s,"deferred")){Fixture f;f.r.setOldAGCInterval(2);f.r.admit=false;f.begin();f.loop(2000);assert(f.r.checked_old==1&&!f.r.old_resets);f.loop(2249);assert(f.r.checked_old==1);f.r.admit=true;f.loop(2250);assert(f.r.checked_old==2&&f.r.old_resets==1);f.loop(4249);assert(f.r.old_resets==1);f.loop(4250);assert(f.r.old_resets==2);}
  else if(!strcmp(s,"both_due")){Fixture f;f.d.primary_ms=8000;f.r.setOldAGCInterval(8);f.begin();f.loop(8001);assert(f.r.old_resets==1&&f.r.primary_resets==0);f.loop(8252);assert(f.r.old_resets==1&&f.r.primary_resets==1);}
@@ -87,14 +87,14 @@ class OldAGCAllRadios(unittest.TestCase):
   methods='\n'.join(body(h,s).replace(' override','')for s in('bool supportsOldAGC(','bool setOldAGCInterval(','uint32_t getOldAGCInterval('))+'\n'+body(cpp,'mesh::AGCMaintenanceResult RadioLibWrapper::periodicOldAGCMaintenance(').replace('RadioLibWrapper::','')
   # Compile the production conditional around its actual field and methods;
   # the model must not bypass an incorrect compact capability guard.
-  field=h.index('  uint32_t _old_agc_seconds=0;')
+  field=h.index('  uint32_t _old_agc_seconds=mesh::AGC_OLD_AUTO;')
   guard=h[h.rfind('#if ',0,field):].splitlines()[0]
   method_at=h.index('  bool supportsOldAGC() const override')
   assert h[h.rfind('#if ',0,method_at):].splitlines()[0]==guard
   body_at=cpp.index('mesh::AGCMaintenanceResult RadioLibWrapper::periodicOldAGCMaintenance(')
   assert cpp[cpp.rfind('#if ',0,body_at):].splitlines()[0]==guard
   methods=guard+'\n'+methods+'\n#endif'
-  fields=guard+'\nuint32_t _old_agc_seconds=0;\n#endif'
+  fields=guard+'\nuint32_t _old_agc_seconds=mesh::AGC_OLD_AUTO;\n#endif'
   cls.binaries=[]
   for mode,flag,pulse,enabled in [('normal',None,0,True),('warm',None,1,True),('wio','WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC',0,True),('stm32_companion','STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC',0,True),('wio_default_off','WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC',0,False),('stm32_default_off','STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC',0,False),('normal_explicit_off',None,0,False),('warm_explicit_off',None,1,False),('wio_warm','WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC',1,True),('stm32_warm','STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC',1,True),('wio_warm_default_off','WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC',1,False),('stm32_warm_default_off','STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC',1,False)]:
    src=w/(mode+'.cpp');src.write_text(MAIN.replace('@COMPACT_RXPS_CAPABILITY@',compact_cap).replace('@UNSUPPORTED_CAPABILITY@',unsupported).replace('@OLD_FIELDS@',fields).replace('@OLD_METHODS@',methods),encoding='ascii');exe=w/mode;cmd=[c,'-std=c++17','-Wall','-Wextra','-DMESH_WARM_RX_REFRESH='+str(pulse),'-I'+str(ROOT/'test/mocks'),'-I'+str(ROOT/'src'),str(ROOT/'src/Dispatcher.cpp'),str(ROOT/'src/Packet.cpp'),str(ROOT/'src/helpers/StaticPoolPacketManager.cpp'),str(src),'-o',str(exe)]

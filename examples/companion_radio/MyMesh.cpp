@@ -2,6 +2,7 @@
 #include <helpers/BleCommonPinWarning.h>
 #include <helpers/HardwareCommand.h>
 #include <helpers/AGCMaintenanceCLI.h>
+#include <helpers/AGCSettings.h>
 #include <helpers/RadioMaintenanceCLI.h>
 #include <helpers/ConfigCapabilities.h>
 #include <helpers/BrowserRadioDefaults.h>
@@ -3388,6 +3389,9 @@ void MyMesh::begin(bool has_display, bool radio_available,
 #if defined(NRF52_PLATFORM)
   if (_store->isVolatilePrimaryFS()) battery_calibration_fs = nullptr;
 #endif
+  if (!mesh::beginAGCSettings(_radio, battery_calibration_fs)) {
+    MESH_DEBUG_PRINTLN("AGC settings unavailable; old reset disabled");
+  }
   if (!mesh::power::beginBatteryCalibrationStore(board, battery_calibration_fs)) {
     MESH_DEBUG_PRINTLN("Battery calibration could not be restored; using board default");
   }
@@ -11970,6 +11974,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     return true;
   }
 
+  if (mesh::handleStoredOldAGCCommand(_radio,command,reply,reply_capacity)) return true;
   if (mesh::handleAGCMaintenanceCommand(_radio,command,
           ((uint32_t)_prefs.agc_reset_interval)*4,reply,reply_capacity)) return true;
 

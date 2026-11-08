@@ -989,7 +989,7 @@ void Dispatcher::loop() {
                       adaptive, adaptive ? _radio->getRecoveryCount() : 0);
 #if MESH_ENABLE_OLD_AGC
   old_agc_reset.configure(now,receive_allowed && _radio->supportsOldAGC()
-      ? _radio->getOldAGCInterval()*1000UL : 0,false,0);
+      ? oldAGCIntervalMillis(_radio->getOldAGCInterval()) : 0,false,0);
 #endif
   if (!radio_nonrx_timer_armed) {
     // Application setup can outlast the watchdog after begin() leaves the

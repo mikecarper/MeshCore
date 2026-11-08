@@ -4441,6 +4441,12 @@ handler, so the normal radio loop can finish the operation. Request IDs are
 preserved on Companion replies.
 
 #### View or change the AGC Reset Interval
+
+For a side-by-side explanation of the legacy calibration sequence and the new
+sleep/wake method, see [Old AGC reset and new receive refresh](radio_agc.md).
+The command name is retained for compatibility; a completed receive refresh
+does not prove an internal AGC reset or improved sensitivity.
+
 **Usage:**
 - `get agc.reset.interval`
 - `set agc.reset.interval <value>`
@@ -4455,12 +4461,28 @@ the short alias uses that same parser and saved setting.
 **Default:** `16` seconds for new configurations on every board and role.
 Existing saved values, including `0` (disabled), are retained.
 
+With the saved default `agc.old auto`, receive-refresh primary intervals
+**below 240 seconds** use only
+the new sleep/wake method. At **240 seconds or longer**, a successfully witnessed
+refresh is followed by the old full receiver reset when that implementation is
+available. For example, `set agc 236` uses only the new method and `set agc 240`
+uses both on Heltec V4. The cutoff uses the configured interval, not delays
+caused by busy traffic or packet ownership.
+
+The old half waits for an idle primary visit without repeating the completed
+pulse. Changing or disabling the interval discards the outstanding completion.
+The scheduler advances after both halves complete; legacy completion still
+means admission, not checked success of every calibration command. Failed or
+unconfirmed pulses do not trigger this automatic full reset. LR2021 and builds
+with `MESH_ENABLE_OLD_AGC=0` retain only the new method; other drivers without
+receive-refresh support retain their existing behavior.
+
 Active duty-cycle RXPS automatically suspends the primary AGC timer on every
 board. Continuous RX fallback still runs the configured maintenance because
 that mode does not sleep/wake the frontend. The saved RXPS preference and AGC
 interval remain unchanged; successful duty-cycle recovery suspends maintenance
 again, and returning to continuous RX starts a fresh interval.
-The optional `agc.old` timer remains an independent, explicitly enabled reset.
+An explicitly configured positive `agc.old` interval remains independent of RXPS.
 
 On builds using the `CustomSX1262`, `CustomSX1268`, `CustomLLCC68`,
 `CustomSTM32WLx`, `CustomLR1110`, `CustomLR1121` or `CustomLR2021` driver,
@@ -4468,8 +4490,10 @@ this saved interval schedules a same-channel RXPS pulse. `CustomSX1276` uses
 a separate, checked host-timed sleep/wake sequence. This includes the supported
 backends of startup-detected radio builds. The existing
 value, four-second rounding and adaptive
-scheduling are retained. It does not retune, calibrate, change gain or reset
-the noise-floor cache. Completing the hardware sleep/wake sequence is not proof
+scheduling are retained. The pulse itself does not retune, calibrate, change gain
+or reset the noise-floor cache. The automatic old half at intervals of 240 seconds
+or longer also performs the driver's legacy reset and requests fresh samples.
+Completing the hardware sleep/wake sequence is not proof
 of an analog AGC reset or a sensitivity improvement. The build setting
 `MESH_WARM_RX_REFRESH=0` explicitly retains the previous primary method.
 Other transceiver drivers retain their own maintenance implementation; storing
@@ -4514,12 +4538,21 @@ gain or equal receive sensitivity across radio families.
 An independent full-reset timer remains available through the Repeater, Room
 Server, Sensor and Companion text parsers:
 
-- `get agc.old`
-- `set agc.old <seconds>`: `0` disables it; `1-86400` enables it.
-- `set agc.old 600` enables one full reset every ten minutes.
+- `get agc.old`: returns `auto` or the saved interval in seconds (`0` means off).
+- `set agc.old auto`: default; include the old half after primary refresh at
+  intervals of 240 seconds or longer, without an independent old timer.
+- `set agc.old off` / `set agc.old 0`: disable both the independent timer and
+  the automatic old half, even past 240 seconds.
+- `set agc.old <seconds>`: `1-86400` enables an independent old timer instead
+  of the automatic old half. For example, `600` means every ten minutes.
+- `set agc 0` followed by `set agc.old 4`: old reset only, every four seconds.
 
-This second timer is independent of the primary interval, available on boards
-with a full-reset implementation, RAM-only and **disabled after every reboot**.
+All these settings persist across reboot. The old policy has a separate checked
+settings record, leaving existing preference layouts unchanged. A missing record
+uses `auto`; a corrupt or unreadable record disables old resets for that boot.
+Save errors are reported instead of claiming persistence. Recovery watchdogs
+remain separate; these settings control periodic maintenance.
+The independent old timer is available on boards with a full-reset implementation.
 On compact Wio-E5/STM32WL profiles it is omitted by default to preserve flash
 headroom; `get agc.old` and `set agc.old` return `Error: unsupported` there.
 Their primary pulse and cached `agc.status`, `agc.pulse` and `agc.scan` proof

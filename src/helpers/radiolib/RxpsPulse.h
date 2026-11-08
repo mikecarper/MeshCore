@@ -169,6 +169,10 @@ public:
     _completion=(_attempt_generation==_generation && _cadence_ms)?Result::Failed:Result::None;
   }
   bool hasCompletion() const { return _completion!=Result::None; }
+  // Select by the configured cadence, not elapsed time spent waiting for RX.
+  // Keep the witnessed pulse result until the optional legacy half is admitted;
+  // cadence() already discards it when disabled or reconfigured.
+  bool fullResetDue() const { return _completion==Result::Applied && _cadence_ms>=240000UL; }
   Result takeCompletion() { const Result result=_completion;_completion=Result::None;return result; }
   static const char* phaseName(Phase p) {
     switch(p) { case Phase::Arm:return "arm";case Phase::Listen:return "listen";case Phase::Sleep:return "sleep";

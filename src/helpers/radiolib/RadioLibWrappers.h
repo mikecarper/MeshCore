@@ -529,7 +529,7 @@ protected:
   AGCTimingDiagnostics _agc_timing;
 #endif
 #if MESH_ENABLE_OLD_AGC && (!MESH_COMPACT_STM32_RADIO || MESH_WARM_RX_REFRESH)
-  uint32_t _old_agc_seconds=0;
+  uint32_t _old_agc_seconds=mesh::AGC_OLD_AUTO;
 #endif
 
   RadioLibWrapper(PhysicalLayer& radio, mesh::MainBoard& board)
@@ -766,7 +766,7 @@ public:
   // Families with no physical legacy reset explicitly opt out.
   bool supportsOldAGC() const override { return true; }
   bool setOldAGCInterval(uint32_t seconds) override {
-    if(!supportsOldAGC() || seconds>86400) return false;
+    if(!supportsOldAGC() || !mesh::validOldAGCInterval(seconds)) return false;
     _old_agc_seconds=seconds; return true;
   }
   uint32_t getOldAGCInterval() const override { return supportsOldAGC()?_old_agc_seconds:0; }

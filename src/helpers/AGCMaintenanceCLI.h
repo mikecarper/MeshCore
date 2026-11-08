@@ -2,6 +2,7 @@
 
 #include <Dispatcher.h>
 #include "CLICommandUtils.h"
+#include "OldAGCPolicy.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -63,22 +64,37 @@ inline bool handleRxpsPulseLabCommand(Radio* radio,const char* command,char* rep
 #endif
 }
 
-// The independent legacy timer also exists on radios without warm refresh.
-// Changing its RAM-only interval does not perform a reset here.
+// Applying an interval never performs a reset. Production setters wrap this
+// helper in the checked settings transaction before reporting success.
+inline bool applyOldAGCIntervalValue(Radio* radio, const char* value,
+    char* reply, size_t capacity) {
+  if (!radio || !radio->supportsOldAGC()) {
+    cli::formatError(reply, capacity, "unsupported"); return false;
+  }
+  uint32_t seconds = 0;
+  if (strcmp(value, "auto") == 0) seconds = AGC_OLD_AUTO;
+  else if (strcmp(value, "off") != 0
+      && (!cli::parseUnsignedIntegerStrict(value, seconds) || seconds > 86400)) {
+    cli::formatError(reply, capacity, "old AGC: auto, off or 0-86400s"); return false;
+  }
+  if (!radio->setOldAGCInterval(seconds)) {
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("failed to set old AGC interval", "old AGC unchanged")); return false;
+  }
+  if (seconds == AGC_OLD_AUTO) snprintf(reply, capacity, "OK - old AGC auto");
+  else if (seconds == 0) snprintf(reply, capacity, "OK - old AGC off");
+  else snprintf(reply, capacity, MESH_CLI_REPLY_TEXT("OK - old full-reset interval %lu seconds", "OK - old AGC %lus"), (unsigned long)seconds);
+  return true;
+}
+
 inline bool handleOldAGCIntervalCommand(Radio* radio, const char* command,
     char* reply, size_t capacity) {
   const bool get = strcmp(command, "get agc.old") == 0;
   const bool set = strncmp(command, "set agc.old ", 12) == 0;
   if (!get && !set) return false;
   if (!radio || !radio->supportsOldAGC()) cli::formatError(reply, capacity, "unsupported");
-  else if (get) snprintf(reply, capacity, "> %lu", (unsigned long)radio->getOldAGCInterval());
-  else {
-    uint32_t seconds = 0;
-    if (!cli::parseUnsignedIntegerStrict(command + 12, seconds) || seconds > 86400)
-      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("old AGC interval must be 0-86400 seconds", "old AGC: 0-86400s"));
-    else if (!radio->setOldAGCInterval(seconds)) cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("failed to set old AGC interval", "old AGC unchanged"));
-    else snprintf(reply, capacity, MESH_CLI_REPLY_TEXT("OK - old full-reset interval %lu seconds (RAM only; disabled after reboot)", "OK - old AGC %lus (RAM; reboot off)"), (unsigned long)seconds);
-  }
+  else if (set) applyOldAGCIntervalValue(radio, command + 12, reply, capacity);
+  else if (radio->getOldAGCInterval() == AGC_OLD_AUTO) snprintf(reply, capacity, "> auto");
+  else snprintf(reply, capacity, "> %lu", (unsigned long)radio->getOldAGCInterval());
   return true;
 }
 

@@ -14,6 +14,7 @@
 #include "PacketFileLoggingConfig.h"
 #include "CommonCLI.h"
 #include "AGCMaintenanceCLI.h"
+#include "AGCSettings.h"
 #include "RadioMaintenanceCLI.h"
 #ifdef WRAPPER_CLASS
 #include "target.h"
@@ -1121,6 +1122,9 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
 #if MESH_ENABLE_EMERGENCY_POWER
   loadEmergencyPower(fs);
 #endif
+  if (!mesh::beginAGCSettings(_callbacks->getProfileRadio(), fs)) {
+    MESH_DEBUG_PRINTLN("AGC settings unavailable; old reset disabled");
+  }
   mesh::hilStartupTrace("prefs_profiles_begin");
   _radio_profiles.begin(fs, _callbacks->getProfileRadio(), _rtc, true);
 #if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
@@ -5201,13 +5205,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, "OK");
     }
   } else if (memcmp(config, "agc.old ", 8) == 0) {
-    auto* radio=_callbacks->getProfileRadio();
-    const char* value=skipSpacesConst(config+8);
-    uint32_t seconds;
-    if(!radio || !radio->supportsOldAGC()) mesh::cli::formatError(reply,160,"unsupported");
-    else if(!mesh::cli::parseUnsignedIntegerStrict(value,seconds) || seconds>86400) mesh::cli::formatError(reply,160,"old AGC interval must be 0-86400 seconds");
-    else if(!radio->setOldAGCInterval(seconds)) mesh::cli::formatError(reply,160,"failed to set old AGC interval");
-    else sprintf(reply,"OK - old full-reset interval %lu seconds (RAM only; disabled after reboot)",(unsigned long)seconds);
+    mesh::setStoredOldAGCInterval(_callbacks->getProfileRadio(), skipSpacesConst(config+8), reply, 160);
   } else if (memcmp(config, "agc.reset.interval ", 19) == 0 || memcmp(config,"agc ",4)==0) {
     uint32_t seconds;
     const char* value=memcmp(config,"agc ",4)==0 ? config+4 : config+19;
@@ -6640,9 +6638,7 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     }
 #endif
   } else if(configKeyEquals(config,"agc.old")) {
-    const auto* radio=_callbacks->getProfileRadio();
-    if(!radio || !radio->supportsOldAGC()) mesh::cli::formatError(reply,160,"unsupported");
-    else sprintf(reply,"> %lu",(unsigned long)radio->getOldAGCInterval());
+    mesh::handleOldAGCIntervalCommand(_callbacks->getProfileRadio(), "get agc.old", reply, 160);
 #if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC && !MESH_WARM_RX_REFRESH
   } else if(miniUnsupportedWarmAgcGet(config)) {
     mesh::cli::formatError(reply,160,"unsupported");

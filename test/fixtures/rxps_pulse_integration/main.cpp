@@ -10,6 +10,7 @@
 #include <helpers/radiolib/RxpsPulseTiming.h>
 #include <helpers/radiolib/RXPowerSaving.h>
 #include <cassert>
+#include <helpers/OldAGCPolicy.h>
 #include <cmath>
 #include <cstring>
 #include <iostream>
@@ -20,6 +21,9 @@
 
 #ifndef MESH_WARM_RX_REFRESH
 #define MESH_WARM_RX_REFRESH 1
+#endif
+#ifndef MESH_ENABLE_OLD_AGC
+#define MESH_ENABLE_OLD_AGC 1
 #endif
 #define MESH_ENABLE_MORSE_RX 1
 #define MESH_ENABLE_TX_BEACONS 1
@@ -153,15 +157,22 @@ public:
   bool _rx_hold_continuous=false,_nf_calib_active=false,_nf_window_armed=false;
   bool _cw_active=false,_morse_owned=false,_morse_rx_owned=false,_beacon_owned=false,supported=true;
   unsigned legacy=0,scan_spy=0;
+  bool legacy_supported=true;
+  uint32_t legacy_setting=mesh::AGC_OLD_AUTO;
+  uint32_t getOldAGCInterval() const { return legacy_setting; }
   struct Profiles { bool active=false;uint32_t generation[2]={0,0};bool enabled() const { return active; } } _profiles;
   Wrapper():driver(&module),_radio(&driver) { _rxps_pulse.cadence(60000); }
   bool hasPendingRadioInterrupt() const { return module.host_irq; }
   bool isChipBusy() const { return module.busy; }
   uint32_t currentPreambleLength() const { return driver.preambleLengthLoRa; }
   bool supportsWarmRxRefresh() const { return supported; }
+  bool supportsOldAGC() const { return legacy_supported; }
   bool isCalibratingNoiseFloor() const { return _nf_calib_active; }
   bool tryResetAGC() { ++legacy;return true; }
-  bool resetAGCIfIdle() { ++legacy;return true; }
+  bool resetAGCIfIdle() {
+    if(module.host_irq || module.irq || _cw_active || _beacon_owned) return false;
+    ++legacy;return true;
+  }
   int startReceivePowerSaving() { assert(false);return -1; }
   @WRAPPER@
 };
@@ -469,6 +480,83 @@ static void rxpsFallback() {
   assert(disabled.module.calls.empty()&&!disabled._rxps_pulse.pending&&disabled._rxps_pulse.defer==1);
 }
 
+static void combinedBoundary() {
+  using Result=mesh::AGCMaintenanceResult;
+  for(uint32_t interval:{16000U,236000U,239999U,240000U,244000U,1020000U}) {
+    for(uint32_t setting:{mesh::AGC_OLD_AUTO,0U,4U,86400U})
+    for(bool supported:{false,true}) for(bool adaptive:{false,true}) {
+      Wrapper w;w.legacy_setting=setting;w.legacy_supported=supported;w._rxps_pulse.cadence(interval);
+      begin(w);assert(w.legacy==0);
+      naturalWake(w);assert(w.legacy==0 && w._rxps_pulse.ok==1);
+      const unsigned expected=MESH_ENABLE_OLD_AGC && supported && setting==mesh::AGC_OLD_AUTO && interval>=240000U?1:0;
+      assert(w.periodicAGCMaintenance(adaptive)==Result::Applied);
+      assert(w.legacy==expected && !w._rxps_pulse.hasCompletion());
+      // A later primary attempt must not replay the already-consumed full reset.
+      assert(w.periodicAGCMaintenance(adaptive)==Result::Deferred);
+      assert(w.legacy==expected);
+    }
+  }
+}
+
+static void combinedDeferred() {
+#if MESH_ENABLE_OLD_AGC
+  using Result=mesh::AGCMaintenanceResult;
+  for(unsigned guard=0;guard<13;++guard) {
+    Wrapper w;w._rxps_pulse.cadence(240000);begin(w);naturalWake(w);
+    const auto calls=w.module.calls.size();const auto pulses=w._rxps_pulse.admit;
+    if(guard==0) w.module.busy=true;
+    if(guard==1) w._nf_calib_active=true;
+    if(guard==2) w._active_profile=1;
+    if(guard==3) w.module.host_irq=true;
+    if(guard==4) w.module.irq=RADIOLIB_SX126X_IRQ_RX_DONE;
+    if(guard==5) w._beacon_owned=true;
+    if(guard==6) w._morse_owned=true;
+    if(guard==7) w._morse_rx_owned=true;
+    if(guard==8) w._rx_ps_enabled=true;
+    if(guard==9) w._profile_repair_required=true;
+    if(guard==10) w._profile_generation=1;
+    if(guard==11) mesh::radioDirection::allowed=false;
+    if(guard==12) w.state=0;
+    for(unsigned retry=0;retry<3;++retry) {
+      now_us+=2500000;
+      assert(w.periodicAGCMaintenance(true)==Result::Deferred);
+      assert(w.legacy==0 && w._rxps_pulse.hasCompletion());
+      assert(w.module.calls.size()==calls && w._rxps_pulse.admit==pulses);
+    }
+    w.module.busy=w._nf_calib_active=w.module.host_irq=w._beacon_owned=false;
+    w._morse_owned=w._morse_rx_owned=w._rx_ps_enabled=w._profile_repair_required=false;
+    w._profile_generation=0;mesh::radioDirection::allowed=true;w.state=Wrapper::STATE_RX;
+    w._active_profile=0;w.module.irq=0;
+    assert(w.periodicAGCMaintenance(true)==Result::Applied);
+    assert(w.legacy==1 && w._rxps_pulse.admit==pulses && !w._rxps_pulse.hasCompletion());
+  }
+#endif
+}
+
+static void combinedCancel() {
+  using Result=mesh::AGCMaintenanceResult;
+  for(uint32_t interval:{0U,16000U,244000U}) {
+    Wrapper w;w._rxps_pulse.cadence(240000);begin(w);naturalWake(w);
+    w._rxps_pulse.cadence(interval);
+    assert(!w._rxps_pulse.hasCompletion());
+    w._nf_calib_active=true;
+    assert(w.periodicAGCMaintenance(false)==Result::Deferred && w.legacy==0);
+  }
+  for(uint32_t setting:{0U,4U}) {
+    Wrapper w;w._rxps_pulse.cadence(240000);begin(w);naturalWake(w);
+    w.legacy_setting=setting;
+    assert(w.periodicAGCMaintenance(false)==Result::Applied && !w.legacy);
+    assert(!w._rxps_pulse.hasCompletion());
+  }
+  Wrapper failed;failed._rxps_pulse.cadence(240000);failed.module.fail_at=1;
+  begin(failed);failed.module.fail_at=SIZE_MAX;now_us+=250001;failed.serviceAGCPulse();
+  assert(failed.periodicAGCMaintenance(false)==Result::Failed && failed.legacy==0);
+  Wrapper unwitnessed;unwitnessed._rxps_pulse.cadence(240000);begin(unwitnessed);
+  now_us=unwitnessed._rxps_pulse.armed_at+1;unwitnessed.module.busy=true;unwitnessed.serviceAGCPulse();
+  now_us+=1000;unwitnessed.module.busy=false;unwitnessed.serviceAGCPulse();
+  assert(unwitnessed.periodicAGCMaintenance(false)==Result::Deferred && unwitnessed.legacy==0);
+}
+
 static void dualSetup(Wrapper& w,uint8_t profile=0) {
   w._profiles.active=true;w._profile_rxps_suspended=true;
   w._profiles.generation[0]=5;w._profiles.generation[1]=9;
@@ -665,6 +753,8 @@ int main(int argc,char** argv) {
   else if(name=="invalid_geometry") invalidGeometry();else if(name=="mode") mode();else if(name=="iq") iq();
   else if(name=="budget") budget();else if(name=="admission") admission();else if(name=="margin") margin();
   else if(name=="rxps_fallback") rxpsFallback();
+  else if(name=="combined_boundary") combinedBoundary();else if(name=="combined_deferred") combinedDeferred();
+  else if(name=="combined_cancel") combinedCancel();
   else if(name=="arm_latency") armLatency();else if(name=="coarse_clock") coarseClock();else if(name=="unqualified_witness") unqualifiedWitness();
   else if(name=="dual_normal") dualNormal();else if(name=="dual_secondary") dualSecondary();
   else if(name=="dual_stale") dualStale();else if(name=="dual_packet") dualPacket();

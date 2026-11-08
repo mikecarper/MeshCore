@@ -44,6 +44,7 @@ def harness(uncached=False):
     scan_prefix = scan_prefix.replace("RadioLibWrapper::", "") + "  ++scan_spy;\n}"
     admission = body(base, "mesh::AGCMaintenanceResult RadioLibWrapper::periodicAGCMaintenance(")
     admission = admission.replace("RadioLibWrapper::", "")
+    admission += "\n" + body(base, "mesh::AGCMaintenanceResult RadioLibWrapper::periodicOldAGCMaintenance(").replace("RadioLibWrapper::", "")
     sleep_accessors = "\n".join(body(interface, signature).replace(" override", "") for signature in (
         "uint32_t agcPulseTimerHz(", "bool setAGCPulseSleep(", "uint32_t getAGCPulseSleep(", "bool serviceAGCMaintenanceFastLane(", "uint32_t agcMaintenanceRetryMs("))
     fixture = (FIXTURE / "main.cpp").read_text()
@@ -65,12 +66,12 @@ class PulseIntegrationTest(unittest.TestCase):
         source = folder / "test.cpp"
         source.write_text(harness(), encoding="ascii")
         cls.binaries = []
-        for fs in (0, 1):
-            binary = folder / ("integration-fs" + str(fs))
+        for fs, old in ((0, 1), (1, 1), (0, 0)):
+            binary = folder / ("integration-fs" + str(fs) + "-old" + str(old))
             compiled = subprocess.run([
                 compiler, "-std=c++11", "-Wall", "-Wextra", "-Werror", "-pedantic",
                 "-fsanitize=address,undefined,float-cast-overflow", "-fno-omit-frame-pointer",
-                "-fno-pie", "-no-pie", "-DTEST_FS=" + str(fs),
+                "-fno-pie", "-no-pie", "-DTEST_FS=" + str(fs), "-DMESH_ENABLE_OLD_AGC=" + str(old),
                 "-I", str(FIXTURE), "-I", str(ROOT / "src"), str(source), "-o", str(binary),
             ], capture_output=True, text=True)
             if compiled.returncode:
@@ -131,6 +132,15 @@ class PulseIntegrationTest(unittest.TestCase):
 
     def test_actual_periodic_admission_and_single_use_failure_completion(self):
         self.run_case("admission")
+
+    def test_four_minute_boundary_runs_full_reset_only_after_verified_pulse(self):
+        self.run_case("combined_boundary")
+
+    def test_combined_reset_waits_for_idle_without_repeating_the_pulse(self):
+        self.run_case("combined_deferred")
+
+    def test_combined_reset_cancels_on_interval_change_and_never_credits_failed_pulse(self):
+        self.run_case("combined_cancel")
 
     def test_continuous_rxps_fallback_gets_checked_maintenance_without_losing_saved_intent(self):
         self.run_case("rxps_fallback")

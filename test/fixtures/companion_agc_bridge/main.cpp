@@ -6,7 +6,9 @@
 #include <initializer_list>
 #include <string>
 #include <vector>
-#include <helpers/AGCMaintenanceCLI.h>
+#include <helpers/AGCSettings.h>
+#define ATOMIC_FILE_WRITER_IMPLEMENTATION
+#include <helpers/AtomicFileWriter.h>
 #include <helpers/radiolib/WarmRxRefresh.h>
 #include <helpers/radiolib/AGCTimingDiagnostics.h>
 #include <helpers/radiolib/RxpsPulseScanLease.h>
@@ -29,7 +31,7 @@ struct Capture : Stream {
 
 struct Radio : mesh::Radio {
   bool supported=true, accept=true, diagnostic_supported=true;
-  uint32_t old_seconds=0;
+  uint32_t old_seconds=mesh::AGC_OLD_AUTO;
   @LAB_RADIO_FIELDS@
   unsigned sets=0;
   mutable unsigned warm_calls=0, old_calls=0;
@@ -68,7 +70,8 @@ struct MyMesh {
   unsigned saves=0;
   bool save_ok=true;
   uint8_t stored=0;
-  MyMesh() {_prefs.clearDirty();}
+  MemoryFS fs;
+  MyMesh() {_prefs.clearDirty();fs.rename_replaces=true;assert(mesh::beginAGCSettings(_radio,&fs));}
   bool savePrefs() {
     ++saves;if(!save_ok)return false;
     stored=_prefs.agc_reset_interval;_prefs.clearDirty();return true;
@@ -151,17 +154,19 @@ static void invalidAndTransactions() {
 static void runtimeOld() {
   MyMesh mesh;mesh._prefs.agc_reset_interval=7;
   const std::string before=mesh.image();
-  assert(mesh.command("get agc.old")=="> 0");
+  assert(mesh.command("get agc.old")=="> auto");
   for(uint32_t seconds:{0U,1U,600U,86400U}) {
     char command[80];snprintf(command,sizeof(command),"set agc.old %lu",(unsigned long)seconds);
     const std::string reply=mesh.command(command);
-    assert(reply.find("OK - old full-reset interval ")==0);
-    assert(reply.find("disabled after reboot")!=std::string::npos);
+    assert(reply.find(seconds ? "OK - old full-reset interval " : "OK - old AGC off")==0);
+    assert(reply.find("(saved)")!=std::string::npos);
+    Radio rebooted;assert(mesh::beginAGCSettings(&rebooted,&mesh.fs));
+    assert(rebooted.old_seconds==seconds);
     assert(mesh.command("get agc.old")=="> "+std::to_string(seconds));
     assert(mesh.radio.old_seconds==seconds && mesh.image()==before && mesh.saves==0 && !mesh._prefs.isDirty());
   }
   const unsigned calls=mesh.radio.sets;
-  for(const char* value:{"", "-1","-0","86401","4294967295","4294967296","999999999999999999999999","1x","1 2","1.5","1e2","on","off","1\n","1\r","0x10"}) {
+  for(const char* value:{"", "-1","-0","86401","4294967295","4294967296","999999999999999999999999","1x","1 2","1.5","1e2","on","1\n","1\r","0x10"}) {
     char command[160];snprintf(command,sizeof(command),"set agc.old %s",value);
     assert(mesh.command(command).find("Error:")==0);
     assert(mesh.radio.old_seconds==86400 && mesh.radio.sets==calls && mesh.saves==0 && mesh.image()==before);

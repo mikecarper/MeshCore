@@ -24,8 +24,8 @@ class CompanionAGCBridgeTests(unittest.TestCase):
         source=source.replace('@LAB_RADIO_METHODS@',lab_timer_methods(wrapper))
         source=source.replace('@ALLOWLIST@',extract_braced(companion,'static bool isCompanionRadioPrefsCommand('))
         source=source.replace('@PREFIX@',extract_braced(companion,'if (strlen(command) > 3 && command[2]'))
-        start=companion.index('  if (mesh::handleAGCMaintenanceCommand(',companion.index('bool MyMesh::handleCommand('))
-        end=companion.index('return true;',start)+len('return true;')
+        start=companion.index('  if (mesh::handleStoredOldAGCCommand(',companion.index('bool MyMesh::handleCommand('))
+        end=companion.index('return true;',companion.index('  if (mesh::handleAGCMaintenanceCommand(',start))+len('return true;')
         source=source.replace('@MAINTENANCE@',companion[start:end])
         source=source.replace('@TRANSACTION@',extract_braced(companion,'if (isCompanionRadioPrefsCommand(command))'))
         (cls.work/'main.cpp').write_text(source,encoding='ascii')
@@ -48,9 +48,9 @@ namespace mesh { struct Utils {
         for diagnostics,lab in ((0,0),(1,0),(0,1),(1,1)):
             binary=cls.work/('bridge-'+str(diagnostics)+'-lab'+str(lab))
             sources=['ConfigSerializer.cpp','DynamicConfigSerializer.cpp','CommonRadioPrefs.cpp',
-                     'radiolib/RXPowerSaving.cpp','radiolib/RXPowerSavingCLI.cpp','TxtDataHelpers.cpp']
+                     'AGCSettings.cpp','radiolib/RXPowerSaving.cpp','radiolib/RXPowerSavingCLI.cpp','TxtDataHelpers.cpp']
             command=['g++','-std=c++17','-DNRF52_PLATFORM=1',
-                     '-DMESH_AGC_TIMING_DIAGNOSTICS='+str(diagnostics),
+                     '-DMESH_ENABLE_OLD_AGC=1','-DMESH_AGC_TIMING_DIAGNOSTICS='+str(diagnostics),
                      '-DMESH_WARM_RX_LAB_TIMER='+str(lab),
                      '-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-pie','-no-pie',
                      '-I',str(cls.work),'-I',str(ROOT/'test/fixtures/radio_profiles/mocks'),
@@ -73,7 +73,7 @@ namespace mesh { struct Utils {
 
     def test_real_saved_aliases_and_loaded_value_units(self):self.run_scenario('aliases')
     def test_real_dirty_tracking_invalid_inputs_and_save_failure_rollback(self):self.run_scenario('transactions')
-    def test_old_timer_is_runtime_only_bounded_and_unsupported_safe(self):self.run_scenario('runtime')
+    def test_old_timer_saved_separately_bounded_and_unsupported_safe(self):self.run_scenario('runtime')
     def test_passive_diagnostic_aliases_flag_and_prefixed_buffer_bounds(self):self.run_scenario('diagnostics')
     def test_lab_override_strict_parser_default_off_zero_and_no_persistence(self):self.run_scenario('lab')
 

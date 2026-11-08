@@ -1876,11 +1876,23 @@ mesh::AGCMaintenanceResult RadioLibWrapper::periodicAGCMaintenance(bool adaptive
     // still does not guarantee that every ignored legacy command succeeded.
     return resetAGCIfIdle() ? Result::Applied : Result::Deferred;
   }
-  const auto completed=_rxps_pulse.takeCompletion();
-  if(completed==RxpsPulse::Result::Applied) return Result::Applied;
-  if(completed==RxpsPulse::Result::Failed) return Result::Failed;
-  if(completed==RxpsPulse::Result::Deferred || _rxps_pulse.pending) return Result::Deferred;
-  _rxps_pulse.request(static_cast<uint32_t>(micros()));
+#if MESH_ENABLE_OLD_AGC
+  // At four minutes or longer, finish the witnessed refresh with the existing
+  // full-reset method. Never repeat the pulse while its legacy half waits for
+  // an idle primary visit. RXPS/interval changes clear this retained completion.
+  // Unsupported backends (notably LR2021) still complete the refresh normally.
+  const bool full_reset=_rxps_pulse.fullResetDue() && supportsOldAGC()
+      && getOldAGCInterval()==mesh::AGC_OLD_AUTO;
+#else
+  constexpr bool full_reset=false;
+#endif
+  if(!full_reset) {
+    const auto completed=_rxps_pulse.takeCompletion();
+    if(completed==RxpsPulse::Result::Applied) return Result::Applied;
+    if(completed==RxpsPulse::Result::Failed) return Result::Failed;
+    if(completed==RxpsPulse::Result::Deferred || _rxps_pulse.pending) return Result::Deferred;
+    _rxps_pulse.request(static_cast<uint32_t>(micros()));
+  }
   if(state!=STATE_RX || !_params_valid || _active_profile>1 || _profile_generation!=_profiles.generation[_active_profile]
       || _profile_refresh_required || _profile_repair_required || _profile_retry_at
       || (_profiles.enabled() ? (!_profile_rxps_suspended
@@ -1905,6 +1917,15 @@ mesh::AGCMaintenanceResult RadioLibWrapper::periodicAGCMaintenance(bool adaptive
     }
     _rxps_pulse.deferred();return Result::Deferred;
   }
+#if MESH_ENABLE_OLD_AGC
+  // Reuse every primary ownership/configuration guard for the second half too:
+  // another radio mode may have taken over since the pulse completed.
+  if(full_reset) {
+    const auto legacy=periodicOldAGCMaintenance();
+    if(legacy!=Result::Deferred) _rxps_pulse.takeCompletion();
+    return legacy;
+  }
+#endif
   if(!startAGCPulse()) return Result::Deferred;
   // Arming is not completion. The scheduler remains due until a naturally
   // witnessed sleep/wake and checked continuous reentry have finished.
