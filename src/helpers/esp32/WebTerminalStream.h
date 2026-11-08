@@ -8,7 +8,8 @@
 
 // Allocated only while a browser terminal is open. PSRAM is preferred; boards
 // without it keep at least 32 KiB of internal heap after allocating scrollback.
-// Large unread replies can grow the buffer; draining them returns it to 4 KiB.
+// Large unread replies can grow the buffer; draining them returns it to the
+// configured initial capacity (4 KiB by default).
 class WebTerminalStream : public Stream {
   char* _storage;
   size_t _capacity = mesh::kTerminalInitialOutputCapacity;

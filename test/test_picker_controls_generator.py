@@ -266,6 +266,14 @@ class PickerControlsTests(unittest.TestCase):
         self.assertIn('New messages during mOTA can overflow', control['memoryNote'])
         self.assertIn('when mOTA stops and any temporary-radio window ends', control['memoryNote'])
 
+    def test_constrained_terminal_scrollback_note(self):
+        control = self.generate([
+            'web.terminal initial scrollback 2048 bytes; grows up to 32768 bytes when memory permits'
+        ])
+        self.assertIn('2048 bytes of scrollback', control['memoryNote'])
+        self.assertIn('32768 bytes', control['memoryNote'])
+        self.assertIn('unread output can wrap sooner', control['memoryNote'])
+
     def test_compact_contacts_channels_and_queue_limits(self):
         for channels in (8, 30):
             with self.subTest(channels=channels):

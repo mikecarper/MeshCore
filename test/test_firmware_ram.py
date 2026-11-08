@@ -1330,6 +1330,41 @@ int main() {
         self.assertEqual(alias["components"]["neighbor_history"], 2048 * 9 + 16)
         self.assertEqual(alias["components"]["radio_packet_pool"], 10240)
 
+    def test_tlora_full_rtc_history_and_terminal_budget(self):
+        flags = {"MESH_CLIENT_REPEATER_ONLY": 1, "CONFIG_IDF_TARGET_ESP32": 1,
+                 "ESP32_PLATFORM": 1, "LILYGO_TLORA": 1,
+                 "MESHCORE_EXPANDED_PARTITION_PROFILE": 1,
+                 "MAX_RECENT_REPEATERS": 256, "ADMIN_PASSWORD": "test",
+                 "WIFI_SSID": "test"}
+        before = ram.requirements("ESP32_PLATFORM", flags, "tlora_repeater")["components"]
+        after = ram.requirements("ESP32_PLATFORM", {**flags,
+             "MESH_RECENT_REPEATERS_RTC_SLOW": 1,
+             "MESH_TERMINAL_INITIAL_OUTPUT_CAPACITY": 2048}, "tlora_repeater")["components"]
+        self.assertEqual(before["neighbor_history"], 256 * 9 + 16)
+        self.assertNotIn("neighbor_history", after)
+        self.assertEqual(before["browser_terminal_scrollback"], 4096)
+        self.assertEqual(after["browser_terminal_scrollback"], 2048)
+        self.assertEqual(before["flood_filter_table"], after["flood_filter_table"])
+        for invalid in ({"MAX_RECENT_REPEATERS": 512}, {"LILYGO_TLORA": 0},
+                        {"FLOOD_ADVERT_RTC_SLOW_SLOTS": 1},
+                        {"MESHCORE_EXPANDED_PARTITION_PROFILE": 0}):
+            value = {**flags, "MESH_RECENT_REPEATERS_RTC_SLOW": 1, **invalid}
+            if invalid == {"LILYGO_TLORA": 0}: value.pop("LILYGO_TLORA")
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                ram.requirements("ESP32_PLATFORM", value, "tlora_repeater")
+
+    def test_wireless_tracker_terminal_budget_retains_flood_rules(self):
+        flags = {"MESH_CLIENT_REPEATER_ONLY": 1, "ADMIN_PASSWORD": "test",
+                 "WIFI_SSID": "test", "FLOOD_PACKET_FILTER_SLOTS": 63,
+                 "MAX_NEIGHBOURS": 254}
+        before = ram.requirements("ESP32_PLATFORM", flags, "Heltec_Wireless_Tracker_repeater")
+        after = ram.requirements("ESP32_PLATFORM", {**flags,
+            "MESH_TERMINAL_INITIAL_OUTPUT_CAPACITY": 2048}, "Heltec_Wireless_Tracker_repeater")
+        self.assertEqual(before["components"]["browser_terminal_scrollback"], 4096)
+        self.assertEqual(after["components"]["browser_terminal_scrollback"], 2048)
+        self.assertEqual(before["components"]["flood_filter_table"], after["components"]["flood_filter_table"])
+        self.assertEqual(before["required_heap_bytes"] - after["required_heap_bytes"], 2048)
+
     def test_qualified_esp32_repeaters_stream_source_proofs_without_cutting_other_budgets(self):
         for psram in (False, True):
             flags = {"ENABLE_OTA": 1, "MESH_CLIENT_REPEATER_ONLY": 1,

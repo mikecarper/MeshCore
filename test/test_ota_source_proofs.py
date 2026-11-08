@@ -171,6 +171,40 @@ int main() {
             "-DESP32_PLATFORM=1", "-DLILYGO_TLORA=1", "-DOTA_BOUNDED_SOURCE_PROOFS=1",
         ])
 
+    def test_wireless_tracker_full_room_preserves_source_proofs(self):
+        self.check_grouped_equivalence([
+            "-DESP32_PLATFORM=1", "-DHELTEC_LORA_V3=1", "-DOTA_BOUNDED_SOURCE_PROOFS=1",
+        ])
+
+    def test_wireless_tracker_room_proof_profile_is_scoped(self):
+        script = r'''
+set -eu
+source build.sh
+for full in 0 1; do
+  for target in Heltec_Wireless_Tracker_room_server Heltec_Wireless_Tracker_room_server_observer_mqtt Heltec_Wireless_Tracker_repeater; do
+    PIO_ENV_FULL_BUILD_BY_NAME[$target]=1
+    PIO_ENV_PLATFORM_BY_NAME[$target]=ESP32_PLATFORM
+    ESP32_FULL_BUILD=$full
+    PLATFORMIO_BUILD_FLAGS=""
+    PLATFORMIO_BUILD_UNFLAGS=""
+    apply_esp32_full_size_profile "$target"
+    expected=0
+    if [ "$full" = 1 ] && [[ "$target" == *room_server* ]]; then expected=1; fi
+    found=0
+    [[ " $PLATFORMIO_BUILD_FLAGS " == *" -DOTA_BOUNDED_SOURCE_PROOFS=1 "* ]] && found=1
+    [ "$found" = "$expected" ] || exit 1
+    expected=0
+    if [ "$full" = 1 ] && [[ "$target" == *repeater* ]]; then expected=1; fi
+    found=0
+    [[ " $PLATFORMIO_BUILD_FLAGS " == *" -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048 "* ]] && found=1
+    [ "$found" = "$expected" ] || exit 1
+  done
+done
+'''
+        result = subprocess.run(["bash", "-c", script], cwd=ROOT,
+                                text=True, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_tlora_room_budget_changes_only_actual_source_workspace(self):
         import sys
         sys.path.insert(0, str(ROOT / "scripts"))

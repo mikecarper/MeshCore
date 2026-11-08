@@ -9,7 +9,14 @@ namespace mesh {
 // The USB and TCP input buffers hold MAX_TRANS_UNIT * 2 + 32 bytes. Contact
 // cards need almost twice a radio packet's size after hexadecimal encoding.
 static const size_t kTerminalCommandCapacity = 255 * 2 + 32;
-static const size_t kTerminalInitialOutputCapacity = 4096;
+#ifndef MESH_TERMINAL_INITIAL_OUTPUT_CAPACITY
+#define MESH_TERMINAL_INITIAL_OUTPUT_CAPACITY 4096
+#endif
+static_assert(MESH_TERMINAL_INITIAL_OUTPUT_CAPACITY >= 1024 &&
+              MESH_TERMINAL_INITIAL_OUTPUT_CAPACITY <= 32768 &&
+              (MESH_TERMINAL_INITIAL_OUTPUT_CAPACITY & (MESH_TERMINAL_INITIAL_OUTPUT_CAPACITY - 1)) == 0,
+              "Terminal initial capacity must be a power of two from 1024 to 32768");
+static const size_t kTerminalInitialOutputCapacity = MESH_TERMINAL_INITIAL_OUTPUT_CAPACITY;
 static const size_t kTerminalOutputCapacity = 32768;
 
 // A bounded scrollback with absolute cursors. Reads do not consume data, so a

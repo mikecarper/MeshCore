@@ -56,6 +56,7 @@ def capacity_note(reductions, defines):
         paper = re.fullmatch(r'Wireless Paper Full: (\d+) contacts; (\d+) offline frames normally, (\d+) while mOTA borrows queue storage', reduction)
         neighbors = re.match(r'mesh.neighbors limited to (\d+)\b', reduction)
         rules = re.match(r'mesh.flood_rules limited to (\d+)\b', reduction)
+        terminal = re.fullmatch(r'web.terminal initial scrollback (\d+) bytes; grows up to (\d+) bytes when memory permits', reduction)
         if contacts:
             count, frames = contacts.groups()
             notes.append(f'Full Companion capacity: {count} contacts and {frames} queued messages; all Full transports are retained. '
@@ -84,11 +85,14 @@ def capacity_note(reductions, defines):
                          f'Sync unread messages with a Companion app before starting mOTA if more than {borrowed} are pending. '
                          'New messages during mOTA can overflow the smaller queue. '
                          f'All {normal} slots return when mOTA stops and any temporary-radio window ends.')
+        elif terminal:
+            initial, maximum = terminal.groups()
+            notes.append(f'Browser terminal starts with {initial} bytes of scrollback and can grow to {maximum} bytes when memory permits; unread output can wrap sooner when growth is denied.')
         elif neighbors:
             notes.append(f'Neighbor table: {neighbors[1]} entries.')
         elif rules:
             notes.append(f'Flood rules: {rules[1]} entries; the complete rule engine is retained.')
-        elif reduction.startswith(('companion.capacity', 'nRF52 Full:', 'Companion Full:', 'Wireless Paper Full:', 'mesh.neighbors', 'mesh.flood_rules', 'display.canvas')):
+        elif reduction.startswith(('companion.capacity', 'nRF52 Full:', 'Companion Full:', 'Wireless Paper Full:', 'mesh.neighbors', 'mesh.flood_rules', 'web.terminal', 'display.canvas')):
             raise ValueError('Unrecognized capacity reduction: ' + reduction)
     return ' '.join(notes)
 

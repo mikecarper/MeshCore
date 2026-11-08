@@ -3927,6 +3927,22 @@ apply_esp32_full_size_profile() {
   fi
 
   case "${env_name,,}" in
+    heltec_wireless_tracker_repeater|heltec_wireless_tracker_repeater_observer_mqtt)
+      # Retain all flood rules and neighbor records. Browser scrollback grows
+      # dynamically beyond this initial size when sufficient heap is free.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048"
+      record_build_reduction "web.terminal initial scrollback 2048 bytes; grows up to 32768 bytes when memory permits"
+      ;;
+    lilygo_tlora_v2_1_1_6_repeater_observer_mqtt_)
+      # Keep the full recent-repeater history in byte-accessible RTC SLOW;
+      # the browser terminal grows its smaller initial buffer on demand.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_RECENT_REPEATERS_RTC_SLOW=1 -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048"
+      record_build_reduction "web.terminal initial scrollback 2048 bytes; grows up to 32768 bytes when memory permits"
+      ;;
+    lilygo_tlora_v2_1_1_6_room_server_observer_mqtt_)
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048"
+      record_build_reduction "web.terminal initial scrollback 2048 bytes; grows up to 32768 bytes when memory permits"
+      ;;
     meshnology_w12_repeater|meshnology_w12_repeater_bridge_espnow|meshnology_w12_repeater_observer_mqtt)
       # The W12 has onboard PSRAM. Keep complete repeater tables in verified
       # external memory and preserve internal headroom in the Full image.
@@ -3954,6 +3970,13 @@ apply_esp32_full_size_profile() {
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_NEIGHBOURS=${max_neighbours}"
 
   case "${env_name,,}" in
+    heltec_wireless_tracker_room_server|heltec_wireless_tracker_room_server_observer_mqtt|\
+    heltec_tracker_v1_1_room_server_observer_mqtt|heltec_tracker_v2_room_server|\
+    heltec_tracker_v2_room_server_observer_mqtt)
+      # Preserve the complete Room post table and source geometry; compute
+      # Merkle proofs from bounded groups instead of caching every leaf.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_BOUNDED_SOURCE_PROOFS=1"
+      ;;
     lilygo_tlora_v2_1_1_6_room_server|lilygo_tlora_v2_1_1_6_room_server_|\
     lilygo_tlora_v2_1_1_6_room_server_observer_mqtt|lilygo_tlora_v2_1_1_6_room_server_observer_mqtt_|\
     tbeam_room_server_observer_mqtt|tbeam_sx1262_room_server_observer_mqtt|tbeam_sx1276_room_server_observer_mqtt)
@@ -4000,7 +4023,8 @@ apply_esp32_full_size_profile() {
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DFLOOD_ADVERT_RTC_FAST_SLOTS=50 -DFLOOD_ADVERT_RTC_SLOW_SLOTS=50"
       ;;
     heltec_t190_repeater_|heltec_t190_repeater_observer_mqtt)
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DFLOOD_ADVERT_RTC_FAST_SLOTS=16"
+      # Preserve all 128 records while moving 48 into retained RTC banks.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DFLOOD_ADVERT_RTC_FAST_SLOTS=16 -DFLOOD_ADVERT_RTC_SLOW_SLOTS=32"
       ;;
   esac
 

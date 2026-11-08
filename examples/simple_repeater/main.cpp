@@ -78,7 +78,19 @@ StdRNG fast_rng;
 #if MAX_RECENT_REPEATERS > 0
 // Compact rows retain the complete prefix/SNR/32-bit age at every capacity.
 // All accesses are owned by this loop, including deferred network commands.
-  #if defined(ESP32)
+  #if defined(MESH_RECENT_REPEATERS_RTC_SLOW) && MESH_RECENT_REPEATERS_RTC_SLOW
+  #if !defined(ESP32_PLATFORM) || !defined(CONFIG_IDF_TARGET_ESP32) || !defined(LILYGO_TLORA) || !defined(MESHCORE_EXPANDED_PARTITION_PROFILE)
+  #error "RTC recent history requires a qualified classic ESP32 TLora Full profile"
+  #endif
+  #if defined(FLOOD_ADVERT_RTC_SLOW_SLOTS) && FLOOD_ADVERT_RTC_SLOW_SLOTS
+  #error "RTC recent history cannot share its bank with RTC advert history"
+  #endif
+  #include <esp_attr.h>
+static_assert(MAX_RECENT_REPEATERS * sizeof(SimpleMeshTables::RecentRepeaterInfo) <= 4096,
+              "RTC recent history must leave the SDK at least 4 KiB of RTC SLOW memory");
+alignas(4) RTC_SLOW_ATTR SimpleMeshTables::RecentRepeaterInfo recent_repeater_storage[MAX_RECENT_REPEATERS];
+SimpleMeshTables tables(recent_repeater_storage, MAX_RECENT_REPEATERS);
+  #elif defined(ESP32)
 // Classic ESP32 has a much smaller link-time DRAM window than its runtime heap
 // map. Allocate this large, fixed-capacity history at startup so enabling WiFi
 // features (including WebConfig) does not overflow that static DRAM window.

@@ -353,7 +353,10 @@ def requirements(platform, defines, target):
             if "BOARD_HAS_PSRAM" not in defines:
                 # Larger replies grow on demand only while preserving 32 KiB
                 # of free internal heap, and shrink after the browser reads.
-                parts["browser_terminal_scrollback"] = 4096
+                initial = integer(defines, "MESH_TERMINAL_INITIAL_OUTPUT_CAPACITY", 4096)
+                if initial < 1024 or initial > 32768 or initial & (initial - 1):
+                    raise ValueError("invalid terminal initial output capacity")
+                parts["browser_terminal_scrollback"] = initial
             if "room_server" in target.lower():
                 # The mailbox is exclusive to Room Server callbacks. JSON's
                 # real allocator cap and one decoded maximum article coexist;
@@ -368,7 +371,15 @@ def requirements(platform, defines, target):
             count = integer(defines, "MAX_RECENT_REPEATERS", default_recent)
             if not integer(defines, "MESH_ENABLE_RECENT_REPEATERS", 1):
                 count = integer(defines, "MAX_RECENT_REPEATERS", 0)
-            parts["neighbor_history"] = count * 9 + (16 if count else 0)
+            if integer(defines, "MESH_RECENT_REPEATERS_RTC_SLOW", 0):
+                if (platform != "ESP32_PLATFORM" or "LILYGO_TLORA" not in defines
+                        or not integer(defines, "CONFIG_IDF_TARGET_ESP32", 0)
+                        or not integer(defines, "MESHCORE_EXPANDED_PARTITION_PROFILE", 0)
+                        or integer(defines, "FLOOD_ADVERT_RTC_SLOW_SLOTS", 0)
+                        or count * 9 > 4096):
+                    raise ValueError("unqualified RTC recent history")
+            else:
+                parts["neighbor_history"] = count * 9 + (16 if count else 0)
     else:
         parts["core_filesystems_sensors"] = 8192
     if (platform in {"ESP32_PLATFORM", "NRF52_PLATFORM"}
@@ -679,6 +690,8 @@ def check_firmware(elf_path, platform, mcu, defines, target, output=None):
         target_mcu = str(mcu).lower()
         defines = {**defines, "CONFIG_IDF_TARGET_ESP32S3": int(target_mcu == "esp32s3"),
                    "MESH_RAM_DEFAULT_RECENT_REPEATERS": 256 if target_mcu == "esp32" else 2048}
+        if target_mcu == "esp32":
+            defines["CONFIG_IDF_TARGET_ESP32"] = 1
     policy = requirements(platform, defines, target)
     regions = heap_regions(elf, platform, mcu)
     available = sum(end - start for start, end, _ in regions)

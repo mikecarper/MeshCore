@@ -79,7 +79,7 @@ size_t bytes(){size_t n=0;for(auto& p:allocated)n+=p.second;return n;}
 int main(){
   {
     WebTerminalStream terminal;
-    assert(terminal.ready() && bytes()==4096);
+    assert(terminal.ready() && bytes()==mesh::kTerminalInitialOutputCapacity);
     std::string data(24000,'x');
     assert(terminal.write(reinterpret_cast<const uint8_t*>(data.data()),data.size())==data.size());
     assert(bytes()==32768);
@@ -89,13 +89,13 @@ int main(){
       assert(n && !lost);result.append(chunk,n);
     }
     terminal.readOutput(cursor,chunk,sizeof(chunk),lost);
-    assert(result==data && bytes()==4096);
+    assert(result==data && bytes()==mesh::kTerminalInitialOutputCapacity);
   }
   assert(allocated.empty());
   {
     WebTerminalStream t;
-    assert(t.availableForWrite()==4096);
-    std::string data(4096,'b');
+    assert(t.availableForWrite()==mesh::kTerminalInitialOutputCapacity);
+    std::string data(mesh::kTerminalInitialOutputCapacity,'b');
     t.write(reinterpret_cast<const uint8_t*>(data.data()),data.size());
     assert(t.availableForWrite()==0);
     uint64_t cursor=0;char chunk[1025];bool lost=false;
@@ -110,9 +110,9 @@ int main(){
   assert(allocated.empty());
   internal_free=40960;
   {
-    WebTerminalStream t;assert(t.ready() && bytes()==4096);
+    WebTerminalStream t;assert(t.ready() && bytes()==mesh::kTerminalInitialOutputCapacity);
     std::string data(24000,'a');t.write(reinterpret_cast<const uint8_t*>(data.data()),data.size());
-    assert(bytes()==4096); // refused growth preserves the live buffer
+    assert(bytes()==mesh::kTerminalInitialOutputCapacity); // refused growth preserves the live buffer
     uint64_t cursor=0;char chunk[1025];bool lost=false;
     assert(t.readOutput(cursor,chunk,sizeof(chunk),lost)>0 && lost);
   }
@@ -126,12 +126,15 @@ int main(){
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(text, encoding="ascii")
             binary = folder / "stream"
-            subprocess.run([
-                "c++", "-std=c++17", "-x", "c++", "-", "-I" + str(folder),
-                "-I" + str(ROOT / "src"), "-fsanitize=address,undefined",
-                "-fno-pie", "-no-pie", "-o", str(binary),
-            ], input=code, text=True, check=True, capture_output=True)
-            subprocess.run([str(binary)], check=True, capture_output=True)
+            for initial in (4096, 2048):
+                with self.subTest(initial=initial):
+                    subprocess.run([
+                        "c++", "-std=c++17", "-x", "c++", "-", "-I" + str(folder),
+                        "-I" + str(ROOT / "src"), "-fsanitize=address,undefined",
+                        f"-DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY={initial}",
+                        "-fno-pie", "-no-pie", "-o", str(binary),
+                    ], input=code, text=True, check=True, capture_output=True)
+                    subprocess.run([str(binary)], check=True, capture_output=True)
 
 
 if __name__ == "__main__":
