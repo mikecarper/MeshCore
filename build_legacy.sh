@@ -4529,6 +4529,11 @@ apply_companion_radio_full_profile() {
       Heltec_t096_companion_radio_full_*)
         export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -Wl,--defsym=__mesh_nrf52_min_heap_size=73728"
         ;;
+      Heltec_t1_companion_radio_full)
+        # Retain all contacts and held messages while storing only their
+        # authenticated data, leaving room for the full runtime heap budget.
+        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DONE_KEY_DM_COMPACT_HELD=1"
+        ;;
     esac
     record_build_reduction \
       "nRF52 Full: 256 offline frames normally; 128 while mOTA borrows queue storage"
@@ -4656,7 +4661,7 @@ apply_companion_radio_full_profile() {
       # Reuse idle queue storage during explicit OTA; retain all 224 normal slots.
       if [[ "${env_name,,}" != generic_espnow_companion_radio_full ]]; then
         export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_SHARED_COMPANION_QUEUE=1 -DONE_KEY_DM_COMPACT_HELD=1"
-        if [[ "${env_name,,}" == xiao_c3_companion_radio_full ]]; then
+        if [[ "${env_name,,}" == xiao_c3_companion_radio_full || "${env_name,,}" == heltec_ct62_companion_radio_full ]]; then
           # Move 32 of the existing 128 retained slots into byte-accessible
           # RTC FAST. Both the 224 normal and 128 active-OTA limits stay intact.
           export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32"
@@ -4681,11 +4686,13 @@ apply_companion_radio_full_profile() {
     heltec_wireless_tracker_companion_radio_full)
       append_platformio_build_unflags "-DMAX_CONTACTS=350"
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=150"
-      # Retain all 256 frames, independent OTA workspace, held DMs, and the
-      # RGB565 display. Each RTC bank holds 32 existing CPU-only frames.
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32"
+      # Retain 256 frames normally and 128 while mOTA borrows the workspace.
+      # Each RTC bank holds 32 retained frames; the RGB565 display is intact.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_SHARED_COMPANION_QUEUE=1 -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32"
       record_build_reduction \
         "companion.capacity limited to 150 contacts for runtime RAM; 256 queued frames and all Full transports retained"
+      record_build_reduction \
+        "Companion Full: 256 offline frames normally; 128 while mOTA borrows queue storage"
       ;;
     mke_s3_companion_radio_full|\
     thinknode_m2_companion_radio_full|\
@@ -4719,6 +4726,31 @@ apply_companion_radio_full_profile() {
         record_build_reduction \
           "companion.capacity limited to 100 contacts, 8 channels, and 16 queued frames by measured internal DRAM"
       fi
+      ;;
+  esac
+
+  case "${env_name,,}" in
+    nibble_screen_connect_companion_radio_full_|nibble_zero_connect_companion_radio_full_)
+      # The source workspace borrows idle queue slots under the same guarded
+      # admission used by other Full Companions. Preserve normal capacity.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_SHARED_COMPANION_QUEUE=1"
+      record_build_reduction \
+        "Companion Full: 256 offline frames normally; 128 while mOTA borrows queue storage"
+      ;;
+  esac
+
+  # These constrained Full layouts keep the entire held-message count while
+  # avoiding the larger retained Packet representation. This recovers static
+  # DRAM without reducing either the queue or the required heap margin.
+  case "${env_name,,}" in
+    heltec_wireless_paper_companion_radio_full|\
+    heltec_wireless_tracker_companion_radio_full|\
+    lilygo_tlora_v2_1_1_6_companion_radio_full|\
+    mke_s3_companion_radio_full|\
+    nibble_screen_connect_companion_radio_full_|\
+    nibble_zero_connect_companion_radio_full_|\
+    thinknode_m5_companion_radio_full)
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DONE_KEY_DM_COMPACT_HELD=1"
       ;;
   esac
 

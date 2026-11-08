@@ -1825,11 +1825,41 @@ printf '%s\\n' "$PLATFORMIO_BUILD_FLAGS"
                     self.assertIn("-DONE_KEY_DM_COMPACT_HELD=1", result.stdout)
                 else:
                     self.assertNotIn("-DOTA_SHARED_COMPANION_QUEUE", result.stdout)
-            if target in ("Heltec_v3_companion_radio_full", "generic_espnow_companion_radio_full",
-                          "Heltec_Wireless_Paper_companion_radio_full"):
+            if target in ("Heltec_v3_companion_radio_full", "generic_espnow_companion_radio_full"):
                 self.assertNotIn("-DONE_KEY_DM_COMPACT_HELD", result.stdout)
+            if target == "Heltec_Wireless_Paper_companion_radio_full":
+                self.assertIn("-DONE_KEY_DM_COMPACT_HELD=1", result.stdout)
+                if target in ("Heltec_Wireless_Tracker_companion_radio_full",
+                              "nibble_screen_connect_companion_radio_full_",
+                              "nibble_zero_connect_companion_radio_full_"):
+                    self.assertIn("-DOTA_SHARED_COMPANION_QUEUE=1", result.stdout)
+            if target == "Heltec_ct62_companion_radio_full":
+                self.assertIn("-DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32", result.stdout)
             self.assertIn("-DWIFI_OTA_SEEDER=1", result.stdout)
             self.assertIn("-DBLE_PIN_CODE=123456", result.stdout)
+
+    def test_compact_held_dm_is_limited_to_selected_full_layouts(self):
+        selected = {
+            "Heltec_t1_companion_radio_full": "NRF52_PLATFORM",
+            "Heltec_Wireless_Paper_companion_radio_full": "ESP32_PLATFORM",
+            "Heltec_Wireless_Tracker_companion_radio_full": "ESP32_PLATFORM",
+            "LilyGo_TLora_V2_1_1_6_companion_radio_full": "ESP32_PLATFORM",
+            "MKE_s3_companion_radio_full": "ESP32_PLATFORM",
+            "nibble_screen_connect_companion_radio_full_": "ESP32_PLATFORM",
+            "nibble_zero_connect_companion_radio_full_": "ESP32_PLATFORM",
+            "ThinkNode_M5_companion_radio_full": "ESP32_PLATFORM",
+        }
+        for target, platform in selected.items():
+            with self.subTest(target=target):
+                result = subprocess.run(["bash", "-c", '''
+source build.sh
+PIO_ENV_PLATFORM_BY_NAME["$1"]="$2"
+pio_env_option_contains() { return 0; }
+requires_esp32_companion_full_ota_fallback() { return 1; }
+apply_companion_radio_full_profile "$1" "$1"
+printf '%s\\n' "$PLATFORMIO_BUILD_FLAGS"
+''', "test", target, platform], cwd=ROOT, text=True, capture_output=True, check=True)
+                self.assertIn("-DONE_KEY_DM_COMPACT_HELD=1", result.stdout)
 
     def test_missing_and_truncated_elf_are_rejected(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -254,6 +254,15 @@ class PickerControlsTests(unittest.TestCase):
         self.assertNotIn('350 contacts', control['memoryNote'])
         self.assertEqual(control['memorySource'], 'b' * 40)
 
+    def test_companion_shared_ota_capacity_is_shown(self):
+        control = self.generate([
+            'companion.capacity limited to 150 contacts for runtime RAM; 256 queued frames and all Full transports retained',
+            'Companion Full: 256 offline frames normally; 128 while mOTA borrows queue storage',
+        ])
+        self.assertIn('150 contacts', control['memoryNote'])
+        self.assertIn('128 while mOTA', control['memoryNote'])
+        self.assertIn('Sync unread messages', control['memoryNote'])
+
     def test_compact_contacts_channels_and_queue_limits(self):
         for channels in (8, 30):
             with self.subTest(channels=channels):

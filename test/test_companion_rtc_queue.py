@@ -318,7 +318,7 @@ class CompanionRtcQueueTests(unittest.TestCase):
         for target, fast, slow, contacts, queue in (
                 ('Generic_ESPNOW_companion_radio_full', 32, 0, 100, 224),
                 ('Xiao_C3_companion_radio_full', 32, 0, 100, 224),
-                ('Heltec_CT62_companion_radio_full', 0, 0, 100, 224),
+                ('Heltec_CT62_companion_radio_full', 32, 0, 100, 224),
                 ('Heltec_v3_companion_radio_full', 32, 0, 100, 256),
                 ('Heltec_v3_companion_radio_usb', 0, 0, 350, 256),
                 ('Heltec_v3_companion_radio_ble', 0, 0, 350, 256),
@@ -345,6 +345,8 @@ class CompanionRtcQueueTests(unittest.TestCase):
                 if target in ('Xiao_C3_companion_radio_full', 'Heltec_CT62_companion_radio_full'):
                     self.assertEqual(flags.get('OTA_SHARED_COMPANION_QUEUE'), '1')
                     self.assertEqual(flags.get('ONE_KEY_DM_COMPACT_HELD'), '1')
+                elif target == 'Heltec_Wireless_Tracker_companion_radio_full':
+                    self.assertEqual(flags.get('OTA_SHARED_COMPANION_QUEUE'), '1')
                 elif target == 'M5Stack_Cardputer_Adv_companion_radio_full':
                     self.assertEqual(flags.get('OTA_SHARED_COMPANION_QUEUE'), '1')
                     self.assertEqual(flags.get('COMPANION_EXCLUSIVE_WIFI_BLE'), '1')

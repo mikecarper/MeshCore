@@ -51,7 +51,7 @@ def capacity_note(reductions, defines):
             continue
         contacts = re.fullmatch(r'companion.capacity limited to (\d+) contacts for runtime RAM; (\d+) queued frames and all Full transports retained', reduction)
         compact = re.fullmatch(r'companion.capacity limited to (\d+) contacts, (\d+) channels, and (\d+) queued frames by measured internal DRAM', reduction)
-        queue = re.fullmatch(r'nRF52 Full: (\d+) offline frames normally; (\d+) while mOTA borrows queue storage', reduction)
+        queue = re.fullmatch(r'(?:nRF52|Companion) Full: (\d+) offline frames normally; (\d+) while mOTA borrows queue storage', reduction)
         paper = re.fullmatch(r'Wireless Paper Full: (\d+) contacts; (\d+) offline frames normally, (\d+) while mOTA borrows queue storage', reduction)
         neighbors = re.match(r'mesh.neighbors limited to (\d+)\b', reduction)
         rules = re.match(r'mesh.flood_rules limited to (\d+)\b', reduction)
