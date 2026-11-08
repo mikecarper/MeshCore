@@ -101,6 +101,7 @@ struct Wrapper:Base {
    radio.calls.push_back("scanner");assert(warm);
    if(inject_restart_irq)radio.irq=true;
    if(!restart_result||radio.irq||radio.busy||!_lab_pram_loaded)return false;
+   if(radio.activatePram()!=RADIOLIB_ERR_NONE){_lab_uncertain=true;_lab_resume_pending=false;_profile_repair_required=true;return false;}
    if(!radio.pram_registered)return false;
    radio.calls.push_back("hook");
    _lab_scan_active=true;_lab_status.hooked=true;_lab_resume_pending=false;return true;
@@ -317,7 +318,7 @@ static void retainedSleepEligibility(){
  for(bool automatic:{false,true}){
   Wrapper w;w.auto_enabled=automatic;w._profiles.active=true;w._lab_scan_active=true;w._lab_status.hooked=true;
   assert(w.periodicOldAGCMaintenance()==Result::Applied);
-  assert(w.radio.calibrations==1&&!w.radio.used_retained_sleep&&w.radio.activations==0&&w.radio.pram_registered);
+  assert(w.radio.calibrations==1&&!w.radio.used_retained_sleep&&w.radio.activations==1&&w.radio.pram_registered);
   assert(w._lab_scan_active&&w._lab_status.hooked&&!w._lab_uncertain&&w._lab_pram_loaded);
  }
 #endif

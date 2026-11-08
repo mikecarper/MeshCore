@@ -654,10 +654,18 @@ public:
         rc=r->writeRegMem32(0x801000u+uint32_t(at*4),w12_pram_scan_blob+at,count);
         at+=count;
       }
-      if(rc==RADIOLIB_ERR_NONE)rc=r->activatePram();
-      if(rc==RADIOLIB_ERR_NONE)_lab_pram_loaded=true;
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
       if(restart.restart_rc==RADIOLIB_ERR_NONE) {restart.restart_stage=5;restart.restart_rc=rc;}
+#endif
+    }
+    if(rc==RADIOLIB_ERR_NONE) {
+      // The custom install publishes its own retained identity. After checked
+      // standby, reactivate the known resident image before hello and rehook.
+      // Only the cold path above writes any image bytes.
+      rc=r->activatePram();
+      if(rc==RADIOLIB_ERR_NONE)_lab_pram_loaded=true;
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      restart.restart_stage=5;restart.restart_rc=rc;
 #endif
     }
     uint8_t req=2,ident[4]={};
