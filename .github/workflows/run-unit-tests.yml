@@ -1008,6 +1008,7 @@ jobs:
           python3 -B test/test_companion_meshtext.py -v
           python3 -B test/test_companion_meshtext_storage.py -v
           python3 -B test/test_companion_serial_hil.py -v
+          python3 -B test/test_companion_serial_startup_replies.py -v
           python3 -B test/test_companion_raw_radio2_sweep.py -v
           python3 -B test/test_meshtext_listen_hil.py -v
           python3 -B test/test_mercer_mt_flash.py -v
