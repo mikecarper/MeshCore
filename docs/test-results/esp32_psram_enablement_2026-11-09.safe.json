@@ -1,0 +1,91 @@
+{
+  "date": "2026-11-09",
+  "kind": "build-and-host-tests",
+  "physical_validation": false,
+  "resolved_environment_counts": {
+    "RAK3112": 13,
+    "ThinkNode M2": 10,
+    "ThinkNode M5": 11
+  },
+  "builds": [
+    {
+      "target": "RAK_3112_companion_radio_full",
+      "source_commit": "631f724a5",
+      "application_bytes": 2268200,
+      "application_partition_bytes": 3342336,
+      "internal_heap_available": 223704,
+      "internal_heap_required": 158752,
+      "internal_largest_region": 190936,
+      "capability_checks": 26,
+      "log_sha256": "6139bb14323b260afec21907419910ef98cc5dbb11fe2aeb8b352288c95dc993",
+      "result": "PASS"
+    },
+    {
+      "target": "ThinkNode_M2_companion_radio_full",
+      "source_commit": "1efdb5822",
+      "application_bytes": 2233688,
+      "application_partition_bytes": 3145728,
+      "internal_heap_available": 228656,
+      "internal_heap_required": 171808,
+      "internal_largest_region": 195888,
+      "capability_checks": 26,
+      "log_sha256": "9636826a7e947e8c6e407b149607a6248b77ca1676204019aa00d4716d8010c1",
+      "result": "PASS"
+    },
+    {
+      "target": "ThinkNode_M5_companion_radio_full",
+      "source_commit": "1efdb5822",
+      "application_bytes": 2254984,
+      "application_partition_bytes": 3145728,
+      "internal_heap_available": 224408,
+      "internal_heap_required": 169760,
+      "internal_largest_region": 191640,
+      "capability_checks": 26,
+      "log_sha256": "aaacf51b96691217edb6e931e34af3e7fa2aff7e60ed875eb07e08e4b6db91a3",
+      "result": "PASS"
+    },
+    {
+      "target": "RAK_3112_repeater",
+      "source_commit": "9fb6e7448",
+      "application_bytes": 2226840,
+      "application_partition_bytes": 3342336,
+      "internal_heap_available": 236328,
+      "internal_heap_required": 200628,
+      "internal_largest_region": 203560,
+      "capability_checks": 17,
+      "log_sha256": "3b5a512d7b61d0a6a15eff65f60f5c11f7033ac6af9f53a74fa568ada8de622b",
+      "result": "PASS"
+    },
+    {
+      "target": "ThinkNode_M2_Repeater",
+      "source_commit": "9fb6e7448",
+      "application_bytes": 1694120,
+      "application_partition_bytes": 2031616,
+      "internal_heap_available": 266800,
+      "internal_heap_required": 209808,
+      "internal_largest_region": 234032,
+      "capability_checks": 14,
+      "log_sha256": "9c86731bc9c9192547459d110bc3b5b99ec0c20437f66f48e8cfd0c6b499afcf",
+      "result": "PASS"
+    },
+    {
+      "target": "ThinkNode_M5_Repeater",
+      "source_commit": "9fb6e7448",
+      "application_bytes": 1721672,
+      "application_partition_bytes": 2031616,
+      "internal_heap_available": 261080,
+      "internal_heap_required": 207760,
+      "internal_largest_region": 228312,
+      "capability_checks": 14,
+      "log_sha256": "01bebf97aecce7144e00614d98f1af55f1364737f891bc858c0fc0f93c777718",
+      "result": "PASS"
+    }
+  ],
+  "host_tests": {
+    "test_build_profiles.sh": "PASS",
+    "test_*psram*.py": "24 PASS",
+    "test_esp32_hwcdc_recipes.py": "14 PASS",
+    "test_companion_rtc_queue.py": "7 PASS",
+    "test_*required_psram.py": "8 PASS (included in the PSRAM suite; repeated after RAK3112 policy change)"
+  }
+}
