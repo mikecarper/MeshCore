@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Full W12/V4/RAK3112 repeaters require PSRAM; normal and other roles do not."""
+"""Full PSRAM-qualified repeaters require PSRAM; normal and other roles do not."""
 from pathlib import Path
 import shutil
 import subprocess
@@ -30,7 +30,27 @@ record_build_reduction() { :; }
 apply_esp32_full_size_profile "$3"
 printf "%s" "$PLATFORMIO_BUILD_FLAGS"
 '''
-        qualified = {'RAK_3112_repeater', 'RAK_3112_repeater_bridge_rs232',
+        qualified = {'LilyGo_TBeam_1W_repeater', 'LilyGo_TBeam_1W_repeater_bridge_espnow',
+                     'LilyGo_TBeam_1W_repeater_observer_mqtt',
+                     'T_Beam_S3_Supreme_SX1262_repeater',
+                     'T_Beam_S3_Supreme_SX1262_repeater_bridge_espnow',
+                     'T_Beam_S3_Supreme_SX1262_repeater_observer_mqtt',
+                     'Wio_Tracker_L2_repeater',
+                     'heltec_rc32_repeater', 'heltec_rc32_repeater_bridge_espnow',
+                     'heltec_rc32_repeater_observer_mqtt', 'heltec_rc32_without_display_repeater',
+                     'heltec_rc32_without_display_repeater_bridge_espnow',
+                     'heltec_rc32_without_display_repeater_observer_mqtt',
+                     'Heltec_E213_repeater', 'Heltec_E213_repeater_bridge_espnow',
+                     'Heltec_E213_repeater_observer_mqtt', 'Heltec_E290_repeater',
+                     'Heltec_E290_repeater_bridge_espnow', 'Heltec_E290_repeater_observer_mqtt',
+                     'Heltec_T190_repeater', 'Heltec_T190_repeater_bridge_espnow',
+                     'Heltec_T190_repeater_observer_mqtt',
+                     'Station_G2_repeater', 'Station_G2_repeater_bridge_espnow',
+                     'Station_G2_logging_repeater', 'Station_G2_logging_repeater_bridge_espnow',
+                     'Station_G2_repeater_observer_mqtt', 'Station_G3_ESP32_repeater',
+                     'Station_G3_ESP32_logging_repeater', 'Station_G3_ESP32_repeater_observer_mqtt',
+                     'Station_G3_ESP32_r2_repeater', 'Station_G3_ESP32_r2_repeater_observer_mqtt',
+                     'RAK_3112_repeater', 'RAK_3112_repeater_bridge_rs232',
                      'RAK_3112_repeater_bridge_espnow', 'RAK_3112_repeater_observer_mqtt',
                      'meshnology_w12_repeater', 'meshnology_w12_repeater_bridge_espnow',
                      'meshnology_w12_repeater_observer_mqtt',
@@ -49,7 +69,26 @@ printf "%s" "$PLATFORMIO_BUILD_FLAGS"
                   'heltec_v4_room_server', 'heltec_v4_r8_tft_room_server',
                   'heltec_v4_repeater_legacy_partition_test', 'heltec_v4_repeater_extra',
                   'heltec_v4_2_v4_3_companion_radio_full_femon',
-                  'heltec_v4_r8_tft_companion_radio_full', 'Station_G3_ESP32_repeater'}
+                  'heltec_v4_r8_tft_companion_radio_full',
+                  'LilyGo_TBeam_1W_room_server', 'LilyGo_TBeam_1W_room_server_observer_mqtt',
+                  'LilyGo_TBeam_1W_companion_radio_full', 'LilyGo_TBeam_1W_repeater_extra',
+                  'T_Beam_S3_Supreme_SX1262_room_server',
+                  'T_Beam_S3_Supreme_SX1262_room_server_observer_mqtt',
+                  'T_Beam_S3_Supreme_SX1262_companion_radio_full',
+                  'T_Beam_S3_Supreme_SX1262_repeater_extra',
+                  'Wio_Tracker_L2_room_server', 'Wio_Tracker_L2_companion_radio_full',
+                  'Wio_Tracker_L2_repeater_extra',
+                  'heltec_rc32_room_server', 'heltec_rc32_room_server_observer_mqtt',
+                  'heltec_rc32_companion_radio_full', 'heltec_rc32_repeater_extra',
+                  'heltec_rc32_without_display_companion_radio_full',
+                  'Heltec_E213_room_server', 'Heltec_E213_room_server_observer_mqtt',
+                  'Heltec_E213_companion_radio_full', 'Heltec_E213_repeater_extra',
+                  'Heltec_E290_room_server', 'Heltec_E290_companion_radio_full',
+                  'Heltec_T190_room_server', 'Heltec_T190_companion_radio_full',
+                  'Station_G2_room_server', 'Station_G2_room_server_observer_mqtt',
+                  'Station_G2_companion_radio_full', 'Station_G2_repeater_extra',
+                  'Station_G3_ESP32_room_server', 'Station_G3_ESP32_room_server_observer_mqtt',
+                  'Station_G3_ESP32_companion_radio_full', 'Station_G3_ESP32_repeater_extra'}
         bash = shutil.which('bash')
         if not bash:
             self.skipTest('bash not installed')

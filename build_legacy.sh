@@ -3993,6 +3993,19 @@ apply_esp32_full_size_profile() {
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048"
       record_build_reduction "web.terminal initial scrollback 2048 bytes; grows up to 32768 bytes when memory permits"
       ;;
+    lilygo_tbeam_1w_repeater|lilygo_tbeam_1w_repeater_bridge_espnow|lilygo_tbeam_1w_repeater_observer_mqtt|\
+    t_beam_s3_supreme_sx1262_repeater|t_beam_s3_supreme_sx1262_repeater_bridge_espnow|\
+    t_beam_s3_supreme_sx1262_repeater_observer_mqtt|wio_tracker_l2_repeater|\
+    heltec_rc32_repeater|heltec_rc32_repeater_bridge_espnow|heltec_rc32_repeater_observer_mqtt|\
+    heltec_rc32_without_display_repeater|heltec_rc32_without_display_repeater_bridge_espnow|\
+    heltec_rc32_without_display_repeater_observer_mqtt|\
+    heltec_e213_repeater|heltec_e213_repeater_bridge_espnow|heltec_e213_repeater_observer_mqtt|\
+    heltec_e290_repeater|heltec_e290_repeater_bridge_espnow|heltec_e290_repeater_observer_mqtt|\
+    heltec_t190_repeater|heltec_t190_repeater_bridge_espnow|heltec_t190_repeater_observer_mqtt|\
+    station_g2_repeater|station_g2_repeater_bridge_espnow|station_g2_logging_repeater|\
+    station_g2_logging_repeater_bridge_espnow|station_g2_repeater_observer_mqtt|\
+    station_g3_esp32_repeater|station_g3_esp32_logging_repeater|station_g3_esp32_repeater_observer_mqtt|\
+    station_g3_esp32_r2_repeater|station_g3_esp32_r2_repeater_observer_mqtt|\
     rak_3112_repeater|rak_3112_repeater_bridge_rs232|rak_3112_repeater_bridge_espnow|rak_3112_repeater_observer_mqtt|\
     meshnology_w12_repeater|meshnology_w12_repeater_bridge_espnow|meshnology_w12_repeater_observer_mqtt|\
     heltec_v4_repeater|heltec_v4_repeater_bridge_espnow|heltec_v4_repeater_observer_mqtt|\
@@ -4001,8 +4014,8 @@ apply_esp32_full_size_profile() {
     heltec_v4_r8_repeater|heltec_v4_r8_repeater_bridge_espnow|heltec_v4_r8_repeater_observer_mqtt|\
     heltec_v4_r8_tft_repeater|heltec_v4_r8_tft_repeater_bridge_espnow|heltec_v4_r8_tft_repeater_observer_mqtt)
       # These boards have onboard PSRAM. Keep complete repeater tables in
-      # verified external memory; V4 also uses the internal headroom for its
-      # resident radio retune path. Missing PSRAM leaves USB recovery alive.
+      # verified external memory; their resident radio paths also use the
+      # internal headroom. Missing PSRAM leaves USB recovery alive.
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_REPEATER_REQUIRE_PSRAM=1"
       ;;
   esac

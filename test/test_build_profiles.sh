@@ -162,6 +162,20 @@ def reject(env_name, option_name, needle):
             f"test_build_profiles: {env_name} {option_name} unexpectedly contains {needle}"
         )
 
+# Board-base inheritance must preserve the original memory budget and
+# code placement of the small migration utilities.
+for target in ("Xiao_S3_WIO_partition_expander",
+               "Waveshare_S3_LR1121_partition_expander_repeater_observer_mqtt",
+               "Waveshare_S3_LR1121_partition_expander_room_server_observer_mqtt"):
+    enabled = set(re.findall(r"MC_ESP32_RADIO_(?:FAST|COMMAND|SPI)_CODE=1",
+                             option_text(target, "build_flags")))
+    removed = set(re.findall(r"MC_ESP32_RADIO_(?:FAST|COMMAND|SPI)_CODE=1",
+                             option_text(target, "build_unflags")))
+    if enabled - removed:
+        raise SystemExit(f"test_build_profiles: {target} changed utility code placement")
+    if "-mtext-section-literals" in option_text(target, "build_flags"):
+        require(target, "build_unflags", "-mtext-section-literals")
+
 # PSRAM must survive inheritance into every role, not just Full Companion.
 # Keep the proven RAK3112 DIO flash header with the octal-PSRAM SDK.
 psram_families = ("RAK_3112_", "ThinkNode_M2_", "ThinkNode_M5_")
