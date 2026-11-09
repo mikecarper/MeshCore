@@ -145,7 +145,8 @@ save the processor clock choice. `get cpu.freq` reports the choice, actual MHz
 and supported values. The board rejects unsupported clocks. Auto retains the
 normal policy: Companion selects 80 MHz with device power saving on and its
 configured nominal speed with it off. Other roles retain their nominal speed.
-While radio2 or a temporary second profile is active, Auto instead holds the
+While radio2 or a temporary second profile is active, Auto holds 80 MHz with
+device power saving on, for every role. With power saving off, it uses the
 highest supported CPU speed (240 or 160 MHz) to prioritize switching speed.
 SenseCAP Indicator retains its existing policy. A fixed speed stays fixed when
 power saving or radio2 changes.
