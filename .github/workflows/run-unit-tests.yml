@@ -1255,6 +1255,7 @@ jobs:
           python3 -B test/test_sx126x_buffered_radio_hal.py -v
           python3 -B test/test_esp32_tunable_target_constructors.py -v
           python3 -B test/test_esp32_spi_ab_diagnostics.py -v
+          python3 -B test/test_esp32_radio_command_code.py -v
           python3 -B test/test_profile_switch_timing.py -v
           python3 -B test/test_nrf_radio_yield_budget.py -v
           python3 -B test/test_nrf_radio_priority_lease.py -v

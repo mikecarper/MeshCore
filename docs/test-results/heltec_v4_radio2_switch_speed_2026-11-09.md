@@ -4,6 +4,9 @@
 
 # Heltec V4 radio2 switching speed — 9 November 2026
 
+Further experiments reduced the 240 MHz means to **380/498 us**; see the
+[radio-command follow-up](heltec_v4_radio_command_speed_2026-11-09.md).
+
 The existing SX1262 driver is retained. Keeping its short retune path in internal
 instruction RAM removes much of the flash-cache delay seen between ordinary
 application-loop iterations. It costs about **5 KiB of internal RAM**, preserves
