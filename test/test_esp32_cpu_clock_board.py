@@ -21,7 +21,13 @@ static unsigned clock_writes=0;
 static bool fail_clock=false,wrong_readback=false;
 static uint16_t rejected_mhz=0;
 static uint32_t now_ms=100;
+static unsigned settle_calls=0,settle_after=0;
+static uint16_t queued_mhz=0;
 uint32_t millis(){return now_ms;}
+void delay(uint32_t ms){
+ now_ms+=ms;
+ if(++settle_calls==settle_after)actual_mhz=queued_mhz;
+}
 uint32_t getCpuFrequencyMhz(){return actual_mhz;}
 bool setCpuFrequencyMhz(uint32_t value){
  ++clock_writes;if(fail_clock||value==rejected_mhz)return false;actual_mhz=wrong_readback?80:value;return true;
@@ -39,7 +45,9 @@ using esp_pm_config_esp32c3_t=esp_pm_config_t;
 static esp_pm_config_t applied_pm{};
 int esp_pm_configure(esp_pm_config_t* config){
  ++clock_writes;if(fail_clock||config->max_freq_mhz==rejected_mhz)return 9;applied_pm=*config;
- actual_mhz=wrong_readback?80:config->min_freq_mhz;return ESP_OK;
+ if(settle_after){queued_mhz=config->min_freq_mhz;settle_calls=0;}
+ else actual_mhz=wrong_readback?80:config->min_freq_mhz;
+ return ESP_OK;
 }
 struct MainBoard {
  virtual uint16_t getCpuFrequencyMHz()const=0;
@@ -147,6 +155,94 @@ int main(){
                 with self.subTest(target=target,pm=pm):
                     self.run_fixture(source,[f"-DCONFIG_IDF_TARGET_{target}=1",f"-DCONFIG_PM_ENABLE={pm}","-DENABLE_USB_INTERFACE=1"])
         self.run_fixture(source,["-DCONFIG_IDF_TARGET_ESP32S3=1","-DCONFIG_PM_ENABLE=1"])
+
+    def test_deferred_fixed_clocks_settle_and_failures_remain_bounded(self):
+        source=r'''
+#include <initializer_list>
+int main(){
+ const uint16_t nominal=board.supportsCpuFrequencyMHz(240)?240:160;
+ for(uint16_t wanted:{uint16_t(80),uint16_t(160),uint16_t(240)}){
+   if(!board.supportsCpuFrequencyMHz(wanted))continue;
+   actual_mhz=wanted==160?80:160;
+   settle_after=3;const auto started=now_ms;
+   assert(board.applyCpuFrequencyMHz(wanted,false));
+   assert(actual_mhz==wanted && settle_calls==3 && now_ms-started==3);
+   assert(board.applied_cpu_clock_valid);
+ }
+ // An unavailable clock fails promptly, without claiming it was applied.
+ actual_mhz=160;settle_after=1000;const auto started=now_ms;
+ assert(!board.applyCpuFrequencyMHz(80,false));
+ assert(actual_mhz==160 && settle_calls==10 && now_ms-started==10);
+ assert(!board.applied_cpu_clock_valid);
+ // A later valid request can recover; a timeout must not poison its policy.
+ settle_after=1;
+ assert(board.applyCpuFrequencyMHz(80,false) && actual_mhz==80);
+ // Fixed infrastructure Auto also waits for actual readback.
+ actual_mhz=80;settle_after=2;
+ assert(board.applyCpuFrequencyMHz(0,false) && actual_mhz==nominal && settle_calls==2);
+ board.setCompanionCpuClockPolicy(true);actual_mhz=nominal;settle_after=2;
+ if(mesh::esp32::cpuclock::automaticDownclockAllowed()){
+   // Variable Auto can scale; it must not wait for its maximum or minimum.
+   assert(board.applyCpuFrequencyMHz(0,true) && settle_calls==0);
+   assert(applied_pm.min_freq_mhz==40 && applied_pm.max_freq_mhz==80);
+ }else{
+   // Indicator's Auto remains pinned to nominal even with PS on.
+   actual_mhz=80;
+   assert(board.applyCpuFrequencyMHz(0,true) && settle_calls==2);
+   assert(actual_mhz==nominal && applied_pm.min_freq_mhz==nominal);
+   assert(applied_pm.max_freq_mhz==nominal && !applied_pm.light_sleep_enable);
+ }
+ // Radio2's performance policy settles before the first retune. Subsequent
+ // retunes at the established clock neither configure nor wait again.
+ actual_mhz=80;settle_after=3;bool changed=false;
+ board.applied_cpu_clock_valid=false;
+ board.setCpuFrequencyRequest(0,true);
+ assert(board.prepareRadioProfileCpuClock(true,changed));
+ assert(actual_mhz==nominal && settle_calls==3);
+ const auto writes=clock_writes,waits=settle_calls;
+ for(unsigned hop=0;hop<100;++hop){
+   assert(board.prepareRadioProfileCpuClock(true,changed) && !changed);
+ }
+ assert(clock_writes==writes && settle_calls==waits);
+ // A repeated request already at its fixed speed returns without a yield.
+ assert(board.applyCpuFrequencyMHz(nominal,false) && settle_calls==0);
+}
+'''
+        for target in ("ESP32","ESP32S2","ESP32S3","ESP32C3","ESP32C6"):
+            with self.subTest(target=target):
+                self.run_fixture(source,[f"-DCONFIG_IDF_TARGET_{target}=1","-DCONFIG_PM_ENABLE=1"])
+        self.run_fixture(source,["-DCONFIG_IDF_TARGET_ESP32S3=1","-DCONFIG_PM_ENABLE=1",
+                                 "-DSENSECAP_INDICATOR_LORA=1","-DENABLE_USB_INTERFACE=1"])
+
+    def test_deferred_cli_clock_change_commits_only_after_readback_and_restores_on_failure(self):
+        self.run_fixture(r'''
+int main(){
+ uint16_t selected=160,durable=160;actual_mhz=160;unsigned saves=0;
+ char reply[160];bool storage_ok=true;
+ auto command=[&](const char* text){
+   return mesh::esp32::cpuclock::handleCommand(board,selected,false,text,reply,sizeof(reply),[&](){
+     ++saves;if(!storage_ok)return false;durable=selected;return true;
+   });
+ };
+ settle_after=3;
+ assert(command("set cpu.freq 80"));
+ assert(selected==80 && durable==80 && actual_mhz==80 && saves==1);
+ assert(strstr(reply,"OK - saved selected=80 actual=80MHz"));
+ // If the SDK never settles, discard the request and cancel its queued clock
+ // by restoring the previous selection, without writing a failed preference.
+ settle_after=1000;const auto started=now_ms;
+ assert(command("set cpu.freq 240"));
+ assert(strcmp(reply,"Error: CPU clock apply failed; unchanged")==0);
+ assert(selected==80 && durable==80 && actual_mhz==80 && queued_mhz==80 && saves==1);
+ assert(now_ms-started==10 && board.requested_cpu_clock_selection==80);
+ // A failed persistence transaction restores the real clock after settling.
+ settle_after=2;storage_ok=false;
+ assert(command("set cpu.freq 160"));
+ assert(strcmp(reply,"Error: CPU clock save failed; restored")==0);
+ assert(selected==80 && durable==80 && actual_mhz==80 && saves==2);
+ assert(board.requested_cpu_clock_selection==80 && board.applied_cpu_clock_valid);
+}
+''',["-DCONFIG_IDF_TARGET_ESP32S3=1","-DCONFIG_PM_ENABLE=1"])
 
     def test_actual_companion_service_tracks_clock_choice_independently_of_ps(self):
         main=(ROOT/"examples/companion_radio/main.cpp").read_text()
