@@ -1,4 +1,5 @@
 #pragma once
+#include "RadioFastCode.h"
 #include "TunableRadioHal.h"
 #if defined(MESH_HIL_ESP_SPI_AB) && MESH_HIL_ESP_SPI_AB
 #include "ESP32SpiABDiagnostics.h"
@@ -21,7 +22,7 @@ class ESP32BufferedRadioHal : public TunableRadioHal {
       : TunableRadioHal(bus, hz, false, true,
                         hz >= 16000000 ? 16000000 : 8888888) {}
 #if defined(MESH_HIL_ESP_SPI_AB) && MESH_HIL_ESP_SPI_AB
-  void spiBeginTransaction() override {
+  MC_RADIO_FAST_CODE_ATTR void spiBeginTransaction() override {
     ArduinoHal::spiBeginTransaction();
     // The base call owns the transaction locks and has installed the radio's
     // divider. This SDK getter reads the live register without taking a lock.
@@ -33,7 +34,7 @@ class ESP32BufferedRadioHal : public TunableRadioHal {
     }
   }
 #endif
-  void spiTransfer(uint8_t* out, size_t len, uint8_t* in) override {
+  MC_RADIO_FAST_CODE_ATTR void spiTransfer(uint8_t* out, size_t len, uint8_t* in) override {
     if (!bufferedTransfersEnabled()) ArduinoHal::spiTransfer(out, len, in);
     else if (len) spi->transferBytes(out, in, len);
   }

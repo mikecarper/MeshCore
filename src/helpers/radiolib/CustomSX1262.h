@@ -1,4 +1,5 @@
 #pragma once
+#include "RadioFastCode.h"
 
 #include <RadioLib.h>
 #include "SX126xStatus.h"
@@ -296,7 +297,7 @@ class CustomSX1262 : public SX1262 {
       return rc;
     }
 
-    int16_t standby() override {
+    MC_RADIO_FAST_CODE_ATTR int16_t standby() override {
 #if MESH_RADIO_TRACE_ENABLED
       traceOperation(mesh::radiotrace::Reconfigure);
 #endif
@@ -456,7 +457,7 @@ class CustomSX1262 : public SX1262 {
     // SetModulationParams commands. Keep RadioLib's caches and automatic LDRO
     // calculation consistent with its ordinary SF/BW/CR setters. Caller must
     // own a safe standby/reconfigure window, just as for those setters.
-    int16_t setLoRaModulationParams(float bw, uint8_t sf, uint8_t cr) {
+    MC_RADIO_FAST_CODE_ATTR int16_t setLoRaModulationParams(float bw, uint8_t sf, uint8_t cr) {
       if (sf < 5 || sf > 12) return RADIOLIB_ERR_INVALID_SPREADING_FACTOR;
       if (cr < 4 || cr > 8) return RADIOLIB_ERR_INVALID_CODING_RATE;
       if (!isfinite(bw)) return RADIOLIB_ERR_INVALID_BANDWIDTH;
@@ -587,7 +588,7 @@ class CustomSX1262 : public SX1262 {
     // parameters instead of issuing GetPacketType while RX duty cycling may
     // have the chip asleep. A failed live query otherwise becomes an encoded
     // negative error in the unsigned time-on-air result and can stall TX.
-    RadioLibTime_t getTimeOnAir(size_t len) override {
+    MC_RADIO_FAST_CODE_ATTR RadioLibTime_t getTimeOnAir(size_t len) override {
       uint8_t cr = this->codingRate;
       // RadioLib stores ordinary CR 4/4 through 4/8 as 0-4. Long-interleaving
       // CR values 0-4 and 5-7 map to the same time-on-air denominators.
@@ -796,7 +797,7 @@ class CustomSX1262 : public SX1262 {
 
     // BUSY high means the chip is asleep (RX duty-cycle sleep window) or mid
     // command; any SPI access would stall until the chip's next listen window.
-    bool isChipBusy() {
+    MC_RADIO_FAST_CODE_ATTR bool isChipBusy() {
       uint32_t busy = this->mod->getGpio();
       return busy != RADIOLIB_NC && this->mod->hal->digitalRead(busy);
     }
@@ -884,7 +885,7 @@ class CustomSX1262 : public SX1262 {
   public:
 #endif
 
-    int16_t startReceive() override {
+    MC_RADIO_FAST_CODE_ATTR int16_t startReceive() override {
 #if MESH_RADIO_TRACE_ENABLED
       const bool tracing = mesh::radiotrace::trace().pending();
       const uint64_t trace_before = tracing ? mesh::radiotrace::nowUs() : 0;
@@ -1000,7 +1001,7 @@ class CustomSX1262 : public SX1262 {
     }
 #endif
 
-    bool isReceiving() {
+    MC_RADIO_FAST_CODE_ATTR bool isReceiving() {
 #if MESH_RADIO_TRACE_ENABLED
       const bool tracing = mesh::radiotrace::trace().pending();
       const uint64_t trace_before = tracing ? mesh::radiotrace::nowUs() : 0;

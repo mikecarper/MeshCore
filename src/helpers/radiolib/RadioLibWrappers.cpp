@@ -3,6 +3,7 @@
 #include "RadioLibWrappers.h"
 #include "RadioInterruptEvents.h"
 #include "RadioProfileChip.h"
+#include "RadioFastCode.h"
 #include "ProfileSwitchTiming.h"
 #include "NrfRadioPriorityLease.h"
 #include "NrfRadioUsbIrqGuard.h"
@@ -195,7 +196,7 @@ void RadioLibWrapper::unregisterInterruptAction() {
   _interrupt_slot = 0xff;
 }
 
-bool RadioLibWrapper::hasAssertedRadioInterrupt() const {
+MC_RADIO_FAST_CODE_ATTR bool RadioLibWrapper::hasAssertedRadioInterrupt() const {
 #if defined(ESP32_PLATFORM)
   // GPIO wake does not guarantee that the normal edge ISR ran during light
   // sleep. Retain a completed packet even when DIO is already high after
@@ -222,7 +223,7 @@ bool RadioLibWrapper::hasAssertedRadioInterrupt() const {
 #endif
 }
 
-bool RadioLibWrapper::hasPendingRadioInterrupt() const {
+MC_RADIO_FAST_CODE_ATTR bool RadioLibWrapper::hasPendingRadioInterrupt() const {
   return _loop_event_pending || (_interrupt_slot < RADIO_INTERRUPT_SLOT_COUNT && radio_interrupt_events[_interrupt_slot].pending())
       || hasAssertedRadioInterrupt();
 }
@@ -462,7 +463,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetTxPower(int8_t dbm) {
   return status == RADIOLIB_ERR_NONE ? Result::APPLIED : Result::FAILED;
 }
 
-uint8_t RadioLibWrapper::beginReconfigure() {
+MC_RADIO_FAST_CODE_ATTR uint8_t RadioLibWrapper::beginReconfigure() {
 #if MESH_WARM_RX_REFRESH
   if(_rxps_pulse.pending) return 2;
 #endif
@@ -605,7 +606,7 @@ uint8_t RadioLibWrapper::beginReconfigure() {
   return resume_rx;
 }
 
-void RadioLibWrapper::endReconfigure(bool resume_rx) {
+MC_RADIO_FAST_CODE_ATTR void RadioLibWrapper::endReconfigure(bool resume_rx) {
   if (resume_rx) startRecv();
 }
 
@@ -877,7 +878,7 @@ bool RadioLibWrapper::validateProfile(const mesh::RadioProfileParams& p) const {
 #endif
 }
 
-mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
+MC_RADIO_FAST_CODE_ATTR mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
 #if MESH_ENABLE_TX_BEACONS
   if (_beacon_owned && !_beacon_restoring) return mesh::RadioParamApplyResult::BUSY;
 #endif
@@ -2986,7 +2987,7 @@ void RadioLibWrapper::loop() {
   }
 }
 
-void RadioLibWrapper::startRecv() {
+MC_RADIO_FAST_CODE_ATTR void RadioLibWrapper::startRecv() {
 #if MESH_WARM_RX_REFRESH
   if(_rxps_pulse.owns()) return;
 #endif
@@ -3065,7 +3066,7 @@ int RadioLibWrapper::startReceiveMode() {
   return startContinuousReceive();
 }
 
-int RadioLibWrapper::startReceivePowerSaving() {
+MC_RADIO_FAST_CODE_ATTR int RadioLibWrapper::startReceivePowerSaving() {
   if (_nf_calib_active && _rx_ps_armed && isPacketPendingOrReceiving()) {
     return RADIOLIB_ERR_NONE;
   }
@@ -3785,7 +3786,7 @@ float RadioLibWrapper::packetScoreInt(float snr, int sf, int packet_len) {
   return score < 1.0f ? score : 1.0f;
 }
 
-PacketMillis RadioLibWrapper::calcMaxPacketMillis(uint8_t sf, float bw, uint8_t cr, uint16_t preambleSymbols) {
+MC_RADIO_FAST_CODE_ATTR PacketMillis RadioLibWrapper::calcMaxPacketMillis(uint8_t sf, float bw, uint8_t cr, uint16_t preambleSymbols) {
   // based on RadioLib's calculateTimeOnAir()
   uint32_t tsym_us = ((uint32_t)10000 << sf) / (bw * 10);
   uint32_t sfCoeff1_x4 = (sf == 5 || sf == 6) ? 25 : 17; // 6.25 : 4.25, semtech magic numbers to account for sync word + sfd

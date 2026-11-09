@@ -1,4 +1,5 @@
 #pragma once
+#include "RadioFastCode.h"
 #include "SX126xReceiveMode.h"
 
 #include "CustomSX1262.h"
@@ -154,7 +155,7 @@ protected:
 #endif
   }
 
-  bool applyProfileModulation(float bw, uint8_t sf, uint8_t cr) {
+  MC_RADIO_FAST_CODE_ATTR bool applyProfileModulation(float bw, uint8_t sf, uint8_t cr) {
     auto* radio = static_cast<CustomSX1262*>(_radio);
     if (getDriverSwitchFeatures() & mesh::RadioSwitchTuning::Batch)
       return radio->setLoRaModulationParams(bw, sf, cr) == RADIOLIB_ERR_NONE;
@@ -163,7 +164,7 @@ protected:
         && radio->setCodingRate(cr) == RADIOLIB_ERR_NONE;
   }
 
-  bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
+  MC_RADIO_FAST_CODE_ATTR bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
     if (static_cast<CustomSX1262*>(_radio)->profileSwitchFailed()) return false;
 #if MESH_HIL_PROFILE_TIMING
     bool success = ((CustomSX1262 *)_radio)->setFrequency(freq) == RADIOLIB_ERR_NONE;
