@@ -9,6 +9,11 @@ V4. This makes switching **23–34% faster** on the tested Full Companion withou
 PSRAM or capacity reductions. The radio commands, receive checks and rollback
 handling are unchanged.
 
+A [later command/SPI residency experiment](heltec_v3_radio_command_speed_2026-11-09.md)
+reduces the quiet-loop means further to 383/499 us at 240 MHz and 570/744 us
+at 80 MHz. It remains experimental because the RF qualification failed;
+that report includes the packet-loss results and limits.
+
 ## Measured results
 
 Physical Heltec V3, 8 MHz SPI, default fast-driver settings. Values are mean
