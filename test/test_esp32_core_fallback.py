@@ -246,13 +246,17 @@ exit "$status"
                                   cwd=ROOT, capture_output=True, text=True, timeout=20)
 
     def test_installer_passes_exact_package_type_and_cleans_up(self):
-        for kind, package_type in (('platform', '--platform'), ('libs', '--tool')):
+        for kind, package_type, extension in (('platform', '--platform', 'zip'),
+                ('libs', '--tool', 'zip'), ('iot_core', '--tool', 'zip'),
+                ('core313', '--tool', 'zip'), ('core3311', '--tool', 'tar.xz'),
+                ('picotool', '--tool', 'tar.gz'), ('pioasm', '--tool', 'tar.gz')):
             with self.subTest(kind=kind):
                 result = self.run_install(kind, 'success')
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertIn(f'PY:fetch:{kind}', result.stdout)
                 self.assertIn(f'PY:bind:{kind}', result.stdout)
                 self.assertIn(f'PIO:pkg install --global --skip-dependencies {package_type} file://', result.stdout)
+                self.assertIn(f'/{kind}.{extension}', result.stdout)
                 self.assertNotIn('TEMP_LEAK', result.stdout)
 
     def test_installer_stops_on_every_failure_and_cleans_up(self):
@@ -315,6 +319,36 @@ exit "$status"
                 self.assertEqual(result.returncode, code, result.stdout + result.stderr)
                 self.assertIn(f'CALLS:{calls}', result.stdout)
                 self.assertEqual(result.stdout.count('FALLBACK:'), fallbacks)
+
+    def test_each_additional_exact_asset_recovers_once(self):
+        from urllib.parse import urlsplit
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('pinned_assets', ROOT / 'scripts/fetch_pinned_esp32_c6.py')
+        assets = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(assets)
+        for kind in ('iot_core', 'core3311', 'core313', 'picotool', 'pioasm'):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmp:
+                url = assets.ASSETS[kind]['url']
+                self.assertEqual(urlsplit(url).hostname, 'github.com')
+                script = r'''
+source "$1/build_legacy.sh"
+state=$2
+test_url=$3
+sleep() { :; }
+pio() {
+  echo call >> "$state/calls"
+  [ ! -f "$state/installed" ] || return 0
+  echo "PackageException: Got the unrecognized status code '504' when downloaded $test_url"
+  return 1
+}
+install_esp32_c6_pinned_fallback() { echo "FALLBACK:$1"; touch "$state/installed"; }
+run_pio_with_size_detection run -e target
+'''
+                result = subprocess.run(['bash', '-c', script, 'pinned-test', str(ROOT), tmp, url],
+                                        cwd=ROOT, capture_output=True, text=True, timeout=20)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn(f'FALLBACK:{kind}', result.stdout)
+                self.assertEqual(len((Path(tmp) / 'calls').read_text().splitlines()), 5)
 
 if __name__ == '__main__':
     unittest.main()

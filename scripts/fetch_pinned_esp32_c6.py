@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Recover two pinned ESP32-C6 build assets from their official release API.
+"""Recover allowlisted PlatformIO assets from their official release API.
+
+The historical C6 filename remains for compatibility with existing builds.
 
 Call only after the matching canonical release URL fails transiently. A local
 archive must be verified before installation and again before binding the PIO
@@ -15,6 +17,52 @@ from urllib.request import Request, urlopen
 
 
 ASSETS = {
+    'iot_core': {
+        'api': 'https://api.github.com/repos/IoTThinks/powersaving-arduino-lib/releases/assets/409555291',
+        'size': 434076334,
+        'sha256': '48b6ef1fd5b45d4560ea35672dd7e7f10a1c7157d30e70a63dcfba1c984e0936',
+        'url': 'https://github.com/IoTThinks/powersaving-arduino-lib/releases/download/2.0.17/esp32-2.0.17.zip',
+        'type': 'tool', 'name': 'framework-arduinoespressif32', 'version': '2.0.17',
+        'manifest': 'package.json', 'manifest_version': '2.0.17',
+        'spec_name': 'framework-arduinoespressif32', 'owner': None, 'storage': 'packages_dir',
+    },
+    'core3311': {
+        'api': 'https://api.github.com/repos/espressif/arduino-esp32/releases/assets/486039127',
+        'size': 38933248,
+        'sha256': '90bf08cd2e6979c54ce81bc6bfad3b288481e6f389d9e4ecb606d7b376e198a7',
+        'url': 'https://github.com/espressif/arduino-esp32/releases/download/3.3.11/esp32-core-3.3.11.tar.xz',
+        'type': 'tool', 'name': 'framework-arduinoespressif32', 'version': '3.3.11',
+        'manifest': 'package.json', 'manifest_version': '3.3.11',
+        'spec_name': 'arduino-esp32', 'owner': None, 'storage': 'packages_dir',
+    },
+    'core313': {
+        'api': 'https://api.github.com/repos/espressif/arduino-esp32/releases/assets/229912181',
+        'size': 25396700,
+        # Espressif's 3.1.3 package_esp32_index.json publishes this hash.
+        'sha256': '747160dbc81c6634c7bff9e8a57213e9982d52fe90d2a8f75a93a9f7b527defb',
+        'url': 'https://github.com/espressif/arduino-esp32/releases/download/3.1.3/esp32-3.1.3.zip',
+        'type': 'tool', 'name': 'framework-arduinoespressif32', 'version': '3.1.3',
+        'manifest': 'package.json', 'manifest_version': '3.1.3',
+        'spec_name': 'framework-arduinoespressif32', 'owner': 'espressif', 'storage': 'packages_dir',
+    },
+    'picotool': {
+        'api': 'https://api.github.com/repos/earlephilhower/pico-quick-toolchain/releases/assets/482758543',
+        'size': 999138,
+        'sha256': '06d25f7b203b382a5d79da3f6d4cb202aeef482edededbe86981c61b123437f4',
+        'url': 'https://github.com/earlephilhower/pico-quick-toolchain/releases/download/5.0.0/x86_64-linux-gnu.picotool-6f6458d.260719.tar.gz',
+        'type': 'tool', 'name': 'tool-picotool-rp2040-earlephilhower', 'version': '5.160100.260719',
+        'manifest': 'package.json', 'manifest_version': '5.160100.260719',
+        'spec_name': 'tool-picotool-rp2040-earlephilhower', 'owner': 'platformio', 'storage': 'packages_dir',
+    },
+    'pioasm': {
+        'api': 'https://api.github.com/repos/earlephilhower/pico-quick-toolchain/releases/assets/482761935',
+        'size': 650377,
+        'sha256': '98faaffe3efdaa8f2133463cee49b06033e41dcff5c75e547615873e20257b8c',
+        'url': 'https://github.com/earlephilhower/pico-quick-toolchain/releases/download/5.0.0/x86_64-linux-gnu.pioasm-98a542c1.260719.tar.gz',
+        'type': 'tool', 'name': 'tool-pioasm-rp2040-earlephilhower', 'version': '5.160100.260719',
+        'manifest': 'package.json', 'manifest_version': '5.160100.260719',
+        'spec_name': 'tool-pioasm-rp2040-earlephilhower', 'owner': 'platformio', 'storage': 'packages_dir',
+    },
     'platform': {
         'api': 'https://api.github.com/repos/pioarduino/platform-espressif32/releases/assets/259436108',
         'size': 1472729,
@@ -94,9 +142,15 @@ def bind_installed_package(key, archive, *, storage_dir=None):
     # file:// argument. The fallback passes an absolute path verbatim.
     local_uri = 'file://' + archive.resolve().as_posix()
     candidates = []
-    for meta_path in storage_dir.glob('*/.piopm'):
-        manifest_path = meta_path.parent / asset['manifest']
-        if meta_path.is_symlink() or meta_path.parent.is_symlink() or manifest_path.is_symlink():
+    # PIO stores metadata under .git for packages whose upstream archive
+    # contains a repository, and at the package root otherwise. Never follow
+    # symlinked package or metadata directories in either layout.
+    meta_paths = list(storage_dir.glob('*/.piopm')) + list(storage_dir.glob('*/.git/.piopm'))
+    for meta_path in meta_paths:
+        package_dir = meta_path.parent.parent if meta_path.parent.name == '.git' else meta_path.parent
+        manifest_path = package_dir / asset['manifest']
+        if (meta_path.is_symlink() or meta_path.parent.is_symlink()
+                or package_dir.is_symlink() or manifest_path.is_symlink()):
             continue
         try:
             metadata = json.loads(meta_path.read_text(encoding='utf-8'))
@@ -132,7 +186,7 @@ def bind_installed_package(key, archive, *, storage_dir=None):
 
 def main():
     if len(sys.argv) != 4 or sys.argv[1] not in ('fetch', 'bind') or sys.argv[2] not in ASSETS:
-        print('usage: fetch_pinned_esp32_c6.py fetch|bind platform|libs <archive>', file=sys.stderr)
+        print('usage: fetch_pinned_esp32_c6.py fetch|bind <asset> <archive>', file=sys.stderr)
         return 2
     try:
         if sys.argv[1] == 'fetch':
@@ -141,7 +195,7 @@ def main():
             bind_installed_package(sys.argv[2], sys.argv[3])
     except Exception as error:
         # GitHub redirect URLs may contain temporary signatures.
-        print(f'Pinned ESP32-C6 asset verification failed ({type(error).__name__}).', file=sys.stderr)
+        print(f'Pinned PlatformIO asset verification failed ({type(error).__name__}).', file=sys.stderr)
         return 1
     return 0
 

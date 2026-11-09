@@ -251,7 +251,11 @@ def build_expander_candidates(boards: list[str], version: str, jobs: int,
             image_path.unlink(missing_ok=True)
             build_environment = dict(environment)
             build_environment["PLATFORMIO_BUILD_DIR"] = str(candidate_build_dir)
-            command = ["pio", "run", "--project-conf", str(project),
+            # Use the same bounded, hash-pinned package recovery as the main
+            # release build. The wrapper still fails closed on any compiler,
+            # linker, RAM or slot error, and each board runs sequentially.
+            command = ["bash", str(root / "tools/ci/pio_retry.sh"),
+                       "run", "--project-conf", str(project),
                        "-e", pio_env, "-j", str(jobs)]
             print("Building exact-target partition expander:", board, flush=True)
             subprocess.run(command, cwd=root, env=build_environment, check=True)

@@ -3109,26 +3109,31 @@ install_esp32_arduino3_pinned_libs_fallback() (
   python3 "${checkout_dir}/scripts/fetch_pinned_esp32_core.py" bind "$archive"
 )
 
-# Recover only the two reviewed ESP32-C6 release assets. The archive is
-# checked before install and again before its PIO source metadata is bound.
-install_esp32_c6_pinned_fallback() (
-  local kind=$1 checkout_dir fallback_dir archive package_type
+# Recover only reviewed release assets. The archive is checked before install
+# and again before its PIO source metadata is bound.
+install_pinned_pio_fallback() (
+  local kind=$1 checkout_dir fallback_dir archive package_type extension
   case "$kind" in
-    platform) package_type=--platform ;;
-    libs) package_type=--tool ;;
+    platform) package_type=--platform; extension=zip ;;
+    libs|iot_core|core313) package_type=--tool; extension=zip ;;
+    core3311) package_type=--tool; extension=tar.xz ;;
+    picotool|pioasm) package_type=--tool; extension=tar.gz ;;
     *) return 1 ;;
   esac
   checkout_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P) || return 1
   umask 077
-  fallback_dir=$(mktemp -d "${TMPDIR:-/tmp}/meshcore-esp32-c6-XXXXXX") || return 1
+  fallback_dir=$(mktemp -d "${TMPDIR:-/tmp}/meshcore-pio-asset-XXXXXX") || return 1
   trap 'rm -rf -- "$fallback_dir"' EXIT
   fallback_dir=$(cd -- "$fallback_dir" && pwd -P) || return 1
-  archive="${fallback_dir}/${kind}.zip"
-  echo "Downloading the verified ESP32-C6 ${kind} asset from the GitHub release API..." >&2
+  archive="${fallback_dir}/${kind}.${extension}"
+  echo "Downloading pinned PlatformIO ${kind} asset from the GitHub release API..." >&2
   python3 "${checkout_dir}/scripts/fetch_pinned_esp32_c6.py" fetch "$kind" "$archive" || return $?
   pio pkg install --global --skip-dependencies "$package_type" "file://${archive}" || return $?
   python3 "${checkout_dir}/scripts/fetch_pinned_esp32_c6.py" bind "$kind" "$archive"
 )
+
+# Preserve the historical helper for scripts and tests that call it directly.
+install_esp32_c6_pinned_fallback() { install_pinned_pio_fallback "$@"; }
 
 requires_esp32_companion_full_ota_fallback() {
   # Some non-PSRAM ESP32 companions cannot hold their configured high-capacity contact,
@@ -5424,10 +5429,15 @@ pio_transient_for_url() {
 run_pio_with_size_detection() {
   local build_output_log
   local build_status
-  local attempt delay recovered_c6_platform=0 recovered_c6_libs=0 fallback_kind
+  local attempt delay fallback_kind kind url recovered_pinned_assets=' '
   local arduino3311_libs_url='https://github.com/espressif/arduino-esp32/releases/download/3.3.11/esp32-core-3.3.11-libs.tar.xz'
   local c6_platform_url='https://github.com/pioarduino/platform-espressif32/releases/download/53.03.13-1/platform-espressif32.zip'
   local c6_libs_url='https://github.com/espressif/esp32-arduino-lib-builder/releases/download/idf-release_v5.3/esp32-arduino-libs-idf-release_v5.3-489d7a2b-v1.zip'
+  local iot_core_url='https://github.com/IoTThinks/powersaving-arduino-lib/releases/download/2.0.17/esp32-2.0.17.zip'
+  local core3311_url='https://github.com/espressif/arduino-esp32/releases/download/3.3.11/esp32-core-3.3.11.tar.xz'
+  local core313_url='https://github.com/espressif/arduino-esp32/releases/download/3.1.3/esp32-3.1.3.zip'
+  local picotool_url='https://github.com/earlephilhower/pico-quick-toolchain/releases/download/5.0.0/x86_64-linux-gnu.picotool-6f6458d.260719.tar.gz'
+  local pioasm_url='https://github.com/earlephilhower/pico-quick-toolchain/releases/download/5.0.0/x86_64-linux-gnu.pioasm-98a542c1.260719.tar.gz'
   local transient_pattern="PackageException: Got the unrecognized status code '(408|429|500|502|503|504)' when downloaded"
   local -a output_statuses
   # SCons can delete the environment's build directory when flags change.
@@ -5464,13 +5474,23 @@ run_pio_with_size_detection() {
         MESHCORE_PIO_ESP32_3311_LIBS_EXHAUSTED=1
       fi
       fallback_kind=''
-      if [ "$recovered_c6_platform" -eq 0 ] && pio_transient_for_url "$build_output_log" "$transient_pattern" "$c6_platform_url"; then
-        fallback_kind=platform
-        recovered_c6_platform=1
-      elif [ "$recovered_c6_libs" -eq 0 ] && pio_transient_for_url "$build_output_log" "$transient_pattern" "$c6_libs_url"; then
-        fallback_kind=libs
-        recovered_c6_libs=1
-      fi
+      for kind in platform libs iot_core core3311 core313 picotool pioasm; do
+        case "$kind" in
+          platform) url=$c6_platform_url ;;
+          libs) url=$c6_libs_url ;;
+          iot_core) url=$iot_core_url ;;
+          core3311) url=$core3311_url ;;
+          core313) url=$core313_url ;;
+          picotool) url=$picotool_url ;;
+          pioasm) url=$pioasm_url ;;
+        esac
+        case "$recovered_pinned_assets" in *" $kind "*) continue ;; esac
+        if pio_transient_for_url "$build_output_log" "$transient_pattern" "$url"; then
+          fallback_kind=$kind
+          recovered_pinned_assets+="$kind "
+          break
+        fi
+      done
       if [ -n "$fallback_kind" ]; then
         if install_esp32_c6_pinned_fallback "$fallback_kind"; then
           attempt=1

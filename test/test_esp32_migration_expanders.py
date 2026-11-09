@@ -2,6 +2,7 @@
 """Exact target, capacity and build-failure contracts for expanders."""
 
 import json
+import os
 import shutil
 from pathlib import Path
 import struct
@@ -153,7 +154,10 @@ class ExpanderCandidateTests(unittest.TestCase):
             self.assertFalse((output / (self.board + ".json")).exists())
 
             def successful_build(command, **kwargs):
-                self.assertEqual("pio", command[0])
+                self.assertEqual(["bash", str(root / "tools/ci/pio_retry.sh"),
+                                  "run", "--project-conf"], command[:4])
+                self.assertEqual(["-e", env, "-j", "1"], command[5:])
+                self.assertEqual(root, kwargs["cwd"])
                 self.assertTrue(kwargs["check"])
                 isolated = Path(kwargs["env"]["PLATFORMIO_BUILD_DIR"])
                 self.assertNotEqual(isolated, build_dir)
@@ -172,6 +176,47 @@ class ExpanderCandidateTests(unittest.TestCase):
             self.assertEqual(b"legacy artifact must survive", image_path.read_bytes())
             self.assertEqual({self.board + ".bin", self.board + ".json"},
                              {item.name for item in output.iterdir()})
+
+    @unittest.skipUnless(os.name == "posix" and shutil.which("bash"),
+                         "the release builder uses POSIX bash")
+    def test_expander_retries_transient_package_download_before_publishing(self):
+        # Exercise the production wrapper with a fake PIO; no actual build,
+        # download, or delay is needed. The success output must still pass the
+        # normal expander identity and capacity checks.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            pio = bin_dir / "pio"
+            pio.write_text('''#!/bin/sh
+if [ ! -f "$MESH_TEST_ATTEMPT" ]; then
+  : > "$MESH_TEST_ATTEMPT"
+  echo "PackageException: Got the unrecognized status code '504' when downloaded https://example.invalid/archive.zip"
+  exit 1
+fi
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = -e ]; then shift; env_name=$1; break; fi
+  shift
+done
+mkdir -p "$PLATFORMIO_BUILD_DIR/$env_name"
+cp "$MESH_TEST_IMAGE" "$PLATFORMIO_BUILD_DIR/$env_name/firmware.bin"
+''', encoding="utf-8")
+            pio.chmod(0o755)
+            sleep = bin_dir / "sleep"
+            sleep.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            sleep.chmod(0o755)
+            image = root / "image.bin"
+            image.write_bytes(image_for(self.target))
+            environment = dict(os.environ,
+                               PATH=str(bin_dir) + os.pathsep + os.environ.get("PATH", ""),
+                               MESH_TEST_ATTEMPT=str(root / "attempt"),
+                               MESH_TEST_IMAGE=str(image))
+            output = root / "proof"
+            build_expander_candidates([self.board], self.version, 1, ROOT,
+                                      root / "legacy-build", environment, output)
+            self.assertTrue((root / "attempt").is_file())
+            self.assertEqual("combined", json.loads(
+                (output / (self.board + ".json")).read_text())["decision"])
 
     def test_build_refuses_symlinked_output_before_unlink_or_pio(self):
         with tempfile.TemporaryDirectory() as temporary:

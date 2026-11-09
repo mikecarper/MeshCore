@@ -1,4 +1,4 @@
-"""Verify the C6 fallback's pinned bytes and exact PlatformIO identity."""
+"""Verify fallback assets, including PlatformIO's repository metadata layout."""
 import hashlib
 import importlib.util
 import io
@@ -90,6 +90,40 @@ class PinnedC6Tests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         MODULE.bind_installed_package(key, archive, storage_dir=root)
                     self.assertEqual((pkg / '.piopm').read_bytes(), before)
+
+    def test_repository_metadata_binds_without_following_symlinks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / 'iot.zip'
+            archive.write_bytes(DATA)
+            asset = self.asset('iot_core')
+            pkg = self.make_package(root, archive, asset)
+            git_dir = pkg / '.git'
+            git_dir.mkdir()
+            (pkg / '.piopm').rename(git_dir / '.piopm')
+            with patch.dict(MODULE.ASSETS, {'iot_core': asset}):
+                MODULE.bind_installed_package('iot_core', archive, storage_dir=root)
+                self.assertEqual(json.loads((git_dir / '.piopm').read_text())['spec']['uri'], asset['url'])
+
+    def test_repository_symlink_is_not_followed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / 'iot.zip'
+            archive.write_bytes(DATA)
+            asset = self.asset('iot_core')
+            pkg = self.make_package(root, archive, asset)
+            outside = root / 'outside'
+            outside.mkdir()
+            (pkg / '.piopm').rename(outside / '.piopm')
+            try:
+                (pkg / '.git').symlink_to(outside, target_is_directory=True)
+            except OSError:
+                self.skipTest('directory symlinks unavailable')
+            before = (outside / '.piopm').read_bytes()
+            with patch.dict(MODULE.ASSETS, {'iot_core': asset}):
+                with self.assertRaises(ValueError):
+                    MODULE.bind_installed_package('iot_core', archive, storage_dir=root)
+            self.assertEqual((outside / '.piopm').read_bytes(), before)
 
 
 if __name__ == '__main__':
