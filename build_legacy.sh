@@ -3988,6 +3988,7 @@ apply_esp32_full_size_profile() {
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048"
       record_build_reduction "web.terminal initial scrollback 2048 bytes; grows up to 32768 bytes when memory permits"
       ;;
+    rak_3112_repeater|rak_3112_repeater_bridge_rs232|rak_3112_repeater_bridge_espnow|rak_3112_repeater_observer_mqtt|\
     meshnology_w12_repeater|meshnology_w12_repeater_bridge_espnow|meshnology_w12_repeater_observer_mqtt|\
     heltec_v4_repeater|heltec_v4_repeater_bridge_espnow|heltec_v4_repeater_observer_mqtt|\
     heltec_v4_expansionkit_repeater|heltec_v4_expansionkit_repeater_observer_mqtt|\
