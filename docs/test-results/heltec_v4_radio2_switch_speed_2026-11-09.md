@@ -1,3 +1,7 @@
+<!-- meshcore-hosted-doc-link:start -->
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/test-results/heltec_v4_radio2_switch_speed_2026-11-09/">View this page on MeshCore Docs</a>.</p>
+<!-- meshcore-hosted-doc-link:end -->
+
 # Heltec V4 radio2 switching speed — 9 November 2026
 
 The existing SX1262 driver is retained. Keeping its short retune path in internal
