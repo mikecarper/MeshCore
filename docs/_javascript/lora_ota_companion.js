@@ -156,16 +156,24 @@
       }
       if(this.pending?.contacts){
         const p=this.pending;
-        if(frame[0]===1){clearTimeout(p.timer);this.pending=null;p.reject(Error('Companion could not list contacts'));return;}
-        if(frame[0]===2){if(p.started||frame.length!==5){clearTimeout(p.timer);this.pending=null;p.reject(Error('Invalid contact list'));return;}p.started=true;return;}
+        if(frame[0]===1){this.failContactList(p,'Companion could not list contacts');return;}
+        if(frame[0]===2){
+          if(frame.length!==5){this.failContactList(p,'Invalid contact list');return;}
+          const count=new DataView(frame.buffer,frame.byteOffset,frame.byteLength).getUint32(1,true);
+          if(count>4096){this.failContactList(p,'Contact list exceeds the supported size');return;}
+          // A live table change restarts the firmware's snapshot. Discard the
+          // partial snapshot, not the connection; retain the original deadline.
+          p.started=true;p.rows=[];p.keys=new Set();return;
+        }
         if(frame[0]===3){
-          if(!p.started||frame.length!==148||p.rows.length>=4096){clearTimeout(p.timer);this.pending=null;p.reject(Error('Invalid contact record'));return;}
+          if(!p.started||frame.length!==148||p.rows.length>=4096){this.failContactList(p,'Invalid contact record');return;}
           const type=frame[33],flags=frame[34],path=frame[35];
-          if(path!==255&&(path>>6)===3){clearTimeout(p.timer);this.pending=null;p.reject(Error('Invalid contact path'));return;}
+          if(path!==255&&(path>>6)===3){this.failContactList(p,'Invalid contact path');return;}
           const nameBytes=frame.slice(100,132),end=nameBytes.indexOf(0),key=hex(frame.slice(1,33));
+          if(p.keys.has(key)){this.failContactList(p,'Duplicate contact in snapshot');return;}p.keys.add(key);
           p.rows.push({key,publicKey:key,type,favorite:!!(flags&1),hops:path===255?null:path&63,name:dec.decode(end<0?nameBytes:nameBytes.slice(0,end))});return;
         }
-        if(frame[0]===4){clearTimeout(p.timer);this.pending=null;if(!p.started||frame.length!==5){p.reject(Error('Incomplete contact list'));return;}
+        if(frame[0]===4){clearTimeout(p.timer);this.pending=null;if(!p.started||frame.length!==5){this.failContactList(p,'Incomplete contact list');return;}
           p.rows.sort((a,b)=>Number(b.favorite)-Number(a.favorite)||a.type-b.type||(a.hops??Infinity)-(b.hops??Infinity)||a.name.localeCompare(b.name)||a.publicKey.localeCompare(b.publicKey));
           this.contactList=p.rows;p.resolve(p.rows.slice());return;}
       }
@@ -174,11 +182,17 @@
         if(frame[0]===1){const error=Error('Companion rejected the command');if(frame.length>=2)error.companionErrorCode=frame[1];pending.reject(error);}else pending.resolve(frame);
       }
     }
+    failContactList(p,message){
+      clearTimeout(p.timer);this.pending=null;
+      // The remaining stream has no request ID. Never let those records be
+      // interpreted as the reply to a following inbox read or CLI command.
+      this.failure=Error(message+'; reconnect the USB source');p.reject(this.failure);
+    }
     command(payload,code){return this.commandAny(payload,[code]);}
-    commandAny(payload,codes,anyResponse=false){
+    commandAny(payload,codes,anyResponse=false,timeoutMs=this.options.commandTimeout??15000){
       const run=this.queue.then(()=>new Promise((resolve,reject)=>{
         if(!this.running||this.failure)return reject(this.failure||Error('Companion is disconnected'));
-        const timer=setTimeout(()=>{this.pending=null;this.failure=Error('Companion response timed out; reconnect before retrying');reject(this.failure);},this.options.commandTimeout??15000);
+        const timer=setTimeout(()=>{this.pending=null;this.failure=Error('Companion response timed out; reconnect before retrying');reject(this.failure);},timeoutMs);
         this.pending={codes,anyResponse,resolve,reject,timer};this.writer.write(packet(payload)).catch(e=>{clearTimeout(timer);this.pending=null;this.failure=e;reject(e);});
       }));this.queue=run.catch(()=>{});return run;
     }
@@ -335,9 +349,16 @@
         this.assertInvestigationRunning();
         const result=await navigator.locks.request(INBOX_KEY,{mode:'exclusive',ifAvailable:true},async lock=>{
           if(!lock)throw Error('Saved inbox is in use by another tab; try again after it finishes');
+          // Pace destructive inbox reads on older/native-USB Companions. A
+          // slow response stays attached to the same reservation and request;
+          // never dequeue a second message to retry a missing first reply.
+          await sleep(this.options.inboxPollDelay??20);
+          this.assertInvestigationRunning();
           const reservation=this.reserveInbox();let frame;
-          try{frame=await this.commandAny(Uint8Array.of(10),[],true);}
+          const waiting=setTimeout(()=>this.investigationProgress('waiting-inbox',text,this.options.inboxTimeout??30000),this.options.commandTimeout??15000);
+          try{frame=await this.commandAny(Uint8Array.of(10),[],true,this.options.inboxTimeout??30000);}
           catch(e){throw Error((e?.message||e)+'; a queued message may have been removed before it could be saved');}
+          finally{clearTimeout(waiting);}
           if(frame[0]===10){this.finishInbox(reservation,frame,false);return {idle:true};}
           const offset=frame[0]===16?4:frame[0]===7?1:-1;
           if(offset>=0&&frame.length>=offset+12&&hex(frame.slice(offset,offset+6))===this.knownRepeater.slice(0,12)&&frame[offset+7]===1){

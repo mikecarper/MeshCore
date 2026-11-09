@@ -117,7 +117,7 @@
             if (c === 'get tempradio') radioSetup().requiredReply(reply, c, source && (this.link.browserRawSource ? 'companion' : 'repeater'));
             return value(reply);
           }
-          catch (error) { error.message = label + ': ' + diagnostic(error.message); throw error; }
+          catch (error) { if (!error.message.startsWith(label + ': ')) error.message = label + ': ' + diagnostic(error.message); throw error; }
         };
         if (source && this.link.browserRawSource && this.link.localCliSupported === false) {
           if (profile !== 0) throw Error('The USB Companion cannot verify an active temporary radio2 without local CLI');
@@ -168,7 +168,7 @@
         }
         if (!source || checkSourceOta) {
           try { policy(await command('ota config')); }
-          catch (error) { error.message = label + ': ' + diagnostic(error.message); throw error; }
+          catch (error) { if (!error.message.startsWith(label + ': ')) error.message = label + ': ' + diagnostic(error.message); throw error; }
         }
         if (source) sourceRadio = radio;
         else targetRadio = radio;

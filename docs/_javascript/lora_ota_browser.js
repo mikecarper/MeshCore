@@ -24,7 +24,7 @@
       preparedDownload==='ready' ? 'Install and verify update' : 'Update remote firmware';
   }
   $('browser-support').hidden=!!navigator.serial;
-  const updatesBlocked = () => sourceOtaUnsupported || !!targetAvailability && targetAvailability.state !== 'supported';
+  const updatesBlocked = () => !!link?.failure || sourceOtaUnsupported || !!targetAvailability && targetAvailability.state !== 'supported';
   function showAvailability(result) {
     const notice=$('ota-availability');
     notice.hidden=!result;
@@ -72,6 +72,11 @@
     if(error?.changedSettings?.some(change=>!change.confirmed))openDetails($('diagnostics'));
     log('Error: ' + (error?.message || error));
     showSourceUpdate(error?.sourceUpdateRequired);
+    if(link?.failure){
+      invalidate();refreshPreservedMessages();
+      status('USB communication stopped. Select Reconnect USB source; your target and firmware choices are kept.', 'error');
+      $('reconnect').hidden=false;$('reconnect').scrollIntoView?.({block:'nearest',behavior:'smooth'});
+    }
   };
   const bytes = (file, limit = 64 * 1024 * 1024) => {
     if (!file || !Number.isSafeInteger(file.size) || file.size <= 0 || file.size > limit) throw Error('Firmware file size is unsupported');
@@ -194,24 +199,26 @@
     uiBusy=active;updateButton();
     $('target-controls').hidden=!link && $('source').value==='companion';
     $('disconnect').disabled=!link && !connectController;
+    $('reconnect').hidden=!link?.failure;
+    $('reconnect').disabled=active || !link?.failure;
     for (const name of editable) $(name).disabled = active || (updatesBlocked() && ['file','base','image','signer','chain-files','chain-attest','chain-objective','chain-preamble','chain-minutes'].includes(name)) || (!!link && (name === 'source' || name === 'acl' || name === 'relays' || (name === 'key' && ($('source').value === 'repeater' || targetLocked))));
     $('contact-search').disabled = active || !link || $('source').value !== 'companion' || targetLocked;
     updateContactButtons();
-    $('investigate').disabled = active || !link;
+    $('investigate').disabled = active || !link || !!link.failure;
     $('legacy-inbox-export').disabled = active || !preservedCount;
     $('legacy-inbox-clear').disabled = active || !preservedCount || !preservedExportSnapshot;
     $('firmware-role').disabled = active || !link || updatesBlocked();
     $('firmware-choice').disabled = active || !link || updatesBlocked();
     $('firmware-download').disabled = active || !link || updatesBlocked() || !$('firmware-choice').value;
-    for (const name of ['repeat-read', 'repeat-off', 'repeat-on']) $(name).disabled = active || !link;
+    for (const name of ['repeat-read', 'repeat-off', 'repeat-on']) $(name).disabled = active || !link || !!link.failure;
     $('repeat-node').disabled = $('repeat-key').disabled = $('repeat-kind').disabled = active;
     for(const name of radioFields)$(name).disabled=active;
     $('radio-check').disabled=active || !link || updatesBlocked();
     $('radio-prepare').disabled=active || updatesBlocked() || !canPrepareRadioChannel();
     const pending = readChainJournal();
     $('chain-plan').disabled = active || !link || updatesBlocked();
-    $('chain-run').disabled = active || !link || !chainPrepared || !chainConfig || !!pending && pending.phase !== 'complete';
-    $('chain-resume').disabled = active || !link || !chainPrepared || !chainConfig || !pending || pending.phase === 'complete';
+    $('chain-run').disabled = active || !link || updatesBlocked() || !chainPrepared || !chainConfig || !!pending && pending.phase !== 'complete';
+    $('chain-resume').disabled = active || !link || updatesBlocked() || !chainPrepared || !chainConfig || !pending || pending.phase === 'complete';
   }
   function invalidate() { preparedDownload=null; $('update').disabled=true;
     $('update-progress').hidden=true;
@@ -256,6 +263,7 @@
       'sending-command':'Sending request to target...',
       'command-sent':'Waiting for target reply...',
       'waiting-reply':'Waiting for target reply...',
+      'waiting-inbox':'Waiting for the USB Companion to finish reading a message...',
       'retrying-command':'No reply; retrying...'
     };
     const label=labels[event.stage];if(!label)return;
@@ -407,7 +415,15 @@
     $('chain-plan').disabled = true; $('chain-run').disabled = true; $('chain-resume').disabled = true;
     $('transfer').disabled = true; $('resume').disabled = true; $('install').disabled = true;
   }
-  async function connect() {
+  async function reconnect() {
+    if(uiBusy || !link?.failure)return;
+    const previous=link, sourceKey=link.sourceKey, port=link.port;
+    if(!port || !sourceKey)throw Error('Disconnect, then connect the USB source again.');
+    busy(true);invalidate();session=null;
+    await previous.close();link=null;targetLocked=false;
+    await connect({port,sourceKey});
+  }
+  async function connect(recovery=null) {
     const controller = connectController = new AbortController();
     $('source-update-help').hidden=true;
     $('connect').disabled = true; $('connect').textContent = 'Connecting...'; busy(true);
@@ -420,7 +436,7 @@
       if (companion && relays.length) throw Error('Companion updates currently require a zero-hop connection.');
       if (relays.length && !$('acl').checked) throw Error('Routed updates require existing ACL access on every relay and the target.');
       if (relays.some(r => !/^[0-9a-f]{64}$/i.test(r)) || relays.length > 8) throw Error('Enter up to eight full relay public keys.');
-      const port = await navigator.serial.requestPort();
+      const port = recovery?.port || await navigator.serial.requestPort();
       if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
       $('contact-status').textContent = 'Connecting to radio...';
       if(companion)$('acl').checked=false;
@@ -434,6 +450,7 @@
         : new LoraOtaSerial.RepeaterTransport(port, {...openOptions, knownRepeater:key, aclOnly:$('acl').checked, remoteTimeout:75000});
       link = relays.length ? new LoraOtaRoute.RoutedRepeaterTransport(direct, key, relays) : direct;
       await link.open();
+      if(recovery && link.sourceKey!==recovery.sourceKey)throw Error('The reconnected USB radio has a different identity. Disconnect and choose the intended source.');
       if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
       showSourceUpdate(link.sourceUpdateRequired);
       $('legacy-warning').hidden=!usesSharedCompanionInbox();
@@ -461,7 +478,7 @@
       $('chain-plan').disabled = updatesBlocked();
       $('find-route').disabled = !link.aclOnly || !link.supportsRoutedPath || !!link.relays;
       log('Connected to source ' + link.sourceKey + '.');
-      status('Connected. Choose the remote device and select Find matching firmware.', 'ready');
+      status(recovery ? 'USB reconnected. Select Prepare update to recheck the radios, or Find matching firmware to check the device.' : 'Connected. Choose the remote device and select Find matching firmware.', 'ready');
     } catch (error) {
       if(!controller.signal.aborted && error?.name!=='NotFoundError')fail(error);
       if (link) { try { await link.close(); } catch (_) {} }
@@ -775,8 +792,10 @@
       requireUpdatesAvailable();
       const targetKey=selectTarget(), password=$('acl').checked ? '' : $('password').value;
       const standard=$('source').value==='companion' && link.otaSupported===false;
-      if(standard && (!link.investigationAuthenticated || link.investigationVerified!==true))throw Error('Select Find matching firmware to verify the target\'s full public key first.');
-      const verify=()=>standard ? link.investigateVerifyPeer(targetKey,password) : link.verifyPeer(targetKey,password);
+      // A fresh USB connection must prove the target again. Preparation can
+      // do that itself, including after reconnecting an older Companion.
+      if(standard && !link.investigationEnabled)await link.enableStandardInvestigation();
+      const verify=()=>link.verifyPeer(targetKey,password);
       const remote=command=>standard ? link.investigateCommand(targetKey,password,command) : link.remoteCommand(targetKey,password,command);
       let file = catalogFile || $('file').files[0];
       if(!file && $('firmware-choice').value && catalogDest) {
@@ -928,6 +947,7 @@
     finally{busy(false);$('inspect').disabled=!link || updatesBlocked();}
   })()));
   $('connect').addEventListener('click', () => run(connect()));
+  $('reconnect').addEventListener('click', () => run(reconnect()));
   $('investigate').addEventListener('click', () => run(investigate()));
   $('radio-prepare').addEventListener('click',()=>run(checkRadioChannel(true)));
   $('radio-check').addEventListener('click',()=>run(checkRadioChannel(false)));

@@ -20,7 +20,7 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
     </details>
     <p>The USB radio sends the update to the remote device over LoRa.</p>
     <p>Choose a device and enter its admin password if needed. The page checks update support and finds matching firmware.</p>
-    <p class="lora-ota-actions"><button type="button" data-role="connect">Connect USB source</button> <button type="button" data-role="disconnect" class="lora-ota-secondary" disabled>Disconnect</button></p>
+    <p class="lora-ota-actions"><button type="button" data-role="connect">Connect USB source</button> <button type="button" data-role="reconnect" hidden disabled>Reconnect USB source</button> <button type="button" data-role="disconnect" class="lora-ota-secondary" disabled>Disconnect</button></p>
     <p data-role="source-info" role="status" hidden></p>
     <p data-role="ota-availability" class="lora-ota-availability" role="status" aria-live="polite" hidden></p>
     <p data-role="source-update-help" role="status" hidden>This source needs updated firmware for this OTA workflow. If it is still connected here, disconnect it before opening the flasher. <a data-role="source-update-link" href="https://mikecarper.github.io/meshfirmware/" target="_blank" rel="noopener noreferrer">Update source firmware</a></p>

@@ -140,6 +140,55 @@ def legacy_setup_harness(rxps_on=False, matching=False, reboot_channel=False):
     return script
 
 
+def recovery_harness(*, wrong_source=False, wrong_target=False):
+    script = legacy_setup_harness(rxps_on=True, matching=True)
+    script = script.replace('let inbox=[],', 'let dropNextInbox=false,requests=0,connects=0;let inbox=[],', 1)
+    script = script.replace('requestPort:async()=>port', 'requestPort:async()=>{requests++;return port;}', 1)
+    script = script.replace("} else if(f[0]===10){out=inbox.length?inbox.shift():Uint8Array.of(10);",
+        "} else if(f[0]===10){out=inbox.length?inbox.shift():Uint8Array.of(10);if(dropNextInbox){dropNextInbox=false;return;}", 1)
+    script = script.replace("if(f[0]===1){out=new Uint8Array(58);out[0]=5;out.set(unhex(source),4);",
+        "if(f[0]===1){connects++;out=new Uint8Array(58);out[0]=5;out.set(unhex(WRONG_SOURCE&&connects>1?'dd'.repeat(32):source),4);", 1)
+    script = script.replace('WRONG_SOURCE','true' if wrong_source else 'false')
+    if wrong_target:
+        proof = "timeline.push(['remote-proof',sourceTemp]);reply='> '+key;"
+        assert script.count(proof)==1
+        script = script.replace(proof, "timeline.push(['remote-proof',sourceTemp]);reply='> '+(connects>1?'ee'.repeat(32):key);", 1)
+    start = "window.addEventListener('load',async()=>{try{"
+    assert script.count(start)==1
+    script = script.replace(start, start + "const Transport=LoraOtaCompanion.CompanionTransport;LoraOtaCompanion.CompanionTransport=class extends Transport{constructor(port,options){super(port,{...options,inboxTimeout:80,inboxPollDelay:0});}};", 1)
+    anchor = "el('inspect').click();await wait(()=>!el('inspect').disabled);if(el('transfer').disabled"
+    assert script.count(anchor)==1
+    recover = """dropNextInbox=true;el('inspect').click();
+    await wait(()=>!el('reconnect').hidden&&!el('reconnect').disabled);
+    if(!el('inspect').disabled||!el('update').disabled||!el('investigate').disabled)throw Error('Failed USB connection still allows work');
+    if(el('legacy-inbox').hidden||!el('legacy-inbox-messages').textContent.includes('may have been removed'))throw Error('Interrupted inbox read not shown for export');
+    const failureFrames=port.frames.length;el('inspect').click();
+    if(port.frames.length!==failureFrames)throw Error('Preparation retried on failed USB');
+    const selectedFile=el('file').files[0],selectedKey=el('key').value,selectedPassword=el('password').value;
+    const reconnectAt=port.frames.length;el('reconnect').click();
+    """
+    if wrong_source:
+        recover += """await wait(()=>!el('connect').disabled);
+    if(!el('status').textContent.includes('different identity'))throw Error('Wrong USB source accepted');
+    if(port.frames.slice(reconnectAt).some(f=>[2,4,10,26,52,65].includes(f[0])))throw Error('Contact or RF operation sent before source identity validation');
+    await report({wrongSourceBlocked:true,requests,connects,status:el('status').textContent});return;
+    """
+    else:
+        recover += """await wait(()=>!el('inspect').disabled);
+    if(el('file').files[0]!==selectedFile||el('key').value!==selectedKey||el('password').value!==selectedPassword)throw Error('Reconnect lost update choices');
+    if(requests!==1||connects!==2)throw Error('Reconnect asked for the USB device again');
+    if(port.frames.slice(reconnectAt).some(f=>[2,10,26,52,65].includes(f[0])))throw Error('Reconnect replayed an operation');
+    """
+    if wrong_target:
+        recover += """const retryAt=port.frames.length;el('inspect').click();await wait(()=>!el('inspect').disabled);
+    if(!el('transfer').disabled||!el('update').disabled)throw Error('Unverified target enabled transfer after reconnect');
+    if(port.frames.slice(retryAt).some(f=>[52,65].includes(f[0])))throw Error('Unverified target received OTA after reconnect');
+    await report({wrongTargetBlocked:true,status:el('status').textContent,cmds});return;
+    """
+    script = script.replace(anchor,recover+anchor,1)
+    return script
+
+
 class BrowserLoraOtaWorkflowRuntime(unittest.TestCase):
     def setUp(self):
         if not BROWSER:
@@ -190,6 +239,44 @@ class BrowserLoraOtaWorkflowRuntime(unittest.TestCase):
         self.assertTrue(result['installed']); self.assertTrue(result['otaData'])
         self.assertEqual(result['timeline'].count(['remote', 'ota config hops 0']), 1)
         self.assertEqual((result['sourceRxps'], result['targetRxps']), ('on', 'on'))
+
+    def test_busy_315_contact_snapshot_restarts_still_complete_the_legacy_update(self):
+        script = legacy_setup_harness(rxps_on=True, matching=True)
+        marker = 'queueMicrotask(()=>{this.push(wire(Uint8Array.of(2,rows.length,0,0,0)));for(const c of rows)this.push(wire(c));this.push(wire(Uint8Array.of(4,0,0,0,0)));});return;}'
+        assert script.count(marker)==1
+        script = script.replace(marker, """while(rows.length<315)rows.push(contact(rows.length.toString(16).padStart(64,'0'),2,0,0,'Extra node'));
+        queueMicrotask(()=>{
+          this.push(wire(Uint8Array.of(2,59,1,0,0)));
+          this.push(wire(contact(key.slice(0,12)+'ff'.repeat(26),2,0,0,'Discarded snapshot')));
+          this.push(wire(Uint8Array.of(2,59,1,0,0)));
+          for(const c of rows)this.push(wire(c));this.push(wire(Uint8Array.of(4,0,0,0,0)));
+        });return;}""", 1)
+        original = "const opts=keys();if(opts.join(',')!==[key,'55'.repeat(32),'11'.repeat(32),'22'.repeat(32),'33'.repeat(32)].join(','))throw Error('contact order or filtering incorrect: '+opts);"
+        assert script.count(original)==1
+        script = script.replace(original, "const opts=keys();if(opts.length!==314||opts[0]!==key||opts.includes(key.slice(0,12)+'ff'.repeat(26)))throw Error('Restarted contact snapshot was not used');", 1)
+        script = script.replace('keys().length!==5', 'keys().length!==314', 1)
+        result=run_harness(script,timeout=90)
+        self.assertNotIn('error',result,result)
+        self.assertTrue(result['installed']);self.assertTrue(result['otaData'])
+        self.assertNotIn('Invalid contact list',result['status'])
+
+    def test_lost_inbox_reply_reconnects_same_source_and_keeps_update_choices(self):
+        result=run_harness(recovery_harness(),timeout=90)
+        self.assertNotIn('error',result,result)
+        self.assertTrue(result['installed']);self.assertTrue(result['otaData'])
+        self.assertEqual(sum(row.get('pending',False) for row in result['preserved']),1)
+
+    def test_reconnect_refuses_a_different_source_before_contacts_or_rf(self):
+        result=run_harness(recovery_harness(wrong_source=True),timeout=60)
+        self.assertNotIn('error',result,result)
+        self.assertTrue(result['wrongSourceBlocked'])
+        self.assertEqual((result['requests'],result['connects']),(1,2))
+
+    def test_reconnect_rechecks_full_target_identity_before_preparing(self):
+        result=run_harness(recovery_harness(wrong_target=True),timeout=60)
+        self.assertNotIn('error',result,result)
+        self.assertTrue(result['wrongTargetBlocked'])
+        self.assertIn('Target did not prove its full public key',result['status'])
 
     def test_repeater_source_follows_old_and_new_targets_back_to_saved_channel(self):
         for old_target in (False, True):
