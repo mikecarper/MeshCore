@@ -31,9 +31,8 @@ def chain_harness(*,attested=True,bad_identity=False,external=False):
         "      if(cmd==='get bootloader.ver')return '> 0.11.0-OTAFIX2.4.12';\n"
         "      if(cmd==='ota bootloader status')return 'BL board=239A0029 target=2D0DF000 name=4631_DFU crc="+('DEADBEEF' if bad_identity else 'FF374B1B')+" abi=3 caps=0A | staged:none mid=-- hash=--';")
     harness=one_replace(harness,
-        "if(cmd==='get tempradio'||cmd==='get radio')return radio;",
+        "if(cmd==='get tempradio')return radio;",
         "if(cmd==='get tempradio')return targetTemp?radio:'off';\n"
-        "      if(cmd==='get radio')return radio;\n"
         "      if(cmd==='get tempradioat'||cmd==='get radioat')return 'slots:';\n"
         "      if(cmd.startsWith('tempradio.ifidle ')){targetTemp=true;return 'OK - applying';}")
     harness=one_replace(harness,

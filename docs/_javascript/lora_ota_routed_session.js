@@ -54,7 +54,7 @@
       this.packageHash = checks.hex(new Uint8Array(await cryptoApi.digest('SHA-256', this.info.blob)));
       this.installHash = await direct.installHash(this.info.blob);
       const prior = this.readJournal();
-      if (options.allowExisting && prior?.phase === 'install attempted' &&
+      if (options.allowExisting && ['install attempted', 'installed'].includes(prior?.phase) &&
           prior.target?.toLowerCase() === this.key.toLowerCase() &&
           prior.source?.toLowerCase() === this.link.sourceKey?.toLowerCase() &&
           prior.id === checks.hex(this.info.merkleRoot) && prior.packageHash === this.packageHash &&
@@ -93,8 +93,6 @@
         if (!noSecondary(await command('get radio2')) || !noSecondary(await command('get tempradio2')) ||
             !noSecondary(await command('get radio2.cross')))
           throw Error(label + ' must have radio2, temporary radio2 and radio2.cross off');
-        if (!/^off(?:\b|,)/i.test(await command('get radio.rxps')))
-          throw Error(label + ' must have RX power saving off');
         routedPolicy(await command('ota config'), this.hops);
         if (relay) {
           if (!/^on$/i.test(await command('get repeat'))) throw Error(label + ' must have repeating enabled');

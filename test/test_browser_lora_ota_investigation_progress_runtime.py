@@ -104,6 +104,7 @@ class InvestigationProgressBrowserTest(unittest.TestCase):
     if(finished)throw Error('stop finished before the dequeued message was saved');
     if(!/stopp/i.test(el('investigation-progress').textContent))throw Error('safe stop progress missing');
     window.__releaseDequeued();const event=await done;
+    if(el('reconnect').hidden||el('reconnect').disabled||!el('inspect').disabled)throw Error('Stopped investigation cannot reconnect safely');
     const saved=JSON.parse(localStorage.getItem('meshcore-lora-ota-preserved-inbox-v1')||'[]');
     await report({complete:event.detail.complete,result:el('investigation').textContent,saved,frames:port.frames});return;'''
         harness = harness.replace(ACTION, action, 1)
@@ -125,6 +126,7 @@ class InvestigationProgressBrowserTest(unittest.TestCase):
     el('investigation-stop').click();const event=await Promise.race([done,new Promise((_,reject)=>setTimeout(()=>reject(Error('login stop did not finish')),3000))]);
     const result=el('investigation').textContent+' '+el('investigation-progress').textContent;
     if(!/disconnect|reconnect/i.test(result))throw Error('missing reconnection guidance: '+result);
+    if(el('reconnect').hidden||el('reconnect').disabled||!el('inspect').disabled)throw Error('Stopped login leaves unusable connection enabled');
     await report({complete:event.detail.complete,result,frames:port.frames});return;'''
         harness = harness.replace(ACTION, action, 1)
         result = run_harness(harness, timeout=30)

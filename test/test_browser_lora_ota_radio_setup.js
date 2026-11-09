@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const setup = require('../docs/_javascript/lora_ota_radio_setup.js');
 const key = '12'.repeat(32), sourceKey = '34'.repeat(32);
 const selected = {frequency: 909.95, bandwidth: 250, sf: 5, cr: 5, minutes: 120, preamble: 128};
-const primary = setup.commands(selected), secondary = setup.commands(selected, {sourceProfile: 1, targetProfile: 1});
+const primary = setup.commands(selected), trial = setup.commands({...selected, minutes: 2}), secondary = setup.commands(selected, {sourceProfile: 1, targetProfile: 1});
 
 function fixture(options = {}) {
   let clock = 10000, protectedWrite = false, proofs = 0, targetAckAt = null;
@@ -14,19 +14,22 @@ function fixture(options = {}) {
     autofetch: options.autoPolicies ? 'signed' : 'off', autoinstall: options.autoPolicies ? 'trusted' : 'off'}]));
   const saved = {source: [910.5250244, 62.5, 7, 5], target: [910.5250244, 62.5, 7, 5]};
   const states = {source: [null, null], target: [null, null]};
+  if (options.initialPrimary) for (const label of ['source', 'target']) states[label][0] = {started: 0, tuple: options.initialPrimary, minutes: 120};
+  const requested = options.legacy ? {...selected, frequency: saved.source[0], bandwidth: saved.source[1], sf: saved.source[2], cr: saved.source[3]} : selected;
+  const expectedTuple = [requested.frequency, requested.bandwidth, requested.sf, requested.cr];
   const savedSecondary = {source: options.sourceBusy ? '> 908.15,250,7,5,rxtx,48' : '> off (manual)',
     target: options.targetBusy ? '> 908.15,250,7,5,rxtx,48' : '> off (manual)'};
   const supported = {source: options.sourceSecondary !== false, target: options.targetSecondary !== false};
   if (options.adopt) { states.source[1] = {started: 0}; states.target[1] = {started: 0}; }
   const link = {
-    browserRawSource: !options.repeater, localCliSupported: true, otaSupported: true, otaMode: 'guarded',
+    browserRawSource: !options.repeater, localCliSupported: true, otaSupported: !options.legacy, otaMode: options.legacy ? 'legacy' : 'guarded',
     sourceKey, knownRepeater: key, relays: [], serving: false, guard: false, authenticated: false, otaRadioProfile: 0, otaTargetProfile: 0,
-    supportsOtaRadio2: options.sourceSupports !== false,
-    async probeOtaRadio() { events.push(['probe']); this.supportsOtaRadio2 = options.sourceSupports !== false; },
+    supportsOtaRadio2: !options.legacy && options.sourceSupports !== false,
+    async probeOtaRadio() { events.push(['probe']); this.supportsOtaRadio2 = !options.legacy && options.sourceSupports !== false; },
     async verifyPeer(k, password) {
       events.push(['verify', k, password, clock]); assert.equal(k, key); proofs++;
       if (events.some(row => row[0] === 'select')) {
-        assert.ok(clock - targetAckAt >= (options.targetDelay ?? 2500), 'authentication preceded target retune');
+        assert.ok(clock - (targetAckAt ?? 0) >= (options.targetDelay ?? 2500), 'authentication preceded target retune');
         assert.ok(live('source', this.otaRadioProfile), 'source selected profile not live');
         assert.ok(live('target', this.otaTargetProfile), 'target selected profile not live');
       }
@@ -65,10 +68,12 @@ function fixture(options = {}) {
     const state = states[label][profile];
     if (!state) return profile ? '> off' : (label === 'source' ? 'TempRadio inactive' : '> off');
     const pre = label === 'source' ? options.sourcePreamble ?? 128 : options.targetPreamble ?? 128;
-    const frequency = label === 'target' ? options.targetFrequency ?? 909.95 : 909.95;
-    if (profile) return `> ${frequency},250.000,5,5,rxtx,${pre}; 0d2h0m (120 min) left`;
+    const tuple = [...(state.tuple || expectedTuple)];
+    if (label === 'target' && options.targetFrequency) tuple[0] = options.targetFrequency;
+    const frequency = tuple[0];
+    if (profile) return `> ${tuple.join(',')},rxtx,${pre}; 0d2h0m (120 min) left`;
     if (!live(label, 0)) return 'TempRadio pending: 909.950,250.00,5,5,preamble=128';
-    return label === 'source' ? `TempRadio active: 909.950,250.00,5,5 7190s left,preamble=${pre}` : `> ${frequency},250.000,5,5,${pre}`;
+    return label === 'source' ? `TempRadio active: ${tuple.join(',')} 7190s left,preamble=${pre}` : `> ${tuple.join(',')},${pre}`;
   }
   async function read(label, command) {
     events.push([label, command, clock]);
@@ -81,13 +86,15 @@ function fixture(options = {}) {
         else { const parts = command.split(' '); preferences[label][parts[2]] = parts[3]; }
       }
       if (options.prerequisiteTimeout === label + ':' + command) throw Error('Saved prerequisite timed out; result unknown');
-      return 'OK - saved';
+      return options.prerequisiteReply ?? 'OK - saved';
     }
     if (/^(?:tempradio |set tempradio2 )/.test(command)) {
       const profile = command.startsWith('set ') ? 1 : 0;
-      assert.equal(command, setup.commands(selected, {sourceProfile: profile, targetProfile: profile})[label]);
+      const minutes = Number(command.split(',').at(-2));
+      assert.equal(command, setup.commands({...requested, minutes}, {sourceProfile: profile, targetProfile: profile})[label]);
+      assert.ok(minutes === (profile ? 120 : 2) || (!profile && minutes === 120 && events.some(row => row[0] === 'select')), 'full primary window before link proof');
       if (label === 'source' && !options.repeater) assert.equal(protectedWrite, true, 'Companion retune must use protective local guard');
-      states[label][profile] = {started: clock};
+      states[label][profile] = {started: clock, tuple: expectedTuple, minutes};
       if (label === 'target') targetAckAt = clock;
       if (options[label + 'Timeout']) throw Error('Command timed out; result is unknown');
       return options[label + 'Ack'] ?? 'OK - temporary parameters applying';
@@ -103,6 +110,7 @@ function fixture(options = {}) {
       return config(label, 0);
     }
     if (command === 'get radio.rxps') return '> ' + preferences[label].rxps + ',level=8,preamble=32,rx=1252,sleep=6424';
+    if (options.legacy && label === 'source' && ['ota config', 'ota stats', 'ota folder'].includes(command)) return 'Error: unsupported';
     if (command === 'ota config') return `ota config: autofetch=${preferences[label].autofetch} autoinstall=${preferences[label].autoinstall} hops=${preferences[label].hops}`;
     if (command === 'ota stats') return options.sourceDownload ? 'fetch active id=12345678' : 'serve idle | fetch idle';
     if (command === 'ota folder') return options.sourceFolder ? 'folder=on' : 'folder=off';
@@ -133,8 +141,8 @@ test('recommend prefers909.950 with separated fallback; commands strictly valida
   assert.equal(setup.recommend([909.95, 250, 5, 5]), 908.5);
   assert.equal(setup.recommend([909.7, 500, 5, 5]), 908.5);
   for (const tuple of [[868, 125, 7, 5], [433, 125, 7, 5], ['910.5', 125, 7, 5], [910.5, 999, 7, 5], null]) assert.equal(setup.recommend(tuple), null);
-  assert.deepEqual(primary, {target: 'tempradio 909.95,250,5,5,120,128', source: 'tempradio 909.95,250,5,5,120,128', manual: 'tempradio 909.95,250,5,5,120,128'});
-  assert.equal(secondary.target, 'set tempradio2 909.95,250,5,5,rxtx,120,128');
+  assert.deepEqual(primary, {target: 'tempradio 909.950,250,5,5,120,128', source: 'tempradio 909.950,250,5,5,120,128', manual: 'tempradio 909.950,250,5,5,120,128'});
+  assert.equal(secondary.target, 'set tempradio2 909.950,250,5,5,rxtx,120,128');
   for (const [field, values] of Object.entries({frequency: [NaN, Infinity, '909.95', 149, 2501], bandwidth: ['250', 249], sf: [4, 13, 5.5], cr: [3, 9], minutes: [0, 10081, 1.5], preamble: [0, 65536, '128']}))
     for (const value of values) assert.throws(() => setup.commands({...selected, [field]: value}));
   assert.throws(() => setup.commands(selected, {sourceProfile: 2}));
@@ -157,8 +165,8 @@ test('source and target choices are independent; busy or explicitly unsupported 
     assert.equal(row.sourceProfile, options.sourceSupports === false || options.sourceBusy ? 0 : 1);
     assert.equal(row.targetProfile, options.targetBusy || options.targetSecondary === false ? 0 : 1);
     assert.equal(f.before(), before);
-    assert.equal(f.writes().filter(row => row[0] === 'target').length, 1);
-    assert.equal(f.writes().filter(row => row[0] === 'source').length, 1);
+    assert.equal(f.writes().filter(row => row[0] === 'target').length, row.targetProfile ? 1 : 2);
+    assert.equal(f.writes().filter(row => row[0] === 'source').length, row.sourceProfile ? 1 : 2);
     assert.ok(f.writes().every(row => !row[1].includes('.ifidle')));
   }
 });
@@ -167,7 +175,7 @@ test('scheduled secondary remains untouched and triggers primary fallback withou
   const f = fixture({overrides: [['target:get radioat2', '> slots: 1@2000000000']]});
   const row = await setup.prepare(f.link, key, '', selected, f.options);
   assert.equal(row.targetProfile, 0); assert.equal(row.sourceProfile, 1);
-  assert.equal(f.writes().filter(row => row[0] === 'target')[0][1], primary.target);
+  assert.equal(f.writes().filter(row => row[0] === 'target')[0][1], trial.target);
 });
 
 test('direct Repeater uses local setter and selected OTA profile without Companion guard helper', async () => {
@@ -179,10 +187,10 @@ test('direct Repeater uses local setter and selected OTA profile without Compani
   assert.equal(f.events.filter(row => row[0] === 'verify').length, 3);
 });
 
-test('unknown capability/read errors and active primary preflight refuse all writes', async () => {
+test('unknown capability/read errors and pending primary preflight refuse all writes', async () => {
   for (const [command, value] of [['get public.key', '> ' + '56'.repeat(32)], ['get radio', 'malformed'],
-    ['get tempradio', 'TempRadio pending: 909.950,250,5,5'], ['get tempradio', '> 909.95,250,5,5,128'],
-    ['get radio.rxps', '> possibly on'], ['ota config', 'autofetch=off autoinstall=off hops=0 hops=1'],
+    ['get tempradio', 'TempRadio pending: 909.950,250,5,5'],
+    ['ota config', 'autofetch=off autoinstall=off hops=0 hops=1'],
     ['get radio2', 'perhaps off'], ['get tempradio2', 'maybe unsupported'], ['get radio2.cross', 'unset'],
     ['get radioat', '> 1:910.5,125,7,5@2000000000'], ['get tempradioat', 'Error: unsupported'],
     ['get radioat2', 'Error: unsupported'], ['get tempradioat2', 'malformed']]) {
@@ -194,7 +202,7 @@ test('unknown capability/read errors and active primary preflight refuse all wri
 });
 
 test('unsafe transports, identity and missing protective API refuse before writes', async () => {
-  for (const change of [{otaSupported: false}, {localCliSupported: false}, {serving: true}, {relays: [key]}, {sourceKey: key}, {knownRepeater: '56'.repeat(32)}, {applyTemporaryRadio: null}, {selectOtaRadio: null}]) {
+  for (const change of [{otaSupported: undefined}, {localCliSupported: false}, {serving: true}, {relays: [key]}, {sourceKey: key}, {knownRepeater: '56'.repeat(32)}, {applyTemporaryRadio: null}, {selectOtaRadio: null}]) {
     const f = fixture(); Object.assign(f.link, change);
     await assert.rejects(setup.prepare(f.link, key, '', selected, f.options)); assert.equal(f.writes().length, 0);
   }
@@ -204,7 +212,7 @@ test('a plain target setter is sent once and never retried or replaced on unsupp
   for (const options of [{targetAck: 'Error: unsupported'}, {targetAck: 'pending'}, {targetTimeout: true}]) {
     const f = fixture({...options, targetSecondary: false});
     await assert.rejects(setup.prepare(f.link, key, '', selected, f.options), /partially active/);
-    assert.equal(f.writes().length, 1); assert.equal(f.writes()[0][1], primary.target);
+    assert.equal(f.writes().length, 1); assert.equal(f.writes()[0][1], trial.target);
   }
 });
 
@@ -250,45 +258,61 @@ test('shared secondary parser requires live RXTX and configured preamble, not ju
   replies.set('get tempradio2', '> 909.950,250.000,7,5,rx,128'); await assert.rejects(setup.readTemporary(read, 1));
 });
 
-test('factory RXPS-on and hops3 plus known automatic policies are changed once after both baselines', async () => {
+test('OTA policies are changed once after both baselines while RXPS remains untouched', async () => {
   const f = fixture({factoryDefaults: true, autoPolicies: true}), before = f.before();
   const result = await setup.prepare(f.link, key, '', selected, f.options);
-  assert.equal(result.changedSettings.length, 8); assert.equal(f.before(), before);
+  assert.equal(result.changedSettings.length, 6); assert.equal(f.before(), before);
   for (const endpoint of ['source', 'target']) {
-    assert.deepEqual(f.preferences[endpoint], {rxps: 'off', hops: '0', autofetch: 'off', autoinstall: 'off'});
-    for (const command of ['set radio.rxps off', 'ota config autofetch off', 'ota config autoinstall off', 'ota config hops 0'])
+    assert.deepEqual(f.preferences[endpoint], {rxps: 'on', hops: '0', autofetch: 'off', autoinstall: 'off'});
+    for (const command of ['ota config autofetch off', 'ota config autoinstall off', 'ota config hops 0'])
       assert.equal(f.events.filter(row => row[0] === endpoint && row[1] === command).length, 1);
   }
-  const firstWrite = f.events.findIndex(row => row[1] === 'set radio.rxps off');
+  const firstWrite = f.events.findIndex(row => row[1] === 'ota config autofetch off');
   assert.ok(f.events.slice(0, firstWrite).some(row => row[0] === 'target' && row[1] === 'get tempradioat2'));
   assert.ok(f.events.slice(0, firstWrite).some(row => row[0] === 'source' && row[1] === 'ota folder'));
   for (const change of result.changedSettings) {
     assert.equal(change.confirmed, true); assert.equal(change.key, change.endpoint === 'source' ? sourceKey : key);
     assert.ok(change.restoreCommand); assert.notEqual(change.before, change.after);
   }
-  assert.equal(result.changedSettings.find(row => row.setting === 'radio.rxps').restoreCommand, 'set radio.rxps level 8 preamble 32');
+  assert.ok(!f.events.some(row => /radio.rxps/.test(row[1] || '')));
   const targetLastPolicy = f.events.findIndex(row => row[0] === 'target' && row[1] === 'ota config hops 0');
-  const sourceFirstPolicy = f.events.findIndex(row => row[0] === 'source' && row[1] === 'set radio.rxps off');
+  const sourceFirstPolicy = f.events.findIndex(row => row[0] === 'source' && row[1] === 'ota config autofetch off');
   assert.ok(targetLastPolicy < sourceFirstPolicy);
   assert.ok(f.events.slice(targetLastPolicy, sourceFirstPolicy).some(row => row[0] === 'close'));
   assert.ok(f.events.slice(sourceFirstPolicy, f.events.findIndex(row => row[1] === secondary.target)).some(row => row[0] === 'verify'));
 });
 
-test('lost prerequisite write ACK stops without retry, radio mutation or guessed restoration', async () => {
-  const f = fixture({factoryDefaults: true, prerequisiteTimeout: 'target:set radio.rxps off'});
-  await assert.rejects(setup.prepare(f.link, key, '', selected, f.options), error => {
-    assert.equal(error.changedSettings.length, 1); assert.equal(error.changedSettings[0].uncertain, true);
-    assert.equal(error.changedSettings[0].confirmed, false); return /Saved prerequisite/.test(error.message);
-  });
-  assert.equal(f.events.filter(row => row[0] === 'target' && row[1] === 'set radio.rxps off').length, 1);
-  assert.equal(f.events.filter(row => /^(?:tempradio |set tempradio2 )/.test(row[1] || '')).length, 0);
-  assert.equal(f.preferences.target.rxps, 'off'); // applied despite lost ACK; never undo it blindly
+test('lost or differently worded policy ACK is resolved by readback without replaying setters', async () => {
+  for (const endpoint of ['source', 'target']) for (const options of [
+    {prerequisiteTimeout: endpoint + ':ota config hops 0'}, {prerequisiteReply: '> hops=0'}, {prerequisiteReply: ''}
+  ]) {
+    const f = fixture({factoryDefaults: true, ...options});
+    const result = await setup.prepare(f.link, key, '', selected, f.options);
+    assert.equal(result.ready, true); assert.ok(result.changedSettings.every(row => row.confirmed));
+    assert.equal(f.events.filter(row => row[0] === endpoint && row[1] === 'ota config hops 0').length, 1);
+    assert.equal(f.preferences.source.rxps, 'on'); assert.equal(f.preferences.target.rxps, 'on');
+  }
+});
+
+test('policy readback retries GET only and proceeds after delayed application or a lost read', async () => {
+  for (const readThrows of [false, true]) {
+    const f = fixture({factoryDefaults: true}); let reads = 0;
+    f.overrides.set('target:ota config', () => {
+      if (f.preferences.target.hops === '0' && reads++ === 0) {
+        if (readThrows) throw Error('Read timeout');
+        return 'autofetch=off autoinstall=off hops=3';
+      }
+      return 'autofetch=off autoinstall=off hops=' + f.preferences.target.hops;
+    });
+    assert.equal((await setup.prepare(f.link, key, '', selected, f.options)).ready, true);
+    assert.equal(f.events.filter(row => row[0] === 'target' && row[1] === 'ota config hops 0').length, 1);
+    assert.ok(reads >= 2);
+  }
 });
 
 test('unknown policy and existing OTA work stop before any prerequisite or radio mutation', async () => {
   for (const options of [
     {factoryDefaults: true, overrides: [['target:ota config', 'autofetch=on autoinstall=off hops=3']]},
-    {factoryDefaults: true, overrides: [['target:get radio.rxps', 'on,unverified']]},
     {factoryDefaults: true, sourceDownload: true}, {factoryDefaults: true, sourceFolder: true}, {factoryDefaults: true, targetDownload: true}
   ]) {
     const f = fixture(options); await assert.rejects(setup.prepare(f.link, key, '', selected, f.options));
@@ -296,13 +320,52 @@ test('unknown policy and existing OTA work stop before any prerequisite or radio
   }
 });
 
-test('failed prerequisite readback is not retried; known unsupported RXPS needs no write', async () => {
+test('unverified policy stops with an actionable error and no channel writes', async () => {
   const f = fixture({factoryDefaults: true, ignorePrerequisiteWrite: true});
-  await assert.rejects(setup.prepare(f.link, key, '', selected, f.options), /failed readback/);
-  assert.equal(f.events.filter(row => row[1] === 'set radio.rxps off').length, 1);
-  const supported = fixture({overrides: [['source:get radio.rxps', '> off,unsupported']]});
-  const result = await setup.prepare(supported.link, key, '', selected, supported.options);
-  assert.deepEqual(result.changedSettings, []);
+  await assert.rejects(setup.prepare(f.link, key, '', selected, f.options), error => {
+    assert.match(error.message, /Could not verify target ota.hops=0 using ota config/);
+    assert.match(error.message, /Select Prepare update to recheck/);
+    assert.doesNotMatch(error.message, /review the recorded changes before proceeding/);
+    assert.equal(error.changedSettings[0].confirmed, false);
+    assert.equal(error.changedSettings[0].uncertain, true); return true;
+  });
+  assert.equal(f.events.filter(row => row[1] === 'ota config hops 0').length, 1);
+  assert.equal(f.writes().length, 0);
+});
+
+test('USB loss asks for reconnect; fresh preparation adopts already applied policies', async () => {
+  const f = fixture({factoryDefaults: true});
+  f.overrides.set('source:ota config hops 0', () => {
+    f.preferences.source.hops = '0';
+    f.link.failure = Error('USB disconnected'); throw f.link.failure;
+  });
+  await assert.rejects(setup.prepare(f.link, key, '', selected, f.options), error => {
+    assert.match(error.message, /Reconnect the USB source, then select Prepare update/);
+    assert.equal(error.changedSettings.at(-1).confirmed, false); return true;
+  });
+  const lost = f.events.findIndex(row => row[0] === 'source' && row[1] === 'ota config hops 0');
+  assert.equal(f.events.length, lost + 1); // Do not read from a failed serial connection.
+  assert.equal(f.writes().length, 0);
+  f.link.failure = null; f.overrides.delete('source:ota config hops 0');
+  const result = await setup.prepare(f.link, key, '', selected, f.options);
+  assert.equal(result.ready, true); assert.deepEqual(result.changedSettings, []);
+  for (const endpoint of ['source', 'target'])
+    assert.equal(f.events.filter(row => row[0] === endpoint && row[1] === 'ota config hops 0').length, 1);
+});
+
+test('RXPS settings and missing getters never gate either update profile or cause writes', async () => {
+  for (const primaryOnly of [false, true]) for (const raw of [
+    'on,level=8,preamble=16,rx=65625,sleep=60000', 'off,65625,60000',
+    'radio.rxps on,1000,2000', 'unknown config: radio.rxps', 'Error: RXPS unsupported'
+  ]) {
+    const f = fixture({factoryDefaults: true, sourceSupports: !primaryOnly, targetSecondary: !primaryOnly,
+      overrides: [['source:get radio.rxps', raw], ['target:get radio.rxps', raw]]});
+    const result = await setup.prepare(f.link, key, '', selected, f.options);
+    assert.equal(result.ready, true); assert.equal(result.sourceProfile, primaryOnly ? 0 : 1);
+    assert.equal(result.targetProfile, primaryOnly ? 0 : 1);
+    assert.ok(!f.events.some(row => /radio.rxps/.test(row[1] || '')));
+    assert.equal(f.preferences.source.rxps, 'on'); assert.equal(f.preferences.target.rxps, 'on');
+  }
 });
 
 test('matching active secondary leases are adopted after fresh identity proof without rewriting or duplicating primary', async () => {
@@ -314,21 +377,6 @@ test('matching active secondary leases are adopted after fresh identity proof wi
   for (const options of [{adopt: true, sourceSupports: false}, {adopt: true, pendingForever: true}, {adopt: true, targetPreamble: 64}]) {
     const failed = fixture(options); await assert.rejects(setup.prepare(failed.link, key, '', selected, failed.options), /duplicate/);
     assert.equal(failed.writes().length, 0);
-  }
-});
-
-test('actual RXPS effective fields and continuous modes retain the saved restore setting', async () => {
-  for (const mode of ['continuous-fast', 'continuous-fallback', 'duty-cycle']) {
-    const f = fixture({factoryDefaults: true});
-    f.overrides.set('source:get radio.rxps', () => `> ${f.preferences.source.rxps},level=6,preamble=16,rx=41704,sleep=11882,mode=${mode},effective-level=8,effective-preamble=64`);
-    const result = await setup.prepare(f.link, key, '', selected, f.options);
-    assert.equal(result.changedSettings.find(row => row.endpoint === 'source' && row.setting === 'radio.rxps').restoreCommand,
-      'set radio.rxps level 6 preamble 16');
-  }
-  for (const suffix of [',mode=unknown', ',effective-level=11', ',effective-preamble=0', ',effective-level=8,effective-level=8', ',secret=value']) {
-    const f = fixture({factoryDefaults: true, overrides: [['source:get radio.rxps', '> on,level=6,preamble=16,rx=41704,sleep=11882' + suffix]]});
-    await assert.rejects(setup.prepare(f.link, key, '', selected, f.options), /power-saving/);
-    assert.equal(f.writes().length, 0);
   }
 });
 
@@ -372,12 +420,66 @@ test('automatic crossing with an existing temporary secondary and overlapping bu
   }
 });
 
-test('pair-only or plain RXPS readback never invents a saved-mode restore command', async () => {
-  for (const raw of ['on', 'on,41704,11882']) {
-    const f = fixture({factoryDefaults: true});
-    f.overrides.set('source:get radio.rxps', () => f.preferences.source.rxps === 'on' ? '> ' + raw : '> off');
-    const result = await setup.prepare(f.link, key, '', selected, f.options);
-    const change = result.changedSettings.find(row => row.endpoint === 'source' && row.setting === 'radio.rxps');
-    assert.equal(change.restoreCommand, null); assert.equal(change.beforeRaw, raw);
+test('compatibility source aligns existing manual windows automatically without rewriting saved channels', async () => {
+  const f = fixture({legacy: true, initialPrimary: [909.95, 250, 5, 5], factoryDefaults: true});
+  const before = f.before(), result = await setup.prepare(f.link, key, 'pw', selected, f.options);
+  assert.equal(result.ready, true); assert.equal(result.sourceProfile, 0); assert.equal(result.targetProfile, 0);
+  assert.deepEqual(result.source, [910.5250244, 62.5, 7, 5]); assert.equal(f.before(), before);
+  const radioWrites = f.events.filter(row => ['source', 'target'].includes(row[0]) && row[1].startsWith('tempradio '));
+  assert.deepEqual(radioWrites.map(row => row.slice(0, 2)), [
+    ['target', 'tempradio 910.525,62.5,7,5,2,128'], ['source', 'tempradio 910.525,62.5,7,5,2,128'],
+    ['target', 'tempradio 910.525,62.5,7,5,120,128'], ['source', 'tempradio 910.525,62.5,7,5,120,128']]);
+  const shortSource = f.events.indexOf(radioWrites[1]), longTarget = f.events.indexOf(radioWrites[2]);
+  assert.ok(f.events.slice(shortSource, longTarget).some(row => row[0] === 'target' && row[1] === 'get public.key'));
+  assert.ok(f.events.slice(shortSource, longTarget).some(row => row[0] === 'target' && row[1] === 'get tempradio'));
+  assert.equal(f.preferences.source.rxps, 'on'); assert.equal(f.preferences.target.rxps, 'on');
+  assert.ok(!f.events.some(row => row[0] === 'source' && /^ota config /.test(row[1] || '')));
+});
+
+test('primary link failure leaves only short leases and never opens the full window', async () => {
+  for (const options of [{wrongFreshKey: true}, {targetFrequency: 908.5}, {targetPreamble: 64}, {resetFailure: true}]) {
+    const f = fixture({...options, sourceSupports: false, targetSecondary: false});
+    await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options));
+    assert.ok(f.writes().length > 0);
+    assert.ok(f.writes().every(row => !row[1].endsWith(',120,128')));
+  }
+});
+
+test('already matching primary windows need only prerequisite changes and live proof', async () => {
+  const f = fixture({initialPrimary: [909.95, 250, 5, 5], factoryDefaults: true});
+  const result = await setup.prepare(f.link, key, 'pw', selected, {...f.options, useActivePrimary: true});
+  assert.equal(result.adoptedSource, true); assert.equal(result.adoptedTarget, true);
+  assert.deepEqual(result.source, [909.95, 250, 5, 5]);
+  assert.ok(!f.events.some(row => /^(?:tempradio |set tempradio2 )/.test(row[1] || '')));
+  assert.equal(f.preferences.source.rxps, 'on'); assert.equal(f.preferences.target.rxps, 'on');
+});
+
+test('radio frequencies are formatted to three decimal places', () => {
+  assert.equal(setup.formatRadio([910.525024414, 250, 5, 5]), '910.525,250,5,5');
+  assert.equal(setup.formatRadio([909.95, 62.5, 7, 5]), '909.950,62.5,7,5');
+});
+
+test('old CommonCLI unknown-config replies disable optional radio2 without blocking primary setup', async () => {
+  const f = fixture({legacy: true, sourceSupports: false, targetSecondary: false});
+  for (const endpoint of ['source', 'target']) for (const name of ['radio2', 'tempradio2', 'radio2.cross', 'radioat2', 'tempradioat2'])
+    f.overrides.set(endpoint + ':get ' + name, 'unknown config: ' + name);
+  const result = await setup.prepare(f.link, key, 'pw', selected, f.options);
+  assert.equal(result.sourceProfile, 0); assert.equal(result.targetProfile, 0);
+  assert.equal(result.ready, true);
+});
+
+test('missing old source getters require an upgrade; timeouts are never treated as unsupported', async () => {
+  for (const command of ['get tempradio']) for (const reply of ['Unknown command', 'unknown config', 'unknown config: ' + command.slice(4)]) {
+    const f = fixture({legacy: true, overrides: [['source:' + command, reply]]});
+    await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options), error => {
+      assert.equal(error.sourceUpdateRequired, 'companion');
+      assert.match(error.message, /Update its firmware/); return true;
+    });
+    assert.equal(f.writes().length, 0);
+  }
+  for (const reply of ['unknown config: unrelated', 'Access denied', 'request timed out']) {
+    const f = fixture({overrides: [['target:get radio2', reply]]});
+    await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options));
+    assert.equal(f.writes().length, 0);
   }
 });

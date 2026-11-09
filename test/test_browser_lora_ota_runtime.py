@@ -40,7 +40,8 @@ HARNESS = r'''<script>
       if(cmd==='ota status') return 'OTA hw=board | target:12345678 | maxblk:1024 | '+(state==='idle'?'no download':'download: '+(state==='ready'?'ready to install':'fetching')+' id='+mid);
       if(cmd==='ota self') return 'self body=44 image=100 base_hash='+(installed?newHash:'1122334455667788')+' | maxblk:1024';
       if(cmd==='ver') return installed?'v1.18.0.1':'v1.17.1.9';
-      if(cmd==='get tempradio'||cmd==='get radio')return radio;
+      if(cmd==='get radio')return radio.split(',').slice(0,4).join(',');
+      if(cmd==='get tempradio')return radio;
       if(cmd==='get radio.rxps')return 'off,1000,1000';
       if(cmd==='ota config')return config;
       if(cmd==='ota ls')return mid||'No updates seen yet';
