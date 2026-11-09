@@ -4079,8 +4079,11 @@ apply_esp32_full_size_profile() {
     heltec_tracker_v2_repeater|heltec_tracker_v2_repeater_observer_mqtt)
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DFLOOD_ADVERT_RTC_FAST_SLOTS=50 -DFLOOD_ADVERT_RTC_SLOW_SLOTS=50"
       ;;
-    heltec_t190_repeater_|heltec_t190_repeater_observer_mqtt)
+    heltec_t190_repeater_|heltec_t190_repeater_observer_mqtt|\
+    heltec_v3_repeater|heltec_v3_repeater_observer_mqtt|\
+    heltec_v3_repeater_bridge_rs232|heltec_v3_repeater_bridge_espnow)
       # Preserve all 128 records while moving 48 into retained RTC banks.
+      # V3 uses the released internal space for resident radio switching code.
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DFLOOD_ADVERT_RTC_FAST_SLOTS=16 -DFLOOD_ADVERT_RTC_SLOW_SLOTS=32"
       ;;
   esac
@@ -4757,10 +4760,11 @@ apply_companion_radio_full_profile() {
       ;;
     heltec_v3_companion_radio_full)
       # Preserve 100 contacts, all 256 queue frames, Full transports and the
-      # runtime heap safety margin. RTC FAST holds 32 existing CPU-only slots;
-      # the independent OTA context/workspace remains in ordinary DRAM.
+      # runtime heap safety margin with resident retune code. Each RTC bank
+      # holds 32 existing CPU-only slots; the independent OTA context and
+      # workspace remain in ordinary DRAM. No frames are borrowed during OTA.
       append_platformio_build_unflags "-DMAX_CONTACTS=350"
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100 -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100 -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32"
       record_build_reduction \
         "companion.capacity limited to 100 contacts for runtime RAM; 256 queued frames and all Full transports retained"
       ;;

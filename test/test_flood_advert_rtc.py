@@ -244,6 +244,12 @@ class FloodAdvertRtcTests(unittest.TestCase):
             ('heltec_tracker_v2_repeater',50,50),
             ('Heltec_T190_repeater_',16,32),
             ('Heltec_T190_repeater_observer_mqtt',16,32),
+            ('Heltec_v3_repeater',16,32),
+            ('Heltec_v3_repeater_observer_mqtt',16,32),
+            ('Heltec_v3_repeater_bridge_rs232',16,32),
+            ('Heltec_v3_repeater_bridge_espnow',16,32),
+            ('Heltec_v3_room_server',0,0),
+            ('Heltec_v3_companion_radio_full',0,0),
             ('Heltec_T190_room_server_',0,0),
             ('RAK_4631_repeater',0,0),
             ('heltec_tracker_v2_companion_radio_full_femon',0,0)):
