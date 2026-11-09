@@ -191,11 +191,28 @@ void customAdaptersAndLocalCli() {
   mesh._notifications.settings().enabled=1;mesh._notifications.settings().outputs=mesh::notify::Led;
   mesh.notifyCustomMessage(true);assert(last_channel&&!last_sound&&last_led);
   mesh._prefs.buzzer_quiet=1;mesh.notifyCustomMessage(false);assert(quiet);
+  custom=melodies;const auto builtin=mesh.ui.melodies;
   char reply[160];assert(mesh.handleAlertCommand("set buzzer on",reply,sizeof(reply)));
   assert(!strcmp(reply,"OK")&&!mesh._prefs.buzzer_quiet&&!quiet);
+  // Explicit sound checks use the selected custom output even with message
+  // sounds masked off. They do not also start the built-in UI buzzer.
+  assert(melodies==custom+1&&mesh.ui.melodies==builtin&&tune.find("SoundOn:")==0);
+  assert(mesh._notifications.settings().outputs==mesh::notify::Led);
+  assert(mesh.handleAlertCommand("set buzzer on",reply,sizeof(reply)));
+  assert(!strcmp(reply,"OK")&&melodies==custom+2&&mesh.ui.melodies==builtin);
   mesh.save_prefs=false;
   assert(mesh.handleAlertCommand("set buzzer off",reply,sizeof(reply)));
   assert(!strncmp(reply,"Error",5)&&!mesh._prefs.buzzer_quiet&&!quiet);
+  assert(melodies==custom+2&&mesh.ui.melodies==builtin);
+  mesh.save_prefs=true;
+  assert(mesh.handleAlertCommand("set buzzer off",reply,sizeof(reply)));
+  assert(!strcmp(reply,"OK")&&quiet&&melodies==custom+2);
+  mesh.save_prefs=false;
+  assert(mesh.handleAlertCommand("set buzzer on",reply,sizeof(reply)));
+  assert(!strncmp(reply,"Error",5)&&quiet&&melodies==custom+2);
+  mesh.save_prefs=true;mesh._ui=nullptr;
+  assert(mesh.handleAlertCommand("set buzzer on",reply,sizeof(reply)));
+  assert(!strcmp(reply,"OK")&&!quiet&&melodies==custom+3);
   has_buzzer=false;assert(mesh.handleAlertCommand("get buzzer",reply,sizeof(reply)));
   assert(strstr(reply,"unavailable"));
   mesh.radio.pending=true;auto outputs_before=cli_calls,rotary_before=mesh::ui::rotary_calls;

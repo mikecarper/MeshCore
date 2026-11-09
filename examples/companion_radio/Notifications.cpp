@@ -89,6 +89,20 @@ bool MyMesh::handleAlertCommand(const char* command, char* reply, size_t size) {
 #if MESH_CUSTOM_PERIPHERALS
   mesh::peripherals::setBuzzerQuiet(_prefs.buzzer_quiet);
 #endif
+#if defined(PIN_BUZZER) || MESH_CUSTOM_PERIPHERALS
+  // An explicit enable also serves as a sound check, even when already on.
+  // Play only after persistence and live mute state agree. This confirmation
+  // is independent of programmable message-alert output masks.
+  if (quiet == &_prefs.buzzer_quiet && !*quiet) {
+    static const char confirmation[] = "SoundOn:d=16,o=6,b=180:c,e,g";
+#if MESH_CUSTOM_PERIPHERALS
+    if (mesh::peripherals::configuredBuzzer())
+      mesh::peripherals::playNotification(confirmation);
+    else
+#endif
+    if (_ui) _ui->notificationMelody(confirmation);
+  }
+#endif
   snprintf(reply, size, "OK");
   return true;
 }

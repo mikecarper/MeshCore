@@ -2885,8 +2885,11 @@ the verified pin assignments, startup fixes, and saved amplifier settings.
 
 `get buzzer` and `set buzzer on|off` control the Companion's buzzer. Devices
 with a vibration motor also support `get vibration` and `set vibration on|off`.
-Changes take effect immediately, are saved across reboots, and produce no
-confirmation tone. Muting an output stops an alert already playing.
+Changes take effect immediately and are saved across reboots. `set buzzer on`
+plays a short confirmation tone through the selected built-in or custom buzzer.
+Repeat it to check sound even when already enabled; an unchanged setting does
+not rewrite flash. Failed saves do not play a success tone. Muting an output
+stops an alert already playing; vibration changes do not play a sound.
 
 Fresh settings default to **sound off** and **vibration on**. Existing saved
 choices are retained. The same preferences are used by the device buttons and
