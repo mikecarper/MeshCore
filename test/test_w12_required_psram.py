@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Full W12 repeater builds require PSRAM; normal and other roles do not."""
+"""Full W12/V4 repeater builds require PSRAM; normal and other roles do not."""
 from pathlib import Path
 import shutil
 import subprocess
@@ -8,7 +8,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 class W12RequiredPsramBuildTests(unittest.TestCase):
-    def test_only_full_w12_repeater_roles_require_psram(self):
+    def test_only_qualified_full_repeater_roles_require_psram(self):
         source = (ROOT / 'build_legacy.sh').read_text(encoding='utf8')
         start = source.index('apply_esp32_full_size_profile() {')
         function = source[start:source.index('\n}\n', start) + 2]
@@ -31,10 +31,21 @@ apply_esp32_full_size_profile "$3"
 printf "%s" "$PLATFORMIO_BUILD_FLAGS"
 '''
         qualified = {'meshnology_w12_repeater', 'meshnology_w12_repeater_bridge_espnow',
-                     'meshnology_w12_repeater_observer_mqtt'}
+                     'meshnology_w12_repeater_observer_mqtt',
+                     'heltec_v4_repeater', 'heltec_v4_repeater_bridge_espnow',
+                     'heltec_v4_repeater_observer_mqtt', 'heltec_v4_expansionkit_repeater',
+                     'heltec_v4_expansionkit_repeater_observer_mqtt',
+                     'heltec_v4_tft_repeater', 'heltec_v4_tft_repeater_bridge_espnow',
+                     'heltec_v4_r8_repeater', 'heltec_v4_r8_repeater_bridge_espnow',
+                     'heltec_v4_r8_repeater_observer_mqtt', 'heltec_v4_r8_tft_repeater',
+                     'heltec_v4_r8_tft_repeater_bridge_espnow',
+                     'heltec_v4_r8_tft_repeater_observer_mqtt'}
         others = {'meshnology_w12_room_server', 'meshnology_w12_sensor',
                   'meshnology_w12_companion_radio_full', 'meshnology_w12_repeater_extra',
-                  'heltec_v4_repeater', 'Station_G3_ESP32_repeater'}
+                  'heltec_v4_room_server', 'heltec_v4_r8_tft_room_server',
+                  'heltec_v4_repeater_legacy_partition_test', 'heltec_v4_repeater_extra',
+                  'heltec_v4_2_v4_3_companion_radio_full_femon',
+                  'heltec_v4_r8_tft_companion_radio_full', 'Station_G3_ESP32_repeater'}
         bash = shutil.which('bash')
         if not bash:
             self.skipTest('bash not installed')

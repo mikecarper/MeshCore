@@ -3988,9 +3988,15 @@ apply_esp32_full_size_profile() {
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048"
       record_build_reduction "web.terminal initial scrollback 2048 bytes; grows up to 32768 bytes when memory permits"
       ;;
-    meshnology_w12_repeater|meshnology_w12_repeater_bridge_espnow|meshnology_w12_repeater_observer_mqtt)
-      # The W12 has onboard PSRAM. Keep complete repeater tables in verified
-      # external memory and preserve internal headroom in the Full image.
+    meshnology_w12_repeater|meshnology_w12_repeater_bridge_espnow|meshnology_w12_repeater_observer_mqtt|\
+    heltec_v4_repeater|heltec_v4_repeater_bridge_espnow|heltec_v4_repeater_observer_mqtt|\
+    heltec_v4_expansionkit_repeater|heltec_v4_expansionkit_repeater_observer_mqtt|\
+    heltec_v4_tft_repeater|heltec_v4_tft_repeater_bridge_espnow|\
+    heltec_v4_r8_repeater|heltec_v4_r8_repeater_bridge_espnow|heltec_v4_r8_repeater_observer_mqtt|\
+    heltec_v4_r8_tft_repeater|heltec_v4_r8_tft_repeater_bridge_espnow|heltec_v4_r8_tft_repeater_observer_mqtt)
+      # These boards have onboard PSRAM. Keep complete repeater tables in
+      # verified external memory; V4 also uses the internal headroom for its
+      # resident radio retune path. Missing PSRAM leaves USB recovery alive.
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_REPEATER_REQUIRE_PSRAM=1"
       ;;
   esac
