@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PlatformIORetryTests(unittest.TestCase):
-    def run_scenario(self, scenario, wrapper=False):
+    def run_scenario(self, scenario, wrapper=False, command='run'):
         with tempfile.TemporaryDirectory() as temp:
             script = r'''
 source "$1/build_legacy.sh"
@@ -34,9 +34,9 @@ set -e -o pipefail
 if [ "$4" = wrapper ]; then
   export attempt_file scenario
   export -f pio sleep
-  bash "$1/tools/ci/pio_retry.sh" run -e test-board
+  bash "$1/tools/ci/pio_retry.sh" "$5" -e test-board
 else
-  run_pio_with_size_detection run -e test-board
+  run_pio_with_size_detection "$5" -e test-board
 fi
 status=$?
 printf 'STATUS:%s\n' "$status"
@@ -44,7 +44,7 @@ exit "$status"
 '''
             result = subprocess.run(['bash', '-c', script, 'retry-test',
                                      str(ROOT), temp, scenario,
-                                     'wrapper' if wrapper else 'direct'], cwd=ROOT,
+                                     'wrapper' if wrapper else 'direct', command], cwd=ROOT,
                                     capture_output=True, text=True, timeout=20)
             attempts = Path(temp, 'attempts').read_text().strip()
             return result, int(attempts)
@@ -58,6 +58,15 @@ exit "$status"
         wrapper_result, wrapper_attempts = self.run_scenario('recovery', wrapper=True)
         self.assertEqual(wrapper_result.returncode, 0, wrapper_result.stdout + wrapper_result.stderr)
         self.assertEqual(wrapper_attempts, 2)
+
+    def test_native_test_command_retries_download_only(self):
+        result, attempts = self.run_scenario('recovery', wrapper=True, command='test')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(attempts, 2)
+        self.assertEqual(result.stdout.count('ARGS:test -e test-board'), 2)
+        result, attempts = self.run_scenario('compile', wrapper=True, command='test')
+        self.assertEqual(result.returncode, 7, result.stdout + result.stderr)
+        self.assertEqual(attempts, 1)
 
     def test_all_transient_http_codes_and_permanent_404(self):
         for status in (408, 429, 500, 502, 503, 504, 404):
