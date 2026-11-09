@@ -162,6 +162,21 @@ def reject(env_name, option_name, needle):
             f"test_build_profiles: {env_name} {option_name} unexpectedly contains {needle}"
         )
 
+# PSRAM must survive inheritance into every role, not just Full Companion.
+# Keep the proven RAK3112 DIO flash header with the octal-PSRAM SDK.
+psram_families = ("RAK_3112_", "ThinkNode_M2_", "ThinkNode_M5_")
+for section in sections:
+    if not section.startswith("env:"):
+        continue
+    target = section.removeprefix("env:")
+    if not target.startswith(psram_families):
+        continue
+    require(target, "build_flags", "BOARD_HAS_PSRAM")
+    require(target, "board_build.arduino.memory_type", "qio_opi")
+    require(target, "board_build.psram_type", "opi")
+    if target.startswith("RAK_3112_"):
+        require(target, "board_build.flash_mode", "dio")
+
 # New family images select their driver at startup. Their resolved recipes
 # must use only the universal target source, while legacy names stay exact.
 for prefix, board, directory, legacy_dirs in (
