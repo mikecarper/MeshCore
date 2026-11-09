@@ -721,9 +721,9 @@ def test_esp32_s3_full_profiles_use_arduino2_and_dio_boot_mode():
     assert 'framework-arduinoespressif32/package.json' in framework_preflight
     assert '"3\\.3\\.11"' in framework_preflight
     assert "pio pkg uninstall --global --tool framework-arduinoespressif32" in framework_preflight
-    assert 'pio pkg install --global --tool "$arduino3_core_url"' in framework_preflight
-    assert 'pio pkg install --global --tool "$arduino3_libs_url"' in framework_preflight
-    assert 'pio pkg install -e "$pio_env_name"' in framework_preflight
+    assert 'run_pio_with_size_detection pkg install --global --tool "$arduino3_core_url"' in framework_preflight
+    assert 'run_pio_with_size_detection pkg install --global --tool "$arduino3_libs_url"' in framework_preflight
+    assert 'run_pio_with_size_detection pkg install -e "$pio_env_name"' in framework_preflight
     build_call = build.split(
         'print_build_flags "$pio_env_name" "$env_name"', 1
     )[1].split(
