@@ -109,6 +109,18 @@ class FakePort {
   async close() { this.closed=true; }
 }
 
+test('a lost local USB reply invalidates the stream before another command is sent', async () => {
+  const port = new FakePort(), link = new RepeaterTransport(port, {knownRepeater:'b'.repeat(64), openSettle:0, commandTimeout:20});
+  await link.open(); port.drop = 'ota folder';
+  await assert.rejects(link.localCommand('ota folder'), /timed out/);
+  const count = port.commands.length;
+  try {
+    await assert.rejects(link.localCommand('ota.peer status'), /timed out|reconnect/);
+    assert.equal(port.commands.length, count);
+    assert.ok(link.failure);
+  } finally { await link.close(); }
+});
+
 test('only explicit missing Repeater OTA capabilities request a firmware update', async () => {
   for(const [status,needed] of [['Unknown command',true],['ERR unsupported',true],['broken response',false],['OTApeer v=1 session=1 busy=0 peers=0',false]]) {
     const port=new FakePort();port.peerStatus=status;const link=new RepeaterTransport(port,{knownRepeater:'b'.repeat(64),aclOnly:true,openSettle:0});
@@ -241,10 +253,12 @@ test('lost attach acknowledgement never detaches a potentially external folder',
   await link.close(); assert.equal(port.folder,true); assert.equal(port.commands.includes('ota folder off'),false);
 });
 
-test('lost detach acknowledgement is reconciled if the folder is off', async () => {
+test('lost detach acknowledgement requires a fresh USB stream before readback', async () => {
   const port=new FakePort(), link=new RepeaterTransport(port,{knownRepeater:'b'.repeat(64),aclOnly:true,openSettle:0,commandTimeout:20});
   await link.open(); await link.serve(makeInfo(),new Uint8Array(32)); port.drop='ota folder off';
-  await link.stopServing(); assert.equal(link.serving,false); assert.equal(port.folder,false);
+  await assert.rejects(link.stopServing(), /detach is unconfirmed/);
+  assert.equal(link.serving,false); assert.equal(port.folder,false); assert.ok(link.failure);
+  assert.equal(port.commands.at(-1),'ota folder off');
   await link.close(); assert.equal(port.commands.filter(c=>c==='ota folder off').length,1);
 });
 

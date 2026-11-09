@@ -69,9 +69,14 @@
       this.pollMs = options.pollMs || 20000; this.transferTimeoutMs = options.transferTimeoutMs || 4 * 60 * 60 * 1000; this.progress = options.progress || (() => {}); this.journal = options.journal || (() => {}); this.readJournal = options.readJournal || (() => null);
       this.cancelled = false; this.serving = false;
     }
-    async remote(command) { return value(await this.link.remoteCommand(this.key, this.password, command)); }
-    async local(command) { return value(await this.link.localCommand(command)); }
+    requireActive() {
+      if (this.cancelled) throw Error('Stopped; no further update commands were sent.');
+      if (this.link.failure) throw this.link.failure;
+    }
+    async remote(command) { this.requireActive(); return value(await this.link.remoteCommand(this.key, this.password, command)); }
+    async local(command) { this.requireActive(); return value(await this.link.localCommand(command)); }
     async requireInstallHash() {
+      this.requireActive();
       const reply = String(await this.link.remoteCommand(this.key, this.password, 'ota installhash')).trim().replace(/^>\s*/, '');
       if (reply === 'ERR usage: ota installhash <64-hex-container-sha256>') {
         this.installMode = 'hash';
@@ -179,7 +184,9 @@
       return {source:sourceRadio, target:targetRadio, savedSource:savedSourceRadio, sourceReadback};
     }
     async inspect(options = {}) {
+      this.requireActive();
       await this.link.verifyPeer(this.key, this.password);
+      this.requireActive();
       const {status,self} = await checks.readReceiver(command => this.link.remoteCommand(this.key, this.password, command));
       const ver = await this.remote('ver');
       const dest = checks.destination(status, self, ver);
@@ -188,7 +195,7 @@
       this.packageHash = checks.hex(new Uint8Array(await cryptoApi.digest('SHA-256', this.info.blob)));
       this.installHash = await installHash(this.info.blob);
       const prior = this.readJournal();
-      if (options.allowExisting && prior?.phase === 'install attempted' && prior.target?.toLowerCase() === this.key.toLowerCase() && prior.source?.toLowerCase() === this.link.sourceKey?.toLowerCase() && prior.id === checks.hex(this.info.merkleRoot) && prior.packageHash === this.packageHash && dest.targetId === this.info.targetId && dest.hwId === this.info.hwId && dest.version === this.info.fwVersion) {
+      if (options.allowExisting && ['install attempted', 'installed'].includes(prior?.phase) && prior.target?.toLowerCase() === this.key.toLowerCase() && prior.source?.toLowerCase() === this.link.sourceKey?.toLowerCase() && prior.id === checks.hex(this.info.merkleRoot) && prior.packageHash === this.packageHash && dest.targetId === this.info.targetId && dest.hwId === this.info.hwId && dest.version === this.info.fwVersion) {
         this.bodyHash = await expectedBody(this.info, this.image);
         if (dest.baseHash === this.bodyHash && prior.bodyHash === this.bodyHash) {
           this.journal({phase:'installed', target:this.key, source:this.link.sourceKey, id:prior.id, packageHash:this.packageHash, bodyHash:this.bodyHash});
@@ -223,6 +230,7 @@
     }
     async start(options = {}) {
       this.cancelled = false; this.tempRadio = null; const before = await this.inspect({allowExisting:!!options.resume});
+      this.requireActive();
       const id = checks.hex(this.info.merkleRoot);
       if (before.download === 'installed') return;
       if (options.resume && before.download === 'idle') throw Error('There is no matching download to resume');
@@ -231,14 +239,17 @@
       if (before.download === 'ready') { this.journal({phase: 'ready', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, before, bodyHash: this.bodyHash}); return; }
       try {
         await this.link.serve(this.info, this.info.blob, this.compress); this.serving = true;
+        this.requireActive();
         if (!options.resume) {
           let found = false;
           for (let n = 0; n < 12 && !this.cancelled; n++) {
             if ((await this.remote('ota ls')).toLowerCase().includes(id)) { found = true; break; }
             await sleep(this.pollMs);
           }
+          this.requireActive();
           if (!found) throw Error('Target did not discover the selected package');
           if ((await this.readDownload()).state !== 'idle') throw Error('Target download state changed');
+          this.requireActive();
           this.journal({phase: 'pull attempted', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, before, bodyHash: this.bodyHash});
           try { await this.remote('ota pull ' + id.toUpperCase() + ' flash'); }
           catch (error) {
@@ -253,8 +264,9 @@
           let current;
           for (let attempt = 0; attempt < 3; attempt++) {
             try { current = await this.readDownload(); break; }
-            catch (error) { if (attempt === 2 || !/timeout|timed out|disconnect|result is unknown/i.test(String(error.message))) throw error; await sleep(2000); }
+            catch (error) { this.requireActive(); if (attempt === 2 || !/timeout|timed out|disconnect|result is unknown/i.test(String(error.message))) throw error; await sleep(2000); }
           }
+          this.requireActive();
           this.progress(current.status);
           if (current.id !== id) throw Error('Target download does not match the selected package');
           if (current.state === 'failed') throw Error('Target reported a failed download');
@@ -288,10 +300,13 @@
       return {savedTarget, savedSource, change:true, tune, clearSecondary, command};
     }
     async reconnectChannel(plan) {
+      this.requireActive();
       const setup = radioSetup();
       this.progress('Reconnecting on the target saved channel: ' + formatRadio(plan.savedTarget) + '.');
       await this.link.closeRadioSession();
+      this.requireActive();
       await this.link.selectOtaRadio(0);
+      this.requireActive();
       this.link.otaTargetProfile = 0;
       if (plan.clearSecondary) {
         // End only the selected temporary update lease when it would overlap
@@ -301,6 +316,7 @@
         if ((await setup.readTemporary(c => this.link.localCommand(c), 1)).state !== 'off')
           throw Error('Source temporary radio2 did not stop before reconnecting.');
       }
+      this.requireActive();
       if (plan.tune) {
         // One local, temporary write only. A lost acknowledgement is resolved
         // by readback, never by repeating the write or changing saved settings.
@@ -313,6 +329,7 @@
       }
       const deadline = Date.now() + 35000;
       do {
+        this.requireActive();
         const current = await setup.readTemporary(c => this.link.localCommand(c), 0);
         const saved = setup.primary(await this.local('get radio'));
         if (!setup.same(saved, plan.savedSource)) throw Error('Source saved channel changed during post-install reconnect.');
@@ -323,9 +340,11 @@
       throw Error('Source did not switch to the target saved channel for post-install verification.');
     }
     async install() {
+      this.requireActive();
       const id = checks.hex(this.info.merkleRoot), before = await this.inspect({allowExisting:true}), current = await this.readDownload();
       if (before.download !== 'ready' || current.id !== id || current.state !== 'ready') throw Error('The selected package is not ready to install');
       const rebootChannel = await this.planRebootChannel();
+      this.requireActive();
       this.journal({phase: 'install attempted', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, bodyHash: this.bodyHash, savedTargetRadio:rebootChannel.savedTarget});
       const command = this.installMode === 'hash' ? 'ota installhash ' + this.installHash : this.installMode === 'legacy' ? 'ota install' : null;
       if (!command) throw Error('Target installation capability is unknown');
@@ -333,6 +352,7 @@
         if (!/timeout|timed out|disconnect|result is unknown/i.test(String(error.message))) throw error;
         this.progress('Install reply was lost; checking the running firmware');
       }
+      this.requireActive();
       let freshSession = false;
       if (rebootChannel.change) {
         await this.reconnectChannel(rebootChannel);
@@ -341,6 +361,7 @@
       const deadline = Date.now() + 300000;
       while (Date.now() < deadline && !this.cancelled) {
         await sleep(this.pollMs);
+        this.requireActive();
         try {
           // The target reboot loses its learned return path. Reset and prove
           // once, rather than using a cached session or sending two logins.
@@ -352,8 +373,12 @@
           if (d.targetId === this.info.targetId && d.hwId === this.info.hwId && d.version === this.info.fwVersion && d.baseHash === this.bodyHash) {
             this.journal({phase: 'installed', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, bodyHash: this.bodyHash}); return d;
           }
-        } catch (_) { /* Reboot and reconnect can take time. */ }
+        } catch (_) {
+          // Target reboot may take time; a failed USB stream needs reconnect.
+          this.requireActive();
+        }
       }
+      this.requireActive();
       throw Error('Could not confirm the installed firmware; inspect the target before retrying');
     }
     stop() { this.cancelled = true; }

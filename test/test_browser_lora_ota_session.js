@@ -238,10 +238,11 @@ test('reconnect verifies an uncertain install without issuing another install', 
     if (c === 'ver') return 'v1.18.0.1';
     throw Error('Unexpected command ' + c);
   }};
-  let saved;
-  const session = new DirectSession(link, 'bb'.repeat(32), '', p, {readJournal:() => ({phase:'install attempted', target:'bb'.repeat(32), source:link.sourceKey, id, packageHash, bodyHash}), journal:r => { saved = r; }});
+  let saved = {phase:'install attempted', target:'bb'.repeat(32), source:link.sourceKey, id, packageHash, bodyHash};
+  const session = new DirectSession(link, 'bb'.repeat(32), '', p, {readJournal:() => saved, journal:r => { saved = r; }});
   assert.equal((await session.inspect({allowExisting:true})).download, 'installed');
   assert.equal(saved.phase, 'installed');
+  assert.equal((await session.inspect({allowExisting:true})).download, 'installed');
   assert(!calls.includes('ota install'));
 });
 
@@ -348,7 +349,7 @@ test('an uncertain legacy install is not sent again on a later attempt', async (
     }};
   const options={pollMs:1,readJournal:()=>record,journal:r=>{record=r;}};
   session=new DirectSession(link,target,'',p,options);
-  await assert.rejects(session.install(),/Could not confirm/);
+  await assert.rejects(session.install(),/Stopped/);
   assert.equal(record.phase,'install attempted');
   session=new DirectSession(link,target,'',p,options);
   await assert.rejects(session.install(),/recovery record/);

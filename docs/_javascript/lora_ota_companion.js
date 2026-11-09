@@ -296,9 +296,11 @@
     cancelInvestigation(){
       if(!this.investigationEnabled)return;
       this.investigationCancelled=true;
+      this.failure=Error('Investigation canceled. Reconnect the USB source before continuing.');
+      // Let an in-flight inbox read finish and save its removed message.
+      // Other work must wait for a fresh connection and identity check.
       if(this.pending?.contacts){
         const pending=this.pending;this.pending=null;clearTimeout(pending.timer);
-        this.failure=Error('Investigation canceled. Disconnect and reconnect before trying again.');
         pending.reject(this.failure);
       }
       if(this.loginWaiter){const waiter=this.loginWaiter;this.loginWaiter=null;waiter.reject(Error('Investigation canceled. Disconnect and reconnect before trying again.'));}

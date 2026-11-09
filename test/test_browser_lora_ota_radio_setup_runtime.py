@@ -86,7 +86,10 @@ def radio_setup_harness(*, secondary_supported=True, pending_firmware=False, fac
   window.addEventListener('load',async()=>{try{
     const Transport=LoraOtaCompanion.CompanionTransport;
     LoraOtaCompanion.CompanionTransport=class extends Transport{constructor(...args){super(...args);window.testLink=this;}};
-    File.prototype.arrayBuffer=function(){fileReads++;timeline.push(['file-read']);throw Error('TEST_FIRMWARE_READ_AFTER_CHANNEL_READY');};
+    const readFile=File.prototype.arrayBuffer;
+    File.prototype.arrayBuffer=function(){fileReads++;timeline.push(['file-read']);return readFile.call(this);};
+    expected=new Uint8Array(100);const v=new DataView(expected.buffer),at=44;expected.set(enc.encode('EndF'),at);v.setUint32(at+4,at,true);
+    const bh=new Uint8Array(await crypto.subtle.digest('SHA-256',expected.slice(0,at))).slice(0,8);expected.set(bh,at+8);body=hex(bh);v.setUint32(at+16,0x01120001,true);v.setUint32(at+20,0x12345678,true);expected.set(enc.encode('board'),at+24);
     for(const name of ['buildFullMota','buildSequentialMota'])if(typeof MeshCoreMotaPackage[name]==='function'){
       const original=MeshCoreMotaPackage[name];MeshCoreMotaPackage[name]=function(...args){packageBuilds++;return original.apply(this,args);};
     }
@@ -95,14 +98,14 @@ def radio_setup_harness(*, secondary_supported=True, pending_firmware=False, fac
     if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);
     const target=document.querySelector('button[data-contact-key="'+key+'"]');if(!target)throw Error('Target contact missing');target.click();
     const defaults=Object.fromEntries(['radio-frequency','radio-bandwidth','radio-sf','radio-cr','radio-minutes','radio-preamble'].map(name=>[name,el(name).value]));
-    const files=new DataTransfer();files.items.add(new File([new Uint8Array(256)],'firmware.bin'));el('file').files=files.files;
+    const files=new DataTransfer();files.items.add(new File([expected],'firmware.bin'));el('file').files=files.files;
     // A single ordinary firmware-check action must prepare the channel itself.
     // Never press Set up channel in these scenarios.
-    el('inspect').click();await wait(()=>el('status').textContent.includes('Error:'));
-    const inspectStatus=el('status').textContent;
+    el('inspect').click();await wait(()=>!el('inspect').disabled);
+    const inspectStatus=el('status').textContent,prepared=!el('update').disabled;
     let checked='';
     if(!FIRMWARE_PENDING&&!POLICY_FAILURE){
-      if(!inspectStatus.includes('TEST_FIRMWARE_READ_AFTER_CHANNEL_READY'))throw Error(inspectStatus);
+      if(!prepared||inspectStatus.includes('Error:'))throw Error(inspectStatus);
       await wait(()=>!el('radio-check').disabled);el('status').textContent='';el('radio-setup-status').textContent='';
       el('radio-check').click();await wait(()=>el('radio-setup-status').textContent.startsWith('Channel ready:')||el('status').textContent.includes('Error:'));
       if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);checked=el('radio-setup-status').textContent;
@@ -110,7 +113,7 @@ def radio_setup_harness(*, secondary_supported=True, pending_firmware=False, fac
     const profiles=[window.testLink.otaRadioProfile,window.testLink.otaTargetProfile];
     const diagnosticsOpen=el('diagnostics').open,prepareDisabled=el('inspect').disabled,updateDisabled=el('update').disabled;
     el('disconnect').click();await wait(()=>!el('connect').disabled);
-    await report({inspectStatus,checked,profiles,defaults,timeline,cmds,frames:port.frames,sourceSaved:radio,sourceTemp,targetTemp,sourcePolicy,targetPolicy,
+    await report({inspectStatus,prepared,checked,profiles,defaults,timeline,cmds,frames:port.frames,sourceSaved:radio,sourceTemp,targetTemp,sourcePolicy,targetPolicy,
       fileReads,packageBuilds,guard,diagnosticsOpen,prepareDisabled,updateDisabled,transferDisabled:el('transfer').disabled});
   }catch(e){await report({error:String(e),status:el('status').textContent,channelStatus:el('radio-setup-status')?.textContent,
     timeline,cmds,frames:port.frames,fileReads,packageBuilds});}});
@@ -127,10 +130,11 @@ class BrowserRadioSetupRuntime(unittest.TestCase):
 
     def assert_automatic_setup(self,result,profile):
         self.assertNotIn('error',result,result)
-        self.assertIn('TEST_FIRMWARE_READ_AFTER_CHANNEL_READY',result['inspectStatus'],result)
+        self.assertTrue(result['prepared'],result)
+        self.assertNotIn('Error:',result['inspectStatus'],result)
         self.assertIn('909.950 MHz, BW250, SF7, CR4/5',result['checked'],result)
         self.assertEqual(result['defaults'],{'radio-frequency':'909.950','radio-bandwidth':'250','radio-sf':'7','radio-cr':'5','radio-minutes':'120','radio-preamble':'128'})
-        self.assertEqual((result['fileReads'],result['packageBuilds']),(1,0),result)
+        self.assertEqual((result['fileReads'],result['packageBuilds']),(1,1),result)
         self.assertEqual(result['sourceSaved'],'910.525,62.5,7,5');self.assertEqual(result['profiles'],[profile,profile])
         self.assertEqual((result['sourceTemp'],result['targetTemp']),('active','active'))
         timeline=result['timeline'];command='set tempradio2 909.950,250,7,5,rxtx,120,128'if profile else'tempradio 909.950,250,7,5,120,128'
@@ -139,16 +143,16 @@ class BrowserRadioSetupRuntime(unittest.TestCase):
         target_at=timeline.index(['remote',trial]);source_at=timeline.index(['local',trial]);file_at=timeline.index(['file-read'])
         self.assertTrue(any(row==['guard-close']for row in timeline[target_at+1:source_at]),timeline)
         pending_at=timeline.index(['source-pending']);active_at=timeline.index(['source-active'])
-        self.assertLess(source_at,pending_at);self.assertLess(pending_at,active_at);self.assertLess(active_at,file_at)
-        self.assertIn(['remote','get public.key'],timeline[active_at+1:file_at]);self.assertGreaterEqual(timeline.count(['remote','get public.key']),2)
+        self.assertLess(source_at,pending_at);self.assertLess(pending_at,active_at);self.assertLess(file_at,target_at)
+        self.assertIn(['remote','get public.key'],timeline[active_at+1:]);self.assertGreaterEqual(timeline.count(['remote','get public.key']),2)
         self.assertFalse(any(row[0]in ('local','remote')and re.match(r'^(?:set radio(?:2)?\s|tempradio\.ifidle)',row[1])for row in timeline))
         self.assertFalse(any(frame[0]==65 for frame in result['frames']),result);self.assertFalse(result['guard'],result)
         if profile:
-            self.assertIn(['local','set ota.direct.radio radio2'],timeline[active_at+1:file_at])
+            self.assertIn(['local','set ota.direct.radio radio2'],timeline[active_at+1:])
             for endpoint in ['local','remote']:
                 self.assertIn([endpoint,'get tempradio2'],timeline)
 
-    def test_firmware_check_automatically_prepares_unused_radio2_before_package(self):
+    def test_validated_firmware_automatically_prepares_unused_radio2(self):
         self.assert_automatic_setup(run_harness(radio_setup_harness(),timeout=60),1)
 
     def test_older_profile_capabilities_test_short_primary_before_full_window(self):
@@ -179,14 +183,14 @@ class BrowserRadioSetupRuntime(unittest.TestCase):
         self.assertNotIn('review the recorded changes before proceeding',result['inspectStatus'])
         self.assertTrue(result['diagnosticsOpen']);self.assertFalse(result['prepareDisabled'])
         self.assertTrue(result['updateDisabled']);self.assertTrue(result['transferDisabled'])
-        self.assertEqual((result['fileReads'],result['packageBuilds']),(0,0))
+        self.assertEqual((result['fileReads'],result['packageBuilds']),(1,1))
         self.assertEqual(result['timeline'].count(['remote','ota config hops 0']),1)
         self.assertFalse(any(row[0]in ('local','remote')and row[1].startswith(('tempradio ','set tempradio2'))for row in result['timeline']))
 
-    def test_pending_radio_blocks_automatic_writes_and_firmware_processing(self):
+    def test_pending_radio_blocks_automatic_writes_and_transfer(self):
         result=run_harness(radio_setup_harness(pending_firmware=True),timeout=60)
         self.assertNotIn('error',result,result);self.assertRegex(result['inspectStatus'],r'pending|active temporary radio window')
-        self.assertEqual((result['fileReads'],result['packageBuilds']),(0,0),result);self.assertTrue(result['transferDisabled'],result)
+        self.assertEqual((result['fileReads'],result['packageBuilds']),(1,1),result);self.assertTrue(result['transferDisabled'],result)
         self.assertFalse(any(row[0]in ('local','remote')and row[1].startswith(('tempradio ','tempradio.ifidle ','set tempradio2','set radio'))for row in result['timeline']))
         self.assertFalse(any(frame[0]==65 for frame in result['frames']),result)
 

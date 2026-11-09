@@ -54,7 +54,7 @@
       this.packageHash = checks.hex(new Uint8Array(await cryptoApi.digest('SHA-256', this.info.blob)));
       this.installHash = await direct.installHash(this.info.blob);
       const prior = this.readJournal();
-      if (options.allowExisting && prior?.phase === 'install attempted' &&
+      if (options.allowExisting && ['install attempted', 'installed'].includes(prior?.phase) &&
           prior.target?.toLowerCase() === this.key.toLowerCase() &&
           prior.source?.toLowerCase() === this.link.sourceKey?.toLowerCase() &&
           prior.id === checks.hex(this.info.merkleRoot) && prior.packageHash === this.packageHash &&

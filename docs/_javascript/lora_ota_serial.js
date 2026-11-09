@@ -206,7 +206,12 @@
       const operation = this.commandQueue.then(() => new Promise((resolve, reject) => {
         if (!this.running || this.failure) return reject(this.failure || new Error('The repeater is disconnected'));
         let echoed = false, settled = false;
-        const timer = setTimeout(() => finish(new Error('Repeater command timed out; its result is unknown')), this.commandTimeout);
+        const timer = setTimeout(() => {
+          // CLI replies have no request ID. A late result cannot be allowed
+          // to satisfy the next command on this stream.
+          this.failure = new Error('Repeater command timed out; reconnect before retrying; its result is unknown');
+          finish(this.failure);
+        }, this.commandTimeout);
         const finish = (error, value) => {
           if (settled) return;
           settled = true; clearTimeout(timer); this.waiter = null;
