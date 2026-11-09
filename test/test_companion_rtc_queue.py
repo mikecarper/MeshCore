@@ -325,8 +325,8 @@ class CompanionRtcQueueTests(unittest.TestCase):
                 ('Heltec_v3_companion_radio_wifi', 0, 0, 350, 256),
                 ('Heltec_Wireless_Tracker_companion_radio_full', 32, 32, 150, 256),
                 ('MKE_s3_companion_radio_full', 32, 32, 350, 256),
-                ('ThinkNode_M2_companion_radio_full', 32, 32, 350, 256),
-                ('ThinkNode_M5_companion_radio_full', 32, 32, 350, 256),
+                ('ThinkNode_M2_companion_radio_full', 0, 0, 350, 256),
+                ('ThinkNode_M5_companion_radio_full', 0, 0, 350, 256),
                 ('M5Stack_Cardputer_Adv_companion_radio_full', 32, 32, 350, 256),
                 ('SenseCapIndicator-ESPNow_companion_radio_full', 0, 0, 350, 256),
                 ('RAK_4631_companion_radio_full', 0, 0, 350, 256)):

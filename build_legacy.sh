@@ -4769,11 +4769,10 @@ apply_companion_radio_full_profile() {
       record_build_reduction \
         "Companion Full: 256 offline frames normally; 128 while mOTA borrows queue storage; preserve unread on admission"
       ;;
-    mke_s3_companion_radio_full|\
-    thinknode_m2_companion_radio_full|\
-    thinknode_m5_companion_radio_full)
-      # These S3 boards retain the complete 256-frame queue during OTA, with
+    mke_s3_companion_radio_full)
+      # This non-PSRAM S3 retains the complete 256-frame queue during OTA, with
       # 32 existing frames in each RTC bank and all 350 contacts unchanged.
+      # ThinkNode M2/M5 use their onboard PSRAM instead of these RTC banks.
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32"
       ;;
     sensecapindicator-lora_companion_radio_full|\
