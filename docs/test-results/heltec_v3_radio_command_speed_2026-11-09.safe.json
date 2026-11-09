@@ -1493,6 +1493,6 @@
     "RF uses a 512-symbol fast-profile preamble; it does not qualify shorter preambles."
   ],
   "release_qualified": false,
-  "publication_branch": "codex/v3-radio-direct",
-  "release_branch_modified": false
+  "publication_branch": "keymindCascade",
+  "release_branch_modified": true
 }

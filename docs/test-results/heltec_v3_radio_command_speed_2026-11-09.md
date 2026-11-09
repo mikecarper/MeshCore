@@ -4,7 +4,7 @@
 
 # V3 resident radio commands — 9 November 2026
 
-This experimental branch enables the additional RadioLib and Arduino SPI code
+Heltec V3 enables the additional RadioLib and Arduino SPI code
 placement [measured on V4](heltec_v4_radio_command_speed_2026-11-09.md) for Heltec V3. This extends the
 [earlier V3 retune improvement](heltec_v3_radio2_switch_speed_2026-11-09.md).
 The extra internal RAM cost is **2,704 bytes**. All existing contacts,
@@ -15,8 +15,9 @@ unchanged.
 **Not release-qualified.** The initial RF test received 234/240 packets. A focused
 comparison received 199/200 on this image versus 200/200 on the earlier image.
 That sample does not establish the cause or rule out a reception regression.
-The implementation and evidence are kept on `codex/v3-radio-direct`; these flags
-have not been enabled on `keymindCascade` by this experiment.
+The implementation was promoted to `keymindCascade` at the user's request with
+these results recorded. The speed improvement is enabled by default; the
+packet-loss qualification remains unfinished.
 
 ## Fresh before/after measurements
 

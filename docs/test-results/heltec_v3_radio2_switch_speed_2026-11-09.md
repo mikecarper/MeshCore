@@ -11,8 +11,8 @@ handling are unchanged.
 
 A [later command/SPI residency experiment](heltec_v3_radio_command_speed_2026-11-09.md)
 reduces the quiet-loop means further to 383/499 us at 240 MHz and 570/744 us
-at 80 MHz. It remains experimental because the RF qualification failed;
-that report includes the packet-loss results and limits.
+at 80 MHz. That improvement is enabled on `keymindCascade`, while its RF
+qualification remains unfinished; the report includes the packet-loss results.
 
 ## Measured results
 
