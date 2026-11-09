@@ -213,7 +213,10 @@ int main() {
                     self.assertEqual(flags.get('COMPANION_RTC_FAST_OFFLINE_FRAMES'), '32')
                 else:
                     self.assertNotIn('COMPANION_RTC_FAST_OFFLINE_FRAMES', flags)
-                self.assertNotIn('COMPANION_RTC_SLOW_OFFLINE_FRAMES', flags)
+                if target == 'Heltec_v3_companion_radio_full':
+                    self.assertEqual(flags.get('COMPANION_RTC_SLOW_OFFLINE_FRAMES'), '32')
+                else:
+                    self.assertNotIn('COMPANION_RTC_SLOW_OFFLINE_FRAMES', flags)
 
 
 if __name__ == '__main__':
