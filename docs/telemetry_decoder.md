@@ -33,6 +33,26 @@ reply (including the optional `>` prefix) or just the Base64 into the decoder.
 
 Run `get telemetry.volt.i2c` without a channel to list connected channels.
 
+For a compact seven-day view, request the daily minimum and maximum instead:
+
+```text
+get telemetry.temp minmax
+get telemetry.volt minmax
+get telemetry.minmax
+```
+
+Paste one reply into the decoder. It shows each rolling day's minimum and
+maximum, their timestamps, and the samples immediately before and after each
+extreme. Day 1 is the most recent 24 hours; Day 7 is the oldest. Samples are
+30 minutes apart. A neighbor can fall in an adjacent day; missing or unretained
+samples display as Missing. Temperature and battery history are held in RAM
+and start fresh after a reboot.
+`get telemetry.minmax` combines temperature and battery voltage for all seven
+days in one response; the table and CSV identify each measurement separately.
+
+Each individual reply fits one CLI response packet. Decode each min/max reply
+separately and use Download CSV to save its table.
+
 ## Send raw telemetry packets
 
 On a repeater, set the route to the MQTT observer, then send a batch. Use

@@ -103,6 +103,70 @@ TEST(TelemetryHistory, EncodesVoltageSentinelsAndHundredths) {
   EXPECT_EQ(255, TelemetryHistory::encodeVoltage(4401));
 }
 
+TEST(TelemetryHistory, DailyExtremaAccessorsPreserveSentinelsAndRingOffsets) {
+  using mesh::TelemetryHistory;
+  TelemetryHistory history;
+  uint32_t bucket = 99;
+  uint16_t code = 999;
+  EXPECT_FALSE(history.latestHistoryBucket(bucket));
+  EXPECT_EQ(99U, bucket);
+  EXPECT_FALSE(history.historyCodeAtOffset(TelemetryHistory::SERIES_TEMPERATURE, 0, code));
+  EXPECT_EQ(999U, code);
+
+  // Bucket zero is a valid timestamp. Gaps are available, missing samples.
+  history.record(0, -51, true, 1879, 0, 0, false);
+  ASSERT_TRUE(history.latestHistoryBucket(bucket));
+  EXPECT_EQ(0U, bucket);
+  ASSERT_TRUE(history.historyCodeAtOffset(TelemetryHistory::SERIES_TEMPERATURE, 0, code));
+  EXPECT_EQ(1U, code);
+  ASSERT_TRUE(history.historyCodeAtOffset(TelemetryHistory::SERIES_VOLTAGE, 0, code));
+  EXPECT_EQ(1U, code);
+  history.record(2U * TelemetryHistory::SAMPLE_INTERVAL_SECONDS,
+                 78, true, 4401, 0, 0, false);
+  ASSERT_TRUE(history.latestHistoryBucket(bucket));
+  EXPECT_EQ(2U, bucket);
+  ASSERT_TRUE(history.historyCodeAtOffset(TelemetryHistory::SERIES_TEMPERATURE, 0, code));
+  EXPECT_EQ(2U, code);
+  ASSERT_TRUE(history.historyCodeAtOffset(TelemetryHistory::SERIES_VOLTAGE, 0, code));
+  EXPECT_EQ(255U, code);
+  for (auto series : {TelemetryHistory::SERIES_TEMPERATURE,
+                      TelemetryHistory::SERIES_VOLTAGE}) {
+    ASSERT_TRUE(history.historyCodeAtOffset(series, 1, code));
+    EXPECT_EQ(0U, code);
+  }
+  history.record(3U * TelemetryHistory::SAMPLE_INTERVAL_SECONDS,
+                 -50, true, 1880, 0, 0, false);
+  history.record(4U * TelemetryHistory::SAMPLE_INTERVAL_SECONDS,
+                 77, true, 4400, 0, 0, false);
+  ASSERT_TRUE(history.historyCodeAtOffset(TelemetryHistory::SERIES_TEMPERATURE, 0, code));
+  EXPECT_EQ(130U, code);
+  ASSERT_TRUE(history.historyCodeAtOffset(TelemetryHistory::SERIES_TEMPERATURE, 1, code));
+  EXPECT_EQ(3U, code);
+  EXPECT_FALSE(history.historyCodeAtOffset(TelemetryHistory::SERIES_GPS, 0, code));
+  EXPECT_EQ(3U, code);
+  EXPECT_FALSE(history.historyCodeAtOffset(static_cast<TelemetryHistory::Series>(255), 0, code));
+  EXPECT_FALSE(history.historyCodeAtOffset(TelemetryHistory::SERIES_VOLTAGE, 5, code));
+  EXPECT_EQ(3U, code);
+
+  // Full ring rollover returns the newest sample first and excludes evicted slots.
+  for (uint32_t i = 5; i <= TelemetryHistory::TV_RETENTION_SAMPLES + 4U; ++i) {
+    history.record(i * TelemetryHistory::SAMPLE_INTERVAL_SECONDS,
+                   static_cast<int16_t>(static_cast<int>(i % 100U) - 50), true,
+                   static_cast<uint16_t>(1880U + (i % 200U) * 10U), 0, 0, false);
+  }
+  ASSERT_TRUE(history.latestHistoryBucket(bucket));
+  EXPECT_EQ(TelemetryHistory::TV_RETENTION_SAMPLES + 4U, bucket);
+  ASSERT_TRUE(history.historyCodeAtOffset(TelemetryHistory::SERIES_TEMPERATURE,
+                                          TelemetryHistory::TV_RETENTION_SAMPLES - 1U, code));
+  EXPECT_EQ(8U, code);  // i=5 -> -45 C
+  EXPECT_FALSE(history.historyCodeAtOffset(TelemetryHistory::SERIES_TEMPERATURE,
+                                           TelemetryHistory::TV_RETENTION_SAMPLES, code));
+  EXPECT_EQ(8U, code);
+  history.clear();
+  EXPECT_FALSE(history.latestHistoryBucket(bucket));
+  EXPECT_FALSE(history.historyCodeAtOffset(TelemetryHistory::SERIES_VOLTAGE, 0, code));
+}
+
 TEST(TelemetryHistory, FormatsRollingDayAndExplicitMissingBuckets) {
   using mesh::TelemetryHistory;
   TelemetryHistory history;

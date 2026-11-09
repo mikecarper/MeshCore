@@ -20,10 +20,13 @@ HARNESS = r'''
 #include <helpers/NoiseFloorHistory.h>
 #include <helpers/TelemetryHistory.h>
 #include <helpers/ExternalVoltageHistory.h>
+#include <helpers/TelemetryDailyExtremaCLI.h>
 struct ClientInfo { bool admin=true; bool isAdmin() const { return admin; } };
 class Repeater {
 public:
   mesh::NoiseFloorHistory noise_floor_history;
+  mesh::TelemetryHistory telemetry_history;
+  mesh::ExternalVoltageHistory external_voltage_history;
   void handleCommand(char* command,char* reply,ClientInfo* sender) {
     @REPEATER_PREFIX@
     @REPEATER_NOISE@
@@ -65,6 +68,12 @@ static void seed(mesh::NoiseFloorHistory& history) {
     history.advance(999900+(bucket+1)*900);
   }
 }
+static void seedValues(mesh::TelemetryHistory& history) {
+  for (uint32_t i=0;i<336;++i) {
+    const uint32_t epoch=1800000000U+i*1800U;
+    history.record(epoch,int16_t(i%70-25),true,uint16_t(3000+i%1000),0,0,false);
+  }
+}
 static std::vector<uint8_t> decode(const char* text) {
   const char* alphabet="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   std::vector<uint8_t> result;
@@ -103,9 +112,41 @@ template<class Invoke> static void bounded(const std::string& text,Invoke invoke
   if (success) verify(storage.data()+8,profile,prefix);
   else assert(strstr(storage.data()+8,"Err - "));
 }
+template<class Invoke> static void extrema(const std::string& text,Invoke invoke,
+                                            bool allowed,bool prefix,uint8_t series) {
+  std::vector<char> storage(176,'~');
+  std::vector<char> command(text.begin(),text.end());command.push_back(0);
+  invoke(command.data(),storage.data()+8);
+  for (unsigned i=0;i<8;++i) assert(storage[i]=='~' && storage[168+i]=='~');
+  const char* reply=storage.data()+8;
+  assert(memchr(reply,0,160));
+  if (!allowed) { assert(strstr(reply,"Err - ") && strstr(reply,"permi"));return; }
+  assert(!memcmp(reply,prefix ? "xy|" : "> ",prefix ? 3 : 2));
+  const auto bytes=decode(reply+(prefix ? 3 : 2));
+  if (series==0) {
+    assert(bytes.size()==112 && bytes[0]==0x18 && bytes[1]==1 && bytes[2]==30);
+    assert(strlen(reply)==(prefix ? 155U : 154U));
+    // Verify the actual stored readings survive dispatch and encoding: the
+    // newest day has temperature -17..30 C, and rounded battery 3.29..3.34 V.
+    unsigned bit=0;
+    auto readBits=[&](unsigned width) {
+      unsigned value=0;
+      while(width--) {value=(value<<1)|((bytes[7+bit/8]>>(7-bit%8))&1);++bit;}
+      return value;
+    };
+    assert(readBits(6)==47 && readBits(6)==0);
+    for (unsigned value:{35U,36U,37U,82U,83U,0U}) assert(readBits(8)==value);
+    assert(readBits(6)==41 && readBits(6)==0);
+    for (unsigned value:{143U,143U,144U,147U,148U,0U}) assert(readBits(8)==value);
+  } else {
+    assert(bytes[0]==0x17 && bytes[1]==1 && bytes[2]==series);
+  }
+}
 int main() {
   Repeater repeater;MyMesh room;
   seed(repeater.noise_floor_history);seed(room.noise_floor_history);
+  seedValues(repeater.telemetry_history);
+  seedValues(room.telemetry_history);
   ClientInfo admin,denied;denied.admin=false;
   for (unsigned profile:{0U,1U}) for (bool prefix:{false,true}) {
     const std::string text=std::string(prefix ? "xy|" : "")
@@ -140,6 +181,30 @@ int main() {
       room.remote(&admin,command,reply);
     },false,0,true);
   }
+  struct Request { const char* command;uint8_t series; };
+  for (const Request request: {
+      Request{"get telemetry.minmax",0},Request{"get telemetry.temp minmax",1},
+      Request{"get telemetry.volt minmax",2}}) {
+    for (bool prefix:{false,true}) {
+      const std::string text=std::string(prefix ? "xy|" : "")+request.command;
+      extrema(text,[&](char* c,char* r){repeater.handleCommand(c,r,nullptr);},true,prefix,request.series);
+      extrema(text,[&](char* c,char* r){repeater.handleCommand(c,r,&admin);},true,prefix,request.series);
+      extrema(text,[&](char* c,char* r){repeater.handleCommand(c,r,&denied);},false,prefix,request.series);
+      extrema(text,[&](char* c,char* r){room.handleCommand(0,c,r);},true,prefix,request.series);
+      extrema(text,[&](char* c,char* r){room.remote(&admin,c,r);},true,prefix,request.series);
+      extrema(text,[&](char* c,char* r){room.remote(&denied,c,r);},false,prefix,request.series);
+    }
+  }
+  for (const char* bad:{"get telemetry.minmax extra", "get telemetry.temp minmax extra",
+                        "get telemetry.volt minmax extra"}) {
+    std::vector<char> c(bad,bad+strlen(bad));c.push_back(0);char reply[160]={};
+    repeater.handleCommand(c.data(),reply,&admin);
+    assert(strstr(reply,"Err - "));
+  }
+  Repeater empty;
+  char emptyCommand[]="get telemetry.minmax";char emptyReply[160]={};
+  empty.handleCommand(emptyCommand,emptyReply,&admin);
+  assert(strstr(emptyReply,"history is empty"));
   puts("noise CLI prefix, permission and payload checks passed");
 }
 '''
@@ -156,7 +221,7 @@ class NoiseFloorCLITests(unittest.TestCase):
             declaration = re.search(r"const bool prefixed_reply[^;]+;", handler).group()
             return declaration + "\n" + extract_braced(handler, "if (strlen(command) > 4 && command[2] == '|')")
 
-        start = repeater_handler.index('  const char* noise_commands[]')
+        start = repeater_handler.index('  if (mesh::telemetry_daily_cli::handle(')
         end = repeater_handler.index('  const char* telemetry_args', start)
         receiver = extract_braced(room, "void MyMesh::onPeerDataRecv(")
         gate = extract_braced(receiver[receiver.index("if (!handleClientPathCommand"):], "if (client->isAdmin())")

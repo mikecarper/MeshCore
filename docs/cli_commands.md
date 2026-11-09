@@ -890,6 +890,9 @@ Room servers provide local history and its CLI reads, without batch transmission
 - `get telemetry.gps [page]`
 - `get telemetry.noise [page]`
 - `get telemetry.noise2 [page]`
+- `get telemetry.minmax`
+- `get telemetry.temp minmax`
+- `get telemetry.volt minmax`
 - `set telemetry.gps <days>`
 - `get telemetry.tx`
 - `set telemetry.tx <off|direct|path>`
@@ -923,6 +926,18 @@ Room servers provide local history and its CLI reads, without batch transmission
   normally LPP channels `2`, `3`, and `4`; always use the no-argument command
   as the authoritative list because earlier detected sensors shift the LPP
   numbers.
+- `get telemetry.minmax`: Return temperature and battery voltage together in
+  one reply. Each contains the same seven-day min/max and neighboring samples
+  described below.
+- `get telemetry.temp minmax` / `get telemetry.volt minmax`: Return the
+  minimum and maximum for each of the seven newest
+  rolling 24-hour windows, plus the samples immediately before and after each
+  extreme. Ties use the newest sample. Windows match the existing temperature
+  and voltage pages; they are not calendar days. Missing or unretained slots
+  remain missing, including after startup and at the ends of retained history.
+  Each reply covers one reading in one compact Base64
+  packet. Paste it into the [telemetry decoder](telemetry_decoder.md) to see
+  values and times. History is retained in RAM and starts fresh after a reboot.
 - `days`: Requested GPS retention from `1` through `30` days. Retention above
   three days uses heap memory. The allocator reduces the requested value as
   needed to leave at least 2048 bytes free and replies with the days and pages

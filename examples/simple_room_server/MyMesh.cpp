@@ -27,6 +27,9 @@
 #include <helpers/ota/OtaContext.h>
 #endif
 #include <helpers/FileRead.h>
+#if MESH_ENABLE_TELEMETRY_HISTORY
+#include <helpers/TelemetryDailyExtremaCLI.h>
+#endif
 #if MESH_ENABLE_FLEET_CONTROL
 #include <helpers/FleetLocation.h>
 #endif
@@ -3935,6 +3938,8 @@ void MyMesh::onUserGpioTimerCompleted(uint8_t pin, uint8_t state,
 #if MESH_ENABLE_TELEMETRY_HISTORY
 bool MyMesh::handleTelemetryHistoryCommand(const char* command, char* reply,
                                           size_t reply_capacity, bool include_prompt) {
+  if (mesh::telemetry_daily_cli::handle(command, telemetry_history, reply, reply_capacity,
+          include_prompt, true)) return true;
   const char* noise_commands[] = {"get telemetry.noise", "get telemetry.noise2"};
   for (uint8_t profile = 0; profile < 2; ++profile) {
     const size_t length = strlen(noise_commands[profile]);

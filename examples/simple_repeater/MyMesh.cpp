@@ -57,6 +57,7 @@ mesh::FloodAdvertLimiter::Entry* repeaterRtcAdvertSlowBank() {
 #endif
 #if MESH_ENABLE_TELEMETRY_HISTORY
 #include <helpers/FilePresence.h>
+#include <helpers/TelemetryDailyExtremaCLI.h>
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
 #include <helpers/AtomicFileWriter.h>
 #else
@@ -12768,6 +12769,9 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
 #endif
 
 #if MESH_ENABLE_TELEMETRY_HISTORY
+  if (mesh::telemetry_daily_cli::handle(command, telemetry_history, reply,
+          prefixed_reply ? 157 : 160, !prefixed_reply,
+          sender == NULL || sender->isAdmin())) return;
   const char* noise_commands[] = {"get telemetry.noise", "get telemetry.noise2"};
   for (uint8_t profile = 0; profile < 2; ++profile) {
     const size_t length = strlen(noise_commands[profile]);

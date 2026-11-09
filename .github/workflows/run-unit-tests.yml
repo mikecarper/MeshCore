@@ -805,7 +805,7 @@ jobs:
         run: >-
           python3 -B -m unittest
           test_agessaman_noise_floor test_noise_floor_history test_noise_floor_readings test_noise_floor_sampler
-          test_noise_floor_rssi_errors test_noise_floor_cli -v
+          test_noise_floor_rssi_errors test_noise_floor_cli test_telemetry_daily_extrema -v
 
       - name: Verify transactional telemetry preferences and legacy route recovery
         run: python3 -B test/test_telemetry_tx_persistence.py -v

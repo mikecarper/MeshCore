@@ -181,6 +181,35 @@ public:
     return _tv_count;
   }
 
+  // History offsets are relative to the newest recorded UTC half-hour bucket.
+  // A recorded missing sample is available and has code zero. Temperature
+  // codes follow the raw snapshot convention: 1=below -50 C, 2=above 77 C,
+  // and 3..130 are exact whole degrees -50..77 C. Battery codes are unchanged.
+  // GPS is not represented by these scalar codes. Failure leaves outputs alone.
+  bool latestHistoryBucket(uint32_t& bucket) const {
+    if (!_has_bucket || _tv_count == 0) return false;
+    bucket = _last_bucket;
+    return true;
+  }
+
+  bool historyCodeAtOffset(Series series, uint16_t offset, uint16_t& code) const {
+    if (series != SERIES_TEMPERATURE && series != SERIES_VOLTAGE) return false;
+    uint8_t temperature, status, voltage;
+    if (!tvAtOffset(offset, temperature, status, voltage)) return false;
+    if (series == SERIES_VOLTAGE) {
+      code = voltage;
+    } else if (status == TEMPERATURE_NONE) {
+      code = 0;
+    } else if (status == TEMPERATURE_LOW) {
+      code = 1;
+    } else if (status == TEMPERATURE_HIGH) {
+      code = 2;
+    } else {
+      code = (uint16_t)temperature + 3U;
+    }
+    return true;
+  }
+
   size_t formatTemperatureBinarySnapshot(
       const uint8_t source_id[BINARY_SOURCE_ID_SIZE],
       uint8_t* dest, size_t dest_size) const {
