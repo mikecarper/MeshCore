@@ -205,11 +205,14 @@ public:
     setCpuFrequencyRequest(selected, powersaving);
     const uint16_t maximum = resolveCpuFrequencyMHz(selected, powersaving);
     applied_cpu_clock_valid = false;
+    bool verify_fixed_clock = selected || radio_profile_cpu_clock_policy
+        || (companion_cpu_clock_policy && !mesh::esp32::cpuclock::automaticDownclockAllowed());
 #if defined(CONFIG_PM_ENABLE) && CONFIG_PM_ENABLE
     const uint16_t minimum = !selected && !radio_profile_cpu_clock_policy
         && companion_cpu_clock_policy && powersaving
         && mesh::esp32::cpuclock::automaticDownclockAllowed() && maximum > 40
         ? 40 : maximum;
+    verify_fixed_clock = minimum == maximum;
 #if CONFIG_IDF_TARGET_ESP32C3
     esp_pm_config_esp32c3_t config;
 #elif CONFIG_IDF_TARGET_ESP32S3
@@ -227,12 +230,17 @@ public:
     config.light_sleep_enable = companion_cpu_clock_policy && powersaving;
 #endif
     if (esp_pm_configure(&config) != ESP_OK) return false;
+    // IDF applies its new clock table on a PM mode transition. Yield before
+    // checking a fixed clock so the previous speed cannot reject a valid
+    // request. Stable clocks and variable Auto policies do not need to wait.
+    if (verify_fixed_clock) {
+      for (uint8_t attempt = 0; getCpuFrequencyMHz() != maximum && attempt < 10; ++attempt)
+        delay(1);
+    }
 #else
     if (!setCpuFrequencyMhz(maximum)) return false;
 #endif
-    if ((selected || radio_profile_cpu_clock_policy
-        || (companion_cpu_clock_policy && !mesh::esp32::cpuclock::automaticDownclockAllowed()))
-        && getCpuFrequencyMHz() != maximum) return false;
+    if (verify_fixed_clock && getCpuFrequencyMHz() != maximum) return false;
     applied_profile_cpu_clock_policy = radio_profile_cpu_clock_policy;
     applied_cpu_clock_valid = true;
     profile_cpu_clock_retry_at = 0;
