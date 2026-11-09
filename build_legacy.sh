@@ -3081,9 +3081,54 @@ prepare_esp32_arduino3_framework() {
     pio pkg uninstall --global --tool framework-arduinoespressif32 --no-save || true
     run_pio_with_size_detection pkg install --global --tool "$arduino3_core_url" || return $?
   fi
-  run_pio_with_size_detection pkg install --global --tool "$arduino3_libs_url" || return $?
+  if run_pio_with_size_detection pkg install --global --tool "$arduino3_libs_url"; then
+    :
+  else
+    local install_status=$?
+    # Only the pinned 3.3.11 libraries have a separately verified API asset.
+    # Permanent package, checksum and local installation failures still fail.
+    if [ "${MESHCORE_PIO_ESP32_3311_LIBS_EXHAUSTED:-0}" != 1 ]; then
+      return "$install_status"
+    fi
+    install_esp32_arduino3_pinned_libs_fallback || return $?
+  fi
   run_pio_with_size_detection pkg install -e "$pio_env_name"
 }
+
+install_esp32_arduino3_pinned_libs_fallback() (
+  local checkout_dir fallback_dir archive
+  checkout_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P) || return 1
+  umask 077
+  fallback_dir=$(mktemp -d "${TMPDIR:-/tmp}/meshcore-esp32-libs-XXXXXX") || return 1
+  trap 'rm -rf -- "$fallback_dir"' EXIT
+  fallback_dir=$(cd -- "$fallback_dir" && pwd -P) || return 1
+  archive="${fallback_dir}/esp32-core-3.3.11-libs.tar.xz"
+  echo "Downloading the verified Arduino-ESP32 3.3.11 libraries from the GitHub release API..." >&2
+  python3 "${checkout_dir}/scripts/fetch_pinned_esp32_core.py" fetch "$archive" || return $?
+  run_pio_with_size_detection pkg install --global --tool "file://${archive}" || return $?
+  python3 "${checkout_dir}/scripts/fetch_pinned_esp32_core.py" bind "$archive"
+)
+
+# Recover only the two reviewed ESP32-C6 release assets. The archive is
+# checked before install and again before its PIO source metadata is bound.
+install_esp32_c6_pinned_fallback() (
+  local kind=$1 checkout_dir fallback_dir archive package_type
+  case "$kind" in
+    platform) package_type=--platform ;;
+    libs) package_type=--tool ;;
+    *) return 1 ;;
+  esac
+  checkout_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P) || return 1
+  umask 077
+  fallback_dir=$(mktemp -d "${TMPDIR:-/tmp}/meshcore-esp32-c6-XXXXXX") || return 1
+  trap 'rm -rf -- "$fallback_dir"' EXIT
+  fallback_dir=$(cd -- "$fallback_dir" && pwd -P) || return 1
+  archive="${fallback_dir}/${kind}.zip"
+  echo "Downloading the verified ESP32-C6 ${kind} asset from the GitHub release API..." >&2
+  python3 "${checkout_dir}/scripts/fetch_pinned_esp32_c6.py" fetch "$kind" "$archive" || return $?
+  pio pkg install --global --skip-dependencies "$package_type" "file://${archive}" || return $?
+  python3 "${checkout_dir}/scripts/fetch_pinned_esp32_c6.py" bind "$kind" "$archive"
+)
 
 requires_esp32_companion_full_ota_fallback() {
   # Some non-PSRAM ESP32 companions cannot hold their configured high-capacity contact,
@@ -5361,16 +5406,32 @@ restore_platformio_build_flags() {
   fi
 }
 
+pio_transient_for_url() {
+  local output_log=$1 pattern=$2 url=$3 line
+  while IFS= read -r line; do
+    line=${line%$'\r'}
+    case "$line" in *"when downloaded ${url}") return 0 ;; esac
+  done < <(grep -Ei "$pattern" "$output_log")
+  return 1
+}
+
 run_pio_with_size_detection() {
   local build_output_log
   local build_status
-  local attempt delay
+  local attempt delay recovered_c6_platform=0 recovered_c6_libs=0 fallback_kind
+  local arduino3311_libs_url='https://github.com/espressif/arduino-esp32/releases/download/3.3.11/esp32-core-3.3.11-libs.tar.xz'
+  local c6_platform_url='https://github.com/pioarduino/platform-espressif32/releases/download/53.03.13-1/platform-espressif32.zip'
+  local c6_libs_url='https://github.com/espressif/esp32-arduino-lib-builder/releases/download/idf-release_v5.3/esp32-arduino-libs-idf-release_v5.3-489d7a2b-v1.zip'
+  local transient_pattern="PackageException: Got the unrecognized status code '(408|429|500|502|503|504)' when downloaded"
   local -a output_statuses
   # SCons can delete the environment's build directory when flags change.
   # A tee log inside that directory is then unlinked while still open, hiding
   # the size error from the measured-size fallback after PlatformIO exits.
+  MESHCORE_PIO_TRANSIENT_EXHAUSTED=0
+  MESHCORE_PIO_ESP32_3311_LIBS_EXHAUSTED=0
   build_output_log=$(mktemp "${TMPDIR:-/tmp}/meshcore-build-XXXXXX.log") || return 1
-  for attempt in 1 2 3 4; do
+  attempt=1
+  while :; do
     if pio "$@" 2>&1 | tee "$build_output_log"; then
       output_statuses=("${PIPESTATUS[@]}")
     else
@@ -5390,12 +5451,36 @@ run_pio_with_size_detection() {
     fi
     # Retry only PlatformIO's explicit transient download failures. Compiler,
     # checksum, missing-package and all other failures remain immediate.
-    if [ "$attempt" -eq 4 ] || ! grep -Eiq \
-        "PackageException: Got the unrecognized status code '(408|429|500|502|503|504)' when downloaded" \
-        "$build_output_log"; then break; fi
+    if ! grep -Eiq "$transient_pattern" "$build_output_log"; then break; fi
+    if [ "$attempt" -eq 4 ]; then
+      MESHCORE_PIO_TRANSIENT_EXHAUSTED=1
+      if pio_transient_for_url "$build_output_log" "$transient_pattern" "$arduino3311_libs_url"; then
+        MESHCORE_PIO_ESP32_3311_LIBS_EXHAUSTED=1
+      fi
+      fallback_kind=''
+      if [ "$recovered_c6_platform" -eq 0 ] && pio_transient_for_url "$build_output_log" "$transient_pattern" "$c6_platform_url"; then
+        fallback_kind=platform
+        recovered_c6_platform=1
+      elif [ "$recovered_c6_libs" -eq 0 ] && pio_transient_for_url "$build_output_log" "$transient_pattern" "$c6_libs_url"; then
+        fallback_kind=libs
+        recovered_c6_libs=1
+      fi
+      if [ -n "$fallback_kind" ]; then
+        if install_esp32_c6_pinned_fallback "$fallback_kind"; then
+          attempt=1
+          MESHCORE_PIO_TRANSIENT_EXHAUSTED=0
+          MESHCORE_PIO_ESP32_3311_LIBS_EXHAUSTED=0
+          continue
+        else
+          build_status=$?
+        fi
+      fi
+      break
+    fi
     case "$attempt" in 1) delay=5 ;; 2) delay=15 ;; *) delay=30 ;; esac
     echo "Transient PlatformIO download failure; retrying in ${delay}s (${attempt}/3)." >&2
     sleep "$delay"
+    attempt=$((attempt + 1))
   done
   rm -f -- "$build_output_log"
   return "$build_status"

@@ -583,8 +583,15 @@ jobs:
         # The test pins the archive SHA-256, verifies every .mota signature,
         # and checks the exact MeshTower V2 SD CRC from the bug report.
         run: |
-          curl --fail --location --retry 3 --max-time 120 --output "$MESHCORE_BOOTLOADER_MOTA_ZIP" \
-            https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/0.11.0-OTAFIX2.4.6/OTAFIX-2.4.6-bootloader-mota.zip
+          if ! curl --fail --location --retry 3 --max-time 120 --output "$MESHCORE_BOOTLOADER_MOTA_ZIP" \
+            https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/0.11.0-OTAFIX2.4.6/OTAFIX-2.4.6-bootloader-mota.zip; then
+            echo 'Release download failed; trying the GitHub API asset endpoint.'
+            curl --fail --location --retry 3 --max-time 120 \
+              --header 'Accept: application/octet-stream' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              --output "$MESHCORE_BOOTLOADER_MOTA_ZIP" \
+              https://api.github.com/repos/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/assets/546337954
+          fi
           python3 -B test/test_nrf52_bootloader_version.py -v
 
   test:
@@ -744,6 +751,8 @@ jobs:
         run: |
           python3 -B test/test_build_output_safety.py -v
           python3 -B test/test_pio_transient_retry.py -v
+          python3 -B test/test_esp32_core_fallback.py -v
+          python3 -B test/test_fetch_pinned_esp32_c6.py -v
 
       - name: Verify serial mOTA response deadlines and RX fairness
         run: |

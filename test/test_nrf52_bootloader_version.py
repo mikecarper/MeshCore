@@ -10,6 +10,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 import zipfile
 
@@ -21,6 +22,35 @@ SPEC.loader.exec_module(STOCK)
 
 
 class BootloaderVersionTest(unittest.TestCase):
+    def test_otafix_release_download_falls_back_without_skipping_verification(self):
+        workflow = (ROOT / '.github/workflows/run-unit-tests.yml').read_text(encoding='utf-8')
+        step = workflow.split('      - name: Verify all signed OTAFIX 2.4.6 release images\n', 1)[1]
+        step = step.split('\n  test:', 1)[0]
+        body = textwrap.dedent(step.split('        run: |\n', 1)[1])
+        self.assertIn('releases/assets/546337954', body)
+        self.assertIn('Accept: application/octet-stream', body)
+        prelude = r'''
+curl() {
+  case "$*" in
+    *api.github.com*) echo api >> "$CAPTURE"; [ "$MODE" != both_fail ] ;;
+    *) echo direct >> "$CAPTURE"; [ "$MODE" = direct_ok ] ;;
+  esac
+}
+python3() { echo verify:"$*" >> "$CAPTURE"; }
+'''
+        for mode, expected, success in (
+                ('direct_ok', ['direct', 'verify:-B test/test_nrf52_bootloader_version.py -v'], True),
+                ('fallback_ok', ['direct', 'api', 'verify:-B test/test_nrf52_bootloader_version.py -v'], True),
+                ('both_fail', ['direct', 'api'], False)):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temp:
+                log = Path(temp) / 'calls'
+                env = dict(os.environ, CAPTURE=str(log), MODE=mode,
+                           MESHCORE_BOOTLOADER_MOTA_ZIP=str(Path(temp) / 'asset.zip'))
+                result = subprocess.run(['bash', '-e', '-c', prelude + body],
+                                        cwd=ROOT, env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
+                self.assertEqual(log.read_text(encoding='utf-8').splitlines(), expected)
+
     def test_stock_artifact_manifest(self):
         records = json.loads((FIXTURES / "stock_images.json").read_text())["artifacts"]
         self.assertEqual(len(records), 26)
