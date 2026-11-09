@@ -1,3 +1,7 @@
+<!-- meshcore-hosted-doc-link:start -->
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/test-results/2026-11-08-browser-lora-ota-audit/">View this page on MeshCore Docs</a>.</p>
+<!-- meshcore-hosted-doc-link:end -->
+
 # Browser LoRa updater audit - 8 November 2026
 
 This audit covers the shared browser updater, its USB transports and its update

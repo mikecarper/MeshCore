@@ -79,6 +79,8 @@ class HostedDocLinksTest(unittest.TestCase):
     def test_shared_script_is_registered_exactly_once(self):
         self.assertEqual((ROOT / 'mkdocs.yml').read_text().count(LINKS.SCRIPT), 1)
         self.assertTrue((ROOT / 'docs/_javascript/hosted_doc_links.js').is_file())
+        workflow = (ROOT / '.github/workflows/run-unit-tests.yml').read_text()
+        self.assertEqual(workflow.count(LINKS.WORKFLOW_JOB.strip('\n')), 1)
 
     def test_hooks_preserve_other_tool_config_and_workflow_changes(self):
         with tempfile.TemporaryDirectory() as directory:

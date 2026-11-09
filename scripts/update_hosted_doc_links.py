@@ -22,9 +22,9 @@ SUPPORT_FILES = (
 )
 WORKFLOW_JOB = '''
   hosted-doc-links:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
