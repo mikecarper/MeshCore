@@ -445,7 +445,8 @@ class CompanionBrowserRuntimeTest(unittest.TestCase):
         self.assertIn('> get public.key (attempt 1 of 7)',result['result'])
         self.assertIn('> ota status (attempt 1 of 11)',result['result'])
         self.assertRegex(result['result'],r'(?i)install verification:.*supported')
-        self.assertRegex(result['result'],r'(?i)firmware compatibility:.*(?:choose a firmware|run the package check)')
+        self.assertIn('Next: select firmware, then Prepare update.',result['result'])
+        self.assertIn('A successful check enables Update remote firmware.',result['result'])
         required={'ota status','ota self','ver','get bootloader.ver','ota bootloader status','ota config','ota key list','get tempradio','get radio.rxps','ota installhash'}
         self.assertTrue(required.issubset(result['cmds']),result)
         self.assertTrue(all(c in required | {'get public.key'} for c in result['cmds']),result)
@@ -541,12 +542,15 @@ class CompanionBrowserRuntimeTest(unittest.TestCase):
         harness=HARNESS.replace(old,"if(text==='get ota.direct')value='Unknown command';")
         start="el('inspect').click();await wait(()=>!el('transfer').disabled||el('status').textContent.includes('Error:'));"
         self.assertEqual(harness.count(start),1)
-        harness=harness.replace(start,start+"await report({status:el('status').textContent,cmds,frames:port.frames});return;")
+        # Connecting and browsing stay read-only. Prepare update now performs
+        # legacy identity verification itself, so stop before that user action.
+        harness=harness.replace(start,"await report({status:el('status').textContent,cmds,frames:port.frames});return;"+start)
         result=run_harness(harness,timeout=45)
         self.assertNotIn('error',result,result)
         self.assertIn('raw-packet compatibility',result['status'])
-        self.assertRegex(result['status'],r'(?i)select find matching firmware.*verify.*public key')
-        self.assertFalse(any(f[0] in (26,52,65) for f in result['frames']))
+        self.assertIn('Loaded 5 eligible contacts.',result['status'])
+        self.assertEqual(result['cmds'],[])
+        self.assertFalse(any(f[0] in (2,10,26,52,65) for f in result['frames']))
 
 
 if __name__=='__main__':unittest.main()
