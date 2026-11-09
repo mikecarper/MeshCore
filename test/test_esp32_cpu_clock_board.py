@@ -196,7 +196,7 @@ int main(){
  // retunes at the established clock neither configure nor wait again.
  actual_mhz=80;settle_after=3;bool changed=false;
  board.applied_cpu_clock_valid=false;
- board.setCpuFrequencyRequest(0,true);
+ board.setCpuFrequencyRequest(0,false);
  assert(board.prepareRadioProfileCpuClock(true,changed));
  assert(actual_mhz==nominal && settle_calls==3);
  const auto writes=clock_writes,waits=settle_calls;
@@ -262,13 +262,16 @@ int main(){
  prefs.powersaving_enabled=false;serviceCompanionPowerSaving();assert(actual_mhz==160);
  prefs.powersaving_enabled=true;serviceCompanionPowerSaving();assert(actual_mhz==160);
  prefs.cpu_freq_mhz=0;serviceCompanionPowerSaving();assert(actual_mhz==80);
- the_mesh.dual=true;serviceCompanionPowerSaving();assert(actual_mhz==240);
+ the_mesh.dual=true;serviceCompanionPowerSaving();assert(actual_mhz==80);
  writes=clock_writes;serviceCompanionPowerSaving();assert(clock_writes==writes);
- // Repeated Auto commands use the same board policy, rather than dropping
- // back to80 behind the role's unchanged request cache.
- assert(board.applyCpuFrequencyMHz(0,true)&&actual_mhz==240);
- prefs.cpu_freq_mhz=80;serviceCompanionPowerSaving();assert(actual_mhz==80);
- prefs.cpu_freq_mhz=0;serviceCompanionPowerSaving();assert(actual_mhz==240);
+ // Auto honors PS on even with radio2. Live PS toggles change the policy.
+ assert(board.applyCpuFrequencyMHz(0,true)&&actual_mhz==80);
+ prefs.powersaving_enabled=false;serviceCompanionPowerSaving();assert(actual_mhz==240);
+ prefs.powersaving_enabled=true;serviceCompanionPowerSaving();assert(actual_mhz==80);
+ prefs.cpu_freq_mhz=160;serviceCompanionPowerSaving();assert(actual_mhz==160);
+ prefs.powersaving_enabled=false;serviceCompanionPowerSaving();assert(actual_mhz==160);
+ prefs.powersaving_enabled=true;serviceCompanionPowerSaving();assert(actual_mhz==160);
+ prefs.cpu_freq_mhz=0;serviceCompanionPowerSaving();assert(actual_mhz==80);
  the_mesh.dual=false;serviceCompanionPowerSaving();assert(actual_mhz==80);
  prefs.powersaving_enabled=false;serviceCompanionPowerSaving();assert(actual_mhz==240);
  // Failures retain the request and retry after the original bounded delay.
@@ -299,10 +302,14 @@ int main(){
  prefs.powersaving_enabled=false;role_service();assert(actual_mhz==160);
  prefs.cpu_freq_mhz=80;role_service();assert(actual_mhz==80);
  prefs.cpu_freq_mhz=0;role_service();assert(actual_mhz==mesh::esp32::cpuclock::nominalMHz());
- // Active profiles prefer the chip maximum over a low nominal or Auto+PS.
- prefs.powersaving_enabled=true;the_mesh.dual=true;role_service();assert(actual_mhz==240);
- prefs.cpu_freq_mhz=80;role_service();assert(actual_mhz==80);
- prefs.cpu_freq_mhz=0;role_service();assert(actual_mhz==240);
+ // Infrastructure follows the same radio2 Auto+PS policy as Companion.
+ prefs.powersaving_enabled=true;the_mesh.dual=true;role_service();assert(actual_mhz==80);
+ prefs.powersaving_enabled=false;role_service();assert(actual_mhz==240);
+ prefs.powersaving_enabled=true;role_service();assert(actual_mhz==80);
+ prefs.cpu_freq_mhz=160;role_service();assert(actual_mhz==160);
+ prefs.powersaving_enabled=false;role_service();assert(actual_mhz==160);
+ prefs.powersaving_enabled=true;role_service();assert(actual_mhz==160);
+ prefs.cpu_freq_mhz=0;role_service();assert(actual_mhz==80);
  the_mesh.dual=false;role_service();assert(actual_mhz==mesh::esp32::cpuclock::nominalMHz());
 }
 '''
@@ -315,28 +322,45 @@ int main(){
         tests=r'''
 int main(){
  board.setCompanionCpuClockPolicy(true);
- assert(board.applyCpuFrequencyMHz(0,true));
+ assert(board.applyCpuFrequencyMHz(0,false));
  bool changed=true;
  assert(board.prepareRadioProfileCpuClock(true,changed));
  const unsigned fast=board.supportsCpuFrequencyMHz(240)?240:160;
  assert(actual_mhz==fast);
 #if CONFIG_PM_ENABLE
  assert(unsigned(applied_pm.min_freq_mhz)==fast&&unsigned(applied_pm.max_freq_mhz)==fast);
- // Fixing the clock does not disable the existing CPU sleep permission.
- assert(applied_pm.light_sleep_enable);
+ // PS-off keeps the existing CPU sleep policy disabled.
+ assert(!applied_pm.light_sleep_enable);
 #endif
  unsigned writes=clock_writes;
  assert(board.prepareRadioProfileCpuClock(true,changed)&&!changed&&clock_writes==writes);
  for(uint16_t dial : {uint16_t(80),uint16_t(160)}){
-   assert(board.applyCpuFrequencyMHz(dial,true)&&actual_mhz==dial);
+   assert(board.applyCpuFrequencyMHz(dial,false)&&actual_mhz==dial);
    assert(board.prepareRadioProfileCpuClock(true,changed));
    assert(changed);
    assert(actual_mhz==dial);
    assert(board.prepareRadioProfileCpuClock(true,changed)&&!changed);
  }
- assert(board.applyCpuFrequencyMHz(0,true)&&actual_mhz==fast);
+ assert(board.applyCpuFrequencyMHz(0,false)&&actual_mhz==fast);
  assert(board.prepareRadioProfileCpuClock(true,changed));
  assert(changed==(fast!=160));
+ // PS-on Auto pins both PM bounds to 80, avoiding clock drift while scanning.
+ assert(board.applyCpuFrequencyMHz(0,true)&&actual_mhz==80);
+ assert(board.prepareRadioProfileCpuClock(true,changed)&&changed);
+#if CONFIG_PM_ENABLE
+ assert(applied_pm.min_freq_mhz==80&&applied_pm.max_freq_mhz==80);
+ assert(applied_pm.light_sleep_enable);
+#endif
+ writes=clock_writes;
+ for(unsigned hop=0;hop<100;++hop){
+   assert(board.prepareRadioProfileCpuClock(true,changed)&&!changed);
+ }
+ assert(clock_writes==writes);
+ // Explicit speed remains effective with PS on; Auto restores the 80MHz cap.
+ assert(board.applyCpuFrequencyMHz(160,true)&&actual_mhz==160);
+ assert(board.prepareRadioProfileCpuClock(true,changed)&&changed);
+ assert(board.applyCpuFrequencyMHz(0,true)&&actual_mhz==80);
+ assert(board.prepareRadioProfileCpuClock(true,changed)&&changed);
  assert(board.prepareRadioProfileCpuClock(false,changed)&&!changed);
 #if CONFIG_PM_ENABLE
  assert(actual_mhz==40&&applied_pm.max_freq_mhz==80);
@@ -349,11 +373,11 @@ int main(){
  writes=clock_writes;
  assert(!board.prepareRadioProfileCpuClock(true,changed)&&clock_writes==writes);
  now_ms+=5000;fail_clock=false;
- assert(board.prepareRadioProfileCpuClock(true,changed)&&actual_mhz==fast);
+ assert(board.prepareRadioProfileCpuClock(true,changed)&&actual_mhz==80);
  assert(board.prepareRadioProfileCpuClock(true,changed)&&!changed);
 }
 '''
-        for target in ("ESP32S3","ESP32C3","ESP32C6"):
+        for target in ("ESP32","ESP32S2","ESP32S3","ESP32C3","ESP32C6"):
             for pm in (0,1):
                 with self.subTest(target=target,pm=pm):
                     self.run_fixture("#include <initializer_list>\n"+tests,[
@@ -451,6 +475,7 @@ struct RadioLibWrapper {
 int main(){
  board.setCompanionCpuClockPolicy(true);
  assert(board.applyCpuFrequencyMHz(0,true)&&actual_mhz==80);
+ board.setCpuFrequencyRequest(0,false); // PS-off boost must precede retuning.
  RadioLibWrapper radio;
  mesh::RadioProfileConfig config;config.mode=mesh::RadioProfileMode::RxTx;
  radio._profiles.setSecondary(config,false);
@@ -472,7 +497,8 @@ int main(){
  assert(radio._profiles.switch_test_max_us[0]==1700);
  // A failed boost defers before preamble math or hardware retuning.
  bool changed=false;assert(board.prepareRadioProfileCpuClock(false,changed));
- assert(board.applyCpuFrequencyMHz(0,true));fail_clock=true;
+ assert(board.applyCpuFrequencyMHz(0,true));
+ board.setCpuFrequencyRequest(0,false);fail_clock=true;
  const unsigned previous=radio.retunes,reads=radio.preamble_reads;
  assert(radio.tuneProfile(1)==mesh::RadioParamApplyResult::BUSY);
  assert(radio.retunes==previous&&radio.preamble_reads==reads);
@@ -566,10 +592,11 @@ int main(){
  radio._profiles.setSecondary(config,false);the_mesh.dual=true;
  // Loaded profiles can apply before onBootComplete. A fixed requested clock
  // must be respected both there and after the board's post-boot override.
+ for(bool ps:{false,true})
  for(uint16_t selected : {uint16_t(0),uint16_t(80),uint16_t(160),uint16_t(240)}){
-   prefs.cpu_freq_mhz=selected;prefs.powersaving_enabled=true;
-   board.setCpuFrequencyRequest(selected,true);
-   radio.expected=selected?selected:240;
+   prefs.cpu_freq_mhz=selected;prefs.powersaving_enabled=ps;
+   board.setCpuFrequencyRequest(selected,ps);
+   radio.expected=selected?selected:(ps?80:240);
    assert(radio.tuneProfile(0)==mesh::RadioParamApplyResult::APPLIED);
    role_service();assert(actual_mhz==radio.expected);
    actual_mhz=160; // RC32::onBootComplete hardware change, outside role cache.

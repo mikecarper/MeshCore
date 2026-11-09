@@ -178,6 +178,9 @@ public:
     uint16_t maximum = mesh::esp32::cpuclock::resolveMHz(
         selected, powersaving, companion_cpu_clock_policy);
     if (!selected && radio_profile_cpu_clock_policy) {
+      // Keep Auto at a stable 80 MHz while scanning with power saving on.
+      // Explicit selections still win; PS off uses the fastest supported clock.
+      if (powersaving) return 80;
       const uint16_t candidates[] = {240, 160, 80};
       for (uint16_t candidate : candidates) {
         if (supportsCpuFrequencyMHz(candidate)) return candidate;

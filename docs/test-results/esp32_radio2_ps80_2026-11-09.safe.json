@@ -1,0 +1,648 @@
+{
+  "checks": [
+    {
+      "cpu": "selected=auto actual=80MHz supported=auto,80,160,240",
+      "phase": "radio2 starts with PS on",
+      "radio2": "rx; RX=7,0 TX=0,0 switches=63 errors=0 max=1255us preamble=32,32; test=4/4,4/4 pending budget=1381us; timing self-test pending; wait=119s"
+    },
+    {
+      "cpu": "selected=auto actual=240MHz supported=auto,80,160,240",
+      "phase": "live PS off"
+    },
+    {
+      "cpu": "selected=auto actual=80MHz supported=auto,80,160,240",
+      "phase": "live PS on"
+    },
+    {
+      "cpu": "selected=160 actual=160MHz supported=auto,80,160,240",
+      "phase": "explicit 160 with PS on"
+    },
+    {
+      "cpu": "selected=160 actual=160MHz supported=auto,80,160,240",
+      "phase": "explicit 160 with PS off"
+    },
+    {
+      "cpu": "selected=160 actual=160MHz supported=auto,80,160,240",
+      "phase": "explicit 160 with PS on"
+    },
+    {
+      "cpu": "selected=auto actual=80MHz supported=auto,80,160,240",
+      "phase": "return to Auto with PS on"
+    }
+  ],
+  "fast_settings": "spi=0 (8000000Hz) warm=on fs=on packet=on iq=on modem=on batch=on buffer=on",
+  "timing_windows": [
+    {
+      "count": 1181,
+      "counts_by_direction": [
+        590,
+        591
+      ],
+      "cpu_mhz": 80,
+      "finish": [
+        {
+          "count": 1024,
+          "sum_us": 1071626
+        },
+        {
+          "count": 1023,
+          "sum_us": 1060100
+        }
+      ],
+      "mean_us": 1053.6282811176968,
+      "mean_us_by_direction": [
+        1056.5610169491526,
+        1050.7005076142132
+      ],
+      "profile": "frequency only",
+      "ps": "on",
+      "quiet_seconds": 20.01260980599909,
+      "radio2_after": "rx; RX=7,0 TX=0,0 switches=2049 errors=0 max=3928us preamble=32,32; test=4/4,4/4 pending budget=4321us; timing self-test pending; wait=81s",
+      "radio2_before": "rx; RX=7,0 TX=0,0 switches=865 errors=0 max=1255us preamble=32,32; test=4/4,4/4 pending budget=1309us; timing self-test pending; wait=101s",
+      "spi_hz": 8000000,
+      "start": [
+        {
+          "count": 434,
+          "sum_us": 448255
+        },
+        {
+          "count": 432,
+          "sum_us": 439136
+        }
+      ],
+      "sum_us": 1244335
+    },
+    {
+      "count": 1317,
+      "counts_by_direction": [
+        659,
+        658
+      ],
+      "cpu_mhz": 160,
+      "finish": [
+        {
+          "count": 1773,
+          "sum_us": 1755887
+        },
+        {
+          "count": 1771,
+          "sum_us": 1737629
+        }
+      ],
+      "mean_us": 911.1541381928625,
+      "mean_us_by_direction": [
+        914.597875569044,
+        907.7051671732523
+      ],
+      "profile": "frequency only",
+      "ps": "on",
+      "quiet_seconds": 20.010424806998344,
+      "radio2_after": "rx; RX=7,0 TX=0,0 switches=3545 errors=0 max=3928us preamble=32,32; test=4/4,4/4 pending budget=3788us; timing self-test pending; wait=97s",
+      "radio2_before": "rx; RX=7,0 TX=0,0 switches=2226 errors=0 max=3928us preamble=32,32; test=4/4,4/4 pending budget=1166us; timing self-test pending; wait=117s",
+      "spi_hz": 8000000,
+      "start": [
+        {
+          "count": 1114,
+          "sum_us": 1153167
+        },
+        {
+          "count": 1113,
+          "sum_us": 1140359
+        }
+      ],
+      "sum_us": 1199990
+    },
+    {
+      "count": 1245,
+      "counts_by_direction": [
+        622,
+        623
+      ],
+      "cpu_mhz": 240,
+      "finish": [
+        {
+          "count": 2485,
+          "sum_us": 2371432
+        },
+        {
+          "count": 2484,
+          "sum_us": 2350306
+        }
+      ],
+      "mean_us": 863.7052208835341,
+      "mean_us_by_direction": [
+        866.8376205787781,
+        860.577849117175
+      ],
+      "profile": "frequency only",
+      "ps": "on",
+      "quiet_seconds": 20.01084933700622,
+      "radio2_after": "rx; RX=7,0 TX=0,0 switches=4970 errors=0 max=3928us preamble=32,32; test=4/4,4/4 pending budget=3538us; timing self-test pending; wait=97s",
+      "radio2_before": "rx; RX=7,0 TX=0,0 switches=3724 errors=0 max=3928us preamble=32,32; test=4/4,4/4 pending budget=1092us; timing self-test pending; wait=118s",
+      "spi_hz": 8000000,
+      "start": [
+        {
+          "count": 1863,
+          "sum_us": 1832259
+        },
+        {
+          "count": 1861,
+          "sum_us": 1814166
+        }
+      ],
+      "sum_us": 1075313
+    },
+    {
+      "count": 1411,
+      "counts_by_direction": [
+        706,
+        705
+      ],
+      "cpu_mhz": 240,
+      "finish": [
+        {
+          "count": 3299,
+          "sum_us": 3075775
+        },
+        {
+          "count": 3297,
+          "sum_us": 3050636
+        }
+      ],
+      "mean_us": 864.0432317505315,
+      "mean_us_by_direction": [
+        866.4348441926346,
+        861.6482269503546
+      ],
+      "profile": "frequency only",
+      "ps": "on",
+      "quiet_seconds": 20.01223688898608,
+      "radio2_after": "rx; RX=7,0 TX=0,0 switches=6597 errors=0 max=3928us preamble=32,32; test=4/4,4/4 pending budget=3571us; timing self-test pending; wait=72s",
+      "radio2_before": "rx; RX=7,0 TX=0,0 switches=5184 errors=0 max=3928us preamble=32,32; test=4/4,4/4 pending budget=3538us; timing self-test pending; wait=92s",
+      "spi_hz": 8000000,
+      "start": [
+        {
+          "count": 2593,
+          "sum_us": 2464072
+        },
+        {
+          "count": 2592,
+          "sum_us": 2443174
+        }
+      ],
+      "sum_us": 1219165
+    },
+    {
+      "count": 1130,
+      "counts_by_direction": [
+        565,
+        565
+      ],
+      "cpu_mhz": 160,
+      "finish": [
+        {
+          "count": 3952,
+          "sum_us": 3670962
+        },
+        {
+          "count": 3950,
+          "sum_us": 3639763
+        }
+      ],
+      "mean_us": 909.2274336283186,
+      "mean_us_by_direction": [
+        913.5274336283186,
+        904.9274336283186
+      ],
+      "profile": "frequency only",
+      "ps": "on",
+      "quiet_seconds": 20.012614492996363,
+      "radio2_after": "rx; RX=7,0 TX=0,0 switches=7904 errors=0 max=3928us preamble=32,32; test=4/4,4/4 pending budget=1163us; timing self-test pending; wait=97s",
+      "radio2_before": "rx; RX=7,0 TX=0,0 switches=6771 errors=0 max=3928us preamble=32,32; test=4/4,4/4 pending budget=1113us; timing self-test pending; wait=118s",
+      "spi_hz": 8000000,
+      "start": [
+        {
+          "count": 3387,
+          "sum_us": 3154819
+        },
+        {
+          "count": 3385,
+          "sum_us": 3128479
+        }
+      ],
+      "sum_us": 1027427
+    },
+    {
+      "count": 1087,
+      "counts_by_direction": [
+        543,
+        544
+      ],
+      "cpu_mhz": 80,
+      "finish": [
+        {
+          "count": 4581,
+          "sum_us": 4331439
+        },
+        {
+          "count": 4580,
+          "sum_us": 4298861
+        }
+      ],
+      "mean_us": 1049.9908003679852,
+      "mean_us_by_direction": [
+        1051.8471454880294,
+        1048.1378676470588
+      ],
+      "profile": "frequency only",
+      "ps": "on",
+      "quiet_seconds": 20.012014701002045,
+      "radio2_after": "rx; RX=7,0 TX=0,0 switches=9162 errors=0 max=3928us preamble=32,32; test=4/4,4/4 pending budget=1436us; timing self-test pending; wait=97s",
+      "radio2_before": "rx; RX=7,0 TX=0,0 switches=8074 errors=0 max=3928us preamble=32,32; test=4/4,4/4 pending budget=1302us; timing self-test pending; wait=118s",
+      "spi_hz": 8000000,
+      "start": [
+        {
+          "count": 4038,
+          "sum_us": 3760286
+        },
+        {
+          "count": 4036,
+          "sum_us": 3728674
+        }
+      ],
+      "sum_us": 1141340
+    },
+    {
+      "count": 1076,
+      "counts_by_direction": [
+        538,
+        538
+      ],
+      "cpu_mhz": 80,
+      "finish": [
+        {
+          "count": 5287,
+          "sum_us": 5191100
+        },
+        {
+          "count": 5286,
+          "sum_us": 5154918
+        }
+      ],
+      "mean_us": 1236.0557620817845,
+      "mean_us_by_direction": [
+        1235.3587360594795,
+        1236.7527881040892
+      ],
+      "profile": "frequency and modem",
+      "ps": "on",
+      "quiet_seconds": 20.01204698800575,
+      "radio2_after": "rx; RX=7,0 TX=0,0 switches=10574 errors=0 max=3928us preamble=32,200; test=4/4,4/4 pending budget=1510us; timing self-test pending; wait=90s",
+      "radio2_before": "rx; RX=7,0 TX=0,0 switches=9496 errors=0 max=3928us preamble=32,200; test=4/4,4/4 pending budget=1483us; timing self-test pending; wait=111s",
+      "spi_hz": 8000000,
+      "start": [
+        {
+          "count": 4749,
+          "sum_us": 4526477
+        },
+        {
+          "count": 4748,
+          "sum_us": 4489545
+        }
+      ],
+      "sum_us": 1329996
+    },
+    {
+      "count": 1201,
+      "counts_by_direction": [
+        601,
+        600
+      ],
+      "cpu_mhz": 160,
+      "finish": [
+        {
+          "count": 5981,
+          "sum_us": 5911937
+        },
+        {
+          "count": 5979,
+          "sum_us": 5883554
+        }
+      ],
+      "mean_us": 1046.474604496253,
+      "mean_us_by_direction": [
+        1040.1048252911814,
+        1052.855
+      ],
+      "profile": "frequency and modem",
+      "ps": "on",
+      "quiet_seconds": 20.012090895994334,
+      "radio2_after": "rx; RX=7,0 TX=0,0 switches=11961 errors=0 max=3928us preamble=32,200; test=4/4,4/4 pending budget=1338us; timing self-test pending; wait=98s",
+      "radio2_before": "rx; RX=7,0 TX=0,0 switches=10758 errors=0 max=3928us preamble=32,200; test=4/4,4/4 pending budget=1309us; timing self-test pending; wait=118s",
+      "spi_hz": 8000000,
+      "start": [
+        {
+          "count": 5380,
+          "sum_us": 5286834
+        },
+        {
+          "count": 5379,
+          "sum_us": 5251841
+        }
+      ],
+      "sum_us": 1256816
+    },
+    {
+      "count": 1318,
+      "counts_by_direction": [
+        659,
+        659
+      ],
+      "cpu_mhz": 240,
+      "finish": [
+        {
+          "count": 6729,
+          "sum_us": 6653166
+        },
+        {
+          "count": 6728,
+          "sum_us": 6628079
+        }
+      ],
+      "mean_us": 994.5341426403642,
+      "mean_us_by_direction": [
+        993.1229135053111,
+        995.9453717754172
+      ],
+      "profile": "frequency and modem",
+      "ps": "on",
+      "quiet_seconds": 20.01082626101561,
+      "radio2_after": "rx; RX=7,0 TX=0,0 switches=13458 errors=0 max=3928us preamble=32,200; test=4/4,4/4 pending budget=3494us; timing self-test pending; wait=97s",
+      "radio2_before": "rx; RX=7,0 TX=0,0 switches=12138 errors=0 max=3928us preamble=32,200; test=4/4,4/4 pending budget=1247us; timing self-test pending; wait=118s",
+      "spi_hz": 8000000,
+      "start": [
+        {
+          "count": 6070,
+          "sum_us": 5998698
+        },
+        {
+          "count": 6069,
+          "sum_us": 5971751
+        }
+      ],
+      "sum_us": 1310796
+    },
+    {
+      "count": 1400,
+      "counts_by_direction": [
+        700,
+        700
+      ],
+      "cpu_mhz": 240,
+      "finish": [
+        {
+          "count": 7537,
+          "sum_us": 7454897
+        },
+        {
+          "count": 7535,
+          "sum_us": 7432615
+        }
+      ],
+      "mean_us": 994.87,
+      "mean_us_by_direction": [
+        992.5185714285715,
+        997.2214285714285
+      ],
+      "profile": "frequency and modem",
+      "ps": "on",
+      "quiet_seconds": 20.009452511003474,
+      "radio2_after": "rx; RX=7,0 TX=0,0 switches=15074 errors=0 max=3928us preamble=32,200; test=4/4,4/4 pending budget=3494us; timing self-test pending; wait=72s",
+      "radio2_before": "rx; RX=7,0 TX=0,0 switches=13671 errors=0 max=3928us preamble=32,200; test=4/4,4/4 pending budget=3494us; timing self-test pending; wait=92s",
+      "spi_hz": 8000000,
+      "start": [
+        {
+          "count": 6837,
+          "sum_us": 6760134
+        },
+        {
+          "count": 6835,
+          "sum_us": 6734560
+        }
+      ],
+      "sum_us": 1392818
+    },
+    {
+      "count": 1230,
+      "counts_by_direction": [
+        615,
+        615
+      ],
+      "cpu_mhz": 160,
+      "finish": [
+        {
+          "count": 8243,
+          "sum_us": 8191178
+        },
+        {
+          "count": 8242,
+          "sum_us": 8174483
+        }
+      ],
+      "mean_us": 1048.2772357723577,
+      "mean_us_by_direction": [
+        1044.7268292682927,
+        1051.8276422764227
+      ],
+      "profile": "frequency and modem",
+      "ps": "on",
+      "quiet_seconds": 20.011198031017557,
+      "radio2_after": "rx; RX=7,0 TX=0,0 switches=16486 errors=0 max=3928us preamble=32,200; test=4/4,4/4 pending budget=3695us; timing self-test pending; wait=98s",
+      "radio2_before": "rx; RX=7,0 TX=0,0 switches=15254 errors=0 max=3928us preamble=32,200; test=4/4,4/4 pending budget=1319us; timing self-test pending; wait=118s",
+      "spi_hz": 8000000,
+      "start": [
+        {
+          "count": 7628,
+          "sum_us": 7548671
+        },
+        {
+          "count": 7627,
+          "sum_us": 7527609
+        }
+      ],
+      "sum_us": 1289381
+    },
+    {
+      "count": 1072,
+      "counts_by_direction": [
+        536,
+        536
+      ],
+      "cpu_mhz": 80,
+      "finish": [
+        {
+          "count": 8865,
+          "sum_us": 8957454
+        },
+        {
+          "count": 8864,
+          "sum_us": 8942968
+        }
+      ],
+      "mean_us": 1236.1389925373135,
+      "mean_us_by_direction": [
+        1234.7388059701493,
+        1237.5391791044776
+      ],
+      "profile": "frequency and modem",
+      "ps": "on",
+      "quiet_seconds": 20.012967615009984,
+      "radio2_after": "rx; RX=7,0 TX=0,0 switches=17730 errors=0 max=3928us preamble=32,200; test=4/4,4/4 pending budget=1504us; timing self-test pending; wait=97s",
+      "radio2_before": "rx; RX=7,0 TX=0,0 switches=16656 errors=0 max=3928us preamble=32,200; test=4/4,4/4 pending budget=1478us; timing self-test pending; wait=118s",
+      "spi_hz": 8000000,
+      "start": [
+        {
+          "count": 8329,
+          "sum_us": 8295634
+        },
+        {
+          "count": 8328,
+          "sum_us": 8279647
+        }
+      ],
+      "sum_us": 1325141
+    }
+  ],
+  "restoration": {
+    "get cpu.freq": "> selected=auto actual=160MHz supported=auto,80,160,240",
+    "get powersaving": "> off",
+    "get radio": "> 910.5250244,62.5,7,5",
+    "get radio2": "> off (manual)",
+    "normalradio": "OK - normal radio restore scheduled",
+    "set cpu.freq auto": "OK - saved selected=auto actual=160MHz supported=auto,80,160,240",
+    "set powersaving off": "OK - powersaving off",
+    "set tempradio2 off": "OK - single radio in 2s"
+  },
+  "summary": [
+    {
+      "profile": "frequency only",
+      "cpu_mhz": 80,
+      "count": 2268,
+      "mean_us": 1051.8849206349207,
+      "window_mean_range_us": [
+        1049.9908003679852,
+        1053.6282811176968
+      ]
+    },
+    {
+      "profile": "frequency only",
+      "cpu_mhz": 160,
+      "count": 2447,
+      "mean_us": 910.2644053943604,
+      "window_mean_range_us": [
+        909.2274336283186,
+        911.1541381928625
+      ]
+    },
+    {
+      "profile": "frequency only",
+      "cpu_mhz": 240,
+      "count": 2656,
+      "mean_us": 863.8847891566265,
+      "window_mean_range_us": [
+        863.7052208835341,
+        864.0432317505315
+      ]
+    },
+    {
+      "profile": "frequency and modem",
+      "cpu_mhz": 80,
+      "count": 2148,
+      "mean_us": 1236.0972998137802,
+      "window_mean_range_us": [
+        1236.0557620817845,
+        1236.1389925373135
+      ]
+    },
+    {
+      "profile": "frequency and modem",
+      "cpu_mhz": 160,
+      "count": 2431,
+      "mean_us": 1047.386672151378,
+      "window_mean_range_us": [
+        1046.474604496253,
+        1048.2772357723577
+      ]
+    },
+    {
+      "profile": "frequency and modem",
+      "cpu_mhz": 240,
+      "count": 2718,
+      "mean_us": 994.7071376011774,
+      "window_mean_range_us": [
+        994.5341426403642,
+        994.87
+      ]
+    }
+  ],
+  "source_base": "7f521c1e007dead866327c0312dda82c114392f6",
+  "source_patch": "Auto radio2 uses 80MHz with device power saving on",
+  "board": "Heltec V4.3 OLED Full Companion",
+  "build_target": "heltec_v4_2_v4_3_companion_radio_full_femon",
+  "images": {
+    "normal": {
+      "file": "heltec_v4_2_v4_3_companion_radio_full_femon-v1.18.0.2-ps80-test-7f521c1e.bin",
+      "bytes": 2585736,
+      "sha256": "1aa4a8d842e4f24c213fcbf4b26cad7563cd34a317fa0761964d4ba7ce407427"
+    },
+    "timing": {
+      "file": "heltec_v4_2_v4_3_companion_radio_full_femon-v1.18.0.2-ps80-timing-7f521c1e.bin",
+      "bytes": 2589160,
+      "sha256": "0de4f66cbfe586154dcaa070f3ba67677ca713a503a27a3a5bf46064c42ffdf4"
+    }
+  },
+  "timing_flags": [
+    "MESH_HIL_ESP_SPI_AB=1",
+    "MESH_HIL_PROFILE_TIMING=1",
+    "MESH_HIL_PROFILE_HISTOGRAM_COUNT=8"
+  ],
+  "method": {
+    "quiet_window_seconds": 20,
+    "windows_per_clock_and_profile": 2,
+    "clocks_mhz": [
+      80,
+      160,
+      240,
+      240,
+      160,
+      80
+    ],
+    "powersaving": "on",
+    "spi_hz": 8000000,
+    "primary": "906.525,62.5,7,5,preamble32",
+    "secondary_frequency_only": "907.525,62.5,7,5,preamble32",
+    "secondary_frequency_and_modem": "907.525,500,5,5,preamble200",
+    "measured": "Instrumented successful RX-to-RX profile switches, both directions; no packet delivery or power consumption measurement"
+  },
+  "final_normal_image_verification": {
+    "flash": {
+      "passed": true,
+      "application_only": true,
+      "partition_table_identical": true,
+      "offset": 65536,
+      "size": 2585736,
+      "sha256": "1aa4a8d842e4f24c213fcbf4b26cad7563cd34a317fa0761964d4ba7ce407427",
+      "esptool_verify_flash": true
+    },
+    "runtime": {
+      "passed": true,
+      "readings": {
+        "get cpu.freq": "> selected=auto actual=160MHz supported=auto,80,160,240",
+        "get powersaving": "> off",
+        "get radio": "> 910.5250244,62.5,7,5",
+        "get radio2": "> off (manual)"
+      },
+      "diagnostic": "Error: unknown radio.fast control"
+    }
+  }
+}
