@@ -280,6 +280,25 @@ def emit_resource(project, target, output, *, flags=(), cppdefines=(), src_filte
         raise ValueError("embedded bootloader requires an nRF52 OTA receiver")
     manifest = load_manifest(project)
     profile, parsed = select_profile(manifest, target)
+    # Sensor-reduced release overlays compile the underlying PlatformIO
+    # environment while retaining the synthetic overlay's on-air identity.
+    # Permit only the mapping constructed by build_legacy.sh, and independently
+    # require the same exact hardware, role and reviewed bootloader profile.
+    # In particular, sharing an MCU or a DFU name never permits a different
+    # board (such as a XIAO Sense) to select this resource.
+    alias = definitions.get("OTA_VARIANT")
+    if alias is not None:
+        logical = str(alias).strip("\"'")
+        if (not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", logical)
+                or (logical != target and logical != target.removesuffix("_")
+                    + "_lora_ota_no_external_sensors")):
+            raise ValueError("embedded bootloader target does not match its build environment")
+        logical_profile, logical_parsed = select_profile(manifest, logical)
+        if (logical_profile["id"] != profile["id"]
+                or logical_parsed["sourceHardware"] != parsed["sourceHardware"]
+                or logical_parsed["role"] != parsed["role"]):
+            raise ValueError("embedded bootloader target changes the build hardware or role")
+        target, profile, parsed = logical, logical_profile, logical_parsed
     role_sources = {"repeater": "../examples/simple_repeater/main.cpp",
                     "room": "../examples/simple_room_server/main.cpp"}
     if (not source_selected(src_filter, role_sources[parsed["role"]])
