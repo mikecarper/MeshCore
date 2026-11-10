@@ -144,9 +144,14 @@ static void connect_cache(SerialBLEInterface& a, uint8_t peer=6) {
   emit(ESP_GATTS_CONNECT_EVT,param);
   tick(a); // Requests MITM without relying on a possibly stale NUS handle.
 }
-static void auth_cache(uint8_t peer=6) {
+static void auth_cache(SerialBLEInterface& a, uint8_t peer=6) {
   esp_ble_auth_cmpl_t auth; auth.bd_addr[5]=peer;
   BLEDevice::security->onAuthenticationComplete(auth);
+  a.servicePowerState(); // Start this authenticated connection's fixed grace.
+}
+static void wait_cache_grace(SerialBLEInterface& a) {
+  test_millis += 5000;
+  a.servicePowerState();
 }
 static void disconnect_cache() {
   server->connected=false;
@@ -187,8 +192,8 @@ static void cache_async_migration_and_real_nus_proof() {
   reset_cache_stats();
   SerialBLEInterface a; assert(a.begin("MeshCore-","legacy",246810,custom)); a.enable();
   connect_cache(a); assert(encryptions==1 && cache_creates==0);
-  auth_cache(7); tick(a); assert(cache_creates==0); // Stale auth from another peer.
-  auth_cache(); tick(a); assert(cache_creates==1 && cache_starts==0);
+  auth_cache(a,7); wait_cache_grace(a); assert(cache_creates==0); // Stale auth from another peer.
+  auth_cache(a); wait_cache_grace(a); assert(cache_creates==1 && cache_starts==0);
   assert(marker_attributes->att_desc.value[0]==0x91); // Static queued data remains alive.
   created_cache(0,4); created_cache(0,3,false); created_cache(0,3,true,1);
   tick(a); assert(cache_starts==0);
@@ -199,16 +204,16 @@ static void cache_async_migration_and_real_nus_proof() {
   auto* rx=server->service->children[1]; rx->setValue(stale_cccd,sizeof(stale_cccd));
   esp_ble_gatts_cb_param_t stale_write;
   rx->callbacks->onWrite(rx,&stale_write); tick(a); // Old CCCD2D is now RX, actual TX remains off.
-  disconnect_cache(); connect_cache(a); auth_cache(); tick(a);
+  disconnect_cache(); connect_cache(a); auth_cache(a); wait_cache_grace(a);
   assert(cache_deletes==1); // Local START was not proof that this peer repaired its cache.
   changed_cache(false,1); a.servicePowerState(); assert(cache_deletes==1);
   test_millis+=999; a.servicePowerState(); assert(cache_deletes==1);
   ++test_millis; a.servicePowerState(); assert(cache_deletes==2); // Known failure retry.
   changed_cache(false); tick(a);
   verify_nus(a);
-  disconnect_cache(); connect_cache(a); auth_cache(); tick(a);
-  assert(cache_creates==1 && cache_deletes==2); // Real handle proof permits fast reconnect.
-  disconnect_cache(); connect_cache(a,7); auth_cache(7); tick(a);
+  disconnect_cache(); connect_cache(a); auth_cache(a); verify_nus(a);
+  assert(cache_creates==1 && cache_deletes==2); // Current handle proof avoids a disruptive refresh.
+  disconnect_cache(); connect_cache(a,7); auth_cache(a,7); wait_cache_grace(a);
   assert(cache_creates==2); // A different peer still needs migration.
   created_cache(); tick(a); changed_cache(true); tick(a);
   good(a); disconnect_cache(); stopped(a);
@@ -219,19 +224,19 @@ static void cache_disconnect_pending_timeout_and_teardown() {
   for(const char* stage : {"create","start","delete"}) {
     reset_cache_stats();
     SerialBLEInterface a; assert(a.begin("MeshCore-","legacy",246810,custom)); a.enable();
-    connect_cache(a); auth_cache(); tick(a); assert(cache_creates==1);
+    connect_cache(a); auth_cache(a); wait_cache_grace(a); assert(cache_creates==1);
     if(std::string(stage)!="create") {
       created_cache(); tick(a); assert(cache_starts==1);
       if(std::string(stage)=="delete") {
         // Completion while disconnected must not mark its peer cache repaired.
         disconnect_cache(); changed_cache(true); tick(a);
-        connect_cache(a); auth_cache(); tick(a); assert(cache_deletes==1);
+        connect_cache(a); auth_cache(a); wait_cache_grace(a); assert(cache_deletes==1);
       }
     }
     test_millis+=6000; a.servicePowerState();
     const unsigned before=cache_creates+cache_starts+cache_deletes;
     tick(a); assert(cache_creates+cache_starts+cache_deletes==before); // No orphan retry.
-    disconnect_cache(); connect_cache(a,7); auth_cache(7); tick(a);
+    disconnect_cache(); connect_cache(a,7); auth_cache(a,7); wait_cache_grace(a);
     assert(cache_creates+cache_starts+cache_deletes==before);
     disconnect_cache(); stopped(a);
     assert(BLEDevice::m_customGattsHandler==prior_handler);
@@ -244,12 +249,13 @@ static void cache_disconnect_pending_timeout_and_teardown() {
 static void cache_success_progresses_without_timer_delay() {
   reset_cache_stats();
   SerialBLEInterface a; assert(a.begin("MeshCore-","legacy",246810,custom)); a.enable();
-  connect_cache(a); const uint32_t connected_at=test_millis;
+  connect_cache(a);
   assert(encryptions==1 && cache_creates==0);
-  auth_cache(); a.servicePowerState(); assert(cache_creates==1);
+  auth_cache(a); wait_cache_grace(a); assert(cache_creates==1);
+  const uint32_t recovery_at=test_millis;
   created_cache(); a.servicePowerState(); assert(cache_starts==1);
   changed_cache(true); a.servicePowerState();
-  assert(test_millis==connected_at); // No artificial wait between successful phases.
+  assert(test_millis==recovery_at); // No artificial wait between successful recovery phases.
   disconnect_cache(); stopped(a); retire_global();
   BLEDevice::setCustomGattsHandler(nullptr);
 
@@ -259,9 +265,9 @@ static void cache_success_progresses_without_timer_delay() {
     if(std::string(fault)=="encrypt") failure=fault;
     connect_cache(b);
     if(std::string(fault)!="encrypt") {
-      auth_cache();
+      auth_cache(b);
       if(std::string(fault)=="cache-create") failure=fault;
-      b.servicePowerState();
+      wait_cache_grace(b);
       if(std::string(fault)=="cache-start") {
         created_cache(); failure=fault; b.servicePowerState();
       }
@@ -280,9 +286,9 @@ static void cache_api_and_async_failures_are_bounded() {
     reset_cache_stats();
     SerialBLEInterface a; assert(a.begin("MeshCore-","legacy",246810,custom)); a.enable();
     if(std::string(fault)=="encrypt") failure=fault;
-    connect_cache(a); auth_cache();
+    connect_cache(a); auth_cache(a);
     if(std::string(fault)=="cache-create") failure=fault;
-    tick(a);
+    wait_cache_grace(a);
     if(std::string(fault)=="async-create") {
       for(unsigned i=0;i<3;++i) { created_cache(1); a.servicePowerState(); tick(a); }
     }

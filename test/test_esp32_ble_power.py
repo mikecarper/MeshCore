@@ -9,6 +9,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class Esp32BlePowerTests(unittest.TestCase):
+    def test_bluedroid_bond_rebuild_allows_authenticated_nus_before_cache_recovery(self):
+        self.run_adapter("test_bluedroid_bond_cache.cpp", [
+            "-DCONFIG_BLUEDROID_ENABLED=1", "-DCONFIG_BT_ACL_CONNECTIONS=4",
+            "-DMESH_BLUEDROID_BOND_PROTECTION=1",
+            "-DCONFIG_BT_GATTS_SEND_SERVICE_CHANGE_AUTO=1"],
+            ROOT / "test/fixtures/esp32_ble_power/mocks")
+
     def test_bluedroid_bond_session_cleanup(self):
         self.run_adapter("test_bluedroid_peer_cleanup.cpp", [
             "-DCONFIG_BLUEDROID_ENABLED=1", "-DCONFIG_BT_ACL_CONNECTIONS=4",

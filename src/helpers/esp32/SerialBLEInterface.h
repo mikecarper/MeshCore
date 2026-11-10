@@ -59,8 +59,6 @@ class SerialBLEInterface : public BaseSerialInterface,
   std::atomic<bool> _cacheAuthenticated{false};
   std::atomic<esp_gatt_if_t> _cacheGattsIf{ESP_GATT_IF_NONE};
   std::atomic<uint8_t> _cacheRemoteAddress[6] = {};
-  uint8_t _cacheVerifiedPeer[6] = {};
-  bool _cacheVerifiedPeerValid = false;
   CacheMarker _cacheMarker = CacheMarker::Absent;
   std::atomic<uint16_t> _cacheMarkerHandle{0};
   uint16_t _cacheEventHandle = 0;
@@ -69,6 +67,8 @@ class SerialBLEInterface : public BaseSerialInterface,
   uint8_t _cacheFailures = 0;
   uint32_t _cacheAttemptConnection = 0;
   uint32_t _cacheEncryptedConnection = 0;
+  uint32_t _cacheAuthenticatedConnection = 0;
+  uint32_t _cacheAuthenticatedAt = 0;
   uint32_t _cacheTriggeredConnection = 0;
   uint32_t _cacheOperationConnection = 0;
   uint32_t _cacheLastAttempt = 0;

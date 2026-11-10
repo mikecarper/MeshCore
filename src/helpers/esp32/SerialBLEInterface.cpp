@@ -54,6 +54,7 @@ extern "C" bool bleInUse(void) {
 #define BLE_BOND_PERSIST_TIMEOUT_MS 15000
 
 #define BLE_POWER_RETRY_MS 1000
+#define BLE_CACHE_HANDSHAKE_GRACE_MS 5000
 
 #if !MESH_BLE_USES_NIMBLE
 // Bluedroid's BLEService registers its std::map<BLECharacteristic*, ...> in
@@ -109,8 +110,8 @@ void SerialBLEInterface::retireCacheGattHandler() {
   _cacheMarker = CacheMarker::Absent;
   _cacheMarkerHandle = 0;
   _cacheStalled = false;
-  _cacheVerifiedPeerValid = false;
   _cacheAttemptConnection = _cacheEncryptedConnection = 0;
+  _cacheAuthenticatedConnection = _cacheAuthenticatedAt = 0;
   _cacheTriggeredConnection = _cacheOperationConnection = 0;
   _cacheFailures = 0;
 }
@@ -236,18 +237,19 @@ void SerialBLEInterface::serviceGattCacheRefresh(uint32_t now) {
     return;
   }
   if (!_cacheAuthenticated.load(std::memory_order_acquire)) return;
+  if (_cacheAuthenticatedConnection != connection) {
+    _cacheAuthenticatedConnection = connection;
+    _cacheAuthenticatedAt = now;
+  }
   if (_cacheNusVerifiedConnection.load(std::memory_order_acquire) == connection) {
-    memcpy(_cacheVerifiedPeer, remote, sizeof(remote));
-    _cacheVerifiedPeerValid = true;
+    _cacheTriggeredConnection = connection;
   }
   if (_cacheTriggeredConnection == connection) return;
-  // Actual use of both NUS handles, rather than local marker completion,
-  // permits skipping rediscovery for the same peer in this host session.
-  if (_cacheVerifiedPeerValid
-      && memcmp(remote, _cacheVerifiedPeer, sizeof(remote)) == 0) {
-    _cacheTriggeredConnection = connection;
-    return;
-  }
+  // A database change invalidates characteristics the client just discovered.
+  // Give the authenticated link time to prove its current NUS handles first;
+  // genuinely stale clients still get the bounded cache recovery below.
+  if (!mesh::bleElapsedAtLeast(now, _cacheAuthenticatedAt,
+                              BLE_CACHE_HANDSHAKE_GRACE_MS)) return;
   _cacheLastAttempt = _cacheOperationStarted = now;
   _cacheOperationConnection = connection;
   const CacheOperation operation = _cacheMarker == CacheMarker::Absent
