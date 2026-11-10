@@ -389,6 +389,7 @@ int main() {
         predicate = extract_braced(source, "static bool isCompanionReaderRequest(")
         harness = r'''
 #include <Arduino.h>
+#include <helpers/BaseSerialInterface.h>
 #include <helpers/CompanionReader.h>
 #include <helpers/RadioMaintenanceCLI.h>
 #include <cassert>
@@ -411,6 +412,7 @@ namespace esp32 { bool handlePowerTestCommand(const char*,char*,size_t,bool) { r
 struct MyMesh {
   Radio radio;
   Radio* _radio = &radio;
+  BaseSerialInterface* _serial = nullptr;
   bool handleAlertCommand(const char*, char*, size_t) { return false; }
   bool handleCommand(const char*, uint32_t, char*);
 };
@@ -419,6 +421,14 @@ int main() {
   MyMesh mesh;
   struct Guarded { char reply[160]; uint32_t after; } out{};
   out.after = 0xaabbccdd;
+  // The shared dispatch prefix also reports transport capacity. This reader
+  // fixture has no active transport, so it uses the real interface's default.
+  assert(mesh.handleCommand("U1|get usb.raw.max", 0, out.reply));
+  assert(std::string(out.reply) == "U1|> 176");
+  assert(strlen(out.reply) < sizeof(out.reply) && out.after == 0xaabbccdd);
+  assert(mesh.handleCommand("U2|get usb.raw.max", 123, out.reply));
+  assert(std::string(out.reply) == "U2|ERR usb.raw.max requires a local transport");
+  assert(strlen(out.reply) < sizeof(out.reply) && out.after == 0xaabbccdd);
   assert(mesh.handleCommand("AA|get reader 3:16", 0, out.reply));
   assert(std::string(out.reply).find("AA|Reader 3:16 (WEB)\n") == 0);
   assert(std::string(out.reply).find("eternal life.") != std::string::npos);

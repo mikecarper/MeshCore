@@ -27,6 +27,7 @@ class MaintenanceGuard(unittest.TestCase):
 #include <cstdint>
 #include <cstdio>
 #include <initializer_list>
+#include <helpers/BaseSerialInterface.h>
 #include <helpers/RadioMaintenanceCLI.h>
 #define MESH_ENABLE_FLEET_CONTROL 1
 #define COMPANION_FEATURE_DIRECT_OTA_ADMIN 0
@@ -56,6 +57,7 @@ struct CommonCLI {
 struct Board { const char* getManufacturerName() { return "heltec_v4"; } } board;
 struct MyMesh {
  mesh::Radio* _radio;
+ BaseSerialInterface* _serial=nullptr;
  bool rejected(const char* command, uint32_t sender_timestamp, char* reply) {
  (void)sender_timestamp;
  @COMPANION@
@@ -65,6 +67,8 @@ struct MyMesh {
 int main() {
  mesh::Radio radio; Callbacks callbacks{&radio}; CommonCLI common{&callbacks}; MyMesh companion{&radio};
  char reply[160];
+ assert(companion.rejected("ab|get usb.raw.max",0,reply)); assert(!strcmp(reply,"ab|> 176"));
+ assert(companion.rejected("ab|get usb.raw.max",1,reply)); assert(!strncmp(reply,"ab|ERR",6));
  for (const char* command : {"ver", "stats-radio", "stats-radio-diag", "stats-packets", "neighbors", "get agc.timing", "get agc.scan", "get agc.old", "get radio", "get radio.fast"}) {
   strcpy(reply,"canary"); assert(!common.rejected(command,reply)); assert(!strcmp(reply,"canary"));
   assert(!companion.rejected(command,0,reply));
@@ -96,8 +100,9 @@ int main() {
 }
 '''.replace('@COMMON@',common_gate).replace('@COMPANION@',companion_gate).replace('@STATS@',stat_methods)
         with tempfile.TemporaryDirectory(prefix='meshcore-cli-maintenance-') as folder:
+            (Path(folder)/'Arduino.h').write_text('#pragma once\n#include <cstddef>\n#include <cstdint>\n',encoding='ascii')
             source=Path(folder)/'test.cpp'; binary=Path(folder)/'test'; source.write_text(code,encoding='ascii')
-            result=subprocess.run([os.environ.get('CXX','c++'),'-std=c++17','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-fno-pie','-no-pie','-I',str(ROOT/'src'),str(source),'-o',str(binary)],capture_output=True,text=True)
+            result=subprocess.run([os.environ.get('CXX','c++'),'-std=c++17','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-fno-pie','-no-pie','-I',folder,'-I',str(ROOT/'src'),str(source),'-o',str(binary)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             result=subprocess.run([str(binary)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)

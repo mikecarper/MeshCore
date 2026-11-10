@@ -38,7 +38,8 @@ class Observer(unittest.TestCase):
         with tempfile.TemporaryDirectory()as temp:
             source_path=Path(temp)/'test.cpp';binary=Path(temp)/'test';source_path.write_text(source)
             build=subprocess.run([os.environ.get('CXX','g++'),'-std=c++11','-Wall','-Wextra','-Werror',
-                '-fsanitize=address,undefined','-fno-pie','-no-pie',*flags,'-I'+str(ROOT/'src'),str(source_path),'-o',str(binary)],capture_output=True,text=True)
+                '-fsanitize=address,undefined','-fno-pie','-no-pie',*flags,
+                '-isystem',str(ROOT/'test/mocks'),'-I'+str(ROOT/'src'),str(source_path),'-o',str(binary)],capture_output=True,text=True)
             self.assertEqual(build.returncode,0,build.stderr)
             run=subprocess.run([str(binary)],capture_output=True,text=True)
             self.assertEqual(run.returncode,0,run.stderr)
@@ -160,9 +161,17 @@ int main(){
         self.assertIn('sender_timestamp ? sender_timestamp : 1',cpp)
         self.native(COMMON+r'''
 #include <Packet.h>
+#include <helpers/BaseSerialInterface.h>
 mesh::Packet::Packet(){}
 struct Radio {uint8_t profile=1;uint8_t receiveProfile()const{return profile;}uint32_t receiveProfileGeneration()const{return 9;}};
-struct Serial {bool connected=false;unsigned writes=0;bool isConnected()const{return connected;}void writeFrame(uint8_t*,int n){assert(n<=176);++writes;}};
+struct Serial : BaseSerialInterface {
+ bool connected=false;unsigned writes=0;
+ void enable() override {} void disable() override {} bool isEnabled()const override{return true;}
+ bool isConnected()const override{return connected;}
+ bool isReadBusy()const override{return false;} bool isWriteBusy()const override{return false;}
+ size_t writeFrame(const uint8_t*,size_t n)override{assert(n<=176);++writes;return n;}
+ size_t checkRecvFrame(uint8_t*)override{return 0;}
+};
 class MyMesh {public:mesh::RadioProbeObserver _radio_probe;Radio radio;Radio* _radio=&radio;Serial serial;Serial* _serial=&serial;uint8_t out_frame[176];
  void logRxRaw(float,float,const uint8_t*,int);bool handleCommand(const char*,uint32_t,char*);};
 #define MAX_FRAME_SIZE 176
@@ -174,6 +183,8 @@ using mesh::Packet;using mesh::FLOOD_RETRY_POLICY_DEFAULT;using mesh::RADIO_TX_A
 @PARSE@
 int main(){
  MyMesh mesh;char reply[160];uint8_t raw[256];packet(raw);
+ assert(mesh.handleCommand("aa|get usb.raw.max",0,reply)&&!strcmp(reply,"aa|> 176"));
+ assert(mesh.handleCommand("get usb.raw.max",123,reply)&&strstr(reply,"local transport"));
  assert(mesh.handleCommand("aa|set radio.probe 0123456789abcdef",0,reply)&&strstr(reply,"aa|OK"));
  mesh.logRxRaw(-7.75f,-110.75f,raw,255);assert(mesh.serial.writes==0);
  assert(mesh.handleCommand("get radio.probe",0,reply)&&strstr(reply,"unique=1"));

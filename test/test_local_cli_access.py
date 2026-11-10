@@ -24,6 +24,7 @@ PREAMBLE = r'''
 #include <helpers/CLICommandUtils.h>
 #include <helpers/RadioMaintenanceCLI.h>
 #include <helpers/RadioProfileCommandUtils.h>
+#include <helpers/BaseSerialInterface.h>
 #include <helpers/BatteryChargeCLI.h>
 #include <helpers/CompanionLostReply.h>
 #include <helpers/CompanionTimezonePrefs.h>
@@ -181,6 +182,7 @@ struct MyMesh : CompanionFleetFixture {
           char mqtt_slot_token[2][64]={"mqtt-token","other-token"};} _mqtt_prefs;
   unsigned dirty_contacts_expiry=1; uint8_t dirty_contacts_failures=1;
   int value=0; int* _ms=&value; Radio* _radio=&radio_driver; int* _mgr=&value;
+  BaseSerialInterface* _serial=nullptr;
   uint16_t _err_flags=0;
   bool _radio_available=false, save_ok=true;
   bool saved_radio_apply_pending=false, command_radio_apply_pending=false, tx_power_apply_pending=false;
@@ -541,9 +543,10 @@ int main() {
             header, "template <typename T> bool savePreference("))
         for export, webconfig, hil in product((0, 1), (False, True), (False, True)):
             with self.subTest(export=export, webconfig=webconfig, hil=hil), tempfile.TemporaryDirectory() as temp:
+                (Path(temp)/"Arduino.h").write_text('#pragma once\n#include <cstddef>\n#include <cstdint>\n',encoding='ascii')
                 binary = Path(temp) / "test"
                 result = subprocess.run([
-                    "c++", "-std=c++17", "-x", "c++", "-", "-I"+str(ROOT / "src"),
+                    "c++", "-std=c++17", "-x", "c++", "-", "-I"+temp, "-I"+str(ROOT / "src"),
                     "-I"+str(ROOT / "test/fixtures"),
                     "-DENABLE_PRIVATE_KEY_EXPORT="+str(export),
                     "-DMESH_ENABLE_LOST_REPLY=1",

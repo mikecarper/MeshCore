@@ -34,6 +34,7 @@ HARNESS = r'''
 #include "regulator_cli_stub.h"
 #include "usb_mode_console.h"
 #include <helpers/CompanionFrameLimits.h>
+#include <helpers/BaseSerialInterface.h>
 #include <helpers/HostKissCodec.h>
 #include <openssl/evp.h>
 
@@ -154,6 +155,7 @@ class MyMesh : public mesh::Mesh {
  public:
   struct MockRadio { bool isAGCMaintenancePending() const { return false; } };
   MockRadio* _radio = nullptr;
+  BaseSerialInterface* _serial = nullptr;
   struct NoMorseReply { void copy(const void*, const void*) {} } _morse_reply;
   mesh::TempRadioReplyBarrier _primary_radio_reply;
   mesh::LocalIdentity self_id;
@@ -1551,6 +1553,7 @@ class CompanionFleetControlTests(unittest.TestCase):
 #include <cstring>
 #include <helpers/FleetCommand.h>
 #include <helpers/RadioMaintenanceCLI.h>
+#include <helpers/BaseSerialInterface.h>
 #include "regulator_cli_stub.h"
 #include "usb_mode_console.h"
 static_assert(MESH_ENABLE_FLEET_CONTROL == 0, "compact profile must disable fleet");
@@ -1559,6 +1562,7 @@ class MyMesh {
  public:
   struct MockRadio { bool isAGCMaintenancePending() const { return false; } };
   MockRadio* _radio = nullptr;
+  BaseSerialInterface* _serial = nullptr;
   bool handleCommand(const char*, uint32_t, char*);
   bool handleLocalControlCommand(const char*, char*, size_t);
 };

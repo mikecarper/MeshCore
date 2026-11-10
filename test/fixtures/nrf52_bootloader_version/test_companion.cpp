@@ -32,9 +32,18 @@ struct Board {
   }
 #endif
 };
-struct BaseSerialInterface { unsigned id; };
+struct BaseSerialInterface {
+  unsigned id;
+  explicit BaseSerialInterface(unsigned value) : id(value) {}
+  virtual size_t usbRawPacketReceiveCapacity() const { return MAX_FRAME_SIZE; }
+};
+struct UsbSerialInterface : BaseSerialInterface {
+  using BaseSerialInterface::BaseSerialInterface;
+  size_t usbRawPacketReceiveCapacity() const override { return 188; }
+};
 struct SerialTransport {
-  BaseSerialInterface usb{1}, ble{2};
+  UsbSerialInterface usb{1};
+  BaseSerialInterface ble{2};
   BaseSerialInterface* current = &usb;
   BaseSerialInterface* captured = nullptr;
   BaseSerialInterface* written = nullptr;
@@ -151,6 +160,16 @@ static void dispatch(MyMesh& mesh, BaseSerialInterface* requester, bool nul) {
 int main() {
   MyMesh mesh;
   char usb_reply[160] = {};
+  assert(mesh.serial.usb.usbRawPacketReceiveCapacity() == 188);
+  assert(mesh.serial.ble.usbRawPacketReceiveCapacity() == MAX_FRAME_SIZE);
+  for (BaseSerialInterface* route : {static_cast<BaseSerialInterface*>(&mesh.serial.usb), &mesh.serial.ble}) {
+    mesh.serial.current = route;
+    assert(mesh.handleCommand("AB|get usb.raw.max", 0, usb_reply));
+    assert(std::string(usb_reply) == (route == &mesh.serial.usb ? "AB|> 188" : "AB|> 176"));
+    assert(mesh.handleCommand("get usb.raw.max", 1, usb_reply));
+    assert(std::string(usb_reply) == "ERR usb.raw.max requires a local transport");
+  }
+  mesh.serial.current = &mesh.serial.usb;
   assert(mesh.handleCommand("AB|get usb.mode", 0, usb_reply));
   assert(std::string(usb_reply) == std::string("AB|usb.mode ") + mesh::usbModeName<decltype(Serial)>());
   bounds(mesh);

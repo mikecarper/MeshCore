@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 HARNESS = r'''
 #include <helpers/RadioProfileCLI.h>
+#include <helpers/BaseSerialInterface.h>
 #include <helpers/RadioMaintenanceCLI.h>
 #include <helpers/TempRadioReplyBarrier.h>
 #include <helpers/TxtDataHelpers.h>
@@ -106,6 +107,7 @@ struct MyMesh : CompanionFleetFixture {
   MemoryFS profile_fs;
   Radio radio;
   Radio* _radio=&radio;
+  BaseSerialInterface* _serial=nullptr;
   Clock clock;
   mesh::RadioProfileCLI _radio_profiles;
   // Preset slots are parsed by test_radio_presets; nothing here names one.
@@ -173,6 +175,8 @@ int main() {
   unsigned checks=0;
   {
     MyMesh m;
+    assert(!strcmp(m.command("xy|get usb.raw.max"),"xy|> 176"));
+    assert(!strncmp(m.command("xy|get usb.raw.max",1),"xy|ERR",6));
     const auto profile=m.profile_fs.files["/radio_profiles"];
     const auto prefs=m.store.fs.files["/new_prefs"];
     m.radio.maintenance_pending=true;

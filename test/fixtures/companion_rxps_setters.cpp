@@ -8,6 +8,7 @@
 #include <vector>
 #include <helpers/CLICommandUtils.h>
 #include <helpers/CompanionHardwareCommandCompat.h>
+#include <helpers/CompanionFrameLimits.h>
 #include <helpers/RadioMaintenanceCLI.h>
 #include <helpers/radiolib/RXPowerSaving.h>
 #include "usb_mode_console.h"
@@ -41,7 +42,9 @@ struct Driver {
     return accepted;
   }
 } radio_driver;
-struct BaseSerialInterface {};
+struct BaseSerialInterface {
+  size_t usbRawPacketReceiveCapacity() const { return MAX_FRAME_SIZE; }
+};
 struct SerialTransport {
   BaseSerialInterface requester, other;
   BaseSerialInterface* current = &requester;

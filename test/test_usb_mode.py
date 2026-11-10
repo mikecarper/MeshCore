@@ -20,7 +20,10 @@ class CustomSerial {};
 PRIMARY_SERIAL Serial;
 #include <helpers/UsbMode.h>
 #include <helpers/UsbLoggingClientActivity.h>
+#include <helpers/BaseSerialInterface.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include <cassert>
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
@@ -90,6 +93,7 @@ class UsbModeTests(unittest.TestCase):
                 "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"]),
             *["-D" + flag for flag in flags], '-DEXPECTED_MODE="' + expected + '"',
             "-DPRIMARY_SERIAL=" + primary,
+            "-isystem", str(ROOT / "test/mocks"),
             "-I" + str(ROOT / "src"), str(source), "-o", str(binary)],
             capture_output=True, text=True, timeout=60)
         self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
@@ -152,13 +156,22 @@ class UsbModeTests(unittest.TestCase):
 struct PrefsSaveReplyGuard {
   PrefsSaveReplyGuard(unsigned&, char*) {}
 };
-namespace mesh { namespace cli { void normalizeCommandVerb(char*) {} } }
+struct Radio {
+  bool isAGCMaintenancePending() const { return false; }
+};
+struct Callbacks {
+  Radio* getProfileRadio() const { return nullptr; }
+};
 struct CommonCLI {
   unsigned _prefs_save_failures = 0;
+  Callbacks callbacks;
+  Callbacks* _callbacks = &callbacks;
   void handleCommand(uint32_t, char*, char*);
   void handleGetCmd(uint32_t, char*, char*);
 };
 struct MyMesh {
+  BaseSerialInterface* _serial = nullptr;
+  Radio* _radio = nullptr;
   bool handleCommand(const char*, uint32_t, char*);
   bool handleLocalControlCommand(const char*, char*, size_t);
 };
@@ -174,6 +187,10 @@ struct MyMesh {
   assert(companion.handleCommand("xy|get usb.mode", 0, reply));
   assert(!strncmp(reply, "xy|", 3) && !strcmp(reply + 3, expected));
   assert(!companion.handleCommand("set usb.mode tinyusb", 0, reply));
+  assert(companion.handleCommand("xy|get usb.raw.max", 0, reply));
+  assert(!strcmp(reply, "xy|> 176"));
+  assert(companion.handleCommand("get usb.raw.max", 123, reply));
+  assert(!strcmp(reply, "ERR usb.raw.max requires a local transport"));
 '''
         with tempfile.TemporaryDirectory(prefix="meshcore-usb-mode-dispatch-") as directory:
             for index, (flags, expected) in enumerate((
