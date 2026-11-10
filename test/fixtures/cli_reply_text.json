@@ -1783,7 +1783,7 @@
     "src/helpers/CommonRadioPrefs.cpp": "de964f85c2645ff238cdd75fefdf15c97a09edcd5fff953375e0c02238c5db5c",
     "examples/companion_radio/CompanionRetry.h": "e0ae10c7b2f778346f4645c4e147d87e1fbc7f8b99484752a8eed914bb21380f",
     "examples/companion_radio/Notifications.cpp": "74983770da7bcdf89af1b3e231bcf8058864e486cb99a425a369db859bd0ae43",
-    "src/helpers/ota/OtaCli.cpp": "6b0265be4f5a68c74bcab031fe7b8d88734b51370f4dfeeed52df4339bbe0fbe",
+    "src/helpers/ota/OtaCli.cpp": "b71d5b16823c81b48cc0d925ca26723954358c046c3b685cd4f1d63ef0a617f0",
     "src/helpers/MorseCLI.h": "fd6888f30dace1c4dbe929cc44ff1d5fa4a49b6938e26546fb21233ca7e5dbbb"
   }
 }
