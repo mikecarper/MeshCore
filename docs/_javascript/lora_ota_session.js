@@ -333,6 +333,44 @@
         }
       }
     }
+    async catalogContains(id) {
+      // Firmware catalogs contain at most 255 entries, rendered two per page.
+      // Every page query also refreshes the catalog, so the advertised page
+      // count may change while scanning; each reply must identify its page.
+      for (let page = 1, pages = 1; page <= pages && page <= 128; page++) {
+        this.requireActive();
+        let reply;
+        try { reply = String(await this.remote(page === 1 ? 'ota ls' : 'ota ls ' + page)).trim(); }
+        catch (error) {
+          // Catalog rows can expire while the previous page is in flight.
+          // Restart on the next bounded discovery round only for the precise
+          // out-of-range reply for the page just requested.
+          const shrink = /^ERR update page (\d+) out of range \(1-(\d+)\)$/i.exec(String(error?.message || ''));
+          if (page > 1 && shrink && Number(shrink[1]) === page && Number(shrink[2]) >= 1 && Number(shrink[2]) < page)
+            return false;
+          throw error;
+        }
+        if (page === 1 && /^No updates seen yet\b/i.test(reply)) return false;
+        // A few older peers return one bare ID instead of a paged listing.
+        if (page === 1 && /^[a-f0-9]{8}$/i.test(reply)) return reply.toLowerCase() === id;
+        const header = /^Updates\s+(\d+)\/(\d+)(?=\s|\(|:)/i.exec(reply);
+        if (!header || Number(header[1]) !== page || Number(header[2]) < page || Number(header[2]) > 128)
+          throw Error('Cannot read update catalog pagination');
+        pages = Number(header[2]);
+        const rows = [...reply.matchAll(/(?:^|[\r\n])\s*(\d+)\)\s+([a-f0-9]{8})(?=\s|$)/gi)];
+        const seen = new Set(); let found = false;
+        if (!rows.length) throw Error('Cannot read update catalog entries');
+        for (const row of rows) {
+          const index = Number(row[1]);
+          if (index < (page - 1) * 2 + 1 || index > page * 2 || index > 255 || seen.has(index))
+            throw Error('Cannot read update catalog entries');
+          seen.add(index);
+          if (row[2].toLowerCase() === id) found = true;
+        }
+        if (found) return true;
+      }
+      return false;
+    }
     async startTransfer(options = {}) {
       const replacement = options.replace;
       if (replacement && (options.resume || !/^[0-9a-f]{8}$/.test(replacement.id || '') ||
@@ -379,7 +417,7 @@
           this.onStage('discovering');
           let found = false;
           for (let n = 0; n < 12 && !this.cancelled; n++) {
-            if ((await this.remote('ota ls')).toLowerCase().includes(id)) { found = true; break; }
+            if (await this.catalogContains(id)) { found = true; break; }
             await this.waitForPoll(this.pollMs);
           }
           this.requireActive();

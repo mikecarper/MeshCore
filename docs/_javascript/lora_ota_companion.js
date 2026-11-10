@@ -36,13 +36,17 @@
   const READ_ONLY=new Set(['get public.key','ota status','ota self','ota ram','ver','get bootloader.ver','get usb.raw.max',
     'ota bootloader status','ota config','ota key list','get tempradio','get radio','get radio.rxps','ota installhash','ota qspi','ota stats','ota ls',
     'get radio2','get tempradio2','get radio2.cross','get radio2.status','get radioat','get tempradioat','get radioat2','get tempradioat2']);
+  function isReadOnly(text) {
+    // The OTA catalog is bounded by the protocol's 255 entries (two per page).
+    return READ_ONLY.has(text) || /^ota ls (?:[1-9]|[1-9][0-9]|1[01][0-9]|12[0-8])$/.test(text);
+  }
   function usbOperation(payload){
     // Never include arbitrary command text, passwords, keys or packet bytes in
     // diagnostics. Only these fixed operation names and exact read-only verbs
     // are safe to copy from an error report.
     if(payload[0]===66){
       const command=dec.decode(payload.subarray(1));
-      return READ_ONLY.has(command)?'reading local '+command:'running a local CLI command';
+      return isReadOnly(command)?'reading local '+command:'running a local CLI command';
     }
     return ({1:'reading the Companion identity',2:'sending an admin command',
       5:'reading the Companion clock',10:'reading a queued message',22:'reading device information',
@@ -51,7 +55,7 @@
   // Legacy OTA commands are deliberately narrow; changing operations are
   // sent at most once and the target must still verify the staged image.
   function legacyOtaCommand(text){
-    if(READ_ONLY.has(text)||/^ota pull [a-f0-9]{8} flash$/i.test(text)||
+    if(isReadOnly(text)||/^ota pull [a-f0-9]{8} flash$/i.test(text)||
       /^ota installhash [a-f0-9]{64}$/i.test(text)||text==='ota install'||text==='ota cancel'||text==='set radio.rxps off'||
       /^ota config (?:(?:autofetch|autoinstall) off|hops 0)$/.test(text))return true;
     const temp=/^(?:tempradio |set tempradio2 )(\d+(?:\.\d+)?),(\d+(?:\.\d+)?),(\d+),(\d+),(?:rxtx,)?(\d+),(\d+)$/.exec(text);
@@ -428,7 +432,7 @@
       if(this.investigationCancelled)throw Error('Investigation canceled. Disconnect and reconnect before trying again.');
     }
     async retryInvestigation(text,run){
-      if(!READ_ONLY.has(text))throw Error('Only approved read-only investigation commands are allowed');
+      if(!isReadOnly(text))throw Error('Only approved read-only investigation commands are allowed');
       // Until the identity check receives a response, keep probing bounded.
       // Thereafter the target has replied, so tolerate a weaker RF link.
       const maxAttempts=this.investigationAuthenticated?11:7;
@@ -483,7 +487,7 @@
       if(preserve){try{this.options.onPreserved?.(decodedInbox(rows[index]),rows.filter(r=>r.sourceKey===this.sourceKey&&!r.pending).length);}catch(_){}}
     }
     async standardReply(text,otaControl=false){
-      if(!this.investigationEnabled||!(otaControl?legacyOtaCommand(text):READ_ONLY.has(text)))throw Error('Only approved OTA commands are allowed');
+      if(!this.investigationEnabled||!(otaControl?legacyOtaCommand(text):isReadOnly(text)))throw Error('Only approved OTA commands are allowed');
       if(!this.investigationAuthenticated&&!(text==='get public.key'&&this.investigationProofPending))throw Error('Verify the target before running investigation commands');
       if(otaControl&&!this.investigationVerified)throw Error('Verify the target full public key before updating');
       this.assertInvestigationRunning();
@@ -497,7 +501,7 @@
       await this.command(join(Uint8Array.of(2,1,0),u32(this.timestamp),unhex(this.knownRepeater).slice(0,6),enc.encode(tag+text)),6);
       this.investigationProgress('command-sent',text);
       this.assertInvestigationRunning();
-      const replyTimeout=READ_ONLY.has(text)?this.investigationReplyTimeout():(this.options.investigationTimeout??20000);
+      const replyTimeout=isReadOnly(text)?this.investigationReplyTimeout():(this.options.investigationTimeout??20000);
       const deadline=Date.now()+replyTimeout;
       this.investigationProgress('waiting-reply',text,replyTimeout);
       while(Date.now()<deadline){
@@ -615,10 +619,10 @@
       const tag=correlation+'|';await this.guardMode(4,enc.encode(tag));
       if(this.investigationAttempt)this.assertInvestigationRunning();
       this.timestamp=Math.max(Math.floor(Date.now()/1000),this.timestamp+1);
-      if(READ_ONLY.has(text))this.investigationProgress('sending-command',text,this.options.commandTimeout??15000);
+      if(isReadOnly(text))this.investigationProgress('sending-command',text,this.options.commandTimeout??15000);
       await this.command(join(Uint8Array.of(2,1,0),u32(this.timestamp),unhex(this.knownRepeater).slice(0,6),enc.encode(tag+text)),6);
       const replyTimeout=this.investigationAttempt?this.investigationReplyTimeout():(this.options.remoteTimeout??75000);
-      if(READ_ONLY.has(text)){
+      if(isReadOnly(text)){
         this.investigationProgress('command-sent',text);
         this.investigationProgress('waiting-reply',text,replyTimeout);
       }
@@ -632,8 +636,8 @@
         if(m[2]==='pending'){if(result.length||+m[3]||m[5]!=='-')throw Error('Invalid pending command mailbox');await sleep(100);continue;}
         const n=+m[3],data=m[5]==='-'?[]:(m[5].match(/../g)||[]).map(x=>parseInt(x,16));
         if((m[5]!=='-'&&m[5].length%2)||data.length>40||result.length+data.length>n||(!data.length&&result.length!==n)||(total!==null&&n!==total))throw Error('Invalid Companion reply page');
-        total=n;result.push(...data);if(result.length===total){if(READ_ONLY.has(text))this.investigationProgress('command-result',text);return dec.decode(Uint8Array.from(result));}
-      }if(READ_ONLY.has(text))this.investigationProgress('command-timeout',text);const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;throw error;
+        total=n;result.push(...data);if(result.length===total){if(isReadOnly(text))this.investigationProgress('command-result',text);return dec.decode(Uint8Array.from(result));}
+      }if(isReadOnly(text))this.investigationProgress('command-timeout',text);const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;throw error;
     }
     validate(key){if(String(key).toLowerCase()!==this.knownRepeater)throw Error('Target differs from the selected repeater');}
     async verifyPeer(key,password=''){
@@ -746,7 +750,7 @@
         if(password!==this.investigationPassword)throw Error('Disconnect and reconnect before changing the admin password');
         return this.withAdmin(()=>this.withFolderPaused(async()=>{
           const pull=/^ota pull [a-f0-9]{8} flash$/i.test(text);
-          try{return await (READ_ONLY.has(text)
+          try{return await (isReadOnly(text)
             ?this.retryInvestigation(text,()=>this.standardReply(text,true))
             :this.standardReply(text,true));}
           finally{

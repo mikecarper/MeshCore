@@ -279,6 +279,104 @@ async function recoveryFixture(options = {}) {
   return api;
 }
 
+test('catalog search finds the exact manifest on a later page, case-insensitively', async () => {
+  const f=await recoveryFixture({state:'idle'}); f.setRecord(null);
+  const original=f.link.remoteCommand;
+  f.link.remoteCommand=async(key,password,command)=>{
+    if(command==='ota ls') { f.calls.push(command); return 'Updates 1/2 (3 src; refreshing):\n 1) 01020304 v1 full [same target]\n 2) 02030405 v1 full [same target]'; }
+    if(command==='ota ls 2') { f.calls.push(command); return 'uPDaTEs 2/2 (3 src; refreshing):\n 3) '+f.id.toUpperCase()+' v1 full [same target]'; }
+    return original(key,password,command);
+  };
+  await f.session.start();
+  assert.ok(f.calls.indexOf('ota ls 2')>f.calls.indexOf('ota ls'));
+  assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length,1);
+});
+
+test('failed-download recovery also searches later catalog pages before retrying', async () => {
+  const f=await recoveryFixture(); const original=f.link.remoteCommand;
+  f.link.remoteCommand=async(key,password,command)=>{
+    if(command==='ota ls') { f.calls.push(command);return 'Updates 1/2 (1 src; refreshing):\n 1) 00000001 v1'; }
+    if(command==='ota ls 2') { f.calls.push(command);return 'Updates 2/2 (1 src; refreshing):\n 3) '+f.id+' v1'; }
+    return original(key,password,command);
+  };
+  await f.session.start({resume:true});
+  assert.ok(f.calls.includes('ota ls 2'));
+  assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length,1);
+});
+
+test('catalog search rejects malformed pagination and does not match arbitrary substrings', async () => {
+  const bad=[
+    'Updates 0/2 (1 src; refreshing):\n 1) 12345678 v1',
+    'Updates 1/0 (1 src; refreshing):\n 1) 12345678 v1',
+    'Updates 1/129 (1 src; refreshing):\n 1) 12345678 v1',
+    'Updates 1/2 (1 src; refreshing):\n 3) 12345678 v1',
+    'Updates 1/2 (1 src; refreshing):\n 1) 12345678 v1\n 1) 23456789 v1',
+    'Updates 1/2 (1 src; refreshing):\n 1) xx12345678 v1',
+    'Updates nearby (1 src) - target 12345678',
+  ];
+  for(const reply of bad) {
+    const f=await recoveryFixture(); f.link.remoteCommand=async()=>reply;
+    await assert.rejects(f.session.catalogContains('12345678'),/catalog/);
+  }
+  for(const reply of ['Updates 1/2 (1 src; refreshing):\n 1) 00000001 v1',
+    'Updates 2/1 (1 src; refreshing):\n 3) 00000002 v1']) {
+    const f=await recoveryFixture(), responses=[reply,'Updates 1/2 (1 src; refreshing):\n 3) 12345678 v1'];
+    f.link.remoteCommand=async()=>responses.shift();
+    await assert.rejects(f.session.catalogContains('12345678'),/catalog/);
+  }
+});
+
+test('absent package scans every advertised page and retains discovery timeout', async () => {
+  const f=await recoveryFixture({state:'idle'}); f.setRecord(null);
+  const original=f.link.remoteCommand;
+  f.link.remoteCommand=async(key,password,command)=>{
+    if(command==='ota ls'||command==='ota ls 2') { f.calls.push(command);return command==='ota ls' ?
+      'Updates 1/2 (1 src; refreshing):\n 1) 00000001 v1' : 'Updates 2/2 (1 src; refreshing):\n 3) 00000003 v1'; }
+    return original(key,password,command);
+  };
+  await assert.rejects(f.session.start(),/did not discover/);
+  assert.equal(f.calls.filter(c=>c==='ota ls').length,12);
+  assert.equal(f.calls.filter(c=>c==='ota ls 2').length,12);
+  assert.ok(!f.calls.some(c=>c.startsWith('ota pull ')));
+});
+
+test('a shrinking catalog retries from page one without hiding unrelated errors', async () => {
+  const f=await recoveryFixture({state:'idle'}); f.setRecord(null);
+  const original=f.link.remoteCommand;let rounds=0;
+  f.link.remoteCommand=async(key,password,command)=>{
+    if(command==='ota ls') { f.calls.push(command);rounds++;return rounds===1 ?
+      'Updates 1/2 (1 src; refreshing):\n 1) 00000001 v1' :
+      'Updates 1/1 (1 src; refreshing):\n 1) '+f.id+' v1'; }
+    if(command==='ota ls 2') { f.calls.push(command);return 'ERR update page 2 out of range (1-1)'; }
+    return original(key,password,command);
+  };
+  await f.session.start();
+  assert.deepEqual(f.calls.filter(c=>c==='ota ls'||c==='ota ls 2'),['ota ls','ota ls 2','ota ls']);
+  assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length,1);
+  for(const error of ['ERR update page 3 out of range (1-1)',
+    'ERR update page 2 out of range (1-2)', 'ERR update page 2 out of range (1-0)',
+    'ERR update page 2 out of range (1-1);reboot','ERR storage unavailable']) {
+    const g=await recoveryFixture();let query=0;
+    g.link.remoteCommand=async()=>++query===1 ? 'Updates 1/2 (1 src; refreshing):\n 1) 00000001 v1' : error;
+    await assert.rejects(g.session.catalogContains('12345678'),/ERR/);
+  }
+});
+
+test('catalog pagination is bounded and accepts legacy single-ID and empty replies', async () => {
+  const f=await recoveryFixture(), calls=[];
+  f.link.remoteCommand=async(_key,_password,command)=>{
+    calls.push(command);const page=command==='ota ls'?1:Number(command.slice(7));
+    return 'Updates '+page+'/128 (1 src; refreshing):\n '+(page*2-1)+') 00000001 v1';
+  };
+  assert.equal(await f.session.catalogContains('12345678'),false);
+  assert.equal(calls.length,128);assert.equal(calls.at(-1),'ota ls 128');
+  f.link.remoteCommand=async()=> 'No updates seen yet; retry `ota ls` shortly.';
+  assert.equal(await f.session.catalogContains('12345678'),false);
+  f.link.remoteCommand=async()=> 'ABCD1234';
+  assert.equal(await f.session.catalogContains('abcd1234'),true);
+  assert.equal(await f.session.catalogContains('abcd1235'),false);
+});
+
 test('transfer stages follow verified route, source, discovery and target download evidence', async () => {
   let f; const stages=[];
   f=await recoveryFixture({state:'idle',onStage:stage=>stages.push({stage,calls:f.calls.slice()})});

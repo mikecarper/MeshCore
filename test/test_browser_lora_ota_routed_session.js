@@ -118,6 +118,15 @@ test('invalid radio settings identify the participant without leaking its key',a
   }
 });
 
+test('routed source discovery searches all target catalog pages',async()=>{
+  const f=await fixture();
+  f.overrides.set(target+':ota ls','Updates 1/2 (1 src; refreshing):\n 1) 00000001 v1');
+  f.overrides.set(target+':ota ls 2','Updates 2/2 (1 src; refreshing):\n 3) '+f.id.toUpperCase()+' v1');
+  await f.session.start();
+  assert.ok(f.calls.includes(target+':ota ls 2'));
+  assert.equal(f.calls.filter(c=>c===target+':ota pull '+f.id.toUpperCase()+' flash').length,1);
+});
+
 test('all participants are checked and transfer does not mutate radios or policies',async()=>{
   const f=await fixture(); await f.session.start();
   assert.equal(f.serving,false); assert.equal(f.calls.filter(c=>c.endsWith('ota pull '+f.id.toUpperCase()+' flash')).length,1);
