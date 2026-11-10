@@ -4009,7 +4009,7 @@ apply_esp32_full_size_profile() {
     heltec_rc32_without_display_repeater_observer_mqtt|\
     heltec_e213_repeater|heltec_e213_repeater_bridge_espnow|heltec_e213_repeater_observer_mqtt|\
     heltec_e290_repeater|heltec_e290_repeater_bridge_espnow|heltec_e290_repeater_observer_mqtt|\
-    heltec_t190_repeater|heltec_t190_repeater_bridge_espnow|heltec_t190_repeater_observer_mqtt|\
+    heltec_t190_repeater|heltec_t190_repeater_|heltec_t190_repeater_bridge_espnow|heltec_t190_repeater_observer_mqtt|\
     station_g2_repeater|station_g2_repeater_bridge_espnow|station_g2_logging_repeater|\
     station_g2_logging_repeater_bridge_espnow|station_g2_repeater_observer_mqtt|\
     station_g3_esp32_repeater|station_g3_esp32_logging_repeater|station_g3_esp32_repeater_observer_mqtt|\
@@ -4025,6 +4025,29 @@ apply_esp32_full_size_profile() {
       # verified external memory; their resident radio paths also use the
       # internal headroom. Missing PSRAM leaves USB recovery alive.
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_REPEATER_REQUIRE_PSRAM=1"
+      ;;
+  esac
+
+  case "${env_name,,}" in
+    heltec_wireless_tracker_repeater|heltec_wireless_tracker_repeater_observer_mqtt|\
+    heltec_tracker_v2_repeater|heltec_tracker_v2_repeater_observer_mqtt)
+      # Preserve the full 160x80 UI and panel RGB565 scanout with a compact
+      # RGB332 canvas. The eight named UI colors remain exact; intermediate
+      # colors use the same supported 256-color path as the T096.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DST7735_BUFFER_COLOR_DEPTH=8"
+      record_build_reduction "display.framebuffer uses 256-color RGB332 storage; 160x80 geometry and all screen controls retained"
+      ;;
+  esac
+
+  case "${env_name,,}" in
+    heltec_wireless_tracker_repeater|heltec_wireless_tracker_repeater_observer_mqtt|\
+    heltec_tracker_v2_repeater|heltec_tracker_v2_repeater_observer_mqtt|\
+    heltec_wsl3_repeater|heltec_wsl3_repeater_observer_mqtt)
+      # These complete S3 repeater images are close to their internal RAM
+      # boundary. Optimize the actual linked code instead of lowering the
+      # runtime reserve or cutting tables, transports, or OTA capabilities.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -flto -flto-partition=one -DMESH_UNIVERSAL_LTO=1 -ffunction-sections -fdata-sections -mtext-section-literals -mlongcalls"
+      append_platformio_extra_script "post:scripts/esp32_universal_radio_lto.py"
       ;;
   esac
 

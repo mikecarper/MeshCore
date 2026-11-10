@@ -34,6 +34,19 @@ class Environment(dict):
 
 
 class UniversalRadioLtoTests(unittest.TestCase):
+    def test_constrained_s3_repeater_bases_have_exact_lto_link_support(self):
+        for board, target in (("esp32-s3-devkitc-1", "Heltec_Wireless_Tracker_repeater_observer_mqtt"),
+                              ("esp32-s3-devkitc-1", "Heltec_WSL3_repeater_observer_mqtt"),
+                              ("heltec_tracker_v2", "heltec_tracker_v2_repeater_observer_mqtt")):
+            with self.subTest(target=target):
+                env = Environment(board=board, target=target)
+                self.assertTrue(POLICY.install(env))
+                for flag in POLICY.LINK_FLAGS:
+                    self.assertIn(flag, env["LINKFLAGS"])
+                self.assertFalse(POLICY.install(Environment(board="other", target=target)))
+                self.assertFalse(POLICY.install(Environment(board=board, target=target.replace("repeater", "room_server"))))
+                self.assertFalse(POLICY.install(Environment(board=board, target=target.replace("repeater_observer_mqtt", "companion_radio_full"))))
+
     def test_ebyte_observer_compile_base_has_lto_link_support(self):
         env = Environment(board="ebyte_eora-s3", target="Ebyte_EoRa-S3_repeater_observer_mqtt")
         self.assertTrue(POLICY.install(env))
@@ -66,6 +79,11 @@ apply_esp32_full_size_profile "$2"
 printf '%s\n%s\n' "$PLATFORMIO_BUILD_FLAGS" "$PLATFORMIO_EXTRA_SCRIPTS"
 '''
         for full, target, expected in (("1", "Ebyte_EoRa-S3_Repeater", True),
+                                       ("1", "Heltec_Wireless_Tracker_repeater", True),
+                                       ("1", "Heltec_WSL3_repeater", True),
+                                       ("1", "heltec_tracker_v2_repeater", True),
+                                       ("0", "Heltec_Wireless_Tracker_repeater", False),
+                                       ("1", "Heltec_WSL3_room_server", False),
                                        ("0", "Ebyte_EoRa-S3_Repeater", False),
                                        ("1", "Ebyte_EoRa-S3_room_server", False),
                                        ("1", "Ebyte_EoRa-S3_repeater_observer_mqtt", False)):

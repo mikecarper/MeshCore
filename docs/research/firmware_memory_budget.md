@@ -951,3 +951,20 @@ and larger custom leaf limits retain the existing policy.
 The clean V3 package and constrained RAK regressions pass; physical V3 testing
 still awaits USB attachment. See the [V3 qualification report](../test-results/heltec_v3_full_memory_2026-10-19.md)
 for artifact hashes, tests, upgrade behavior and hardware limits.
+
+## Constrained ESP32 release recipes
+
+The exact T190 Full Repeater target, including its trailing-underscore alias,
+requires its onboard PSRAM for the full table allocations. Wireless Tracker
+and Tracker V2 Full Repeaters use the existing 256-color RGB332 canvas with
+RGB565 panel scanout. This retains the 160x80 geometry, screen controls, and
+the driver's eight named UI colors while reducing framebuffer allocation;
+intermediate image colors have lower precision. Other firmware roles keep
+their existing display-buffer choice.
+
+Those two trackers and WSL3 Full Repeaters also use the scoped, validated LTO
+link policy. The enabled services, table capacities, and runtime RAM reserves
+remain unchanged. Sensirion Core's integer-width enum is renamed only in a
+private build overlay to avoid its global type-name collision with SNMP's
+BER class under LTO; installed library sources are not modified.
+

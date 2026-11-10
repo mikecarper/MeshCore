@@ -13,6 +13,10 @@ def enabled(platform, mcu, board, target):
                           r"companion_radio_(?:usb|ble|full)(?:_ps)?)", target) is not None)
         or (mcu == "esp32s3" and board == "ebyte_eora-s3"
             and target == "Ebyte_EoRa-S3_repeater_observer_mqtt")
+        or (mcu == "esp32s3" and (
+            (board == "esp32-s3-devkitc-1" and target in (
+                "Heltec_Wireless_Tracker_repeater_observer_mqtt", "Heltec_WSL3_repeater_observer_mqtt"))
+            or (board == "heltec_tracker_v2" and target == "heltec_tracker_v2_repeater_observer_mqtt")))
         or (mcu == "esp32" and board == "ttgo-t-beam"
             and target in ("Tbeam_repeater_observer_mqtt", "Tbeam_room_server_observer_mqtt"))))
 
