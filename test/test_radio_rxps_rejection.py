@@ -330,7 +330,7 @@ class RadioRxpsRejectionTest(unittest.TestCase):
         base = (ROOT / 'src/Dispatcher.h').read_text(encoding='utf-8')
         self.assertIn('return false;', method(base, 'virtual bool supportsRxPowerSaving() const'))
         common = (ROOT / 'src/helpers/CommonCLI.cpp').read_text(encoding='utf-8')
-        self.assertIn('_radio_profiles.handle(command, reply, 160, sender_timestamp != 0)',
+        self.assertIn('_radio_profiles.handle(command, reply, 160, sender_timestamp != 0, &_prefs->freq)',
                       method(common, 'void CommonCLI::handleCommand('))
 
 
