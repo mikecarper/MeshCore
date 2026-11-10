@@ -187,6 +187,55 @@ def catalog_harness(fault=''):
 
 
 class CompanionBrowserRuntimeTest(unittest.TestCase):
+    def test_empty_eligible_contacts_open_manual_key_once(self):
+        if not BROWSER:
+            if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
+            self.skipTest('Chromium unavailable')
+        rows = "const rows=[contact('11'.repeat(32),2,0,3,'Far'),contact('22'.repeat(32),3,0,1,'Room'),contact('33'.repeat(32),4,0,0,'Sensor'),contact('44'.repeat(32),1,1,0,'Other companion'),contact(key,2,1,0,'Test repeater'),contact('55'.repeat(32),2,0,1,'Near')];"
+        start = "if(el('source').value!=='companion')throw Error('Companion is not default');el('connect').click();await wait(()=>!el('inspect').disabled||el('status').textContent.includes('Error:'));"
+        inspect = r'''el('connect').click();await wait(()=>!el('inspect').disabled||el('status').textContent.includes('Error:'));
+    if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);
+    const details=el('key').closest('details');
+    if(!details.open||el('target-controls').hidden)throw Error('manual key is not visible after loading an empty contact list');
+    details.open=false;el('contact-search').value='new';el('contact-search').dispatchEvent(new Event('input',{bubbles:true}));
+    if(details.open)throw Error('search reopened the manually closed field');
+    el('key').value=key;el('key').dispatchEvent(new Event('input',{bubbles:true}));
+    const entered=el('key').value,helpHidden=el('manual-contact-help').hidden;
+    el('disconnect').click();await wait(()=>!el('connect').disabled);
+    await report({key:entered,contactCount:el('contact').querySelectorAll('button').length,helpHidden,helpHiddenAfterDisconnect:el('manual-contact-help').hidden});return;'''
+        self.assertEqual(HARNESS.count(rows),1)
+        self.assertEqual(HARNESS.count(start),1)
+        guarded="if(text==='get ota.direct')value=`> ota.direct v=2 active=${guard?1:0} busy=0`;"
+        self.assertEqual(HARNESS.count(guarded),1)
+        for replacement in ("const rows=[];", "const rows=[contact('44'.repeat(32),1,1,0,'Other companion')];"):
+            for is_guarded in (True,False):
+                with self.subTest(replacement=replacement,guarded=is_guarded):
+                    harness=HARNESS.replace(rows,replacement,1).replace(start,inspect,1)
+                    if not is_guarded:
+                        harness=harness.replace(guarded,"if(text==='get ota.direct')value='Unknown command';",1)
+                    result=run_harness(harness,timeout=45)
+                    self.assertNotIn('error',result,result)
+                    self.assertEqual(result['contactCount'],0,result)
+                    self.assertEqual(result['key'],'bb'*32,result)
+                    self.assertEqual(result['helpHidden'],is_guarded,result)
+                    self.assertTrue(result['helpHiddenAfterDisconnect'],result)
+
+    def test_search_without_matches_does_not_expand_manual_key(self):
+        if not BROWSER:
+            if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
+            self.skipTest('Chromium unavailable')
+        start = "if(el('source').value!=='companion')throw Error('Companion is not default');el('connect').click();await wait(()=>!el('inspect').disabled||el('status').textContent.includes('Error:'));"
+        inspect = r'''el('connect').click();await wait(()=>!el('inspect').disabled||el('status').textContent.includes('Error:'));
+    const details=el('key').closest('details');if(details.open)throw Error('manual key opened despite eligible contacts');
+    el('contact-search').value='not found';el('contact-search').dispatchEvent(new Event('input',{bubbles:true}));
+    if(details.open)throw Error('search with no matches opened the manual key');
+    await report({contactCount:el('contact').querySelectorAll('button').length,status:el('contact-status').textContent});return;'''
+        self.assertEqual(HARNESS.count(start),1)
+        result=run_harness(HARNESS.replace(start,inspect,1),timeout=45)
+        self.assertNotIn('error',result,result)
+        self.assertEqual(result['contactCount'],0,result)
+        self.assertIn('No matching',result['status'])
+
     def test_empty_password_checks_guarded_acl_with_passwordless_login(self):
         if not BROWSER:
             if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')

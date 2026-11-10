@@ -34,6 +34,7 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
       <summary>Enter a public key manually</summary>
       <label>Target public key (64 hex characters)<input data-role="key" size="64" autocomplete="off" spellcheck="false"></label>
       <p>For a USB Repeater source, enter the remote device key here.</p>
+      <p data-role="manual-contact-help" hidden>This Companion requires the remote device to be saved as a contact. Discover or add it in the MeshCore app, then reconnect here.</p>
     </details>
     </section>
     <section data-role="legacy-warning" hidden>

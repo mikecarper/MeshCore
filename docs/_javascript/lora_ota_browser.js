@@ -551,6 +551,7 @@
     $('radio-reset').hidden=true;
     $('radio-region-status').textContent='Detected from recognized radio settings. Choose a region to override.';showRadioCommands();
     $('source-info').hidden=true; $('source-info').textContent='';
+    $('manual-contact-help').hidden=true;
     preparedDownload=null;status('Disconnected. Connect your USB radio to start another update.', 'ready');
     $('key').value='';$('password').value='';$('contact-search').value='';clearInvestigation();renderContacts();busy(false); $('connect').disabled = false; $('inspect').disabled = true; $('find-route').disabled = true;
     $('chain-plan').disabled = true; $('chain-run').disabled = true; $('chain-resume').disabled = true;
@@ -620,11 +621,17 @@
         contacts=await link.contacts();
         if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
         renderContacts();
+        // Expand the fallback once after loading an empty eligible contact
+        // list. Search filtering must not reopen it after the user closes it.
+        const noEligibleContacts=!LoraOtaContacts.choices(contacts).length;
+        $('manual-contact-help').hidden=link.otaSupported || !noEligibleContacts;
+        if(noEligibleContacts)openDetails($('key'));
         log('Loaded '+LoraOtaContacts.choices(contacts).length+' eligible contacts.');
         if(link.rawPacketSupport==='unsupported')log('This Companion does not support sending raw OTA packets.');
         else if(link.usbFolderSupported && link.usbRawFrameMax<188)log('Using this Companion\'s existing USB firmware-source mode automatically; no source firmware update is needed.');
         else if(link.otaMode!=='guarded' && link.rawPacketSupport!=='supported')log('Using raw-packet compatibility. Packet-send support will be checked when the transfer starts.');
       } else {
+        $('manual-contact-help').hidden=true;
         $('source-info').textContent='USB Repeater detected. The update will be sent over LoRa.';
         $('source-info').hidden=false;
         $('contact-status').textContent = key ? 'Repeater connected. Select Find matching firmware to check the remote device.' : 'Repeater connected. Enter the remote device key, then select Find matching firmware.';
@@ -641,6 +648,7 @@
       if(!controller.signal.aborted && error?.name!=='NotFoundError')fail(error);
       if (link) { try { await link.close(); } catch (_) {} }
       link = session = null;activeSourceKind=null; $('connect').disabled = false; $('inspect').disabled = true;
+      $('manual-contact-help').hidden=true;
       sourceOtaUnsupported=false;targetAvailability=null;showAvailability(null);
       $('legacy-warning').hidden=true;
       $('source-info').hidden=true; $('source-info').textContent='';
