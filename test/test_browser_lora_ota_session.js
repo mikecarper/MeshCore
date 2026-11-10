@@ -227,6 +227,205 @@ test('resumes only the exact existing download and does not send a second pull',
   const session = new DirectSession(link, 'bb'.repeat(32), '', p, {pollMs:1, readJournal:() => ({phase:'pull attempted', target:'bb'.repeat(32), source:'aa'.repeat(32), id, packageHash})});
   await session.start({resume:true}); assert.equal(pulls, 0); assert(served);
 });
+
+async function recoveryFixture(options = {}) {
+  const info = await pkg.parseMota(await pkg.buildFullMota(await image()));
+  const id = checks.hex(info.merkleRoot), source = 'aa'.repeat(32), target = 'bb'.repeat(32);
+  const packageHash = checks.hex(new Uint8Array(await crypto.subtle.digest('SHA-256', info.blob)));
+  const calls = [], progress = [];
+  let state = options.state || 'failed', activeId = options.id || id, statusReads = 0;
+  let record = {phase:'pull attempted', source, target, id, packageHash};
+  const status = () => state === 'idle' ? 'no download' :
+    'download: ' + (state === 'ready' ? 'ready to install' : state === 'failed' ? 'failed (manifest timeout)' : 'downloading') + ' 0/0 id=' + activeId;
+  const link = {sourceKey:source, async verifyPeer() {},
+    async localCommand(command) {
+      calls.push('local ' + command);
+      if (command === 'get radio' || command === 'get tempradio') return '910.525,62.5,7,5,120';
+      if (command === 'ota stats') return 'fetch idle';
+      if (command === 'ota folder') return 'folder=off';
+      if (command === 'ota config') return 'autofetch=off autoinstall=off hops=0';
+      throw Error('Unexpected local ' + command);
+    },
+    async remoteCommand(_key, _password, command) {
+      calls.push(command);
+      if (command === 'ota status') {
+        options.status?.(api, ++statusReads);
+        return 'hw=board target:12345678 | maxblk:1024 | ' + (options.statsFallback ? 'legacy status' : status());
+      }
+      if (command === 'ota stats') return status().replace('download:', 'fetch');
+      if (command === 'ota self') return 'base_hash=1122334455667788';
+      if (command === 'ver') return 'v1.17.1.9';
+      if (command === 'get radio' || command === 'get tempradio') return '910.525,62.5,7,5,120';
+      if (command === 'ota config') return 'autofetch=off autoinstall=off hops=0';
+      if (command === 'ota installhash') return options.legacyInstall ? 'Unknown OTA command' : installUsage;
+      if (command === 'ota ls') { options.discover?.(api); return id; }
+      if (command === 'ota cancel') {
+        if (options.cancel) return options.cancel(api);
+        state = 'idle'; return 'OK dropped session';
+      }
+      if (command.startsWith('ota pull ')) {
+        if (options.pull) return options.pull(api);
+        state = 'ready'; activeId = id; return 'OK resuming mid=' + id;
+      }
+      throw Error('Unexpected ' + command);
+    },
+    async serve() { calls.push('serve'); }, async stopServing() { calls.push('stopServing'); }
+  };
+  const session = new DirectSession(link, target, '', info,
+    {pollMs:1, journal:value => { record=value; }, readJournal:() => record, progress:value=>progress.push(value)});
+  const api = {info,id,source,target,packageHash,calls,progress,link,session,
+    get record() { return record; }, setRecord(value) { record=value; },
+    setState(value, selectedId = activeId) { state=value; activeId=selectedId; }};
+  return api;
+}
+
+test('same-package failed download is offered for recovery and explicitly pulled once without cancellation', async () => {
+  for (const options of [{}, {legacyInstall:true, statsFallback:true}]) {
+    const f = await recoveryFixture(options);
+    assert.equal((await f.session.inspect({allowExisting:true})).download, 'failed');
+    assert.ok(!f.calls.includes('serve') && !f.calls.includes('ota cancel'));
+    await f.session.start({resume:true});
+    assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length, 1);
+    assert.equal(f.calls.filter(c=>c==='serve').length, 1);
+    assert.ok(!f.calls.includes('ota cancel'));
+    assert.equal(f.record.phase, 'ready');
+    assert.equal(f.record.packageHash, f.packageHash);
+  }
+});
+
+test('failed recovery requires the original exact browser record and explicit resume', async () => {
+  const f = await recoveryFixture(), correct = f.record;
+  for (const record of [null, {...correct,target:'cc'.repeat(32)}, {...correct,source:'cc'.repeat(32)},
+      {...correct,source:undefined}, {...correct,id:'11223344'}, {...correct,packageHash:'00'.repeat(32)},
+      {...correct,phase:'prepared'}, {...correct,phase:'install attempted'}]) {
+    f.setRecord(record);
+    await assert.rejects(f.session.start({resume:true}), /recovery record/);
+  }
+  f.setRecord(correct);
+  await assert.rejects(f.session.start(), /already has another OTA download/);
+  f.setState('failed', '1234abcd');
+  await assert.rejects(f.session.start({resume:true}), /already has another OTA download/);
+  assert.ok(!f.calls.includes('serve') && !f.calls.includes('ota cancel'));
+  assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length, 0);
+});
+
+test('failed recovery stops before pull when the target session changes during discovery', async () => {
+  for (const [state,id] of [['idle'], ['active'], ['ready'], ['failed','1234abcd']]) {
+    const f = await recoveryFixture({discover:api=>api.setState(state,id || api.id)});
+    await assert.rejects(f.session.start({resume:true}), /state changed|another OTA download/);
+    assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length, 0);
+    assert.ok(f.calls.includes('stopServing') && !f.calls.includes('ota cancel'));
+  }
+});
+
+test('failed recovery never repeats a pull whose USB acknowledgement is lost', async () => {
+  const f = await recoveryFixture({pull:api=>{
+    api.setState('active'); api.link.failure = Error('Companion response timed out; reconnect before retrying');
+    throw api.link.failure;
+  }});
+  await assert.rejects(f.session.start({resume:true}), /Companion response timed out/);
+  assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length, 1);
+  assert.ok(f.calls.includes('stopServing') && !f.calls.includes('ota cancel'));
+  assert.equal(f.record.phase, 'pull attempted');
+});
+
+test('ready recovery does not serve, discover or pull again', async () => {
+  const f = await recoveryFixture({state:'ready'});
+  await f.session.start({resume:true});
+  assert.ok(!f.calls.includes('serve') && !f.calls.includes('ota ls') && !f.calls.includes('ota cancel'));
+  assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length, 0);
+});
+
+test('an explicit replacement is available after all checks and cancels only the observed session once', async () => {
+  for (const state of ['active','failed','ready']) {
+    const f = await recoveryFixture({state,id:'1234abcd'});
+    const result = await f.session.inspect({allowExisting:true, allowReplacement:true});
+    assert.equal(result.download, 'replace');
+    assert.deepEqual(result.existingDownload, {id:'1234abcd',state});
+    assert.ok(!f.calls.includes('serve') && !f.calls.includes('ota cancel'));
+    await f.session.start({replace:result.existingDownload});
+    assert.equal(f.calls.filter(c=>c==='ota cancel').length, 1);
+    assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length, 1);
+    assert.ok(f.calls.indexOf('ota cancel') < f.calls.indexOf('serve'));
+    assert.equal(f.record.phase, 'ready');
+  }
+});
+
+test('same-MID downloads without an original record need explicit replacement', async () => {
+  const f = await recoveryFixture(); f.setRecord(null);
+  const result = await f.session.inspect({allowExisting:true, allowReplacement:true});
+  assert.deepEqual(result.existingDownload, {id:f.id,state:'failed'});
+  await f.session.start({replace:result.existingDownload});
+  assert.equal(f.calls.filter(c=>c==='ota cancel').length, 1);
+  assert.equal(f.record.packageHash, f.packageHash);
+});
+
+test('replacement never cancels a changed or unidentified download', async () => {
+  for (const mutation of [f=>f.setState('active','eeeeeeee'), f=>f.setState('ready','1234abcd'), f=>f.setState('idle')]) {
+    const f = await recoveryFixture({id:'1234abcd'});
+    const result = await f.session.inspect({allowReplacement:true}); mutation(f);
+    await assert.rejects(f.session.start({replace:result.existingDownload}), /state changed/);
+    assert.ok(!f.calls.includes('ota cancel') && !f.calls.includes('serve'));
+  }
+  const f = await recoveryFixture({id:'1234abcd'});
+  await assert.rejects(f.session.start({replace:{id:'unknown',state:'failed'}}), /Invalid/);
+  assert.equal(f.calls.length,0);
+});
+
+test('replacement checks the snapshot once more immediately before cancellation', async () => {
+  const f = await recoveryFixture({id:'1234abcd',status:(api,reads)=>{
+    if (reads === 5) api.setState('active','eeeeeeee');
+  }});
+  const result = await f.session.inspect({allowReplacement:true});
+  await assert.rejects(f.session.start({replace:result.existingDownload}), /state changed/);
+  assert.ok(!f.calls.includes('ota cancel') && !f.calls.includes('serve'));
+});
+
+test('unsupported or unanswered USB cancellation stops replacement without serving or retrying', async () => {
+  for (const failure of ['unsupported','USB']) {
+    const f = await recoveryFixture({id:'1234abcd',cancel:api=>{
+      if (failure === 'unsupported') return 'Unknown OTA command';
+      api.link.failure = Error('Companion response timed out; reconnect before retrying');
+      throw api.link.failure;
+    }});
+    const result = await f.session.inspect({allowReplacement:true});
+    await assert.rejects(f.session.start({replace:result.existingDownload}), /Unknown|Companion response timed out/);
+    assert.equal(f.calls.filter(c=>c==='ota cancel').length,1);
+    assert.ok(!f.calls.includes('serve'));
+    assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length,0);
+  }
+});
+
+test('explicit cancellation errors never authorize a new pull even when the target reports idle', async () => {
+  for (const reply of ['ERR flash erase timeout', 'ERR disconnected while invalidating staged data',
+      'flash erase timed out', 'disconnected while invalidating staged data']) {
+    const f = await recoveryFixture({id:'1234abcd',cancel:api=>{
+      api.setState('idle');
+      return reply;
+    }});
+    const result = await f.session.inspect({allowReplacement:true});
+    await assert.rejects(f.session.start({replace:result.existingDownload}),
+      error=>error.message.includes(reply));
+    assert.equal(f.calls.filter(c=>c==='ota cancel').length,1);
+    assert.ok(!f.calls.includes('serve'));
+    assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length,0);
+  }
+});
+
+test('a lost cancel reply always stops replacement and is never retried', async () => {
+  for (const cancelled of [true,false]) {
+    const f = await recoveryFixture({id:'1234abcd',cancel:api=>{
+      if (cancelled) api.setState('idle');
+      throw Error('Remote command timed out; result is unknown');
+    }});
+    const result = await f.session.inspect({allowReplacement:true});
+    await assert.rejects(f.session.start({replace:result.existingDownload}), /Remote command timed out/);
+    assert.equal(f.calls.filter(c=>c==='ota cancel').length,1);
+    assert.ok(!f.calls.includes('serve'));
+    assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length,0);
+    assert.equal(f.record.phase,'replacement cancel attempted');
+  }
+});
 test('reconnect verifies an uncertain install without issuing another install', async () => {
   const imageBytes = await image(), p = await pkg.parseMota(await pkg.buildFullMota(imageBytes));
   const id = Buffer.from(p.merkleRoot).toString('hex'), packageHash = Buffer.from(await crypto.subtle.digest('SHA-256', p.blob)).toString('hex');

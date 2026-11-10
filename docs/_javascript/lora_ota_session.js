@@ -98,6 +98,25 @@
       try { parsed = download(status); } catch (_) { parsed = download(status, await this.remote('ota stats')); }
       return { ...parsed, status };
     }
+    validateRecovery(state, options = {}) {
+      if (state.state === 'idle') return;
+      if (!options.allowExisting || state.id !== checks.hex(this.info.merkleRoot))
+        throw Error('Target already has another OTA download; keep the original firmware selected to recover it');
+      const record = this.readJournal();
+      if (!record || typeof record.target !== 'string' || typeof record.source !== 'string' ||
+          record.target.toLowerCase() !== this.key.toLowerCase() ||
+          record.source.toLowerCase() !== this.link.sourceKey?.toLowerCase() || record.id !== state.id ||
+          record.packageHash !== this.packageHash || !['pull attempted', 'ready'].includes(record.phase))
+        throw Error('The existing download has no matching browser recovery record; resolve it before proceeding');
+    }
+    downloadDisposition(state, options = {}) {
+      try { this.validateRecovery(state, options); }
+      catch (error) {
+        if (!options.allowReplacement || state.state === 'idle') throw error;
+        return {download:'replace', existingDownload:{id:state.id, state:state.state}};
+      }
+      return {download:state.state};
+    }
     async inspectRadios() {
       // Package-independent GET-only preflight. The caller admits the selected
       // peer first; inspect() also retains its full identity/install checks.
@@ -216,23 +235,40 @@
       await this.inspectRadios();
       await this.requireInstallHash();
       const state = await this.readDownload();
-      if (state.state !== 'idle' && (!options.allowExisting || state.id !== checks.hex(this.info.merkleRoot) || state.state === 'failed')) throw Error('Target already has another or failed OTA download; resolve it first');
-      if (state.state !== 'idle') {
-        const record = this.readJournal();
-        if (!record || record.target?.toLowerCase() !== this.key.toLowerCase() || record.source?.toLowerCase() !== this.link.sourceKey?.toLowerCase() || record.id !== state.id || record.packageHash !== this.packageHash || !['pull attempted', 'ready'].includes(record.phase))
-          throw Error('The existing download has no matching browser recovery record; resolve it before proceeding');
-      }
+      const disposition = this.downloadDisposition(state, options);
       if (checkSourceOta) {
         if (!/\bfetch idle\b/i.test(await this.local('ota stats'))) throw Error('The source already has an OTA download');
         if (!/^folder=off\b/i.test(await this.local('ota folder'))) throw Error('The source already has an attached OTA folder');
       }
-      return {...dest, download:state.state};
+      return {...dest, ...disposition};
     }
     async start(options = {}) {
-      this.cancelled = false; this.tempRadio = null; const before = await this.inspect({allowExisting:!!options.resume});
+      const replacement = options.replace;
+      if (replacement && (options.resume || !/^[0-9a-f]{8}$/.test(replacement.id || '') ||
+          !['active','failed','ready'].includes(replacement.state))) throw Error('Invalid download replacement request');
+      this.cancelled = false; this.tempRadio = null;
+      let before = await this.inspect({allowExisting:!!options.resume, allowReplacement:!!replacement});
       this.requireActive();
       const id = checks.hex(this.info.merkleRoot);
       if (before.download === 'installed') return;
+      if (replacement) {
+        const selected = before.existingDownload;
+        if (!selected || selected.id !== replacement.id || selected.state !== replacement.state)
+          throw Error('Target download state changed; prepare the replacement again');
+        const current = await this.readDownload();
+        if (current.id !== replacement.id || current.state !== replacement.state)
+          throw Error('Target download state changed; prepare the replacement again');
+        // The explicit replacement action authorizes discarding this exact
+        // observed session. Require its acknowledgement: becoming idle alone
+        // cannot prove that persistent staged data was invalidated successfully.
+        this.journal({phase:'replacement cancel attempted', target:this.key, source:this.link.sourceKey,
+          id, packageHash:this.packageHash, replaced:replacement, bodyHash:this.bodyHash});
+        const reply = await this.remote('ota cancel');
+        if (!/^OK(?:\s|$)/i.test(reply)) throw Error('Target did not acknowledge download cancellation: ' + diagnostic(reply));
+        if ((await this.readDownload()).state !== 'idle') throw Error('Target download was not cancelled; prepare the replacement again');
+        before = {...before, download:'idle'};
+        this.progress('The previous download was cancelled. Starting the selected firmware.');
+      }
       if (options.resume && before.download === 'idle') throw Error('There is no matching download to resume');
       if (!options.resume && before.download !== 'idle') throw Error('Target already has a download');
       this.journal({phase: options.resume ? 'pull attempted' : 'prepared', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, before, bodyHash: this.bodyHash});
@@ -240,7 +276,8 @@
       try {
         await this.link.serve(this.info, this.info.blob, this.compress); this.serving = true;
         this.requireActive();
-        if (!options.resume) {
+        const restartFailed = options.resume && before.download === 'failed';
+        if (!options.resume || restartFailed) {
           let found = false;
           for (let n = 0; n < 12 && !this.cancelled; n++) {
             if ((await this.remote('ota ls')).toLowerCase().includes(id)) { found = true; break; }
@@ -248,7 +285,16 @@
           }
           this.requireActive();
           if (!found) throw Error('Target did not discover the selected package');
-          if ((await this.readDownload()).state !== 'idle') throw Error('Target download state changed');
+          const current = await this.readDownload();
+          if (restartFailed) {
+            // A confirmed failed fetch can be explicitly pulled again. The
+            // target resumes its verified staged blocks; cancelling would
+            // discard them. Never replay a pull merely because its reply was
+            // lost, or replace a session that changed while discovery ran.
+            this.validateRecovery(current, {allowExisting:true});
+            if (current.state !== 'failed' || current.id !== id) throw Error('Target download state changed before recovery');
+            this.progress('Recovering the same failed download; the target will reuse any verified staged blocks.');
+          } else if (current.state !== 'idle') throw Error('Target download state changed');
           this.requireActive();
           this.journal({phase: 'pull attempted', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, before, bodyHash: this.bodyHash});
           try { await this.remote('ota pull ' + id.toUpperCase() + ' flash'); }

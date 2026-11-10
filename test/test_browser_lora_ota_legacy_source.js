@@ -48,9 +48,12 @@ async function run(){
   assert.equal(await t.remoteCommand(key,'','ota pull 1234ABCD flash'),'OK');
   assert.equal(await t.remoteCommand(key,'','ota install'),'OK');
   assert.equal(await t.remoteCommand(key,'','ota installhash '+'a'.repeat(64)),'OK');
+  assert.equal(await t.remoteCommand(key,'','ota cancel'),'OK');
+  for(const command of ['ota cancel all','ota cancel 1234ABCD','ota cancel;reboot'])
+    await assert.rejects(()=>t.remoteCommand(key,'',command),/approved OTA/);
   await assert.rejects(()=>t.remoteCommand(key,'','set tx 9'),/approved OTA/);
   t.investigationVerified=false;await assert.rejects(()=>t.remoteCommand(key,'','ota install'),/full public key/);
-  assert.equal(sent.length,3);
+  assert.equal(sent.length,4);
   t.investigationVerified=true;let attempts=0;
   t.standardReply=async()=>{attempts++;const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;throw error;};
   await assert.rejects(()=>t.remoteCommand(key,'','ota install'),/timed out/);assert.equal(attempts,1);

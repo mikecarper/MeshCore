@@ -39,12 +39,13 @@ async function fixture() {
     if (cmd==='get repeat') return 'on';
     if (cmd==='ota stats') return 'fetch idle';
     if (cmd==='ota folder') return 'folder=off serving=0:';
-    if (cmd==='ota status') return 'hw=board target:12345678 | maxblk:1024 | '+(state==='idle'?'no download':'download: '+(state==='ready'?'ready to install':'receiving')+' id='+id);
+    if (cmd==='ota status') return 'hw=board target:12345678 | maxblk:1024 | '+(state==='idle'?'no download':'download: '+(state==='ready'?'ready to install':state==='failed'?'failed (manifest timeout)':'receiving')+' id='+id);
     if (cmd==='ota self') return 'base_hash='+(installed?body:'1122334455667788');
     if (cmd==='ver') return installed?'v1.18.0.1':'v1.17.1.9';
     if (cmd==='ota ls') return id;
     if (cmd==='ota installhash') return 'ERR usage: ota installhash <64-hex-container-sha256>';
     if (cmd.startsWith('ota pull ')) { state='ready'; return 'OK'; }
+    if (cmd==='ota cancel') { state='idle'; return 'OK dropped session'; }
     if (/^ota installhash [0-9a-f]{64}$/.test(cmd)) { installed=true; return 'OK'; }
     if (cmd==='ota install') { installed=true; return 'OK'; }
     throw Error('Unexpected '+label+':'+cmd);
@@ -157,6 +158,30 @@ test('resume and install require the original full package recovery record',asyn
   f.setRecord(correct); await f.session.start({resume:true});
   assert.equal(f.record.packageHash,f.packageHash); assert.equal(f.record.phase,'ready');
   await f.session.install(); assert.equal(f.record.packageHash,f.packageHash); assert.equal(f.record.phase,'installed');
+});
+
+test('routed failed recovery preserves staged data and explicitly resumes the owned package once',async()=>{
+  const f=await fixture();f.setState('failed');
+  f.setRecord({phase:'pull attempted',target,source,id:f.id,packageHash:f.packageHash});
+  assert.equal((await f.session.inspect({allowExisting:true})).download,'failed');
+  await f.session.start({resume:true});
+  assert.equal(f.calls.filter(c=>c===target+':ota pull '+f.id.toUpperCase()+' flash').length,1);
+  assert.equal(f.calls.filter(c=>c===target+':ota cancel').length,0);
+  assert.equal(f.record.phase,'ready');
+});
+
+test('routed unowned downloads can be replaced only by the exact explicit snapshot after route validation',async()=>{
+  const f=await fixture();f.setState('failed');
+  const result=await f.session.inspect({allowExisting:true,allowReplacement:true});
+  assert.deepEqual(result.existingDownload,{id:f.id,state:'failed'});
+  assert.equal(result.download,'replace');
+  f.overrides.set(first+':get repeat','off');
+  await assert.rejects(f.session.start({replace:result.existingDownload}),/repeating/);
+  assert.ok(!f.calls.includes(target+':ota cancel'));
+  f.overrides.delete(first+':get repeat');
+  await f.session.start({replace:result.existingDownload});
+  assert.equal(f.calls.filter(c=>c===target+':ota cancel').length,1);
+  assert.equal(f.calls.filter(c=>c===target+':ota pull '+f.id.toUpperCase()+' flash').length,1);
 });
 
 test('reconnect verifies a prior install against the full package and installed body',async()=>{

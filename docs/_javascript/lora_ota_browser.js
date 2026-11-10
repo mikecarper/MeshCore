@@ -9,7 +9,7 @@
   let catalogFile=null, catalogBaseFile=null, catalogDest=null, catalogVersion='', catalogInstallSupported=false, catalogCandidates=[], catalogGeneration=0;
   let preservedCount=0, preservedExportSnapshot=null, preservedExportToken=null, preservedExportInterrupted=false;
   let investigationTimer=null, investigationStage='', investigationStopping=false, investigationActive=false;
-  let sourceOtaUnsupported=false, targetAvailability=null, preparedDownload=null, uiBusy=false, updatePhase='';
+  let sourceOtaUnsupported=false, targetAvailability=null, preparedDownload=null, preparedReplacement=null, uiBusy=false, updatePhase='';
   function status(message, state='working') {
     $('workflow-status').textContent=message;
     $('workflow-status').dataset.state=state;
@@ -20,7 +20,8 @@
   }
   function updateButton() {
     $('update').disabled=uiBusy || !link || !session || !preparedDownload || updatesBlocked();
-    $('update').textContent=preparedDownload==='active' ? 'Resume and install update' :
+    $('update').textContent=preparedDownload==='replace' ? 'Replace and install update' :
+      preparedDownload==='failed' ? 'Restart and install update' : preparedDownload==='active' ? 'Resume and install update' :
       preparedDownload==='ready' ? 'Install and verify update' : 'Update remote firmware';
   }
   $('browser-support').hidden=!!navigator.serial;
@@ -199,8 +200,9 @@
     uiBusy=active;updateButton();
     $('inspect').disabled=active || !link || updatesBlocked();
     $('find-route').disabled=active || !link || updatesBlocked() || !!link.relays || !link.aclOnly || !link.supportsRoutedPath;
-    for(const [name,state] of [['transfer','idle'],['resume','active'],['install','ready']])
-      $(name).disabled=active || !link || !session || updatesBlocked() || preparedDownload!==state;
+    for(const [name,states] of [['transfer',['idle']],['resume',['active','failed']],['install',['ready']]])
+      $(name).disabled=active || !link || !session || updatesBlocked() || !states.includes(preparedDownload);
+    $('resume').textContent=preparedDownload==='failed' ? 'Restart' : 'Resume';
     $('target-controls').hidden=!link && $('source').value==='companion';
     $('disconnect').disabled=!link && !connectController;
     $('reconnect').hidden=!link?.failure;
@@ -224,7 +226,7 @@
     $('chain-run').disabled = active || !link || updatesBlocked() || !chainPrepared || !chainConfig || !!pending && pending.phase !== 'complete';
     $('chain-resume').disabled = active || !link || updatesBlocked() || !chainPrepared || !chainConfig || !pending || pending.phase === 'complete';
   }
-  function invalidate() { preparedDownload=null; $('update').disabled=true;
+  function invalidate() { preparedDownload=preparedReplacement=null; $('update').disabled=true;
     $('update-progress').hidden=true;
     $('update-summary').textContent='Prepare the firmware first. The update will transfer, install and verify the running firmware.';
     session = info = chainPrepared = chainConfig = null; $('transfer').disabled = true; $('resume').disabled = true;
@@ -889,22 +891,31 @@
       // Reject a wrong/corrupt image before changing either radio. A completed
       // installation can also be verified without reopening an update channel.
       let dest;
-      try { dest = await session.inspect({allowExisting:true}); }
+      try { dest = await session.inspect({allowExisting:true,allowReplacement:true}); }
       catch(error) {
         if(link.relays?.length || !error.radioSetupRequired || !canPrepareRadioChannel())throw error;
         await ensureRadioChannel(targetKey,password);
-        dest = await session.inspect({allowExisting:true});
+        dest = await session.inspect({allowExisting:true,allowReplacement:true});
       }
-      preparedDownload=['idle','active','ready'].includes(dest.download)?dest.download:null;
+      preparedDownload=['idle','active','failed','ready','replace'].includes(dest.download)?dest.download:null;
+      preparedReplacement=dest.download==='replace' ? dest.existingDownload : null;
       const targetName=contacts.find(c=>String(c.publicKey).toLowerCase()===targetKey.toLowerCase())?.name || dest.hwId;
       $('update-summary').textContent=targetName+' ('+dest.hwId+'): '+file.name+' / '+(info.isFull?'full':'differential')+' update, '+Math.ceil(info.blob.length/1024)+' KB. Keep this page open until verification finishes.';
-      status(dest.download==='installed' ? 'This update is already installed and verified.' : 'Ready. Select '+(dest.download==='active'?'Resume and install update':dest.download==='ready'?'Install and verify update':'Update remote firmware')+'.', dest.download==='installed'?'complete':'ready');
+      const action=dest.download==='replace' ? 'Replace and install update' : dest.download==='failed' ? 'Restart and install update' :
+        dest.download==='active' ? 'Resume and install update' : dest.download==='ready' ? 'Install and verify update' : 'Update remote firmware';
+      status(dest.download==='installed' ? 'This update is already installed and verified.' : dest.download==='replace' ?
+        'An unfinished update is staged on the target. Select Replace and install update to discard it and install your selected firmware.' : 'Ready. Select '+action+'.', dest.download==='installed'?'complete':'ready');
       log('Verified ' + dest.hwId + '; ' + (info.isFull ? 'full' : 'differential') + ' package ' + LoraOtaChecks.hex(info.merkleRoot).toUpperCase() + '.');
       log(info.signed ? (expectedSigner ? 'Package signature matches your trusted key.' : 'Package signature is valid; no trusted signing key was supplied.') : 'This package is unsigned.');
       $('transfer').disabled = dest.download !== 'idle';
-      $('resume').disabled = dest.download !== 'active';
+      $('resume').disabled = !['active','failed'].includes(dest.download);
       $('install').disabled = dest.download !== 'ready';
       if (dest.download === 'active') log('A matching transfer is in progress. Select Resume.');
+      if (dest.download === 'failed') log('The interrupted download matches this browser update record. Restart will request the same package again; reusable staged data is retained when supported by the target.');
+      if (dest.download === 'replace') {
+        const message='Staged update '+dest.existingDownload.id.toUpperCase()+' ('+dest.existingDownload.state+') will be discarded only when you select Replace and install update.';
+        $('update-summary').textContent=message+' Selected firmware: '+file.name+'.';log(message);
+      }
       if (dest.download === 'ready') log('The matching package is ready to install.');
       if (dest.download === 'installed') log('The previously requested install is verified.');
     } catch (error) {
@@ -923,14 +934,16 @@
   }
   async function updateRemote() {
     if(uiBusy || !session || !preparedDownload || updatesBlocked())return;
-    const job=session, download=preparedDownload;
-    preparedDownload=null;busy(true);
+    const job=session, download=preparedDownload, replacement=preparedReplacement;
+    preparedDownload=preparedReplacement=null;busy(true);
     for(const name of ['inspect','transfer','resume','install'])$(name).disabled=true;
     try {
       if(download!=='ready') {
         updatePhase='transfer';
-        status(download==='active'?'Resuming the transfer over LoRa...':'Transferring firmware over LoRa. Keep this page open...');
-        await job.start({resume:download==='active'});
+        status(download==='replace' ? 'Replacing the unfinished update with your selected firmware...' :
+          download==='failed' ? 'Restarting the interrupted transfer over LoRa...' :
+          download==='active' ? 'Resuming the transfer over LoRa...' : 'Transferring firmware over LoRa. Keep this page open...');
+        await job.start({resume:['active','failed'].includes(download),...(download==='replace' ? {replace:replacement} : {})});
         log('Transfer complete. Installing the verified package.');
       }
       // Use the session's fresh identity, staged-package and journal checks.
@@ -943,7 +956,9 @@
       $('update-summary').textContent='Installed and verified on '+result.hwId+'. You can disconnect the USB radio.';
     } catch(error) {
       fail(error);
-      $('update-summary').textContent='Update stopped. Select Prepare update to read the device state and recover this same update. Keep the same firmware selected.';
+      $('update-summary').textContent=(link?.failure ? 'Update stopped. Select Reconnect USB source, then Prepare update.' :
+        'Update stopped. Select Prepare update to read the device state.')+
+        ' Keep the same firmware to recover it, or choose different firmware to replace the unfinished update.';
     } finally {
       updatePhase='';busy(false);$('inspect').disabled=!link || updatesBlocked();
     }

@@ -102,18 +102,10 @@
       this.tempRadio = shared;
       await this.requireInstallHash();
       const state = await this.readDownload();
-      if (state.state !== 'idle' && (!options.allowExisting || state.id !== checks.hex(this.info.merkleRoot) || state.state === 'failed'))
-        throw Error('Target already has another or failed OTA download; resolve it first');
-      if (state.state !== 'idle') {
-        const record = this.readJournal();
-        if (!record || record.target?.toLowerCase() !== this.key.toLowerCase() ||
-            record.source?.toLowerCase() !== this.link.sourceKey?.toLowerCase() || record.id !== state.id ||
-            record.packageHash !== this.packageHash || !['pull attempted', 'ready'].includes(record.phase))
-          throw Error('The existing download has no matching browser recovery record; resolve it before proceeding');
-      }
+      const disposition = this.downloadDisposition(state, options);
       if (!/\bfetch idle\b/i.test(await this.local('ota stats'))) throw Error('The source already has an OTA download');
       if (!/^folder=off\b/i.test(await this.local('ota folder'))) throw Error('The source already has an attached OTA folder');
-      return {...dest, download:state.state};
+      return {...dest, ...disposition};
     }
     async install() {
       // Recheck the entire route and the exact ready package immediately before

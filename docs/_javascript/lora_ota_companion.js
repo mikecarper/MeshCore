@@ -21,11 +21,23 @@
   const READ_ONLY=new Set(['get public.key','ota status','ota self','ver','get bootloader.ver',
     'ota bootloader status','ota config','ota key list','get tempradio','get radio','get radio.rxps','ota installhash','ota qspi','ota stats','ota ls',
     'get radio2','get tempradio2','get radio2.cross','get radio2.status','get radioat','get tempradioat','get radioat2','get tempradioat2']);
+  function usbOperation(payload){
+    // Never include arbitrary command text, passwords, keys or packet bytes in
+    // diagnostics. Only these fixed operation names and exact read-only verbs
+    // are safe to copy from an error report.
+    if(payload[0]===66){
+      const command=dec.decode(payload.subarray(1));
+      return READ_ONLY.has(command)?'reading local '+command:'running a local CLI command';
+    }
+    return ({1:'reading the Companion identity',2:'sending an admin command',
+      5:'reading the Companion clock',10:'reading a queued message',22:'reading device information',
+      26:'sending an admin login',52:'setting up the OTA session',65:'sending a raw OTA packet'})[payload[0]]||'waiting for a USB command reply';
+  }
   // Legacy OTA commands are deliberately narrow; changing operations are
   // sent at most once and the target must still verify the staged image.
   function legacyOtaCommand(text){
     if(READ_ONLY.has(text)||/^ota pull [a-f0-9]{8} flash$/i.test(text)||
-      /^ota installhash [a-f0-9]{64}$/i.test(text)||text==='ota install'||text==='set radio.rxps off'||
+      /^ota installhash [a-f0-9]{64}$/i.test(text)||text==='ota install'||text==='ota cancel'||text==='set radio.rxps off'||
       /^ota config (?:(?:autofetch|autoinstall) off|hops 0)$/.test(text))return true;
     const temp=/^(?:tempradio |set tempradio2 )(\d+(?:\.\d+)?),(\d+(?:\.\d+)?),(\d+),(\d+),(?:rxtx,)?(\d+),(\d+)$/.exec(text);
     if(!temp)return false;
@@ -190,9 +202,10 @@
     }
     command(payload,code){return this.commandAny(payload,[code]);}
     commandAny(payload,codes,anyResponse=false,timeoutMs=this.options.commandTimeout??15000){
+      const operation=usbOperation(payload);
       const run=this.queue.then(()=>new Promise((resolve,reject)=>{
         if(!this.running||this.failure)return reject(this.failure||Error('Companion is disconnected'));
-        const timer=setTimeout(()=>{this.pending=null;this.failure=Error('Companion response timed out; reconnect before retrying');reject(this.failure);},timeoutMs);
+        const timer=setTimeout(()=>{this.pending=null;this.failure=Error('Companion response timed out while '+operation+'; reconnect before retrying');reject(this.failure);},timeoutMs);
         this.pending={codes,anyResponse,resolve,reject,timer};this.writer.write(packet(payload)).catch(e=>{clearTimeout(timer);this.pending=null;this.failure=e;reject(e);});
       }));this.queue=run.catch(()=>{});return run;
     }

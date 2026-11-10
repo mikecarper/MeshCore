@@ -198,7 +198,14 @@ the required USB radio readbacks cannot be configured or checked automatically;
 the page identifies the missing command and links to a Companion update.
 Some firmware accepts raw OTA packets from USB but
 suppresses their transmission without an active temporary radio.
-Existing downloads and source folders must be cleared first. If the source
+After a USB timeout, select **Reconnect USB source**, then **Prepare update**.
+The selected target and firmware are kept. A matching interrupted download can
+be resumed or restarted from this browser's saved update record. To abandon it,
+choose different firmware and prepare again. **Replace and install update**
+discards the unfinished download and starts the selected image; preparation
+alone does not discard anything. Replacement rechecks the staged download
+before clearing it. An unanswered cancel is not sent again automatically.
+Source folders must be cleared first. If the source
 clock is wrong, set it before connecting. Multi-version updates require a
 supported identified RAK bootloader and successful simulation of every step.
 

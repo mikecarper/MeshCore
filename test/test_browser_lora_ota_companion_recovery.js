@@ -44,6 +44,39 @@ test('repeated contact restarts keep the original bounded deadline', async () =>
   assert.equal(f.sent.length, 1); assert.ok(f.t.failure);
 });
 
+test('USB timeouts identify the stalled operation without disclosing payloads or retrying it', async () => {
+  const secret = 'private-password-and-message';
+  const cases = [
+    [Uint8Array.of(1), 'reading the Companion identity'],
+    [Uint8Array.of(22, 4), 'reading device information'],
+    [Uint8Array.of(5), 'reading the Companion clock'],
+    [Uint8Array.of(10), 'reading a queued message'],
+    [Uint8Array.of(65, 1, 0x32, 0, ...enc.encode(secret)), 'sending a raw OTA packet'],
+    [Uint8Array.of(26, ...enc.encode(secret)), 'sending an admin login'],
+    [Uint8Array.of(2, ...enc.encode(secret)), 'sending an admin command'],
+    [Uint8Array.of(52, ...enc.encode(secret)), 'setting up the OTA session'],
+    [Uint8Array.of(66, ...enc.encode('get tempradio')), 'reading local get tempradio'],
+    [Uint8Array.of(66, ...enc.encode('set password ' + secret)), 'running a local CLI command'],
+    [Uint8Array.of(66, ...enc.encode('get radio ' + secret)), 'running a local CLI command'],
+    [Uint8Array.of(255, ...enc.encode(secret)), 'waiting for a USB command reply'],
+  ];
+  for (const [payload, operation] of cases) {
+    const f = transport(() => {}, {commandTimeout: 5});
+    let failure;
+    await assert.rejects(f.t.command(payload, 0), error => {
+      failure = error;
+      assert.equal(error.message, 'Companion response timed out while ' + operation + '; reconnect before retrying');
+      assert.ok(!error.message.includes(secret));
+      return true;
+    });
+    // A late frame cannot unpoison the USB stream or permit another write.
+    f.t.onFrame(Uint8Array.of(0));
+    await assert.rejects(f.t.command(Uint8Array.of(5), 9), error => error === failure);
+    assert.equal(f.t.failure, failure);
+    assert.equal(f.sent.length, 1);
+  }
+});
+
 test('slow inbox reply uses one dequeue and preserves unrelated messages; timeout leaves a reservation', async () => {
   const savedNavigator = globalThis.navigator, savedStorage = globalThis.localStorage;
   let store = new Map();
