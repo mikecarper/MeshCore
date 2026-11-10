@@ -180,7 +180,7 @@ supported when their firmware includes compatible LoRa OTA.
 
 ## Setup and advanced details
 
-<details id="regional-update-defaults">
+<details id="regional-update-defaults" markdown="1">
 <summary>Regional update defaults and limits</summary>
 
 Fast profiles use **SF5, CR7**; known SX127x radios use **SF7**. Auto matches the saved frequency, bandwidth,
