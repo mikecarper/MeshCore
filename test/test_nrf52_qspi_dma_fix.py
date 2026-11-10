@@ -220,7 +220,16 @@ extern "C" void* selected(unsigned index) {
         self.assertEqual(config.count(hook), 1)
         self.assertEqual(nrf.count(hook), 1)
         workflow = (ROOT / '.github/workflows/run-unit-tests.yml').read_text(encoding='ascii')
-        self.assertIn('python3 -B test/test_nrf52_qspi_dma_fix.py -v', workflow)
+        # The required storage matrix now delegates its invocations to the
+        # shard runner. Verify the real runner with fake Python, keeping this
+        # guard tied to an actual once-only call rather than YAML text layout.
+        self.assertIn('run: bash tools/ci/run_companion_routing_tests.sh "${{ matrix.suite }}"', workflow)
+        self.assertIn('suite: [transport, preferences, storage]', workflow)
+        import test_companion_routing_ci_split as routing_ci
+        result, calls = routing_ci.CompanionRoutingCiSplitTest().run_shard(['storage'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls.count(
+            ['-B', 'test/test_nrf52_qspi_dma_fix.py', '-v']), 1)
         self.assertIn('bash build.sh build-firmware Xiao_nrf52_companion_radio_full', workflow)
 
 

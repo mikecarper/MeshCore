@@ -1179,6 +1179,47 @@ jobs:
           python3 -B test/test_sensor_reply_bounds.py -v
 
 
+  test-companion-routing:
+    name: Companion checks (${{ matrix.suite }})
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        suite: [transport, preferences, storage]
+    steps:
+
+      - name: Clone Repo
+        uses: actions/checkout@v6
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Install signed-package verification dependency
+        run: |
+          python3 -m pip install cryptography
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+          mkdir -p .pio/libdeps/room-mail-test
+          bash tools/ci/pio_retry.sh pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/room-mail-test
+
+      # Each job has its own checkout. Install the native libraries that the
+      # former shared job obtained before these tests; do not run PlatformIO
+      # processes concurrently in this checkout.
+      - name: Install native test dependencies
+        run: bash tools/ci/pio_retry.sh pkg install -e native
+
+      # ABI/layout checks need this before the suites, rather than the later BLE step.
+      - name: Install ARM compiler for layout checks
+        run: bash tools/ci/pio_retry.sh pkg install --global --tool 'platformio/toolchain-gccarmnoneeabi@1.140201.0'
+
+      - name: Verify exact suite coverage and failure handling
+        run: python3 -B test/test_companion_routing_ci_split.py -v
+
+      # Separate runners own the three cells; all commands inside a checkout stay serial.
+      - name: Verify Companion ${{ matrix.suite }} contracts
+        run: bash tools/ci/run_companion_routing_tests.sh "${{ matrix.suite }}"
+
   test-companion:
     name: Companion and Bluetooth
     runs-on: ubuntu-26.04
@@ -1203,84 +1244,6 @@ jobs:
       # processes concurrently in this checkout.
       - name: Install native test dependencies
         run: bash tools/ci/pio_retry.sh pkg install -e native
-
-      - name: Verify Companion contact and channel TX routing
-        run: |
-          python3 -B test/test_companion_channel_alias.py -v
-          python3 -B test/test_companion_tx_routing.py -v
-          python3 -B test/test_companion_channel_publication.py -v
-          python3 -B test/test_companion_tx_raw_alias.py -v
-          python3 -B test/test_companion_traffic_routing.py -v
-          python3 -B test/test_host_kiss_radio.py -v
-          python3 -B test/test_host_kiss_infrastructure.py -v
-          python3 -B test/test_host_kiss.py -v
-          python3 -B test/test_host_kiss_usb.py -v
-          python3 -B test/test_host_kiss_ingress.py -v
-          python3 -B test/test_host_kiss_capabilities.py -v
-          python3 -B test/test_host_kiss_ram.py -v
-          python3 -B test/test_ethernet_kiss.py -v
-          python3 -B test/test_ethernet_radio.py -v
-          python3 -B test/test_companion_ethernet.py -v
-          python3 -B test/test_companion_discovery.py -v
-          python3 -B test/test_repeater_discovery.py -v
-          python3 -B test/test_repeater_discovery_settings.py -v
-          python3 -B test/test_companion_discovery_correlation.py -v
-          python3 -B test/test_pico_ble_queues.py -v
-          python3 -B test/test_companion_preferences_transaction.py -v
-          python3 -B test/test_companion_prefs_values.py -v
-          python3 -B test/test_companion_prefs_image.py -v
-          python3 -B test/test_companion_timezone_prefs.py -v
-          python3 -B test/test_companion_prefs_tail.py -v
-          python3 -B test/test_companion_radio_settings_transaction.py -v
-          python3 -B test/test_companion_prefs_transactions.py -v
-          python3 -B test/test_companion_primary_radio_persistence.py -v
-          python3 -B test/test_companion_response_bounds.py -v
-          python3 -B test/test_companion_rx_via.py -v
-          python3 -B test/test_companion_ack_delivery.py -v
-          python3 -B test/test_companion_lost_reply.py -v
-          python3 -B test/test_companion_delayed_reply_delivery.py -v
-          python3 -B test/test_companion_scheduled_reboot.py -v
-          python3 -B test/test_trace_profile_timing.py -v
-          python3 -B test/test_companion_hardware_serial.py -v
-          python3 -B test/test_companion_hardware_serial_gps.py -v
-          python3 -B test/test_companion_contact_lifetime.py -v
-          python3 -B test/test_contact_indices.py -v
-          python3 -B test/test_small_table_sort.py -v
-          python3 -B test/test_neighbor_resident_state.py -v
-          python3 -B test/test_environment_sensor_references.py -v
-          python3 -B test/test_companion_identity_cli.py -v
-          python3 -B test/test_companion_packet_stream.py -v
-          python3 -B test/test_companion_uncached_storage.py -v
-          python3 -B test/test_companion_contact_partial_tail.py -v
-          python3 -B test/test_companion_channel_storage.py -v
-          python3 -B test/test_nrf52_extrafs_contract.py -v
-          python3 -B test/test_xiao_qspi_recovery.py -v
-          python3 -B test/test_nrf52_qspi_dma_fix.py -v
-          python3 -B test/test_xiao_identity_recovery.py -v
-          python3 -B test/test_companion_ota_config.py -v
-          python3 -B test/test_ota_identity_policy.py -v
-          python3 -B test/test_companion_radio_gain_restore.py -v
-          python3 -B test/test_room_sensor_radio_restore.py -v
-          python3 -B test/test_common_radio_persistence.py -v
-          python3 -B test/test_infrastructure_radio_apply.py -v
-          python3 -B test/test_common_cli_save_results.py -v
-          python3 -B test/test_common_cli_tx_pending.py -v
-          python3 -B test/test_radio_rx_settings_transaction.py -v
-          python3 -B test/test_common_prefs_uncertain_reply.py -v
-          python3 -B test/test_common_prefs_apply_reply.py -v
-          python3 -B test/test_common_prefs_commit.py -v
-          python3 -B test/test_common_cli_retry_tail.py -v
-          python3 -B test/test_common_prefs_legacy_rxgain.py -v
-          python3 -B test/test_flood_policy_capacity.py -v
-          python3 -B test/test_wardriving_default_migration.py -v
-          python3 -B test/test_flood_rule_layout.py -v
-          python3 -B test/test_mqtt_prefs_commit.py -v
-          python3 -B test/test_identity_and_settings_recovery.py -v
-          python3 -B test/test_contact_cache.py -v
-          python3 -B test/test_one_key_dm_shared_queue.py -v
-          python3 -B test/test_one_key_dm_compact_held.py -v
-          python3 -B test/test_companion_shared_ota_capacity.py -v
-          python3 -B test/test_espnow_raw_initialization.py -v
 
       - name: Verify Meshtext chat codec, transport and Companion integration
         run: |
@@ -1863,7 +1826,7 @@ jobs:
   test:
     name: test
     if: ${{ always() }}
-    needs: [test-core, test-bridges-telemetry, test-radio-power, test-companion, test-client-compat, test-display, test-build-ota, test-build-profiles, universal-lora-smoke]
+    needs: [test-core, test-bridges-telemetry, test-radio-power, test-companion, test-client-compat, test-display, test-build-ota, test-build-profiles, test-companion-routing, universal-lora-smoke]
     runs-on: ubuntu-26.04
     steps:
       - name: Require every test group to pass

@@ -75,6 +75,27 @@ class UnitTestJobSplit(unittest.TestCase):
         self.assertIn("python3 -B test/test_build_profile_suites.py -v", body)
         self.assertNotRegex(source, r"(?m)^\s+(?:run: )?bash test/test_build_profiles\.sh\s*$")
 
+    def test_companion_contracts_run_in_three_required_independent_cells(self):
+        source = WORKFLOW.read_text()
+        body = self.job(source, "test-companion-routing")
+        matrix = re.search(r"^        suite:\s*\[([^\]]+)\]", body, re.MULTILINE)
+        self.assertIsNotNone(matrix)
+        self.assertEqual([item.strip() for item in matrix.group(1).split(",")],
+                         ["transport", "preferences", "storage"])
+        self.assertIn("fail-fast: false", body)
+        self.assertIn("max-parallel: 3", body)
+        self.assertNotIn("continue-on-error", body)
+        for dependency in ("pip install cryptography", "libssl-dev", "rweather/Crypto@0.4.0",
+                           "pkg install -e native", "toolchain-gccarmnoneeabi@1.140201.0"):
+            self.assertIn(dependency, body)
+        self.assertIn("python3 -B test/test_companion_routing_ci_split.py -v", body)
+        self.assertIn('run: bash tools/ci/run_companion_routing_tests.sh "${{ matrix.suite }}"', body)
+        original = self.job(source, "test-companion")
+        self.assertNotIn("Verify Companion contact and channel TX routing", original)
+        self.assertNotIn("run_companion_routing_tests.sh", original)
+        self.assertIn("Verify Companion Bluetooth reboot persistence", original)
+        self.assertEqual(source.count('run: bash tools/ci/run_companion_routing_tests.sh'), 1)
+
     def test_universal_gate_requires_contracts_and_all_build_shards(self):
         source = WORKFLOW.read_text()
         self.assert_gate(source, "universal-lora-smoke",
