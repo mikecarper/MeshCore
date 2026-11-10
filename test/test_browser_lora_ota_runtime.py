@@ -153,6 +153,10 @@ class BrowserLoraOtaRuntimeTest(unittest.TestCase):
         self.assertNotIn('error', result, result)
         self.assertIn('Transfer complete.', result['status'])
         self.assertIn('Installed and verified: board', result['status'])
+        stages = ['Checking the target and radio settings', 'Preparing the source radio',
+                  'Waiting for the target to discover', 'Asking the target to begin receiving']
+        positions = [result['status'].index(stage) for stage in stages]
+        self.assertEqual(positions, sorted(positions), result)
         self.assertNotIn('Error:', result['status'])
         self.assertEqual(result['buttons'], [True, True, True])
         self.assertEqual(result['journal']['phase'], 'installed')

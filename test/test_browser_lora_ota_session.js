@@ -272,12 +272,55 @@ async function recoveryFixture(options = {}) {
     async serve() { calls.push('serve'); }, async stopServing() { calls.push('stopServing'); }
   };
   const session = new DirectSession(link, target, '', info,
-    {pollMs:1, journal:value => { record=value; }, readJournal:() => record, progress:value=>progress.push(value)});
+    {pollMs:1, journal:value => { record=value; }, readJournal:() => record, progress:value=>progress.push(value), onStage:options.onStage});
   const api = {info,id,source,target,packageHash,calls,progress,link,session,
     get record() { return record; }, setRecord(value) { record=value; },
     setState(value, selectedId = activeId) { state=value; activeId=selectedId; }};
   return api;
 }
+
+test('transfer stages follow verified route, source, discovery and target download evidence', async () => {
+  let f; const stages=[];
+  f=await recoveryFixture({state:'idle',onStage:stage=>stages.push({stage,calls:f.calls.slice()})});
+  f.setRecord(null);
+  let reads=0;
+  const original=f.link.remoteCommand;
+  f.link.remoteCommand=async(key,password,command)=>{
+    if(command.startsWith('ota pull ')) { f.calls.push(command); f.setState('active'); return 'OK'; }
+    if(command==='ota status'&&f.calls.some(c=>c.startsWith('ota pull '))&&++reads>1)f.setState('ready');
+    return original(key,password,command);
+  };
+  await f.session.start();
+  assert.deepEqual(stages.map(s=>s.stage),['checking','preparing-source','discovering','requesting','transferring']);
+  assert.ok(!stages[0].calls.includes('serve'));
+  assert.ok(stages[1].calls.includes('ota self'));
+  assert.ok(stages[2].calls.includes('serve'));
+  assert.ok(stages[3].calls.includes('ota ls'));
+  assert.ok(stages[4].calls.some(c=>c.startsWith('ota pull ')));
+  assert.ok(stages[4].calls.includes('ota status'));
+});
+
+test('no transfer stage is announced when route checking or discovery fails', async () => {
+  for(const failure of ['checking','discovering']) {
+    const stages=[], f=await recoveryFixture({state:'idle',onStage:stage=>stages.push(stage)});
+    f.setRecord(null);
+    const original=f.link.remoteCommand;
+    f.link.remoteCommand=async(key,password,command)=>{
+      if ((failure==='checking'&&command==='ota self') || (failure==='discovering'&&command==='ota ls')) throw Error('read failed');
+      return original(key,password,command);
+    };
+    await assert.rejects(f.session.start(),/read failed/);
+    assert.ok(!stages.includes('transferring'));
+  }
+});
+
+test('a different target download cannot be reported as the selected transfer', async () => {
+  const stages=[], f=await recoveryFixture({state:'idle',onStage:stage=>stages.push(stage),
+    pull:api=>{api.setState('active','00000000');return 'OK';}});
+  f.setRecord(null);
+  await assert.rejects(f.session.start(),/does not match/);
+  assert.ok(!stages.includes('transferring'));
+});
 
 test('same-package failed download is offered for recovery and explicitly pulled once without cancellation', async () => {
   for (const options of [{}, {legacyInstall:true, statsFallback:true}]) {

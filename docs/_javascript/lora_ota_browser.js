@@ -13,7 +13,7 @@
   let preservedCount=0, preservedExportSnapshot=null, preservedExportToken=null, preservedExportInterrupted=false;
   let investigationTimer=null, investigationStage='', investigationStopping=false, investigationActive=false;
   let sourceOtaUnsupported=false, targetAvailability=null, preparedDownload=null, preparedReplacement=null, uiBusy=false, updatePhase='';
-  let sourceBytesRead=0, sourceActivityAt=0, lastTransferPercent=null, radioOverride=false;
+  let sourceBytesRead=0, sourceActivityAt=0, lastTransferPercent=null, radioOverride=false, transferStage='';
   let targetRadioHwId=null;
   let transferStopJob=null,transferStopTask=null;
   function refreshTransferStop(){
@@ -53,12 +53,24 @@
       const percent=/\bdownload:.*?\((\d{1,3})%\)/i.exec(String(text));
       if(percent && Number(percent[1])<=100){
         lastTransferPercent=Number(percent[1]);
-        status('Transferring firmware over LoRa: '+lastTransferPercent+'%. Keep this page open.');
+        status('Target reports download progress: '+lastTransferPercent+'%. Keep this page open.');
       }
     }
   };
+  function sessionStage(stage) {
+    if(updatePhase!=='transfer' || transferStopJob===session || transferStage===stage)return;
+    transferStage=stage;
+    const messages={
+      checking:link?.relays?.length ? 'Checking the route, target and radio settings...' : 'Checking the target and radio settings...',
+      'preparing-source':'Preparing the source radio to offer the firmware...',
+      discovering:'Waiting for the target to discover the firmware...',
+      requesting:'Asking the target to begin receiving the firmware...',
+      transferring:'The target reports that its firmware download is in progress. Keep this page open...'
+    };
+    if(messages[stage]) { status(messages[stage]); log(messages[stage]); }
+  }
   function onFolderRead({op,args,status:result}) {
-    if(result!==0 || ![3,9].includes(op) || args?.length!==7 || updatePhase!=='transfer'||transferStopJob===session)return;
+    if(result!==0 || ![3,9].includes(op) || args?.length!==7 || updatePhase!=='transfer'||transferStage!=='transferring'||transferStopJob===session)return;
     const length=args[5]+256*args[6];if(!length)return;
     sourceBytesRead+=length;
     if(Date.now()-sourceActivityAt<1000)return;
@@ -66,7 +78,7 @@
     const confirmed=lastTransferPercent===null?'':lastTransferPercent+'% last reported by the remote device. ';
     // Host-file reads show real source activity, not remote reception or
     // verification. Repeated metadata/proof reads can exceed the image size.
-    status('Transferring firmware over LoRa. '+confirmed+'The USB radio has read '+Math.ceil(sourceBytesRead/1024)+' KB of firmware data. Keep this page open.');
+    status(confirmed+'The USB radio has read '+Math.ceil(sourceBytesRead/1024)+' KB of firmware data. Keep this page open.');
   }
   function showSourceUpdate(kind) {
     if(kind==='companion' || kind==='repeater') {
@@ -1037,7 +1049,7 @@
       const Session = link.relays?.length ? LoraOtaRoutedSession.RoutedSession : LoraOtaSession.DirectSession;
       session = new Session(link, $('key').value.trim(), $('acl').checked ? '' : $('password').value, info, {
         signerVerified:!!expectedSigner && info.signed, image:expectedImage, inplacePlan,
-        compress:supportedCompression(), progress:log, journal, readJournal
+        compress:supportedCompression(), progress:log, onStage:sessionStage, journal, readJournal
       });
       // Reject a wrong/corrupt image before changing either radio. A completed
       // installation can also be verified without reopening an update channel.
@@ -1085,7 +1097,7 @@
   async function transfer(resume) {
     const job=session;transferStopJob=transferStopTask=null;
     preparedDownload=null;
-    updatePhase='transfer';sourceBytesRead=0;sourceActivityAt=0;lastTransferPercent=null;
+    updatePhase='transfer';transferStage='';sourceBytesRead=0;sourceActivityAt=0;lastTransferPercent=null;
     $('transfer').disabled = true; $('resume').disabled = true; $('inspect').disabled = true; busy(true);
     try { await job.start({resume}); if(transferStopJob===job)return;preparedDownload='ready';log('Transfer complete. Check the target and select Install.'); $('install').disabled = false;status('Transfer complete. Select Install and verify update.', 'ready'); }
     catch (error) { if(transferStopJob!==job||link?.failure||link?.folderUnknown)fail(error); }
@@ -1100,10 +1112,8 @@
     try {
       if(download!=='ready') {
         updatePhase='transfer';
-        sourceBytesRead=0;sourceActivityAt=0;lastTransferPercent=null;
-        status(download==='replace' ? 'Replacing the unfinished update with your selected firmware...' :
-          download==='failed' ? 'Restarting the interrupted transfer over LoRa...' :
-          download==='active' ? 'Resuming the transfer over LoRa...' : 'Transferring firmware over LoRa. Keep this page open...');
+        transferStage='';sourceBytesRead=0;sourceActivityAt=0;lastTransferPercent=null;
+        status(link?.relays?.length ? 'Checking the route, target and radio settings...' : 'Checking the target and radio settings...');
         await job.start({resume:['active','failed'].includes(download),...(download==='replace' ? {replace:replacement} : {})});
         if(transferStopJob===job)return;
         log('Transfer complete. Installing the verified package.');

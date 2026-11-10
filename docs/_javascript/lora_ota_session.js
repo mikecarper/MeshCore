@@ -73,6 +73,7 @@
     constructor(link, key, password, info, options = {}) {
       this.link = link; this.key = key; this.password = password; this.info = info;
       this.signerVerified = !!options.signerVerified; this.image = options.image; this.compress = options.compress || null; this.inplacePlan = options.inplacePlan || null;
+      this.onStage = options.onStage || (() => {});
       this.pollMs = options.pollMs || 20000; this.transferTimeoutMs = options.transferTimeoutMs || 4 * 60 * 60 * 1000; this.progress = options.progress || (() => {}); this.readJournal = options.readJournal || (() => null);
       this.verifiedRadio = null;
       this.journal = options.journal || (() => {});
@@ -337,6 +338,7 @@
       if (replacement && (options.resume || !/^[0-9a-f]{8}$/.test(replacement.id || '') ||
           !['active','failed','ready'].includes(replacement.state))) throw Error('Invalid download replacement request');
       this.cancelled = false; this.tempRadio = null; this.leaseMaintenanceUnavailable = false;
+      this.onStage('checking');
       let before = await this.inspect({allowExisting:!!options.resume, allowReplacement:!!replacement});
       this.requireActive();
       const id = checks.hex(this.info.merkleRoot);
@@ -364,6 +366,7 @@
       this.recordJournal({phase: options.resume ? 'pull attempted' : 'prepared', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, before, bodyHash: this.bodyHash});
       if (before.download === 'ready') { this.recordJournal({phase: 'ready', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, before, bodyHash: this.bodyHash}); return; }
       try {
+        this.onStage('preparing-source');
         this.serveTask = Promise.resolve().then(() => {
           this.requireActive();
           return this.link.serve(this.info, this.info.blob, this.compress,
@@ -373,6 +376,7 @@
         this.requireActive();
         const restartFailed = options.resume && before.download === 'failed';
         if (!options.resume || restartFailed) {
+          this.onStage('discovering');
           let found = false;
           for (let n = 0; n < 12 && !this.cancelled; n++) {
             if ((await this.remote('ota ls')).toLowerCase().includes(id)) { found = true; break; }
@@ -392,6 +396,7 @@
           } else if (current.state !== 'idle') throw Error('Target download state changed');
           this.requireActive();
           this.recordJournal({phase: 'pull attempted', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, before, bodyHash: this.bodyHash});
+          this.onStage('requesting');
           try { await this.remote('ota pull ' + id.toUpperCase() + ' flash'); }
           catch (error) {
             // Never repeat a pull after an uncertain response.
@@ -408,10 +413,11 @@
             catch (error) { this.requireActive(); if (attempt === 2 || !/timeout|timed out|disconnect|result is unknown/i.test(String(error.message))) throw error; await this.waitForPoll(2000); }
           }
           this.requireActive();
-          this.progress(current.status);
           if (current.id !== id) throw Error('Target download does not match the selected package');
           if (current.state === 'failed') throw Error('Target reported a failed download');
-          if (current.state === 'ready') { this.recordJournal({phase: 'ready', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, before, bodyHash: this.bodyHash}); return; }
+          if (current.state === 'ready') { this.progress(current.status); this.recordJournal({phase: 'ready', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, before, bodyHash: this.bodyHash}); return; }
+          this.onStage('transferring');
+          this.progress(current.status);
           await this.maintainTemporaryLease(current);
           await this.waitForPoll(this.pollMs);
         }
