@@ -2752,7 +2752,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.flood_channel_data_enabled = 1;
   _prefs.flood_retry_group_max_path = FLOOD_RETRY_GROUP_MAX_PATH_DEFAULT;
   _prefs.interference_threshold = 0; // disabled
-  _prefs.radio_fem_rxgain = 1;       // LoRa FEM RX gain on by default (FEM boards)
+  _prefs.radio_fem_rxgain = 0;       // LoRa FEM RX gain off by default (FEM boards)
   _prefs.cad_enabled = DEFAULT_CAD_ENABLED;
   _prefs.powersaving_enabled = DEFAULT_POWERSAVING_ENABLED ? 1 : 0;
   _prefs.rx_powersaving_enabled = DEFAULT_RXPS_ENABLED ? 1 : 0;
@@ -2777,7 +2777,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
     || defined(RX_BOOSTED_GAIN)
   _prefs.rx_boosted_gain = mesh::radio::configuredRxBoostedGainDefault();
 #endif
-  _prefs.radio_fem_rxgain = 1;
+  _prefs.radio_fem_rxgain = 0;
   _prefs.radio_fem_txgain = 0;
   // Observer defaults (alert.*, etc.) moved to applyMQTTDefaults() - they live
   // in /mqtt_prefs now, not NodePrefs.

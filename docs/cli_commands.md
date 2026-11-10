@@ -2825,6 +2825,8 @@ Station G2/G3 targets default to `off`.
 
 **Notes:**
 - This controls the external LoRa FEM receive-path LNA where the board supports it.
+- The default is `off`. Use `set radio.fem.rxgain on` to enable and save it;
+  an explicitly saved gain choice is restored on reboot.
 - This is separate from `radio.rxgain`, which controls the radio chip receive gain mode.
 - On Station G3, transmit temporarily bypasses the LNA. A gain change made
   during transmission is applied when receive mode resumes; `get` reports the

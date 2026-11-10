@@ -1625,7 +1625,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     // the upgrade (the file is rewritten in the new layout by loadPrefs afterwards).
     // Defaults for the trailing fields that older/shorter files may not contain.
     // Build-profile defaults - overwritten below when the saved field is present.
-    _prefs->radio_fem_rxgain = 1;
+    _prefs->radio_fem_rxgain = 0;
     _prefs->radio_fem_txgain = 0;
     _prefs->cad_enabled = DEFAULT_CAD_ENABLED;
     memset(_prefs->extra_sf, 0, sizeof(_prefs->extra_sf));

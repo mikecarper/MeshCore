@@ -1734,6 +1734,7 @@ jobs:
           python3 -B test/test_station_g3_radio_pins.py -v
           python3 -B test/test_station_g3_cli_dispatch.py -v
           python3 -B test/test_station_g3_fem_control.py -v
+          python3 -B test/test_tbeam_1w_fem.py -v
           python3 -B test/test_station_g3_slot_settings.py -v
           python3 -B test/test_station_g3_slot_detection.py -v
           python3 -B test/test_station_g3_boot_recovery.py -v

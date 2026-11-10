@@ -37,7 +37,7 @@ public:
 
 private:
   bool radio_powered = false;
-  bool lna_enabled = true;
+  bool lna_enabled = false;
   bool lna_driver_synced = false;
   CustomSX1262Wrapper* radio_driver = nullptr;
   bool _stopped = false;

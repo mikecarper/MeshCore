@@ -260,10 +260,10 @@ static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
 #define CMD_GET_DEFAULT_FLOOD_SCOPE   64
 #define CMD_SEND_RAW_PACKET           65
 
-#if defined(RADIO_FEM_RXGAIN) && (RADIO_FEM_RXGAIN == 0)
-static constexpr uint8_t DEFAULT_FEM_RX_GAIN = 0;
-#else
+#if defined(RADIO_FEM_RXGAIN) && (RADIO_FEM_RXGAIN == 1)
 static constexpr uint8_t DEFAULT_FEM_RX_GAIN = 1;
+#else
+static constexpr uint8_t DEFAULT_FEM_RX_GAIN = 0;
 #endif
 
 // Stats sub-types for CMD_GET_STATS

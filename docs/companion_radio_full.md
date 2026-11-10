@@ -368,6 +368,11 @@ commands control the external receive and transmit paths. The selected states
 are applied immediately and retained after reboot. FEM TX gain is reported as
 unsupported on boards without software-selectable PA gain.
 
+External FEM RX gain defaults to **off**. Enable it with
+`set radio.fem.rxgain on` when wanted; an explicitly saved choice survives
+reboot. Historical `_femon` build names remain compatible update targets and
+also ship with the RX gain default off.
+
 SSD1306 display builds also persist a runtime orientation. This replaces the
 separate rotated Full Companion release image:
 

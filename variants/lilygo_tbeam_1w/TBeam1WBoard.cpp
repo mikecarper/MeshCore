@@ -35,8 +35,8 @@ void TBeam1WBoard::begin() {
   pinMode(SX126X_POWER_EN, OUTPUT);
   powerCycleRadio();
 
-  // GPIO21/CTRL is initialized by RadioLib with the normal RXEN mode table.
-  // Do not drive it independently during board startup.
+  // radio_init() selects the requested RXEN mode table before RX is armed.
+  // Do not drive GPIO21/CTRL independently during board startup.
 
   // Initialize LED
   pinMode(LED_PIN, OUTPUT);
@@ -160,10 +160,9 @@ void TBeam1WBoard::shutdownPeripherals() {
 
 void TBeam1WBoard::attachRadioDriver(CustomSX1262Wrapper* driver) {
   radio_driver = driver;
-  // radio.std_init() installs the normal RXEN table, whose RX state is on.
-  // A setting saved while the radio was unavailable still needs to be pushed
-  // into that fresh table when the radio later recovers.
-  lna_driver_synced = lna_enabled;
+  // radio_init() installs the requested RXEN table before attaching us,
+  // including a setting saved while the radio was unavailable.
+  lna_driver_synced = driver != nullptr;
 }
 
 bool TBeam1WBoard::setLoRaFemLnaEnabled(bool enable) {
@@ -175,7 +174,6 @@ bool TBeam1WBoard::setLoRaFemLnaEnabled(bool enable) {
     return true;
   }
 
-  // The normal/default ON state is already installed by radio.std_init().
   // Avoid touching GPIO21 or reconfiguring the radio unless the desired table
   // differs from the one currently installed in the radio driver.
   if (lna_driver_synced && lna_enabled == enable) return true;

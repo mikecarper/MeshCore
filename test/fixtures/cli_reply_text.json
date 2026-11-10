@@ -1771,15 +1771,15 @@
     }
   ],
   "noncompact_tokens_sha256": {
-    "src/helpers/CommonCLI.cpp": "c01f654568af96b7d4eb503380d2a637bd46532e1b6416c9e140e195f2b67cea",
-    "examples/simple_repeater/MyMesh.cpp": "a847bef5258c777bff3d9a48a8fc74e52de3a47b4484329ebdf2b18768cf81f2",
+    "src/helpers/CommonCLI.cpp": "a68e204a8af04a95c1cddf5f136acee3e419ccd7af53b6ef53ba52024714b0e7",
+    "examples/simple_repeater/MyMesh.cpp": "3b3372cfdff09ffaf5dd7f0d6ff2da9828b5d37d488f0747413ceb83b0a93403",
     "src/helpers/RadioProfileCLI.cpp": "97ea304775ffc7c10ae7f705a1337124434af8f53ee108c1e04df88dde1c4395",
     "src/helpers/WirelessControl.h": "d96f79fbc5736d9e08d4839c76b4af5c6cfccab5d3c2f01226cdbfeed1da56c5",
     "src/helpers/PowerSavingDiagnostics.h": "18b78f5780046ea8c772c4ce6c337741ae0c027039d9399c94c5f4205d114000",
     "src/helpers/FloodAdvertCLI.h": "0f378e4d0f6c3b9b79991068a4b4208139484d2144ee1d7c5094d39043463be4",
     "src/helpers/LedSettings.cpp": "df0681234ca1337148ad59caa935857bc692f98bf18603ca6d099c0382028400",
     "src/helpers/StorageLayout.cpp": "5dd1c8bcbe2902e1f22d14f9ab425465bdc38926fae23989987d850b484cbb18",
-    "examples/companion_radio/MyMesh.cpp": "6e06d3904254d09abaec1392cf28a7029d09d1c2e3218cb1951bd54a177ac3ad",
+    "examples/companion_radio/MyMesh.cpp": "0c5650ad6b6c718fd06bcd0d27722c8868affe1746e724a5ff700d146ffe4ed5",
     "src/helpers/CommonRadioPrefs.cpp": "de964f85c2645ff238cdd75fefdf15c97a09edcd5fff953375e0c02238c5db5c",
     "examples/companion_radio/CompanionRetry.h": "e0ae10c7b2f778346f4645c4e147d87e1fbc7f8b99484752a8eed914bb21380f",
     "examples/companion_radio/Notifications.cpp": "74983770da7bcdf89af1b3e231bcf8058864e486cb99a425a369db859bd0ae43",

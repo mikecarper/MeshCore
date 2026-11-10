@@ -108,8 +108,10 @@ int main() {
     };
     assert(physical(lna) == HIGH && physical(inactive) == HIGH);
     const unsigned inactive_writes = g3_gpio_writes[inactive];
+    assert(!board.isLoRaFemLnaEnabled());
     board.loRaFEMControl.setRxModeEnable();
-    assert(physical(lna) == LOW && physical(inactive) == HIGH);
+    assert(physical(lna) == HIGH && physical(inactive) == HIGH); // Fresh default is bypass.
+    set_rx(true); assert(physical(lna) == LOW); // Explicit saved/user ON remains available.
     set_rx(false); assert(physical(lna) == HIGH);
     set_rx(true); assert(physical(lna) == LOW);
     // The actual board callbacks establish packet TX bypass until retirement.

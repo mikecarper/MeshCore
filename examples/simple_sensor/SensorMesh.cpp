@@ -1348,7 +1348,7 @@ SensorMesh::SensorMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::Millise
   _prefs.flood_channel_data_enabled = 1;
   _prefs.flood_retry_group_max_path = FLOOD_RETRY_GROUP_MAX_PATH_DEFAULT;
   _prefs.interference_threshold = 0;  // disabled
-  _prefs.radio_fem_rxgain = 1;        // LoRa FEM RX gain on by default (FEM boards)
+  _prefs.radio_fem_rxgain = 0;        // LoRa FEM RX gain off by default (FEM boards)
   _prefs.cad_enabled = DEFAULT_CAD_ENABLED;
   _prefs.powersaving_enabled = DEFAULT_POWERSAVING_ENABLED ? 1 : 0;
   _prefs.rx_powersaving_enabled = DEFAULT_RXPS_ENABLED ? 1 : 0;
@@ -1364,7 +1364,7 @@ SensorMesh::SensorMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::Millise
   _prefs.gps_enabled = 0;
   _prefs.gps_interval = 0;
   _prefs.advert_loc_policy = DEFAULT_ADVERT_LOC_POLICY;
-  _prefs.radio_fem_rxgain = 1;
+  _prefs.radio_fem_rxgain = 0;
   _prefs.radio_fem_txgain = 0;
 
   memset(default_scope.key, 0, sizeof(default_scope.key));
