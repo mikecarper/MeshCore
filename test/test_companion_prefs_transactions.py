@@ -283,7 +283,7 @@ int main() {
   // Exercise the formatted terminal errors themselves, including the compact
   // prose used by constrained boards. Invalid values must not touch storage.
   const char* invalid_terminal[][2]={
-    {"af -1",MESH_CLI_REPLY_TEXT("airtime factor must be 0-9", "airtime factor 0-9")},
+    {"af -1",MESH_CLI_REPLY_TEXT("airtime factor must be 0-9", "airtime 0-9")},
     {"lat -91",MESH_CLI_REPLY_TEXT("latitude must be -90 to 90", "latitude -90 to 90")},
     {"lon 181",MESH_CLI_REPLY_TEXT("longitude must be -180 to 180", "longitude -180 to 180")},
   };
