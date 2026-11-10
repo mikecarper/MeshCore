@@ -30,6 +30,13 @@ budget. On chips other than classic ESP32, the late-reclaimed ROM stack region
 is excluded because its silicon-specific reservations are only known at boot.
 Classic ESP32 additionally retains its existing 8 KiB **static DRAM** check.
 
+The Generic ESP-NOW Full Companion starts its browser terminal scrollback at
+2 KiB; it can grow to 32 KiB when sufficient internal heap is available. The
+Heltec Wireless Stick Lite V3 Full Companion places 32 existing offline frames
+in each RTC bank, retaining its 350 contacts and 256-frame queue. These
+board-specific layouts retain the normal runtime RAM qualification and do not
+count RTC memory as internal heap.
+
 The policy adds allowances for task stacks, radio packet pools, screen objects
 and pixel buffers, filesystem/sensor allocations, enabled wireless stacks,
 MQTT connections, OTA scratch and transient allocations. ESP32 images with

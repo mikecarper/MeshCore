@@ -11,6 +11,8 @@ def enabled(platform, mcu, board, target):
          and re.fullmatch(r"LilyGo_T3S3_(?:repeater(?:_bridge_espnow|_observer_mqtt)?|"
                           r"room_server(?:_observer_mqtt)?|kiss_modem|terminal_chat|"
                           r"companion_radio_(?:usb|ble|full)(?:_ps)?)", target) is not None)
+        or (mcu == "esp32s3" and board == "ebyte_eora-s3"
+            and target == "Ebyte_EoRa-S3_repeater_observer_mqtt")
         or (mcu == "esp32" and board == "ttgo-t-beam"
             and target in ("Tbeam_repeater_observer_mqtt", "Tbeam_room_server_observer_mqtt"))))
 

@@ -34,6 +34,47 @@ class Environment(dict):
 
 
 class UniversalRadioLtoTests(unittest.TestCase):
+    def test_ebyte_observer_compile_base_has_lto_link_support(self):
+        env = Environment(board="ebyte_eora-s3", target="Ebyte_EoRa-S3_repeater_observer_mqtt")
+        self.assertTrue(POLICY.install(env))
+        for flag in POLICY.LINK_FLAGS:
+            self.assertIn(flag, env["LINKFLAGS"])
+        for target in ("Ebyte_EoRa-S3_room_server_observer_mqtt", "Ebyte_EoRa-S3_Repeater"):
+            with self.subTest(target=target):
+                self.assertFalse(POLICY.install(Environment(board="ebyte_eora-s3", target=target)))
+
+    def test_ebyte_lto_is_selected_only_for_its_exact_full_repeater(self):
+        source = (ROOT / "build_legacy.sh").read_text()
+        start = source.index("apply_esp32_full_size_profile() {")
+        function = source[start:source.index("\n}\n", start) + 2]
+        script = r'''
+ESP32_FULL_BUILD="$1"
+ESP32_FULL_MAX_NEIGHBOURS=254
+DRAM_LIMITED_MAX_NEIGHBOURS=50
+PLATFORMIO_BUILD_FLAGS=""
+PLATFORMIO_EXTRA_SCRIPTS=""
+declare -A PIO_ENV_FULL_WIFI_OTA_BY_NAME=()
+supports_esp32_full_build() { return 0; }
+is_room_server_role_target() { return 1; }
+requires_dram_limited_neighbors() { return 1; }
+requires_esp32_companion_full_ota_fallback() { return 1; }
+append_platformio_build_unflags() { :; }
+append_platformio_extra_script() { PLATFORMIO_EXTRA_SCRIPTS+="$1"; }
+record_build_reduction() { :; }
+''' + function + r'''
+apply_esp32_full_size_profile "$2"
+printf '%s\n%s\n' "$PLATFORMIO_BUILD_FLAGS" "$PLATFORMIO_EXTRA_SCRIPTS"
+'''
+        for full, target, expected in (("1", "Ebyte_EoRa-S3_Repeater", True),
+                                       ("0", "Ebyte_EoRa-S3_Repeater", False),
+                                       ("1", "Ebyte_EoRa-S3_room_server", False),
+                                       ("1", "Ebyte_EoRa-S3_repeater_observer_mqtt", False)):
+            with self.subTest(full=full, target=target):
+                result = subprocess.run(["bash", "-c", script, "test", full, target],
+                                        capture_output=True, text=True, check=True)
+                self.assertEqual("-DMESH_UNIVERSAL_LTO=1" in result.stdout, expected)
+                self.assertEqual("post:scripts/esp32_universal_radio_lto.py" in result.stdout, expected)
+
     def test_link_flags_preserve_existing_linker_and_archive_configuration(self):
         env = Environment()
         before = copy.deepcopy(dict(env))

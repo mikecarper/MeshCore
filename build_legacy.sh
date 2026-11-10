@@ -3977,6 +3977,13 @@ apply_esp32_full_size_profile() {
   fi
 
   case "${env_name,,}" in
+    ebyte_eora-s3_repeater)
+      # Keep the complete Full repeater inside its existing dual-OTA slots.
+      # The observer is the compile base, while the requested target keeps its
+      # own OTA identity. Use the qualified S3 LTO linker and codegen flags.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -flto -flto-partition=one -DMESH_UNIVERSAL_LTO=1 -ffunction-sections -fdata-sections -mtext-section-literals -mlongcalls"
+      append_platformio_extra_script "post:scripts/esp32_universal_radio_lto.py"
+      ;;
     heltec_wireless_tracker_repeater|heltec_wireless_tracker_repeater_observer_mqtt)
       # Retain all flood rules and neighbor records. Browser scrollback grows
       # dynamically beyond this initial size when sufficient heap is free.
@@ -4766,7 +4773,10 @@ apply_companion_radio_full_profile() {
       else
         # Keep all 224 frames during OTA too; RTC FAST holds 32 existing
         # slots without borrowing the queue or shrinking held-DM storage.
-        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32"
+        # The terminal can grow its initial scrollback when heap permits.
+        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048"
+        record_build_reduction \
+          "web.terminal initial scrollback 2048 bytes; grows up to 32768 bytes when memory permits"
       fi
       record_build_reduction \
         "companion.capacity limited to 100 contacts for runtime RAM; 224 queued frames and all Full transports retained"
@@ -4780,6 +4790,11 @@ apply_companion_radio_full_profile() {
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100 -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32"
       record_build_reduction \
         "companion.capacity limited to 100 contacts for runtime RAM; 256 queued frames and all Full transports retained"
+      ;;
+    heltec_wsl3_companion_radio_full)
+      # Keep all 350 contacts and 256 queue frames. Move existing CPU-only
+      # frames into the two qualified ESP32-S3 RTC banks; no OTA borrowing.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32"
       ;;
     heltec_wireless_tracker_companion_radio_full)
       append_platformio_build_unflags "-DMAX_CONTACTS=350"

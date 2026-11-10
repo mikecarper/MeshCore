@@ -1862,6 +1862,8 @@ printf '%s\\n' "$PLATFORMIO_BUILD_FLAGS"
                     self.assertNotIn("-DOTA_SHARED_COMPANION_QUEUE", result.stdout)
             if target in ("Heltec_v3_companion_radio_full", "generic_espnow_companion_radio_full"):
                 self.assertNotIn("-DONE_KEY_DM_COMPACT_HELD", result.stdout)
+            if target == "generic_espnow_companion_radio_full":
+                self.assertIn("-DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048", result.stdout)
             if target == "Heltec_Wireless_Paper_companion_radio_full":
                 self.assertIn("-DONE_KEY_DM_COMPACT_HELD=1", result.stdout)
             self.assertNotIn("-DOTA_PRESERVE_UNREAD_ON_BORROW=1", result.stdout)
@@ -1869,6 +1871,24 @@ printf '%s\\n' "$PLATFORMIO_BUILD_FLAGS"
                 self.assertIn("-DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32", result.stdout)
             self.assertIn("-DWIFI_OTA_SEEDER=1", result.stdout)
             self.assertIn("-DBLE_PIN_CODE=123456", result.stdout)
+
+    def test_wsl3_full_moves_queue_to_rtc_without_reducing_capacity(self):
+        result = subprocess.run(["bash", "-c", '''
+source build.sh
+PIO_ENV_PLATFORM_BY_NAME["$1"]=ESP32_PLATFORM
+pio_env_option_contains() { return 0; }
+requires_esp32_companion_full_ota_fallback() { return 1; }
+apply_companion_radio_full_profile "$1" "$1"
+printf '%s\\n' "$PLATFORMIO_BUILD_FLAGS"
+''', "test", "Heltec_WSL3_companion_radio_full"], cwd=ROOT, text=True,
+            capture_output=True, check=True)
+        self.assertIn("-DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32", result.stdout)
+        self.assertIn("-DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32", result.stdout)
+        self.assertNotIn("-DMAX_CONTACTS=100", result.stdout)
+        self.assertNotIn("-DOFFLINE_QUEUE_SIZE=", result.stdout)
+        self.assertNotIn("-DOTA_SHARED_COMPANION_QUEUE", result.stdout)
+        self.assertIn("-DWIFI_OTA_SEEDER=1", result.stdout)
+        self.assertIn("-DBLE_PIN_CODE=123456", result.stdout)
 
     def test_compact_held_dm_is_limited_to_selected_full_layouts(self):
         selected = {
