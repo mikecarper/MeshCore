@@ -254,10 +254,8 @@ public:
     if (route != _ota_direct_usb_route) {
       closeDirectOtaAdmin();
       _ota_direct_radio_profile = 0;
-      if (_ota_direct_usb_route) _ota_direct_usb_route->setUsbRawPacketReceive(false);
     }
     _ota_direct_usb_route = route;
-    if (route) route->setUsbRawPacketReceive(true);
   }
 #endif
 

@@ -4181,6 +4181,9 @@ void setup() {
                              USB_TERMINAL_START_TOKEN);
 #endif
   // keep frames intact and pace the contact stream when the host is slow
+  // Full-size raw OTA packets are a USB framing capability in every Companion
+  // profile; they do not require the optional guarded-OTA firmware features.
+  usb_serial_interface.setUsbRawPacketReceive(true);
   usb_serial_interface.enableFlowControl(true);
   usb_serial_interface.setReceiveFrameCheck(acceptUsbBinaryStartupFrame);
 #if MESH_ENABLE_HOST_KISS

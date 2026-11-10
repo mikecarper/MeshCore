@@ -6887,7 +6887,6 @@ bool MyMesh::handleDirectOtaCommand(const char* command, uint32_t timestamp,
                                     char* reply, size_t capacity) {
   const bool status = !strcmp(command, "get ota.direct");
   const bool capabilities = !strcmp(command, "get ota.direct.capabilities");
-  const bool raw_capacity = !strcmp(command, "get usb.raw.max");
   const bool radio = !strcmp(command, "get ota.direct.radio");
   static const char set_radio[] = "set ota.direct.radio";
   const size_t set_radio_len = sizeof(set_radio) - 1;
@@ -6897,7 +6896,7 @@ bool MyMesh::handleDirectOtaCommand(const char* command, uint32_t timestamp,
   const size_t prefix_len = sizeof(prefix) - 1;
   const bool result = !strncmp(command, prefix, prefix_len)
       && (command[prefix_len] == 0 || command[prefix_len] == ' ');
-  if ((!status && !capabilities && !raw_capacity && !radio && !select_radio && !result) || timestamp != 0) return false;
+  if ((!status && !capabilities && !radio && !select_radio && !result) || timestamp != 0) return false;
   if (!_ota_direct_usb_route || _serial->captureReplyRoute() != _ota_direct_usb_route) {
     snprintf(reply, capacity, "ERR ota.direct requires physical USB");
     return true;
@@ -6910,10 +6909,6 @@ bool MyMesh::handleDirectOtaCommand(const char* command, uint32_t timestamp,
   }
   if (capabilities) {
     snprintf(reply, capacity, "> ota.direct.cap guarded_cli=1 guarded_radio=1");
-    return true;
-  }
-  if (raw_capacity) {
-    snprintf(reply, capacity, "> %u", (unsigned)_ota_direct_usb_route->usbRawPacketReceiveCapacity());
     return true;
   }
   if (radio) {
@@ -11733,6 +11728,19 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     *reply = 0;
     command += 3;
     while (*command == ' ' || *command == '\t') command++;
+  }
+
+  if (!strcmp(command, "get usb.raw.max")) {
+    if (sender_timestamp != 0) {
+      snprintf(reply, reply_capacity, "ERR usb.raw.max requires a local transport");
+    } else {
+      BaseSerialInterface* route = _serial ? _serial->captureReplyRoute() : nullptr;
+      // Only the physical USB backend opts in to extended raw receive. BLE,
+      // WiFi and auxiliary UARTs report the unchanged ordinary frame limit.
+      snprintf(reply, reply_capacity, "> %u", (unsigned)(route
+          ? route->usbRawPacketReceiveCapacity() : MAX_FRAME_SIZE));
+    }
+    return true;
   }
 
 #if MESH_ENABLE_FLEET_CONTROL

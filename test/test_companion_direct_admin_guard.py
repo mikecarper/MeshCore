@@ -51,9 +51,6 @@ struct ContactInfo {
 };
 struct BaseSerialInterface {
   BaseSerialInterface* route=this;BaseSerialInterface* captureReplyRoute(){return route;}
-  bool raw_usb=false;
-  void setUsbRawPacketReceive(bool enabled){raw_usb=enabled;}
-  size_t usbRawPacketReceiveCapacity()const{return raw_usb?188:176;}
   std::vector<std::vector<uint8_t>> frames;
   bool isConnected()const{return true;}
   void writeFrame(const uint8_t* data,size_t length){frames.emplace_back(data,data+length);}
@@ -316,14 +313,10 @@ int main(){
   // Profile selection is a USB-owned RAM setting. Merely enabling radio2 is
   // insufficient: it must be a live temporary MeshCore RXTX profile.
   MyMesh secondary;
-  secondary.setDirectAdminUsbRoute(&secondary.wire);
-  assert(secondary.command("get usb.raw.max",0,reply)&&!strcmp(reply,"> 188"));
-  assert(!secondary.command("get usb.raw.max",1,reply));
   assert(secondary.command("get ota.direct.radio",0,reply));
   assert(!strcmp(reply,"> ota.direct.radio v=1 profile=radio"));
   assert(!secondary.command("set ota.direct.radio radio2",1,reply));
   secondary.wire.route=&foreign;
-  assert(secondary.command("get usb.raw.max",0,reply)&&strstr(reply,"physical USB"));
   assert(secondary.command("set ota.direct.radio radio2",0,reply)&&strstr(reply,"physical USB"));
   assert(secondary._ota_direct_radio_profile==0);secondary.wire.route=&secondary.wire;
   assert(secondary.command("set ota.direct.radio radio3",0,reply)&&strstr(reply,"ERR use"));

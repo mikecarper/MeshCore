@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from test_replay_reset_integration import extract_braced
 
 ROOT = Path(__file__).resolve().parents[1]
 HARNESS = r'''
@@ -29,6 +30,15 @@ std::vector<uint8_t> wire(size_t length,uint8_t command=65){
   if(length)b[3]=command;
   if(length>1)b[4]=1;
   return b;
+}
+void initializeUsb(ArduinoSerialInterface& usb_serial_interface) {
+  @USB_OPT_IN@
+}
+bool capacityQuery(BaseSerialInterface* _serial, const char* command,
+                   uint32_t sender_timestamp, char* reply) {
+  const size_t reply_capacity=160;
+  @CAPACITY_QUERY@
+  return false;
 }
 int main(){
   static_assert(MAX_FRAME_SIZE==176,"normal frame/offline queues must remain unchanged");
@@ -72,6 +82,19 @@ int main(){
   // RX extension does not grow ordinary TX response frames.
   {Port p;ArduinoSerialInterface usb;usb.begin(p);usb.enable();usb.setUsbRawPacketReceive(true);
    uint8_t out[188]={};assert(usb.writeFrame(out,176)==176);assert(usb.writeFrame(out,177)==0);}
+  // The exact production USB initialization and common CLI query work with
+  // optional guarded-OTA features both enabled and compiled out.
+  {Port p;ArduinoSerialInterface usb,auxiliary;usb.begin(p);initializeUsb(usb);
+   assert(usb.usbRawPacketReceiveCapacity()==188);
+   assert(auxiliary.usbRawPacketReceiveCapacity()==176);
+   MultiSerialInterface manager;assert(manager.addInterface(InterfaceType::USB,&usb));manager.enable();
+   auto b=wire(188);p.push(b,0,b.size());uint8_t out[188];assert(manager.checkRecvFrame(out,sizeof(out))==188);
+   char reply[160]={};
+   assert(capacityQuery(&manager,"get usb.raw.max",0,reply)&&!strcmp(reply,"> 188"));
+   assert(capacityQuery(&auxiliary,"get usb.raw.max",0,reply)&&!strcmp(reply,"> 176"));
+   assert(capacityQuery(nullptr,"get usb.raw.max",0,reply)&&!strcmp(reply,"> 176"));
+   assert(capacityQuery(&manager,"get usb.raw.max",1,reply)&&strstr(reply,"ERR"));
+   assert(!capacityQuery(&manager,"other",0,reply));}
   std::printf("PASS: USB raw188 framing, all splits, limits, routes; serial_size=%zu\n",sizeof(ArduinoSerialInterface));
 }
 '''
@@ -84,17 +107,31 @@ class CompanionUsbRawFrameCapacityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='meshcore-usb-raw188-') as directory:
             work = Path(directory)
             source = work / 'test.cpp'
-            source.write_text(HARNESS)
+            main = (ROOT/'examples/companion_radio/main.cpp').read_text()
+            mesh = (ROOT/'examples/companion_radio/MyMesh.cpp').read_text()
+            opt_in = 'usb_serial_interface.setUsbRawPacketReceive(true);'
+            self.assertEqual(main.count(opt_in),1)
+            start = main.index('usb_serial_interface.begin(mesh::usbCompanionPort()')
+            end = main.index('usb_serial_interface.enableFlowControl(true);',start)
+            self.assertIn(opt_in,main[start:end])
+            self.assertNotIn('COMPANION_FEATURE_DIRECT_OTA_ADMIN',main[start:end])
+            common = extract_braced(mesh,'bool MyMesh::handleCommand(')
+            query = extract_braced(common,'if (!strcmp(command, "get usb.raw.max"))')
+            self.assertLess(common.index('get usb.raw.max'),common.index('#if COMPANION_FEATURE_DIRECT_OTA_ADMIN'))
+            source.write_text(HARNESS.replace('@USB_OPT_IN@',opt_in).replace('@CAPACITY_QUERY@',query))
             binary = work / 'usb-raw188'
-            built = subprocess.run([compiler,'-std=c++17','-fsanitize=address,undefined',
-                '-fno-sanitize-recover=all','-fno-pie','-no-pie',
-                '-I'+str(ROOT/'test/mocks'),'-I'+str(ROOT/'src'),str(source),
-                str(ROOT/'src/helpers/ArduinoSerialInterface.cpp'),'-o',str(binary)],
-                capture_output=True,text=True,timeout=60)
-            self.assertEqual(built.returncode,0,built.stdout+built.stderr)
-            checked = subprocess.run([str(binary)],capture_output=True,text=True,timeout=30)
-            self.assertEqual(checked.returncode,0,checked.stdout+checked.stderr)
-            self.assertIn('PASS: USB raw188 framing',checked.stdout)
+            for full in (0,1):
+                with self.subTest(guarded_features=full):
+                    built = subprocess.run([compiler,'-std=c++17','-fsanitize=address,undefined',
+                        '-fno-sanitize-recover=all','-fno-pie','-no-pie',
+                        '-DCOMPANION_FEATURE_DIRECT_OTA_ADMIN='+str(full),
+                        '-I'+str(ROOT/'test/mocks'),'-I'+str(ROOT/'src'),str(source),
+                        str(ROOT/'src/helpers/ArduinoSerialInterface.cpp'),'-o',str(binary)],
+                        capture_output=True,text=True,timeout=60)
+                    self.assertEqual(built.returncode,0,built.stdout+built.stderr)
+                    checked = subprocess.run([str(binary)],capture_output=True,text=True,timeout=30)
+                    self.assertEqual(checked.returncode,0,checked.stdout+checked.stderr)
+                    self.assertIn('PASS: USB raw188 framing',checked.stdout)
 
 if __name__=='__main__':
     unittest.main()
