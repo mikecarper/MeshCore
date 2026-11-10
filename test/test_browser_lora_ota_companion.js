@@ -82,8 +82,11 @@ async function run(){
   assert.equal(new Set(sent.map(s=>s.slice(0,3))).size,18);
   assert(events.some(e=>e.stage==='retrying-command'&&e.command==='get public.key'&&e.attempt===6&&e.maxAttempts===7));
   assert(events.some(e=>e.stage==='waiting-reply'&&e.command==='ota status'&&e.attempt===11&&e.maxAttempts===11));
-  const before=sent.length;
-  await assert.rejects(()=>retryLink.investigateCommand(key,'','set tx 9'),/read.only/i);
+  assert.equal(await retryLink.investigateCommand(key,'','ota ram'),'> 9');
+  assert.equal(retry.remoteAttempts['ota ram'],1);
+  const before=retry.frames.filter(f=>f[0]===2).length;
+  for(const command of ['set tx 9','ota ram extra','ota ram;reboot'])
+    await assert.rejects(()=>retryLink.investigateCommand(key,'',command),/read.only/i);
   assert.equal(retry.frames.filter(f=>f[0]===2).length,before);
   let calls=0;retryLink.remoteReply=async()=>{calls++;const e=Error('Remote command timed out; result is unknown');e.loraReplyTimeout=true;throw e;};
   await assert.rejects(()=>retryLink.investigateCommand(key,'','ota self'),e=>e.loraReplyTimeout&&e.attempts===11);assert.equal(calls,11);

@@ -444,7 +444,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 #if defined(NRF52_PLATFORM) && defined(OTA_RAK15002_SD_STORE) && !defined(OTA_SEEDER_ONLY)
   // Radio/USB startup and status remain independent of removable storage.
   // Explicit transfer/catalog/cache work may prepare it at this main-loop boundary.
-  if (!is_cmd(a, "qspi|storage|self|id|stats|pace|wire|help|?|h", &rest)) c.prepareRakStorage();
+  if (!is_cmd(a, "qspi|storage|self|id|ram|stats|pace|wire|help|?|h", &rest)) c.prepareRakStorage();
 #endif
   if (is_cmd(a, "neighbors|nbrs|updates|ls|n", &rest))
     return handle_neighbors(rest, reply, c);
@@ -464,7 +464,7 @@ static __attribute__((noinline)) bool handle_control_command(
   if (is_cmd(a, "help|?|h", &rest)) {
 #if defined(OTA_SEEDER_ONLY)
     snprintf(reply, 160,
-      "OTA seeder: status | stats | ls=find images | get <id> folder=capture | cancel | "
+      "OTA seeder: status | stats | ram | ls=find images | get <id> folder=capture | cancel | "
       "announce | folder | "
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
       "cache | "
@@ -475,15 +475,15 @@ static __attribute__((noinline)) bool handle_control_command(
 #if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
     strcpy(reply,
       "OTA: status | stats | ls | get <id> flash | install | "
-      "bootloader | cancel | announce | self | folder | config | key");
+      "bootloader | cancel | announce | self | ram | folder | config | key");
 #else
     strcpy(reply,
       "OTA: status | stats | ls | get <id> flash [rescue] | install | rescue install <hash16> | "
-      "cancel | announce | self | folder | config | key");
+      "cancel | announce | self | ram | folder | config | key");
 #endif
 #elif defined(NRF52_PLATFORM) && defined(OTA_RAK_AUTO_STORE)
     strcpy(reply,
-      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | serve | storage | folder | "
+      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | ram | serve | storage | folder | "
 #if defined(OTA_RAK15002_SD_STORE)
       "cache | "
 #endif
@@ -491,32 +491,32 @@ static __attribute__((noinline)) bool handle_control_command(
 #elif defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
 #if defined(OTA_QSPI_BOOTLOADER_UPDATE)
     strcpy(reply,
-      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | serve | "
+      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | ram | serve | "
       "qspi | folder | config | key");
 #else
     strcpy(reply,
-      "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | serve | qspi | "
+      "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | ram | serve | qspi | "
       "folder | config | key");
 #endif
 #elif defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
 #if defined(OTA_TOWER_AUTO_STORE)
     strcpy(reply,
-      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | serve | "
+      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | ram | serve | "
       "storage | folder | cache | config | key");
 #else
 #if defined(OTA_SD_BOOTLOADER_UPDATE)
     strcpy(reply,
-      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | serve | "
+      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | ram | serve | "
       "folder | cache | config | key");
 #else
     strcpy(reply,
-      "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | serve | folder | "
+      "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | ram | serve | folder | "
       "cache | config | key");
 #endif
 #endif
 #else
     snprintf(reply, 160,
-      "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | serve | folder | "
+      "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | ram | serve | folder | "
       "cache | config | key. `ota ls [page]`; folder [validate].");
 #endif
 
@@ -931,6 +931,18 @@ static __attribute__((noinline)) bool handle_control_command(
     c.manager.announce();
     sprintf(reply, "OK beacon sent (serving=%s)", c.serving ? "self fw" : "nothing");
 #endif
+
+  // ---- exact installed bootloader retained-RAM capability (read-only) ----
+  } else if (is_cmd(a, "ram", &rest)) {
+    if (*rest) {
+      strcpy(reply, "ERR usage: ota ram");
+    } else {
+#if defined(NRF52_PLATFORM)
+      ota_ram_caps_reply(reply, 160, ota_bootloader_ram_caps());
+#else
+      strcpy(reply, "OTA RAM: hybrid=0");
+#endif
+    }
 
   // ---- raw-QSPI staging diagnostics (read-only probe; preserves a latched fetch failure) ----
   } else if (is_cmd(a, "qspi|storage", &rest)) {

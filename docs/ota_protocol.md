@@ -1038,12 +1038,19 @@ ota bootloader install <MID8> <HASH16>
 ota cancel | drop | stop           drop the fetch; durably invalidate device staging, or retain a folder partial for resume
 ota announce | adv                 serve self + send a beacon now
 ota self | id                      print this firmware's EndF (body/image size, base_hash)
+ota ram                            read installed nRF52 bootloader hybrid-RAM capability
 ota qspi | storage                 QSPI nRF52 only: JEDEC/SR1/stage/latched storage error (read-only)
 ota folder | fold [on|off]         attach/detach an external .mota folder (host daemon) ; bare = list
 ota config | cfg | set [autofetch|autoinstall|checkpoint] ...   show/set persisted policy
 ota key | keys [add|rm <hex>]      trusted signer allowlist ; bare = list
 ota dev ...                        bring-up helpers (stage/recv/serve/resume <MID8>/verify)
 ```
+
+`ota ram` is a read-only capability diagnostic. A supported nRF52 hybrid
+bootloader reports `OTA RAM: hybrid=1 abi=1 record=72 arena=65536`; a target
+without confirmed support reports `OTA RAM: hybrid=0`. Firmware predating the
+diagnostic may report an unknown command. An updater must not infer support
+from the firmware version or from a missing or malformed reply.
 
 `ota installhash` takes the full SHA-256 of the `.mota` container, with its
 four approval bytes at offsets 201–204 replaced by zero before hashing. The

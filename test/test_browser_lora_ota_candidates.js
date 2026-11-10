@@ -96,8 +96,22 @@ test('hybrid internal package above one flash page is excluded without runtime M
     const current={node:'a',version:parsed.fwVersion,targetId:parsed.targetId,hwId:parsed.hwId,bodyHash:Buffer.from(parsed.bodyHash).toString('hex')};
     const worker=(a,b,o)=>delta.buildInPlaceDelta(a,b,o);
     assert.ok((await worker(base,next,c)).blob.length>4096);
-    await assert.rejects(candidates.prepare({images:[{id:'a',bytes:base,capabilities:c},{id:'b',bytes:next}],current,goal:'b'},{buildDelta:worker}),/MOTARAMA/);
+    await assert.rejects(candidates.prepare({images:[{id:'a',bytes:base,capabilities:c},{id:'b',bytes:next}],current,goal:'b'},{buildDelta:worker}),/RAM capability/);
   }
+});
+
+test('large hybrid candidate requires fresh exact runtime RAM proof at each step',async()=>{
+  const base=await hybridImage(0x01110001,1,0x10), next=await hybridImage(0x01110002,2,0x10), parsed=await mota.parseEndF(base);
+  const proof='OTA RAM: hybrid=1 abi=1 record=72 arena=65536';
+  const c={otaConfirmed:true,nrf:true,external:false,sd:false,maxBlock:1024,codecs:[2],
+    runtimeStorage:'internal',runtimeStageCeiling:0xED000,runtimeHybridRam:proof};
+  const current={node:'a',version:parsed.fwVersion,targetId:parsed.targetId,hwId:parsed.hwId,bodyHash:Buffer.from(parsed.bodyHash).toString('hex')};
+  const result=await candidates.prepare({images:[{id:'a',bytes:base,capabilities:c},{id:'b',bytes:next}],current,goal:'b'},
+    {buildDelta:(a,b,o)=>delta.buildInPlaceDelta(a,b,o)});
+  assert.ok(result.steps[0].package.blob.length>4096);
+  await candidates.checkStep(result,0,{...c,...current});
+  for(const invalid of [undefined,'OTA RAM: hybrid=0',proof+' hybrid=1'])
+    await assert.rejects(candidates.checkStep(result,0,{...c,...current,runtimeHybridRam:invalid}),/RAM capability/);
 });
 
 test('small hybrid internal packages and confirmed adaptive QSPI remain available',async()=>{

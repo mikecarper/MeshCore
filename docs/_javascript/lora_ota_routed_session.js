@@ -67,8 +67,9 @@
         }
       }
       checks.validate(this.info, dest, this.signerVerified);
+      const hybridRamReply = await checks.readHybridRam(this.inplacePlan, this.info, () => this.remote('ota ram'));
       checks.validateInternalPlan(this.inplacePlan, this.info, status, self, dest,
-        this.inplacePlan?.storage === 'qspi' ? await this.remote('ota qspi') : null);
+        this.inplacePlan?.storage === 'qspi' ? await this.remote('ota qspi') : null, hybridRamReply);
       if (!this.info.isFull && this.info.codecId === 1)
         await checks.ensureSequentialTarget(status, self, () => this.link.remoteCommand(this.key, this.password, 'get bootloader.ver'));
       if (this.info.signed) {
@@ -85,8 +86,15 @@
       ];
       let shared = null;
       for (const {label, relay, command} of participants) {
-        const primary = direct.temp(await command('get radio'));
-        const active = direct.temp(await command('get tempradio'));
+        let primary, active;
+        try { primary = direct.temp(await command('get radio')); }
+        catch (_) { throw Error(label + ': cannot read saved primary radio settings'); }
+        try { active = direct.temp(await command('get tempradio')); }
+        catch (error) {
+          if (/active temporary radio window is required/i.test(String(error && error.message)))
+            throw Error(label + ': an active temporary radio window is required');
+          throw Error(label + ': cannot read active temporary radio settings');
+        }
         if (!sameRadio(primary, active)) throw Error(label + ' temporary radio must match its saved primary radio');
         if (shared && !sameRadio(primary, shared)) throw Error('Source, relays and target must use the same radio settings');
         shared = primary;

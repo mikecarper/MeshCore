@@ -55,15 +55,17 @@ async function run(){
   assert.equal(await t.remoteCommand(key,'','ota install'),'OK');
   assert.equal(await t.remoteCommand(key,'','ota installhash '+'a'.repeat(64)),'OK');
   assert.equal(await t.remoteCommand(key,'','ota cancel'),'OK');
-  for(const command of ['ota cancel all','ota cancel 1234ABCD','ota cancel;reboot'])
+  assert.equal(await t.remoteCommand(key,'','ota ram'),'OK');
+  for(const command of ['ota cancel all','ota cancel 1234ABCD','ota cancel;reboot','ota ram extra','ota ram;reboot'])
     await assert.rejects(()=>t.remoteCommand(key,'',command),/approved OTA/);
   await assert.rejects(()=>t.remoteCommand(key,'','set tx 9'),/approved OTA/);
   t.investigationVerified=false;await assert.rejects(()=>t.remoteCommand(key,'','ota install'),/full public key/);
-  assert.equal(sent.length,4);
+  assert.equal(sent.length,5);
   t.investigationVerified=true;let attempts=0;
   t.standardReply=async()=>{attempts++;const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;throw error;};
   await assert.rejects(()=>t.remoteCommand(key,'','ota install'),/timed out/);assert.equal(attempts,1);
   attempts=0;await assert.rejects(()=>t.remoteCommand(key,'','ota status'),e=>e.loraReplyTimeout===true&&e.attempts===11);assert.equal(attempts,11);
+  attempts=0;await assert.rejects(()=>t.remoteCommand(key,'','ota ram'),e=>e.loraReplyTimeout===true&&e.attempts===11);assert.equal(attempts,11);
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:previousNavigator});
 
   // Current and older temp-radio response formats both supply pacing data.

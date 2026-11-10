@@ -178,6 +178,12 @@ reports `188`. A Companion without either capability needs updated firmware;
 the page checks before changing the target. Older remote devices remain
 supported when their firmware includes compatible LoRa OTA.
 
+For generated nRF52 hybrid internal-storage updates larger than one flash page,
+the updater checks the target's bootloader RAM capability before starting and
+checks it again for each intermediate update. If the running firmware cannot
+confirm that capability, those updates are unavailable; smaller updates are not
+affected by this check.
+
 ## Setup and advanced details
 
 <details id="regional-update-defaults" markdown="1">

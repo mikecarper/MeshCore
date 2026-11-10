@@ -292,8 +292,9 @@
         }
       }
       checks.validate(this.info, dest, this.signerVerified);
+      const hybridRamReply = await checks.readHybridRam(this.inplacePlan, this.info, () => this.remote('ota ram'));
       checks.validateInternalPlan(this.inplacePlan, this.info, status, self, dest,
-        this.inplacePlan?.storage === 'qspi' ? await this.remote('ota qspi') : null);
+        this.inplacePlan?.storage === 'qspi' ? await this.remote('ota qspi') : null, hybridRamReply);
       if (!this.info.isFull && this.info.codecId === 1)
         await checks.ensureSequentialTarget(status, self, () => this.link.remoteCommand(this.key, this.password, 'get bootloader.ver'));
       if (this.info.signed) {

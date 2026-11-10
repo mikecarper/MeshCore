@@ -27,5 +27,14 @@ assert.equal(checks.internalStage('bl:apply', 'bootloader: apply OK (abi=3 codec
 assert.throws(() => checks.internalStage('bl:QSPI', 'bootloader: QSPI apply OK', {...internal, external:true}), /internal/);
 assert.throws(() => checks.internalStage('bl:QSPI', 'internal store:256K bootloader: apply OK', internal), /internal/);
 assert.throws(() => checks.validateInternalPlan({storage:'internal', app:0x26000, layoutCeiling:0xED000, layoutFlags:16, memorySize:8192}, {blob:new Uint8Array(4097)}, 'bl:internal', 'bootloader: apply OK', internal), /RAM capability/);
+const hybridPlan={storage:'internal', app:0x26000, layoutCeiling:0xED000, layoutFlags:16, memorySize:8192};
+const hybridInfo={blob:new Uint8Array(4097)}, proof='OTA RAM: hybrid=1 abi=1 record=72 arena=65536';
+for (const valid of [proof, '> '+proof, 'ota ram: HYBRID=1 ABI=1 RECORD=72 ARENA=65536'])
+  checks.validateInternalPlan(hybridPlan,hybridInfo,'bl:internal','bootloader: apply OK (stage=ED000)',internal,null,valid);
+for (const invalid of ['', undefined, 'Unknown OTA command. Type `ota help`.', 'OTA RAM: hybrid=0',
+  'OTA RAM: hybrid=1 abi=1 record=71 arena=65536', 'OTA RAM: hybrid=1 abi=1 record=72 arena=65535',
+  proof+' hybrid=1', proof+'\n'+proof, 'prefix '+proof, proof+' trailing'])
+  assert.throws(()=>checks.validateInternalPlan(hybridPlan,hybridInfo,'bl:internal','bootloader: apply OK (stage=ED000)',internal,null,invalid),/RAM capability/);
+checks.validateInternalPlan(hybridPlan,{blob:new Uint8Array(4096)},'bl:internal','bootloader: apply OK (stage=ED000)',internal);
 assert.throws(() => checks.validateInternalPlan({app:0x26000, layoutCeiling:0xED000, memorySize:0xAE000}, {blob:new Uint8Array(4096)}, 'bl:internal', 'bootloader: apply OK', internal), /space/);
 console.log('Browser OTA safety checks passed');

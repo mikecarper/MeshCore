@@ -138,7 +138,22 @@
     if (!Number.isSafeInteger(bytes) || bytes <= 0) throw Error('QSPI capacity is unavailable');
     return bytes;
   }
-  function validateInternalPlan(plan, info, status, self, dest, qspiDiagnostics) {
+  function needsHybridRam(plan, info) {
+    return !!plan && plan.storage !== 'qspi' && !!(plan.layoutFlags & 16) && info?.blob?.length > 4096;
+  }
+  function confirmHybridRam(reply) {
+    if (typeof reply !== 'string' || !/^(?:>[ \t]*)?OTA[ \t]+RAM:[ \t]+hybrid=1[ \t]+abi=1[ \t]+record=72[ \t]+arena=65536$/i.test(reply.trim()))
+      throw Error('This hybrid nRF52 package requires bootloader RAM capability that cannot be confirmed here');
+    return reply.trim();
+  }
+  async function readHybridRam(plan, info, getReply) {
+    if (!needsHybridRam(plan, info)) return null;
+    let reply;
+    try { reply = await getReply(); }
+    catch (_) { throw Error('This hybrid nRF52 package requires bootloader RAM capability that cannot be confirmed here'); }
+    return confirmHybridRam(reply);
+  }
+  function validateInternalPlan(plan, info, status, self, dest, qspiDiagnostics, hybridRamReply) {
     if (!plan) return;
     if (plan.storage === 'qspi') {
       const capacity = qspiCapacity(status, self, qspiDiagnostics || '', dest);
@@ -148,11 +163,10 @@
       return;
     }
     const ceiling = Math.min(internalStage(status, self, dest), plan.layoutCeiling);
-    if ((plan.layoutFlags & 16) && info.blob.length > 4096)
-      throw Error('This hybrid nRF52 package requires bootloader RAM capability that cannot be confirmed here');
+    if (needsHybridRam(plan, info)) confirmHybridRam(hybridRamReply);
     if (!Number.isInteger(plan.app) || !Number.isInteger(plan.memorySize) || !Number.isInteger(plan.layoutCeiling) ||
         plan.memorySize + Math.ceil(info.blob.length / 4096) * 4096 > ceiling - plan.app)
       throw Error('The current nRF52 staging space no longer fits this differential');
   }
-  return { route, destination, availability, readReceiver, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, validateInternalPlan, version, hex };
+  return { route, destination, availability, readReceiver, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, needsHybridRam, confirmHybridRam, readHybridRam, validateInternalPlan, version, hex };
 });

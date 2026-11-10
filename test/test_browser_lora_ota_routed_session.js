@@ -61,6 +61,33 @@ async function fixture() {
   return {info,id,body,packageHash,link,session,calls,overrides,get reset(){return reset;},get serving(){return serving;},get record(){return record;},setRecord(r){record=r;},setState(s){state=s;},setInstalled(v){installed=v;}};
 }
 
+test('direct and routed sessions freshly verify hybrid RAM capability before starting',async()=>{
+  const f=await fixture(), base=await nrfImage(0x01110109,16), next=await nrfImage(0x01120001,16);
+  let state=2; const end=next.length-56, record=end-24;
+  for(let i=0;i<record;i++){state^=state<<13;state^=state>>>17;state^=state<<5;next[i]=state&255;}
+  next.set(new Uint8Array(await crypto.subtle.digest('SHA-256',next.slice(0,end))).slice(0,8),end+8);
+  const built=await delta.buildInPlaceDelta(base,next,{runtimeStorage:'internal',runtimeStageCeiling:0xED000});
+  assert.ok(built.blob.length>4096);
+  const info=await pkg.parseMota(built.blob), layout=delta.nrfLayout(base);
+  const plan={storage:'internal',app:layout.app,layoutCeiling:layout.ceiling,layoutFlags:layout.flags,memorySize:built.memorySize};
+  f.overrides.set(target+':ota status','hw=board target:12345678 | maxblk:1024 | bl:internal | no download');
+  f.overrides.set(target+':ota self','base_hash='+Buffer.from(base.slice(-48,-40)).toString('hex')+' | bootloader: internal abi=3 codecs=0x5 | stage=ED000');
+  f.link.verifyPeer=async()=>{};
+  const {DirectSession}=require('../docs/_javascript/lora_ota_session.js');
+  for(const Session of [DirectSession,RoutedSession]) {
+    const session=new Session(f.link,target,'',info,{image:next,inplacePlan:plan});
+    if(Session===DirectSession) session.inspectRadios=async()=>{};
+    f.overrides.set(target+':ota ram','OTA RAM: hybrid=0');
+    await assert.rejects(session.inspect(),/RAM capability/);
+    f.overrides.set(target+':ota ram','OTA RAM: hybrid=1 abi=1 record=72 arena=65536');
+    await session.inspect();
+    f.overrides.set(target+':ota ram','OTA RAM: hybrid=1 abi=1 record=72 arena=65536 hybrid=1');
+    await assert.rejects(session.inspect(),/RAM capability/);
+  }
+  assert.equal(f.calls.includes('serve'),false);
+  assert.equal(f.calls.some(c=>c.includes(':ota pull ')),false);
+});
+
 test('preflight accepts only explicit routed OTA policies',()=>{
   routedPolicy('hops=2 autofetch=off autoinstall=off',2);
   routedPolicy('mode=seeder-only hops=3',2);
@@ -75,6 +102,20 @@ test('rejects a relay on a different primary even if its temporary radio matches
   f.overrides.set(first+':get radio','910.250,62.5,7,5');
   f.overrides.set(first+':get tempradio','TempRadio active: 910.250,62.5,7,5 10000s left');
   await assert.rejects(f.session.start(),/same radio settings/); assert.equal(f.calls.includes('serve'),false);
+});
+
+test('invalid radio settings identify the participant without leaking its key',async()=>{
+  for (const [key,label] of [['source','source'],[first,'relay 1'],[second,'relay 2'],[target,'target']]) {
+    for (const [command,reply] of [['get radio','invalid '+key],['get tempradio','off']]) {
+      const f=await fixture(); f.overrides.set(key+':'+command,reply);
+      await assert.rejects(f.session.start(),error=>{
+        assert.ok(error.message.startsWith(label+':'),error.message);
+        if(key!=='source') assert.ok(!error.message.includes(key));
+        assert.match(error.message,/radio/); return true;
+      });
+      assert.equal(f.calls.includes('serve'),false);
+    }
+  }
 });
 
 test('all participants are checked and transfer does not mutate radios or policies',async()=>{

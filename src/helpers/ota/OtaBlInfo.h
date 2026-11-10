@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 // Read the bootloader's OTA capability marker so the app can decide, BEFORE staging+approving+rebooting,
@@ -80,6 +81,18 @@ inline bool ota_bootloader_supports_hybrid(const OtaRamCaps& caps) {
   return caps.present && caps.abi == MOTA_RAM_CAP_ABI &&
          caps.record_len == MOTA_HYBRID_AUTH_LEN &&
          caps.arena_size == MOTA_NRF52_HYBRID_RAM_SIZE;
+}
+
+// A separate read-only reply lets an authenticated updater distinguish an
+// actually scanned bootloader capability from a version or board-name guess.
+inline void ota_ram_caps_reply(char* reply, size_t capacity, const OtaRamCaps& caps) {
+  if (!reply || capacity == 0) return;
+  if (ota_bootloader_supports_hybrid(caps)) {
+    snprintf(reply, capacity, "OTA RAM: hybrid=1 abi=%u record=%u arena=%lu",
+             (unsigned)caps.abi, (unsigned)caps.record_len, (unsigned long)caps.arena_size);
+  } else {
+    snprintf(reply, capacity, "OTA RAM: hybrid=0");
+  }
 }
 
 static const uint8_t OTA_BL_STORAGE_SD            = 0x01;

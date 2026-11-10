@@ -122,7 +122,7 @@
                 // internal package. A compact all-flash fit does not prove the
                 // installed bootloader has the required MOTARAMA capability.
                 if (c.runtimeStorage === 'internal' && (layout.flags & 0x10) && blob.length > 4096)
-                  throw Error('Hybrid internal packages over 4096 bytes require bootloader MOTARAMA proof, which runtime diagnostics do not provide');
+                  checks.confirmHybridRam(c.runtimeHybridRam);
                 inplacePlan = c.runtimeStorage === 'qspi'
                   ? {storage:'qspi',app:layout.app,layoutEnd:layout.end,memorySize}
                   : {storage:'internal',app:layout.app,layoutCeiling:layout.ceiling,layoutFlags:layout.flags,memorySize};
@@ -206,7 +206,7 @@
           (plan.storage === 'qspi' && plan.layoutEnd !== layout.end))
         throw Error('The prepared nRF52 workspace no longer matches the source image');
       if (live.runtimeStorage === 'internal' && (layout.flags & 0x10) && info.blob.length > 4096)
-        throw Error('Hybrid internal packages over 4096 bytes require verified MOTARAMA support');
+        checks.confirmHybridRam(live.runtimeHybridRam);
     }
     return {info,source:from,target:to};
   }

@@ -49,6 +49,10 @@
         caps.runtimeStorageBytes=checks.qspiCapacity(status,self,qspi,d);
       }else{
         caps.runtimeStorage='internal';caps.runtimeStageCeiling=checks.internalStage(status,self,d);
+        // Older receivers may lack the diagnostic. They remain usable for
+        // non-hybrid packages, while larger hybrid packages require proof.
+        try { caps.runtimeHybridRam=checks.confirmHybridRam(await link.remoteCommand(key,password,'ota ram')); }
+        catch (_) { caps.runtimeHybridRam=null; }
       }
     }
     return caps;

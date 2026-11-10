@@ -33,7 +33,7 @@
     const airtime=(preamble+4.25+8+Math.max(0,Math.ceil((8*186-4*sf+44)/(4*(sf-2*de))))*cr)*symbol;
     return Math.max(1000,Math.ceil((2*airtime+.5)*1000));
   }
-  const READ_ONLY=new Set(['get public.key','ota status','ota self','ver','get bootloader.ver','get usb.raw.max',
+  const READ_ONLY=new Set(['get public.key','ota status','ota self','ota ram','ver','get bootloader.ver','get usb.raw.max',
     'ota bootloader status','ota config','ota key list','get tempradio','get radio','get radio.rxps','ota installhash','ota qspi','ota stats','ota ls',
     'get radio2','get tempradio2','get radio2.cross','get radio2.status','get radioat','get tempradioat','get radioat2','get tempradioat2']);
   function usbOperation(payload){
