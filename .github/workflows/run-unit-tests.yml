@@ -61,6 +61,7 @@ jobs:
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_workflow_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_staged_recovery_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_usb_mtu_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_audit_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_companion_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_radio_setup_runtime.py -v
@@ -589,6 +590,7 @@ jobs:
           python3 -B -m unittest discover -s tools/lora_ota -p 'test_ota_wizard*.py' -v
           python3 -B test/test_direct_ota_admin_client.py -v
           python3 -B test/test_companion_direct_admin_guard.py -v
+          python3 -B test/test_companion_usb_raw_frame_capacity.py -v
           python3 -B test/test_repeater_ota_serial_control.py -v
           python3 -B test/test_ota_zero_hop_route.py -v
 

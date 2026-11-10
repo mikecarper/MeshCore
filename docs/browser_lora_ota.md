@@ -165,6 +165,12 @@ Older Companions use their shared message queue. Unrelated pending messages may
 be saved in this browser and cannot be restored to the Companion. Keep other
 apps disconnected and avoid changing radio settings during the update.
 
+The USB Companion must report `188` for `get usb.raw.max`. Older firmware's
+176-byte command limit cannot carry a complete OTA manifest or the larger data
+packets, even if small adverts work. Update the source Companion first; the
+remote target can still use its supported older OTA firmware. The page checks
+this limit before preparing the target or starting a download.
+
 ## Setup and advanced details
 
 This updater is experimental; direct and multi-hop updates have not yet been
@@ -174,8 +180,8 @@ Guarded mode requires a custom Keymind Cascade Full Companion built from commit
 `bede4d85f` or later with both guarded features enabled. The 1.18.0.1 release
 and published 1.18.0.2 previews do not have both features.
 
-Investigation retries unanswered checks. Login and update commands are not
-automatically repeated. Older targets validate the staged image with `ota install`,
+Investigation retries unanswered checks. Download, install and cancel commands
+are not automatically repeated after an uncertain reply. Older targets validate the staged image with `ota install`,
 but cannot bind the full container hash before installation. The updater checks
 the reported firmware identity and body hash after reboot.
 For direct updates, it reads the target's saved channel before installing and
@@ -192,8 +198,16 @@ OTA policy changes remain saved and are listed in the diagnostic log. RX power s
 On older Companions with USB radio controls, the page automatically aligns both
 temporary channels with the Companion's saved settings. It tests primary
 channels with a two-minute window before extending them; temporary radio2
-uses the full window and keeps the normal channel available. A lost setup
-reply stops the operation without repeating the command. Firmware without
+uses the full window and keeps the normal channel available. A missing USB
+reply during setup stops the operation and requires reconnecting. With a Companion that
+can select temporary radio2, the page keeps its original primary channel and
+probes the requested update channel on radio2. Probe timeouts account for radio
+airtime. If the target still answers on the original channel without a pending
+switch, setup can send another switch request, with a pause and a bounded number
+of attempts. It continues only after verifying the target on the new channel.
+Other setup paths wait up to 35 seconds for matching temporary-radio readbacks;
+errors show the requested and reported settings, including preamble.
+Firmware without
 the required USB radio readbacks cannot be configured or checked automatically;
 the page identifies the missing command and links to a Companion update.
 Some firmware accepts raw OTA packets from USB but

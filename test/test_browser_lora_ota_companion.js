@@ -13,6 +13,7 @@ class Port{
   }
   async write(b){
     assert.equal(b[0],60);assert.equal(b.length,b[1]+256*b[2]+3);const f=b.slice(3);this.frames.push(f);let out;
+    assert.ok(f.length<=(f[0]===65?188:176),'Command exceeds the real USB receive envelope');
     if(f[0]===1){out=new Uint8Array(58);out[0]=5;out.set(fromHex(source),4);const v=new DataView(out.buffer);v.setUint32(48,910525,true);v.setUint32(52,62500,true);out[56]=7;out[57]=5;}
     else if(f[0]===22){out=new Uint8Array(82);out[0]=13;out[1]=13;out.set(enc.encode('06-Nov-2026'),8);out.set(enc.encode('Test board'),20);out.set(enc.encode(this.noCli?'v1.16.05':'v1.18.0.2-preview'),60);}
     else if(f[0]===4){
@@ -28,6 +29,7 @@ class Port{
     else if(f[0]===66){const cmd=dec.decode(f.slice(1));let reply;
       if(cmd==='get ota.direct')reply=`> ota.direct v=2 active=${this.guard?1:0} busy=0`;
       else if(cmd==='ver')reply='v1.18.0.2-dev-12345678 (Build: 06-Nov-2026)';
+      else if(cmd==='get usb.raw.max')reply='> 188';
       else if(cmd==='get ota.direct.capabilities')reply=this.legacy?'Unknown command':'> ota.direct.cap guarded_cli=1 guarded_radio=1';
       else if(cmd==='get radio.rxps')reply=this.rxps;
       else if(cmd==='get radio')reply='> 910.525,62.5,7,5';

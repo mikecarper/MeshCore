@@ -204,6 +204,7 @@
     }
     async inspect(options = {}) {
       this.requireActive();
+      this.link.requireOtaPacketCapacity?.();
       await this.link.verifyPeer(this.key, this.password);
       this.requireActive();
       const {status,self} = await checks.readReceiver(command => this.link.remoteCommand(this.key, this.password, command));

@@ -53,7 +53,11 @@
   }
   const fail = error => {
     status(error?.message || String(error), 'error');
-    if(error?.sourceUpdateRequired==='companion' && link?.rawPacketSupport==='unsupported') {
+    if(error?.sourcePacketCapacity) {
+      sourceOtaUnsupported=true;invalidate();
+      showAvailability({state:'unsupported',message:error.message});
+      $('firmware-catalog-status').textContent=error.message;
+    } else if(error?.sourceUpdateRequired==='companion' && link?.rawPacketSupport==='unsupported') {
       sourceOtaUnsupported=true;invalidate();
       showAvailability({state:'unsupported',message:'LoRa updates are unavailable with this USB Companion: its firmware cannot send OTA packets. Update the source Companion firmware first.'});
       $('firmware-catalog-status').textContent=$('ota-availability').textContent;

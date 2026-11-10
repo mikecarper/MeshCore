@@ -6887,6 +6887,7 @@ bool MyMesh::handleDirectOtaCommand(const char* command, uint32_t timestamp,
                                     char* reply, size_t capacity) {
   const bool status = !strcmp(command, "get ota.direct");
   const bool capabilities = !strcmp(command, "get ota.direct.capabilities");
+  const bool raw_capacity = !strcmp(command, "get usb.raw.max");
   const bool radio = !strcmp(command, "get ota.direct.radio");
   static const char set_radio[] = "set ota.direct.radio";
   const size_t set_radio_len = sizeof(set_radio) - 1;
@@ -6896,7 +6897,7 @@ bool MyMesh::handleDirectOtaCommand(const char* command, uint32_t timestamp,
   const size_t prefix_len = sizeof(prefix) - 1;
   const bool result = !strncmp(command, prefix, prefix_len)
       && (command[prefix_len] == 0 || command[prefix_len] == ' ');
-  if ((!status && !capabilities && !radio && !select_radio && !result) || timestamp != 0) return false;
+  if ((!status && !capabilities && !raw_capacity && !radio && !select_radio && !result) || timestamp != 0) return false;
   if (!_ota_direct_usb_route || _serial->captureReplyRoute() != _ota_direct_usb_route) {
     snprintf(reply, capacity, "ERR ota.direct requires physical USB");
     return true;
@@ -6909,6 +6910,10 @@ bool MyMesh::handleDirectOtaCommand(const char* command, uint32_t timestamp,
   }
   if (capabilities) {
     snprintf(reply, capacity, "> ota.direct.cap guarded_cli=1 guarded_radio=1");
+    return true;
+  }
+  if (raw_capacity) {
+    snprintf(reply, capacity, "> %u", (unsigned)_ota_direct_usb_route->usbRawPacketReceiveCapacity());
     return true;
   }
   if (radio) {
@@ -7046,6 +7051,14 @@ void MyMesh::handleCmdFrame(size_t len) {
   if (len == 0) {
     writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     return;
+  }
+  if (len > MAX_FRAME_SIZE) {
+    BaseSerialInterface* route = _serial->captureReplyRoute();
+    if (len > BaseSerialInterface::MAX_USB_RAW_FRAME_SIZE || cmd_frame[0] != CMD_SEND_RAW_PACKET
+        || !route || route->usbRawPacketReceiveCapacity() < len) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+      return;
+    }
   }
 
 #if defined(MESH_HIL_BLE_BENCH) && MESH_HIL_BLE_BENCH
@@ -12395,7 +12408,7 @@ complete_line:
 }
 
 void MyMesh::checkSerialInterface() {
-  size_t len = _serial->checkRecvFrame(cmd_frame);
+  size_t len = _serial->checkRecvFrame(cmd_frame, sizeof(cmd_frame));
   if (_iter_started && !_serial->isReplyRouteAvailable(_iter_reply_route)) {
     stopContactsIterator();
   }

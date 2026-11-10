@@ -367,6 +367,10 @@ public:
   }
 
   size_t checkRecvFrame(uint8_t dest[]) override {
+    return checkRecvFrame(dest, MAX_FRAME_SIZE);
+  }
+
+  size_t checkRecvFrame(uint8_t dest[], size_t capacity) override {
     // don't read when disabled
     if(!_enabled || dest == nullptr){
       return 0;
@@ -380,7 +384,7 @@ public:
       // (e.g. WiFi IP takeover), clearing the lock before returning a new
       // host's first command. Preserve the actual source of that command.
       BaseSerialInterface* target = _lockedReplyInterface;
-      size_t frameSize = target->checkRecvFrame(dest);
+      size_t frameSize = target->checkRecvFrame(dest, capacity);
       if (frameSize > 0) _lastRxInterface = target;
       return frameSize;
     }
@@ -396,7 +400,7 @@ public:
       const size_t index = (_nextRxIndex + offset) % MAX_INTERFACES;
       auto iface = _interfaces[index];
       if(iface.instance && iface.instance->isEnabled()){
-        size_t frameSize = iface.instance->checkRecvFrame(dest);
+        size_t frameSize = iface.instance->checkRecvFrame(dest, capacity);
         if(frameSize > 0){
           _nextRxIndex = (index + 1) % MAX_INTERFACES;
           _lastRxInterface = iface.instance;

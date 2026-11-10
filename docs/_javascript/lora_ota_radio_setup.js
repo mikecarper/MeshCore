@@ -10,6 +10,7 @@
   const bare = value => String(value).trim().replace(/^>\s*/, '').trim();
   const same = (a, b) => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) <= (i === 0 ? 0.001 : 0.00001));
   const formatRadio = tuple => [Number(tuple[0]).toFixed(3), ...tuple.slice(1)].join(',');
+  const diagnostic = value => String(value).replace(/[^\x20-\x7e]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
   function need(ok, message) { if (!ok) throw Error(message); }
   function settings(value) {
     need(value && typeof value === 'object' && !Array.isArray(value), 'Choose temporary radio settings.');
@@ -107,7 +108,12 @@
     need(profile === 0 || profile === 1, 'Invalid OTA radio profile.');
     const raw = await read(profile ? 'get tempradio2' : 'get tempradio');
     if (unsupported(raw, profile ? 'get tempradio2' : 'get tempradio')) return {state: 'unsupported', profile, raw};
-    if (!profile) { const state = temporary(raw); return {...state, radio: state.tuple, profile, raw}; }
+    if (!profile) {
+      let state;
+      try { state = temporary(raw); }
+      catch (error) { error.message += ' Readback: ' + diagnostic(raw); throw error; }
+      return {...state, radio: state.tuple, profile, raw};
+    }
     const config = secondary(raw, 'get tempradio2');
     if (config.state === 'off') return {state: 'off', profile, raw};
     need(config.state === 'configured' && config.mode === 'rxtx', 'Temporary secondary radio must use RXTX mode.');
@@ -151,8 +157,8 @@
     for (const method of ['localCommand', 'remoteCommand', 'verifyPeer', 'closeRadioSession', 'resetRemoteSession', 'selectOtaRadio',
       ...(companion ? ['applyTemporaryRadio'] : [])]) need(typeof link[method] === 'function', 'This connection cannot safely prepare a temporary channel.');
     key = key.toLowerCase();
-    const remote = command => link.remoteCommand(key, password, command), local = command => link.localCommand(command);
-    let targetAttempted = false, sourceAttempted = false;
+    const remote = (command, options) => link.remoteCommand(key, password, command, options), local = command => link.localCommand(command);
+    let targetAttempted = false, sourceAttempted = false, targetSwitchWrites = 0;
     const changedSettings = [];
     async function baseline(label, read) {
       const saved = primary(await read('get radio'));
@@ -249,11 +255,33 @@
         progress((endpoint === 'source' ? 'USB source' : 'Target') + ' ' + change.setting + '=' + change.after + ' verified.');
       }
     }
-    async function verifyActive(read, profile, label) {
-      const state = await readTemporary(read, profile);
-      need(state.state === 'active' && same(state.tuple, expected) && state.preamble === v.preamble,
-        label + ' selected temporary radio differs from the requested settings.');
-      return state;
+    async function verifyActive(read, profile, label, trialEnd = null) {
+      const start = now();
+      need(Number.isFinite(start), 'Invalid temporary-channel clock.');
+      let previous = start, state;
+      const details = () => ' Requested: ' + formatRadio(expected) + ',preamble=' + v.preamble +
+        '. Reported: ' + (state.state === 'active' ? formatRadio(state.tuple) + ',preamble=' + state.preamble : state.state) +
+        '. Readback: ' + diagnostic(state.raw);
+      for (let attempt = 0; attempt < 71; attempt++) {
+        const before = now();
+        need(Number.isFinite(before) && before >= previous, 'Invalid temporary-channel clock.');
+        if (attempt && before - start >= 35000) break;
+        state = await readTemporary(read, profile);
+        const after = now();
+        need(Number.isFinite(after) && after >= before, 'Invalid temporary-channel clock.');
+        previous = after;
+        if (state.state === 'active' && same(state.tuple, expected) && state.preamble === v.preamble) return state;
+        if (trialEnd !== null && after >= trialEnd && state.state === 'off')
+          throw Error(label + ' temporary trial window expired before verification.' + details());
+        // Older targets cannot report a pending primary mutation: they keep
+        // showing off or the previous active tuple until queued TX drains.
+        // Poll only GETs, including old active readbacks; never repeat a setter
+        // or accept a different tuple/preamble as proof of the new channel.
+        if (!attempt) progress('Waiting for ' + label.toLowerCase() + ' temporary radio to apply the requested settings.' + details());
+        if (after - start >= 35000) break;
+        await wait(Math.min(500, 35000 - (after - start)));
+      }
+      throw Error(label + ' selected temporary radio differs from the requested settings after 35 seconds.' + details());
     }
     function samePrimary(a, b) {
       return a.state === b.state && (a.state === 'off' || same(a.tuple, b.tuple) && a.preamble === b.preamble);
@@ -319,53 +347,144 @@
       await prerequisites('source', local, source);
       await link.verifyPeer(key, password); keyProof(await remote('get public.key'), key);
       need(required({otaPolicy: policy(await remote('ota config'))}), 'Target prerequisite settings changed before radio setup.');
-      // The ordinary commands are deliberately sent once. A lost reply never
-      // authorizes a second command, another profile or guessed restoration.
-      if (!adoptTarget) {
-        targetAttempted = true;
-        progress(targetProfile ? 'Opening the target temporary radio2 update window.' : 'Testing the target primary channel with a ' + trialMinutes + '-minute temporary window.');
-        need(/^(?:>\s*)?OK(?:\s|$)/i.test(String(await remote(trial.target)).trim()), 'Target temporary setup was not confirmed.');
-      }
-      const acknowledgedAt = now(); need(Number.isFinite(acknowledgedAt), 'Invalid temporary-channel clock.');
-      await link.closeRadioSession();
-      const sourceFresh = await baseline('source', local);
-      need(sameSaved(sourceFresh, source) && samePrimary(sourceFresh.temporaryPrimary, source.temporaryPrimary) &&
-        secondarySignature(sourceFresh.temporarySecondary) === secondarySignature(source.temporarySecondary) &&
-        (!sourceProfile || sourceFresh.secondaryFree || sourceFresh.adoptSecondary) && required(sourceFresh), 'Source radio or prerequisite settings changed before setup; no source write was sent.');
-      progress('Preparing the source on the selected temporary profile.');
-      if (!adoptSource) {
-        sourceAttempted = true;
-        const reply = await (companion ? link.applyTemporaryRadio(trial.source) : local(trial.source));
-        need(/^(?:>\s*)?OK(?:\s|$)/i.test(String(reply).trim()), 'Source temporary setup was not confirmed.');
-      }
-      const start = now(); need(Number.isFinite(start) && start >= acknowledgedAt, 'Invalid temporary-channel clock.');
-      let previous = start, active = false;
-      for (let attempt = 0; attempt < 71; attempt++) {
-        const before = now(); need(Number.isFinite(before) && before >= previous && before - start < 35000, 'Source temporary radio did not become active within 35 seconds.');
-        previous = before;
-        const state = await readTemporary(local, sourceProfile), after = now();
-        need(Number.isFinite(after) && after >= previous && after - start <= 35000, 'Source temporary-radio read exceeded 35 seconds.'); previous = after;
-        if (state.state === 'active') {
-          need(same(state.tuple, expected) && state.preamble === v.preamble, 'Source temporary radio differs from the selected settings.');
-          active = true; break;
+      const dualProbe = companion && !legacy && sourceProfile === 1 && typeof link.probePeerRadio === 'function';
+      if (dualProbe) {
+        // Prepare the USB radio first: primary keeps the known working link,
+        // while temporary radio2 can test the requested channel immediately.
+        await link.closeRadioSession();
+        const sourceFresh = await baseline('source', local);
+        need(sameSaved(sourceFresh, source) && samePrimary(sourceFresh.temporaryPrimary, source.temporaryPrimary) &&
+          secondarySignature(sourceFresh.temporarySecondary) === secondarySignature(source.temporarySecondary) &&
+          (sourceFresh.secondaryFree || sourceFresh.adoptSecondary) && required(sourceFresh),
+          'Source radio or prerequisite settings changed before setup; no source write was sent.');
+        progress('Preparing temporary radio2 on the USB Companion; its primary channel stays available.');
+        if (!adoptSource) {
+          sourceAttempted = true;
+          need(/^(?:>\s*)?OK(?:\s|$)/i.test(String(await link.applyTemporaryRadio(trial.source)).trim()),
+            'Source temporary setup was not confirmed.');
         }
-        need(state.state === 'pending' || state.state === 'off', 'Source temporary radio state is unknown.');
-        await wait(Math.min(500, 35000 - (after - start)));
+        const sourceLive = await verifyActive(local, sourceProfile, 'Source');
+        const oldPreamble = Number(/\bpreamble=(\d+),/i.exec(String(sourceLive.liveStatus))?.[1] || 128);
+        const started = now(), deadline = started + 90000;
+        need(Number.isFinite(started), 'Invalid temporary-channel clock.');
+        let previous = started, lastSwitch = started, misses = 0, verified = false;
+        const clock = () => {
+          const at = now();
+          need(Number.isFinite(at) && at >= previous, 'Invalid temporary-channel clock.');
+          previous = at; return at;
+        };
+        const matches = state => state?.state === 'active' && Array.isArray(state.tuple) &&
+          same(state.tuple, expected) && state.preamble === v.preamble;
+        const probe = async profile => {
+          const remaining = deadline - clock();
+          if (remaining <= 0) return {reachable:false};
+          const result = await link.probePeerRadio(key, password, profile, {
+            radio: profile ? expected : source.saved, preamble: profile ? v.preamble : oldPreamble,
+            maxDurationMs: remaining, readback: read => readTemporary(read, targetProfile)
+          });
+          need(!link.failure, link.failure?.message || 'USB communication stopped during the channel check.');
+          need(clock() <= deadline, 'Temporary-channel link check exceeded 90 seconds.');
+          need(result && typeof result.reachable === 'boolean', 'Cannot verify the temporary-channel probe result.');
+          return result;
+        };
+        const requestSwitch = async () => {
+          need(clock() < deadline && targetSwitchWrites < 3, 'Temporary-channel switch retry limit reached.');
+          targetAttempted = true; targetSwitchWrites++; lastSwitch = clock();
+          progress((targetSwitchWrites === 1 ? 'Requesting' : 'Requesting again after a fresh check of the old channel:') +
+            ' target temporary settings on ' + formatRadio(expected) + '.');
+          try {
+            const reply = typeof link.requestRemoteRadio === 'function'
+              ? await link.requestRemoteRadio(key, password, trial.target,
+                {radio:source.saved, preamble:oldPreamble, maxDurationMs:Math.max(0, deadline - clock())})
+              : await remote(trial.target, {replyTimeoutMs: Math.min(5000, deadline - clock())});
+            need(/^(?:>\s*)?OK(?:\s|$)/i.test(String(reply).trim()), 'Target temporary setup was not confirmed: ' + diagnostic(reply));
+          } catch (error) {
+            // A lost RF reply can mean that the switch already happened. Test
+            // the requested channel before considering another deliberate set.
+            if (link.failure || !error?.loraReplyTimeout) throw error;
+            progress('The switch reply was not received. Checking the requested channel before any further switch request.');
+          }
+        };
+        // This proof is on the unchanged primary, after source radio2 setup.
+        // The probe also pins all following admin TX to that proven profile.
+        const original = await probe(0);
+        need(original.reachable, 'The target did not respond on its original channel; no target switch request was sent.');
+        need(original.reply && ['off', 'pending', 'active'].includes(original.reply.state), 'Target temporary state on its original channel is unknown.');
+        if (!adoptTarget && !matches(original.reply) && original.reply?.state !== 'pending') await requestSwitch();
+        progress('Checking the requested frequency through temporary radio2; the original primary stays available.');
+        while (clock() < deadline) {
+          const requested = await probe(1);
+          if (requested.reachable && matches(requested.reply)) { verified = true; break; }
+          misses++;
+          if (misses % 3 === 0 && clock() < deadline) {
+            const original = await probe(0);
+            if (original.reachable) {
+              const state = original.reply;
+              need(state && ['off', 'pending', 'active'].includes(state.state), 'Target temporary state on its original channel is unknown.');
+              // A positive pending response is progress. Repeating the setter
+              // would continually restart the target's deferred switch timer.
+              if (!adoptTarget && !matches(state) && state.state !== 'pending' &&
+                  clock() - lastSwitch >= 5000 && targetSwitchWrites < 3) await requestSwitch();
+            }
+          }
+          if (clock() < deadline) await wait(Math.min(250, deadline - clock()));
+        }
+        need(verified, 'The target did not confirm the requested frequency and preamble within 90 seconds.');
+        link.otaTargetProfile = targetProfile;
+        progress('The requested frequency is confirmed by the target.');
+        // probePeerRadio left the exact target authenticated on source radio2.
+        // Do not replace that positive proof with another long login exchange.
+        await verifyActive(local, sourceProfile, 'Source');
+      } else {
+        // The ordinary commands are deliberately sent once. A lost reply never
+        // authorizes a second command, another profile or guessed restoration.
+        if (!adoptTarget) {
+          targetAttempted = true;
+          progress(targetProfile ? 'Opening the target temporary radio2 update window.' : 'Testing the target primary channel with a ' + trialMinutes + '-minute temporary window.');
+          need(/^(?:>\s*)?OK(?:\s|$)/i.test(String(await remote(trial.target)).trim()), 'Target temporary setup was not confirmed.');
+        }
+        const acknowledgedAt = now(); need(Number.isFinite(acknowledgedAt), 'Invalid temporary-channel clock.');
+        await link.closeRadioSession();
+        const sourceFresh = await baseline('source', local);
+        need(sameSaved(sourceFresh, source) && samePrimary(sourceFresh.temporaryPrimary, source.temporaryPrimary) &&
+          secondarySignature(sourceFresh.temporarySecondary) === secondarySignature(source.temporarySecondary) &&
+          (!sourceProfile || sourceFresh.secondaryFree || sourceFresh.adoptSecondary) && required(sourceFresh), 'Source radio or prerequisite settings changed before setup; no source write was sent.');
+        progress('Preparing the source on the selected temporary profile.');
+        if (!adoptSource) {
+          sourceAttempted = true;
+          const reply = await (companion ? link.applyTemporaryRadio(trial.source) : local(trial.source));
+          need(/^(?:>\s*)?OK(?:\s|$)/i.test(String(reply).trim()), 'Source temporary setup was not confirmed.');
+        }
+        const start = now(); need(Number.isFinite(start) && start >= acknowledgedAt, 'Invalid temporary-channel clock.');
+        let previous = start, active = false;
+        for (let attempt = 0; attempt < 71; attempt++) {
+          const before = now(); need(Number.isFinite(before) && before >= previous && before - start < 35000, 'Source temporary radio did not become active within 35 seconds.');
+          previous = before;
+          const state = await readTemporary(local, sourceProfile), after = now();
+          need(Number.isFinite(after) && after >= previous && after - start <= 35000, 'Source temporary-radio read exceeded 35 seconds.'); previous = after;
+          if (state.state === 'active') {
+            need(same(state.tuple, expected) && state.preamble === v.preamble, 'Source temporary radio differs from the selected settings.');
+            active = true; break;
+          }
+          need(state.state === 'pending' || state.state === 'off', 'Source temporary radio state is unknown.');
+          await wait(Math.min(500, 35000 - (after - start)));
+        }
+        need(active, 'Source temporary radio did not become active within 35 seconds.');
+        const beforeSettle = now(), left = Math.max(0, acknowledgedAt + 2500 - beforeSettle);
+        need(Number.isFinite(beforeSettle) && beforeSettle >= previous && beforeSettle - start + left <= 35000, 'Temporary-channel settling exceeded 35 seconds.');
+        if (left) await wait(left);
+        const settled = now(); need(Number.isFinite(settled) && settled >= beforeSettle && settled >= acknowledgedAt + 2500 && settled - start <= 35000, 'Target settling was not confirmed.');
+        await link.closeRadioSession();
+        link.otaTargetProfile = targetProfile;
+        await link.selectOtaRadio(sourceProfile);
+        // Closing a Repeater peer relinquishes ownership; its verifyPeer()
+        // performs a fresh login. resetRemoteSession() requires that old owner.
+        if (companion) await link.resetRemoteSession(key, password);
+        await link.verifyPeer(key, password);
+        keyProof(await remote('get public.key'), key);
+        await verifyActive(remote, targetProfile, 'Target', !targetProfile && !adoptTarget ? acknowledgedAt + trialMinutes * 60000 : null);
+        await verifyActive(local, sourceProfile, 'Source');
       }
-      need(active, 'Source temporary radio did not become active within 35 seconds.');
-      const beforeSettle = now(), left = Math.max(0, acknowledgedAt + 2500 - beforeSettle);
-      need(Number.isFinite(beforeSettle) && beforeSettle >= previous && beforeSettle - start + left <= 35000, 'Temporary-channel settling exceeded 35 seconds.');
-      if (left) await wait(left);
-      const settled = now(); need(Number.isFinite(settled) && settled >= beforeSettle && settled >= acknowledgedAt + 2500 && settled - start <= 35000, 'Target settling was not confirmed.');
-      await link.closeRadioSession();
-      link.otaTargetProfile = targetProfile;
-      await link.selectOtaRadio(sourceProfile);
-      // Closing a Repeater peer relinquishes ownership; its verifyPeer()
-      // performs a fresh login. resetRemoteSession() requires that old owner.
-      if (companion) await link.resetRemoteSession(key, password);
-      await link.verifyPeer(key, password);
-      keyProof(await remote('get public.key'), key);
-      await verifyActive(remote, targetProfile, 'Target'); await verifyActive(local, sourceProfile, 'Source');
       if (targetProfile) need((await readTemporary(remote, 0)).state === 'off', 'Target primary temporary radio changed.');
       if (sourceProfile) need((await readTemporary(local, 0)).state === 'off', 'Source primary temporary radio changed.');
       await preserved(local, source, sourceProfile, 'Source'); await preserved(remote, target, targetProfile, 'Target');
@@ -391,7 +510,8 @@
         sourceProfile, targetProfile, preamble: v.preamble, minutes: v.minutes, changedSettings,
         adoptedSource: adoptSource, adoptedTarget: adoptTarget};
     } catch (error) {
-      const partial = targetAttempted || sourceAttempted ? ' Temporary setup may be partially active; check both radios before any further write. No write was retried or automatically restored.' : '';
+      const partial = targetAttempted || sourceAttempted ? ' Temporary setup may be partially active; check both radios before any further write. ' +
+        (targetSwitchWrites > 1 ? 'Further switch requests followed fresh checks on the original channel; no settings were automatically restored.' : 'No write was retried or automatically restored.') : '';
       const policies = changedSettings.some(change => !change.confirmed) ? ' Unverified setting changes are listed in the diagnostic log.' : '';
       const result = Error((error?.message || 'Temporary channel setup failed.') + partial + policies);
       if (error.sourceUpdateRequired) result.sourceUpdateRequired = error.sourceUpdateRequired;

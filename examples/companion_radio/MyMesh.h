@@ -254,8 +254,10 @@ public:
     if (route != _ota_direct_usb_route) {
       closeDirectOtaAdmin();
       _ota_direct_radio_profile = 0;
+      if (_ota_direct_usb_route) _ota_direct_usb_route->setUsbRawPacketReceive(false);
     }
     _ota_direct_usb_route = route;
+    if (route) route->setUsbRawPacketReceive(true);
   }
 #endif
 
@@ -1092,7 +1094,7 @@ private:
 
   TransportKey send_scope;
 
-  uint8_t cmd_frame[MAX_FRAME_SIZE + 1];
+  uint8_t cmd_frame[BaseSerialInterface::MAX_USB_RAW_FRAME_SIZE + 1];
   uint8_t out_frame[MAX_FRAME_SIZE + 1];
   CayenneLPP telemetry;
 

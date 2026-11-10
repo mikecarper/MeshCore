@@ -18,7 +18,17 @@
   function u32(n){const b=new Uint8Array(4);new DataView(b.buffer).setUint32(0,n,true);return b;}
   function packet(payload){if(!payload.length||payload.length>300)throw Error('Invalid Companion frame size');return join(Uint8Array.of(60,payload.length&255,payload.length>>8),payload);}
   const INBOX_KEY='meshcore-lora-ota-preserved-inbox-v1';
-  const READ_ONLY=new Set(['get public.key','ota status','ota self','ver','get bootloader.ver',
+  const RADIO_PROBE_READS=new Set(['get public.key','get tempradio','get tempradio2','get radio2.status']);
+  function loraTimeout(message){const error=Error(message);error.loraReplyTimeout=true;return error;}
+  function radioProbeTimeout(radio,preamble){
+    if(!Array.isArray(radio)||radio.length!==4)throw Error('Choose the radio settings for the link probe');
+    const [frequency,bandwidth,sf,cr]=radio;
+    radioSetup().commands({frequency,bandwidth,sf,cr,preamble,minutes:1});
+    const symbol=2**sf/(bandwidth*1000),de=symbol>=.016?1:0;
+    const airtime=(preamble+4.25+8+Math.max(0,Math.ceil((8*186-4*sf+44)/(4*(sf-2*de))))*cr)*symbol;
+    return Math.max(1000,Math.ceil((2*airtime+.5)*1000));
+  }
+  const READ_ONLY=new Set(['get public.key','ota status','ota self','ver','get bootloader.ver','get usb.raw.max',
     'ota bootloader status','ota config','ota key list','get tempradio','get radio','get radio.rxps','ota installhash','ota qspi','ota stats','ota ls',
     'get radio2','get tempradio2','get radio2.cross','get radio2.status','get radioat','get tempradioat','get radioat2','get tempradioat2']);
   function usbOperation(payload){
@@ -99,7 +109,9 @@
       this.aclOnly=false;this.supportsRoutedPath=false;this.sourceKey=null;this.reader=null;this.writer=null;this.running=false;
       this.failure=null;this.decoder=new Decoder();this.pending=null;this.loginWaiter=null;this.queue=Promise.resolve();this.admin=Promise.resolve();
       this.authenticated=false;this.guard=false;this.investigationEnabled=false;this.investigationCancelled=false;this.investigationAuthenticated=false;this.investigationVerified=false;this.investigationProofPending=false;this.investigationPassword=null;this.investigationPermission='unknown';this.used=new Set();this.timestamp=0;this.serving=false;this.seeder=null;this.radioQueue=[];this.radioRunning=false;this.nextTx=0;this.txQueue=Promise.resolve();this.contactList=[];this.peerType=2;
+      this.radioProbeAdmission=null;
       this.otaSupported=false;this.localCliSupported=false;this.otaMode='legacy';this.rawPacketSupport='unverified';
+      this.usbRawFrameMax=176;this.radioProbeNextRequestAt=0;
       this.otaRadioProfile=0;this.otaTargetProfile=0;this.supportsOtaRadio2=false;
       this.sourceUpdateRequired=null;
       this.firmwareVersion=null;this.firmwareBuildDate=null;this.firmwareProtocol=null;this.firmwareVersionTruncated=false;
@@ -152,6 +164,10 @@
             const full=reply.match(/^(v?\d+(?:\.\d+){1,4}[^\s()]*)(?:\s|$)/i)?.[1];
             if(full){this.firmwareVersion=full;this.firmwareVersionTruncated=false;}
           }catch(error){if(this.failure)throw error;}
+          const limit=String(await this.localCommand('get usb.raw.max')).trim().replace(/^>\s*/,'');
+          if(/^\d+$/.test(limit)&&Number(limit)>=2&&Number(limit)<=300)this.usbRawFrameMax=Math.min(188,Number(limit));
+          else if(!/^(?:(?:err(?:or)?\s*:?\s*)?(?:unknown|unsupported)\b)/i.test(limit))
+            throw Error('Cannot confirm the Companion USB raw-packet limit');
         }
         return this;
       }catch(e){await this.close();throw e;}
@@ -222,7 +238,7 @@
       if(this.guard||this.authenticated||this.serving)throw Error('Close the active OTA session before changing target');
       if(this.investigationEnabled||this.investigationAuthenticated)throw Error('Disconnect before changing the investigation target');
       const match=this.contactList.find(c=>c.publicKey===key);
-      this.knownRepeater=key;this.peerType=match?.type||2;
+      this.knownRepeater=key;this.peerType=match?.type||2;this.radioProbeAdmission=null;
     }
     async localCommand(text){
       if(!this.localCliSupported)throw Error('This Companion cannot report local CLI settings over USB');
@@ -407,7 +423,7 @@
         await this.contacts();this.assertInvestigationRunning();this.assertStandardTarget();
         const loginTimeout=this.investigationReplyTimeout();
         const loginLabel=password?'login':'passwordless login';
-        const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.loginWaiter=null;reject(Error('Repeater login timed out'));},loginTimeout);this.loginWaiter={standard:true,resolve:()=>{clearTimeout(timer);resolve();},reject:e=>{clearTimeout(timer);reject(e);}};});
+        const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.loginWaiter=null;reject(loraTimeout('Repeater login timed out'));},loginTimeout);this.loginWaiter={standard:true,resolve:()=>{clearTimeout(timer);resolve();},reject:e=>{clearTimeout(timer);reject(e);}};});
         response.catch(()=>{}); // Cancellation can precede the Companion's send acknowledgement.
         this.investigationProgress('sending-login',loginLabel,this.options.commandTimeout??15000);
         try{await this.command(join(Uint8Array.of(26),unhex(this.knownRepeater),enc.encode(password)),6);this.assertInvestigationRunning();this.investigationProgress('waiting-login',loginLabel,loginTimeout);await response;this.assertInvestigationRunning();}
@@ -441,7 +457,7 @@
       if(password||investigation){
         const loginTimeout=investigation?this.investigationReplyTimeout():(this.options.remoteTimeout??75000);
         const loginLabel=password?'login':'passwordless login';
-        const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.loginWaiter=null;reject(Error('Repeater login timed out'));},loginTimeout);this.loginWaiter={resolve:()=>{clearTimeout(timer);resolve();},reject:e=>{clearTimeout(timer);reject(e);}};});
+        const response=new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.loginWaiter=null;reject(loraTimeout('Repeater login timed out'));},loginTimeout);this.loginWaiter={resolve:()=>{clearTimeout(timer);resolve();},reject:e=>{clearTimeout(timer);reject(e);}};});
         response.catch(()=>{});
         this.investigationProgress('sending-login',loginLabel,this.options.commandTimeout??15000);
         try{await this.command(join(Uint8Array.of(26),unhex(this.knownRepeater),enc.encode(password)),6);if(investigation)this.assertInvestigationRunning();this.investigationProgress('waiting-login',loginLabel,loginTimeout);await response;if(investigation)this.assertInvestigationRunning();}
@@ -461,7 +477,7 @@
         const status=await this.localCommand('get ota.direct');if(/^>?\s*ota\.direct v=2 active=1 busy=0\s*$/i.test(status))break;
         if(!/^>?\s*ota\.direct v=2 active=1 busy=1\s*$/i.test(status))throw Error('Companion direct session changed');await sleep(100);
       }
-      if(Date.now()>=deadline)throw Error('Return path timed out');
+      if(Date.now()>=deadline)throw loraTimeout('Return path timed out');
       const proof=investigation?await this.retryInvestigation('get public.key',()=>this.remoteReply('get public.key')):await this.remoteReply('get public.key');
       if(proof.replace(/^>\s*/,'').trim().toLowerCase()!==this.knownRepeater)throw Error('Repeater did not prove its full public key');
       this.authenticated=true;
@@ -504,7 +520,99 @@
         if(!this.investigationVerified)throw Error('Verify the target full public key before updating');
         return this.knownRepeater;
       }
-      return this.withAdmin(async()=>{if(!this.authenticated)await this.login(password);return this.knownRepeater;});
+      return this.withAdmin(async()=>{if(!this.authenticated)await this.login(password);this.radioProbeAdmission={key:this.knownRepeater,password};return this.knownRepeater;});
+    }
+    async probePeerRadio(key,password,profile,{radio,preamble,readback='get tempradio',maxDurationMs}={}){
+      this.validate(key);
+      if(!this.otaSupported||!this.supportsOtaRadio2||this.serving||![0,1].includes(profile))
+        throw Error('Radio link probes need an idle guarded Companion with selectable OTA radios');
+      if(typeof readback!=='function'&&!RADIO_PROBE_READS.has(readback))throw Error('Only temporary-radio readbacks are allowed in a link probe');
+      const timeout=radioProbeTimeout(radio,preamble);
+      if(maxDurationMs!==undefined&&(!Number.isFinite(maxDurationMs)||maxDurationMs<0))throw Error('Invalid radio probe duration');
+      return this.withAdmin(async()=>{
+        const admission=this.radioProbeAdmission;
+        if(!admission||admission.key!==this.knownRepeater||admission.password!==password)
+          throw Error('Verify this target and password before probing another radio channel');
+        if(this.serving)throw Error('Stop the transfer before probing another radio channel');
+        const options=this.options,deadline=Date.now()+(maxDurationMs??timeout*5);
+        this.options={...options,remoteTimeout:timeout};
+        const remaining=()=>{
+          const left=deadline-Date.now();
+          if(left<=0)throw loraTimeout('Radio link probe timed out');
+          return left;
+        };
+        const closeGuard=async()=>{
+          if(this.guard&&!this.failure)await this.guardMode(3);
+          this.guard=false;this.authenticated=false;
+        };
+        const waitIdle=async active=>{
+          const until=Math.min(deadline,Date.now()+timeout);
+          while(Date.now()<until){
+            const status=String(await this.localCommand('get ota.direct')).trim().replace(/^>\s*/,'');
+            const match=/^ota\.direct v=2 active=([01]) busy=([01])$/.exec(status);
+            if(!match||Number(match[1])!==active)throw Error('Companion direct session changed during the radio probe');
+            if(match[2]==='0')return;
+            await sleep(Math.min(100,Math.max(0,until-Date.now())));
+          }
+          throw loraTimeout('Return path timed out during the radio probe');
+        };
+        const read=async command=>{
+          if(!RADIO_PROBE_READS.has(command))throw Error('Only temporary-radio readbacks are allowed in a link probe');
+          // Request timestamps are replay counters measured in whole seconds.
+          // Do not make rapid channel probes push that counter into the future.
+          const delay=this.radioProbeNextRequestAt-Date.now();
+          if(delay>0){if(delay>=remaining())throw loraTimeout('Radio link probe timed out');await sleep(delay);}
+          this.radioProbeNextRequestAt=Date.now()+1000;
+          this.options.remoteTimeout=Math.min(timeout,remaining());
+          const reply=await this.remoteReply(command);
+          const text=String(reply).trim().replace(/^>\s*/,'');
+          if(/^(?:err(?:or)?\b|unknown\b|unsupported\b)/i.test(text))throw Error('Target rejected the radio probe: '+text);
+          return reply;
+        };
+        try{
+          await closeGuard();remaining();await waitIdle(0);
+          if(remaining()<timeout)throw loraTimeout('Not enough time remains for a radio link probe');
+          await this.selectOtaRadio(profile);
+          await this.guardMode(1,Uint8Array.of(this.peerType));this.guard=true;
+          await this.guardMode(2);await waitIdle(1);
+          // The existing admin session was admitted on the old channel. Each
+          // candidate channel still needs a fresh full-key proof, but no new
+          // password login, contact dump or eleven-attempt investigation.
+          const proof=String(await read('get public.key')).trim().replace(/^>\s*/,'');
+          if(proof.toLowerCase()!==this.knownRepeater)throw Error('Repeater did not prove its full public key');
+          const reply=typeof readback==='function'?await readback(read):await read(readback);
+          this.authenticated=true;
+          return {reachable:true,reply};
+        }catch(error){
+          await closeGuard();
+          if(error?.loraReplyTimeout&&!this.failure)return {reachable:false};
+          throw error;
+        }finally{this.options=options;}
+      });
+    }
+    async requestRemoteRadio(key,password,text,{radio,preamble,maxDurationMs}={}){
+      this.validate(key);
+      if(!this.otaSupported||!this.supportsOtaRadio2||this.serving||
+          !/^(?:tempradio |set tempradio2 )/.test(text)||!legacyOtaCommand(text))
+        throw Error('Only a guarded temporary-radio request is allowed');
+      const timeout=Math.max(2500,radioProbeTimeout(radio,preamble));
+      if(maxDurationMs!==undefined&&(!Number.isFinite(maxDurationMs)||maxDurationMs<0))throw Error('Invalid radio request duration');
+      return this.withAdmin(async()=>{
+        const admission=this.radioProbeAdmission;
+        if(!admission||admission.key!==this.knownRepeater||admission.password!==password||
+            !this.guard||!this.authenticated||this.otaRadioProfile!==0||this.serving)
+          throw Error('Prove the target on the primary radio before requesting temporary settings');
+        if(maxDurationMs!==undefined&&maxDurationMs<timeout)throw loraTimeout('Not enough time remains for a temporary-radio request');
+        const options=this.options;
+        this.options={...options,remoteTimeout:Math.min(timeout,maxDurationMs??timeout)};
+        try{
+          // One setter only. A lost RF acknowledgement is resolved by probing
+          // both channels; it never authorizes a replay or a new login here.
+          const reply=await this.remoteReply(text),result=String(reply).trim().replace(/^>\s*/,'');
+          if(/^(?:err(?:or)?\b|unknown\b|unsupported\b)/i.test(result))throw Error('Target rejected temporary radio settings: '+result);
+          return reply;
+        }finally{this.options=options;}
+      });
     }
     async remoteCommand(key,password,text){
       this.validate(key);
@@ -565,8 +673,14 @@
       });
     }
     async setPath(){throw Error('Companion OTA currently supports zero-hop only');}
+    requireOtaPacketCapacity(){
+      if(this.usbRawFrameMax>=188)return;
+      const error=Error('The USB Companion accepts only '+this.usbRawFrameMax+'-byte commands; LoRa OTA needs 188 bytes. Update the USB Companion firmware first. The remote device has not been changed.');
+      error.sourceUpdateRequired='companion';error.sourcePacketCapacity=true;throw error;
+    }
     async serve(info,blob,compress){
       if(this.serving)throw Error('An OTA package is already being served');
+      this.requireOtaPacketCapacity();
       if(this.rawPacketSupport==='unsupported'){const error=Error('This Companion cannot send raw OTA packets');error.sourceUpdateRequired='companion';throw error;}
       if(!globalThis.LoraOtaCompanionSource)throw Error('Companion seeder is unavailable');
       const t=this.localCliSupported?(this.otaRadioProfile===1
@@ -609,6 +723,7 @@
     }
     async sendRadioOrdered(raw){
       const delay=this.nextTx-Date.now();if(delay>0)await sleep(delay);if(!this.serving)return;
+      if(raw.length+2>this.usbRawFrameMax){const error=Error('The OTA packet exceeds the Companion USB command limit. Update the USB Companion firmware first.');error.sourceUpdateRequired='companion';error.sourcePacketCapacity=true;throw error;}
       if(!this.otaSupported)await this.checkSourceRadio();
       if(!this.serving)return;
       try{await this.command(join(Uint8Array.of(65,1),raw),0);}
@@ -630,7 +745,7 @@
       this.running=false;if(this.pending){clearTimeout(this.pending.timer);this.pending.reject(Error('Connection closed'));this.pending=null;}
       if(this.reader){try{await this.reader.cancel();}catch(_){}try{await this.readTask;}catch(_){}try{this.reader.releaseLock();}catch(_){}}
       if(this.writer){try{await this.writer.close();}catch(_){}try{this.writer.releaseLock();}catch(_){}}
-      if(this.portOpened){try{await this.port.close();this.portOpened=false;}catch(_){}}this.reader=this.writer=null;this.investigationPassword=null;this.sourceKey=null;
+      if(this.portOpened){try{await this.port.close();this.portOpened=false;}catch(_){}}this.reader=this.writer=null;this.investigationPassword=null;this.radioProbeAdmission=null;this.sourceKey=null;
     }
   }
   return {Decoder,CompanionTransport,preservedMessages,preservedSnapshot,clearPreservedMessages};

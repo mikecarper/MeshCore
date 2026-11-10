@@ -109,7 +109,13 @@ def legacy_harness(fault=''):
     if fault in ('package', 'full_transfer', 'no_cli_transfer'):
         package_check = r'''const chosen=new DataTransfer();chosen.items.add(new File([expected],'firmware.bin'));el('file').files=chosen.files;el('file').dispatchEvent(new Event('change',{bubbles:true}));
     el('inspect').click();await wait(()=>!el('inspect').disabled);if(el('transfer').disabled||!el('resume').disabled||!el('install').disabled)throw Error('validated legacy OTA preflight did not enable transfer');'''
-        if fault in ('full_transfer', 'no_cli_transfer'):
+        if fault == 'no_cli_transfer':
+            package_check = r'''const chosen=new DataTransfer();chosen.items.add(new File([expected],'firmware.bin'));el('file').files=chosen.files;el('file').dispatchEvent(new Event('change',{bubbles:true}));
+    el('inspect').click();await wait(()=>el('status').textContent.includes('Error:'));
+    if(!el('transfer').disabled||!el('update').disabled)throw Error('176-byte source enabled an update');
+    await report({blocked:true,status:el('status').textContent,installed,otaData,advertSeen,
+      sourceInfo:el('source-info').textContent,updateHelp:!el('source-update-help').hidden,cmds,frames:port.frames});return;'''
+        elif fault == 'full_transfer':
             package_check += r'''
     el('transfer').click();await wait(()=>!el('install').disabled||el('status').textContent.includes('Error:'));
     if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);
@@ -356,19 +362,19 @@ class LegacyInvestigationBrowserTest(unittest.TestCase):
         self.assertTrue(any(f[0] == 65 for f in result['frames']), result)
         self.assertFalse(any(f[0] == 52 for f in result['frames']), result)
 
-    def test_full_update_using_companion_without_local_cli(self):
+    def test_companion_without_local_cli_requires_source_update_before_large_raw_packets(self):
         result = run_harness(legacy_harness('no_cli_transfer'), timeout=120)
         self.assertNotIn('error', result, result)
-        self.assertTrue(result['installed'], result)
-        self.assertTrue(result['otaData'], result)
-        self.assertTrue(result['advertSeen'], result)
-        self.assertIn('Installed and verified:', result['status'])
-        self.assertRegex(result['status'], r'(?i)unverified|cannot.*(?:verif|read)')
+        self.assertTrue(result['blocked'], result)
+        self.assertFalse(result['installed'], result)
+        self.assertFalse(result['otaData'], result)
+        self.assertFalse(result['advertSeen'], result)
+        self.assertRegex(result['status'], r'(?i)176|188|USB.*packet')
+        self.assertTrue(result['updateHelp'], result)
         self.assertIn('v1.16.05', result['sourceInfo'])
         self.assertRegex(result['sourceInfo'], r'(?i)raw.packet.*compatibility')
-        self.assertIn('ota install', result['cmds'])
-        self.assertGreaterEqual(result['cmds'].count('get public.key'), 2, result)
-        self.assertTrue(any(f[0] == 65 for f in result['frames']), result)
+        self.assertFalse(any(c.startswith(('ota pull ', 'ota install ')) for c in result['cmds']), result)
+        self.assertFalse(any(f[0] == 65 for f in result['frames']), result)
         self.assertFalse(any(f[0] == 52 for f in result['frames']), result)
 
     def test_old_companion_version_selects_raw_packet_compatibility(self):

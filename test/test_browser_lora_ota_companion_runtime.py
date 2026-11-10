@@ -52,6 +52,7 @@ HARNESS = r'''<script>
         else throw Error('unexpected remote '+text);out=Uint8Array.of(6,0,0,0,0,0,0,0,0,0);
       } else if(f[0]===66){const text=dec.decode(f.slice(1));let value;
         if(text==='get ota.direct')value=`> ota.direct v=2 active=${guard?1:0} busy=0`;
+        else if(text==='get usb.raw.max')value='> 188';
         else if(text==='get ota.direct.capabilities')value='> ota.direct.cap guarded_cli=1 guarded_radio=1';
         else if(text.startsWith('get ota.direct.reply ')){const at=Number(text.split(' ').pop()),b=enc.encode(reply),part=b.slice(at,at+40);value=`> ota.reply req=${corr} state=ready bytes=${b.length} off=${at} data=${hex(part)||'-'}`;}
         else if(text==='ver')value='v1.18.0.2-dev-12345678 (Build: 06-Nov-2026)';

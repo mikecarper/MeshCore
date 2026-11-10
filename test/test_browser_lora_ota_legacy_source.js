@@ -9,7 +9,7 @@ class OldPort{
   push(f){if(this.waiter){const w=this.waiter;this.waiter=null;w({value:wire(f),done:false});}else this.q.push(wire(f));}
   async open(){
     this.readable={getReader:()=>({read:()=>this.q.length?Promise.resolve({value:this.q.shift(),done:false}):new Promise(r=>this.waiter=r),cancel:async()=>{if(this.waiter)this.waiter({done:true});},releaseLock(){}})};
-    this.writable={getWriter:()=>({write:async b=>{const f=b.slice(3);this.sent.push(f);if(f[0]===1){const x=new Uint8Array(58);x[0]=5;x.set(bytes(source),4);const v=new DataView(x.buffer);v.setUint32(48,910525,true);v.setUint32(52,62500,true);x[56]=7;x[57]=5;this.push(x);}else if(f[0]===22){assert.equal(f[1],4);if(this.options.noDevice)this.push(Uint8Array.of(1,2));else{const x=new Uint8Array(82);x[0]=13;x[1]=14;x.set(enc.encode('01-Nov-2026'),8);x.set(enc.encode('test manufacturer'),20);x.set(enc.encode('v1.16.05-halo-keymi'),60);this.push(x);}}else if(f[0]===66){if(!this.options.cli)this.push(Uint8Array.of(0,1));else{const cmd=dec.decode(f.slice(1));const reply=cmd==='get ota.direct'?(this.options.noGuard?'Unknown command':'> ota.direct v=2 active=0 busy=0'):cmd==='get ota.direct.capabilities'?'> ota.direct.cap guarded_cli=1 guarded_radio=1':cmd==='ver'?'v1.18.0.2-dev-abcdef12 (Build: 01-Nov-2026)':'Unknown command';this.push(Uint8Array.of(29,...enc.encode(reply)));}}else throw Error('unexpected command');},close:async()=>{},releaseLock(){}})};
+    this.writable={getWriter:()=>({write:async b=>{const f=b.slice(3);this.sent.push(f);if(f[0]===1){const x=new Uint8Array(58);x[0]=5;x.set(bytes(source),4);const v=new DataView(x.buffer);v.setUint32(48,910525,true);v.setUint32(52,62500,true);x[56]=7;x[57]=5;this.push(x);}else if(f[0]===22){assert.equal(f[1],4);if(this.options.noDevice)this.push(Uint8Array.of(1,2));else{const x=new Uint8Array(82);x[0]=13;x[1]=14;x.set(enc.encode('01-Nov-2026'),8);x.set(enc.encode('test manufacturer'),20);x.set(enc.encode('v1.16.05-halo-keymi'),60);this.push(x);}}else if(f[0]===66){if(!this.options.cli)this.push(Uint8Array.of(0,1));else{const cmd=dec.decode(f.slice(1));const reply=cmd==='get ota.direct'?(this.options.noGuard?'Unknown command':'> ota.direct v=2 active=0 busy=0'):cmd==='get ota.direct.capabilities'?'> ota.direct.cap guarded_cli=1 guarded_radio=1':cmd==='ver'?'v1.18.0.2-dev-abcdef12 (Build: 01-Nov-2026)':cmd==='get usb.raw.max'&&this.options.rawMax?'> '+this.options.rawMax:'Unknown command';this.push(Uint8Array.of(29,...enc.encode(reply)));}}else throw Error('unexpected command');},close:async()=>{},releaseLock(){}})};
   }
   async close(){}
 }
@@ -20,10 +20,16 @@ async function run(){
   assert.deepEqual(await link.savedSourceRadio(),[910.525,62.5,7,5]);
   await assert.rejects(()=>link.localCommand('get tempradio'),/cannot report/);
   assert.equal(old.sent.filter(f=>f[0]===66).length,1);await link.close();
-  const modernPort=new OldPort({cli:true}),modern=new CompanionTransport(modernPort,{openSettle:0,commandTimeout:200});
-  await modern.open();assert.equal(modern.otaMode,'guarded');assert.equal(modern.firmwareVersion,'v1.18.0.2-dev-abcdef12');assert.equal(modern.firmwareVersionTruncated,false);await modern.close();
-  const unguardedPort=new OldPort({cli:true,noGuard:true}),unguarded=new CompanionTransport(unguardedPort,{openSettle:0,commandTimeout:200});
-  await unguarded.open();assert.equal(unguarded.firmwareVersion,'v1.18.0.2-dev-abcdef12');assert.equal(unguarded.otaMode,'legacy');await unguarded.close();
+  const modernPort=new OldPort({cli:true,rawMax:188}),modern=new CompanionTransport(modernPort,{openSettle:0,commandTimeout:200});
+  await modern.open();assert.equal(modern.otaMode,'guarded');assert.equal(modern.firmwareVersion,'v1.18.0.2-dev-abcdef12');assert.equal(modern.firmwareVersionTruncated,false);assert.equal(modern.usbRawFrameMax,188);modern.requireOtaPacketCapacity();await modern.close();
+  const unguardedPort=new OldPort({cli:true,noGuard:true,rawMax:188}),unguarded=new CompanionTransport(unguardedPort,{openSettle:0,commandTimeout:200});
+  await unguarded.open();assert.equal(unguarded.firmwareVersion,'v1.18.0.2-dev-abcdef12');assert.equal(unguarded.otaMode,'legacy');assert.equal(unguarded.usbRawFrameMax,188);unguarded.requireOtaPacketCapacity();await unguarded.close();
+  for(const rawMax of [undefined,176]){
+    const oldCliPort=new OldPort({cli:true,noGuard:true,rawMax}),oldCli=new CompanionTransport(oldCliPort,{openSettle:0,commandTimeout:200});
+    await oldCli.open();assert.equal(oldCli.usbRawFrameMax,176);assert.equal(oldCli.localCliSupported,true);
+    assert.throws(()=>oldCli.requireOtaPacketCapacity(),error=>error.sourceUpdateRequired==='companion'&&error.sourcePacketCapacity===true&&error.message.includes('188'));
+    assert.ok(!oldCliPort.sent.some(frame=>[2,26,65].includes(frame[0])));await oldCli.close();
+  }
   const unknownPort=new OldPort({noDevice:true}),unknown=new CompanionTransport(unknownPort,{openSettle:0,commandTimeout:200});
   await unknown.open();assert.equal(unknown.firmwareVersion,null);assert.equal(unknown.otaMode,'legacy');await unknown.close();
 
@@ -61,7 +67,7 @@ async function run(){
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:previousNavigator});
 
   // Current and older temp-radio response formats both supply pacing data.
-  const s=new CompanionTransport({},{});s.radio=[910.525,62.5,7,5];s.localCliSupported=true;s.otaSupported=false;
+  const s=new CompanionTransport({},{});s.radio=[910.525,62.5,7,5];s.localCliSupported=true;s.otaSupported=false;s.usbRawFrameMax=188;
   let temp='> 910.525,62.5,7,5,32',primary='> 910.525,62.5,7,5';
   s.localCommand=async cmd=>cmd==='get tempradio'?temp:primary;
   s.advertise=()=>{};globalThis.LoraOtaCompanionSource={Source:{create:async()=>({})}};
@@ -73,7 +79,7 @@ async function run(){
   // source can use a temporary OTA channel without changing its saved mesh.
   // Mirror localCommand's real get-radio side effect on the cached tuple.
   const offPrimary=new CompanionTransport({},{});
-  offPrimary.sourceKey=source;offPrimary.localCliSupported=true;offPrimary.otaSupported=true;
+  offPrimary.sourceKey=source;offPrimary.localCliSupported=true;offPrimary.otaSupported=true;offPrimary.usbRawFrameMax=188;
   let saved=[910.525,62.5,12,8],active='TempRadio active: 909.500,250.00,5,5 600s left,preamble=128';
   offPrimary.radio=saved.slice();offPrimary.advertise=()=>{};
   offPrimary.localCommand=async command=>{
@@ -187,7 +193,7 @@ async function run(){
   // Radio2 pacing and every subsequent send use the active selected lease;
   // primary off and a slower saved mesh are expected in this mode.
   const secondarySource=new CompanionTransport({},{});
-  Object.assign(secondarySource,{sourceKey:source,localCliSupported:true,otaSupported:true,supportsOtaRadio2:true,otaRadioProfile:1,radio:[910.525,62.5,12,8]});
+  Object.assign(secondarySource,{sourceKey:source,localCliSupported:true,otaSupported:true,supportsOtaRadio2:true,otaRadioProfile:1,radio:[910.525,62.5,12,8],usbRawFrameMax:188});
   let secondaryLive=true;secondarySource.advertise=()=>{};
   secondarySource.localCommand=async command=>{
     if(command==='get radio'){secondarySource.radio=[910.525,62.5,12,8];return '> 910.525,62.5,12,8';}

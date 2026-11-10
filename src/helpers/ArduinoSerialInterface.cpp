@@ -293,6 +293,10 @@ size_t ArduinoSerialInterface::writeFrame(const uint8_t src[], size_t len) {
 }
 
 size_t ArduinoSerialInterface::checkRecvFrame(uint8_t dest[]) {
+  return checkRecvFrame(dest, MAX_FRAME_SIZE);
+}
+
+size_t ArduinoSerialInterface::checkRecvFrame(uint8_t dest[], size_t capacity) {
   if (_serial == nullptr || dest == nullptr) return 0;
   serviceReceiveTimeout();
   serviceTransmit();
@@ -336,12 +340,14 @@ size_t ArduinoSerialInterface::checkRecvFrame(uint8_t dest[]) {
         if (_state == RECV_STATE_IDLE) resetControlSequenceState();
         break;
       default:
-        if (rx_len < MAX_FRAME_SIZE) {
+        if (rx_len < sizeof(rx_buf)) {
           rx_buf[rx_len] = (uint8_t)c;   // rest of frame will be discarded if > MAX
         }
         rx_len++;
         if (rx_len >= _frame_len) {  // received a complete frame?
-          if (_frame_len > MAX_FRAME_SIZE) {
+          const bool extended_raw = _usb_raw_packet_rx && rx_buf[0] == 65
+              && _frame_len <= MAX_USB_RAW_FRAME_SIZE;
+          if (_frame_len > capacity || (_frame_len > MAX_FRAME_SIZE && !extended_raw)) {
             // Consume the entire declared body to preserve framing, but never
             // execute a truncated command or grant Binary-client proof for an
             // invalid frame. A following valid frame may still be dispatched.

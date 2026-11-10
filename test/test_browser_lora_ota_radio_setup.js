@@ -7,7 +7,7 @@ const selected = {frequency: 909.95, bandwidth: 250, sf: 5, cr: 5, minutes: 120,
 const primary = setup.commands(selected), trial = setup.commands({...selected, minutes: 2}), secondary = setup.commands(selected, {sourceProfile: 1, targetProfile: 1});
 
 function fixture(options = {}) {
-  let clock = 10000, protectedWrite = false, proofs = 0, targetAckAt = null;
+  let clock = 10000, protectedWrite = false, proofs = 0, targetAckAt = null, targetSetters = 0, newProbes = 0, allProbes = 0;
   const events = [], overrides = new Map(options.overrides || []);
   const preferences = Object.fromEntries(['source', 'target'].map(label => [label, {
     rxps: options.factoryDefaults ? 'on' : 'off', hops: options.factoryDefaults ? '3' : '0',
@@ -28,7 +28,7 @@ function fixture(options = {}) {
     async probeOtaRadio() { events.push(['probe']); this.supportsOtaRadio2 = !options.legacy && options.sourceSupports !== false; },
     async verifyPeer(k, password) {
       events.push(['verify', k, password, clock]); assert.equal(k, key); proofs++;
-      if (events.some(row => row[0] === 'select')) {
+      if (!options.fastProbe && events.some(row => row[0] === 'select')) {
         assert.ok(clock - (targetAckAt ?? 0) >= (options.targetDelay ?? 2500), 'authentication preceded target retune');
         assert.ok(live('source', this.otaRadioProfile), 'source selected profile not live');
         assert.ok(live('target', this.otaTargetProfile), 'target selected profile not live');
@@ -52,6 +52,7 @@ function fixture(options = {}) {
     async resetRemoteSession(k, password) {
       events.push(['reset', k, password]); assert.equal(this.guard, false);
       assert.equal(!!options.repeater, false, 'Repeater reset cannot reuse a released peer owner');
+      clock += options.resetDelay ?? 0;
       if (options.resetFailure) throw Error('reset failed'); this.authenticated = false;
     },
     async localCommand(command) { return read('source', command); },
@@ -60,14 +61,44 @@ function fixture(options = {}) {
       return read('target', command);
     }
   };
+  if (options.fastProbe) link.probePeerRadio = async function(k, password, profile, {radio, preamble, readback} = {}) {
+    events.push(['peer-probe', profile, clock]);
+    assert.equal(k, key); assert.equal(password, 'pw');
+    assert.deepEqual(radio, profile ? expectedTuple : saved.source);
+    if (profile) {
+      assert.equal(preamble, selected.preamble);
+      assert.ok(live('source', 1), 'new-channel probe before source R2 became live');
+    }
+    assert.equal(states.source[0], null, 'dual-channel handshake retuned the original source radio');
+    clock += options.probeDelay ?? 1000;
+    this.guard = this.authenticated = false; this.otaRadioProfile = profile;
+    if (++allProbes === options.probeUsbFailureAt) {
+      this.failure = Error('USB disconnected during channel probe'); throw this.failure;
+    }
+    const targetProfile = states.target[1] ? 1 : 0;
+    const targetLive = live('target', targetProfile);
+    const reachable = profile ? targetLive && ++newProbes > (options.newProbeMisses ?? 0) :
+      !targetLive || targetProfile === 1;
+    if (!reachable) return {reachable: false};
+    this.guard = this.authenticated = true;
+    const reply = readback ? await readback(command => read('target', command)) : undefined;
+    events.push(['peer-probe-result', profile, clock, reply?.state ?? null]);
+    return {reachable: true, reply};
+  };
   function live(label, profile) {
     const state = states[label][profile];
-    return state && !options.pendingForever && clock - state.started >= (label === 'source' ? 1500 : 2000);
+    return state && !options.pendingForever && clock - state.started >= (label === 'source' ? 1500 : options.targetApplyDelay ?? 2000);
   }
   function config(label, profile) {
     const state = states[label][profile];
     if (!state) return profile ? '> off' : (label === 'source' ? 'TempRadio inactive' : '> off');
-    const pre = label === 'source' ? options.sourcePreamble ?? 128 : options.targetPreamble ?? 128;
+    if (!profile && options.expirePrimaryLease && clock - state.started >= state.minutes * 60000)
+      return '> off';
+    if (!profile && label === 'target' && (options.targetReadbackPendingForever ||
+        clock - state.started < (options.targetReadbackDelay ?? 0)))
+      return options.targetReadbackOff ? '> off' : '> pending';
+    const pre = label === 'source' ? options.sourcePreamble ?? 128 :
+      clock - state.started < (options.targetOldPreambleUntil ?? 0) ? 64 : options.targetPreamble ?? 128;
     const tuple = [...(state.tuple || expectedTuple)];
     if (label === 'target' && options.targetFrequency) tuple[0] = options.targetFrequency;
     const frequency = tuple[0];
@@ -92,10 +123,18 @@ function fixture(options = {}) {
       const profile = command.startsWith('set ') ? 1 : 0;
       const minutes = Number(command.split(',').at(-2));
       assert.equal(command, setup.commands({...requested, minutes}, {sourceProfile: profile, targetProfile: profile})[label]);
-      assert.ok(minutes === (profile ? 120 : 2) || (!profile && minutes === 120 && events.some(row => row[0] === 'select')), 'full primary window before link proof');
+      assert.ok(minutes === (profile ? 120 : 2) || (!profile && minutes === 120 &&
+        events.some(row => row[0] === 'select' || row[0] === 'peer-probe-result' && row[1] === 1 && row[3] === 'active')),
+        'full primary window before link proof');
       if (label === 'source' && !options.repeater) assert.equal(protectedWrite, true, 'Companion retune must use protective local guard');
+      if (label === 'target' && options.fastProbe && minutes === 2)
+        assert.equal(link.otaRadioProfile, 0, 'target trial setter did not use the verified original source radio');
+      if (label === 'target' && ++targetSetters <= (options.targetSetterIgnored ?? 0))
+        throw Object.assign(Error('Remote command timed out; result is unknown'), {loraReplyTimeout: true});
       states[label][profile] = {started: clock, tuple: expectedTuple, minutes};
       if (label === 'target') targetAckAt = clock;
+      if (label === 'target' && options.targetAckLost && targetSetters === 1)
+        throw Object.assign(Error('Remote command timed out; result is unknown'), {loraReplyTimeout: true});
       if (options[label + 'Timeout']) throw Error('Command timed out; result is unknown');
       return options[label + 'Ack'] ?? 'OK - temporary parameters applying';
     }
@@ -243,6 +282,167 @@ test('post-retune key, live target preamble and both saved baselines are mandato
     assert.equal(f.writes().filter(row => row[0] === 'target').length, 1);
     assert.ok(f.writes().filter(row => row[0] === 'source').length <= 1);
   }
+});
+
+test('pending or off target readback can settle without repeating either short-window setter', async () => {
+  for (const targetReadbackOff of [false, true]) {
+    const f = fixture({sourceSupports: false, targetSecondary: false,
+      targetReadbackDelay: 5500, targetReadbackOff});
+    const result = await setup.prepare(f.link, key, 'pw', selected, f.options);
+    assert.equal(result.ready, true);
+    for (const endpoint of ['source', 'target']) {
+      const writes = f.writes().filter(row => row[0] === endpoint).map(row => row[1]);
+      assert.deepEqual(writes, [trial[endpoint], primary[endpoint]]);
+    }
+    const select = f.events.findIndex(row => row[0] === 'select');
+    assert.ok(f.events.slice(select).filter(row => row[0] === 'target' && row[1] === 'get tempradio').length >= 3);
+  }
+});
+
+test('older target showing its previous active preamble is checked until the accepted channel applies', async () => {
+  const f = fixture({sourceSupports: false, targetSecondary: false, targetOldPreambleUntil: 5500});
+  const result = await setup.prepare(f.link, key, 'pw', selected, f.options);
+  assert.equal(result.ready, true);
+  const select = f.events.findIndex(row => row[0] === 'select');
+  assert.ok(f.events.slice(select).filter(row => row[0] === 'target' && row[1] === 'get tempradio').length >= 3);
+  for (const endpoint of ['source', 'target'])
+    assert.deepEqual(f.writes().filter(row => row[0] === endpoint).map(row => row[1]), [trial[endpoint], primary[endpoint]]);
+});
+
+test('target pending readback has a bounded read-only wait and reports expected and observed state', async () => {
+  const f = fixture({sourceSupports: false, targetSecondary: false, targetReadbackPendingForever: true});
+  await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options), error => {
+    assert.match(error.message, /Target/i);
+    assert.match(error.message, /pending/i);
+    assert.match(error.message, /909\.950,250,5,5/);
+    assert.match(error.message, /128/);
+    assert.match(error.message, /35/);
+    return true;
+  });
+  const select = f.events.findIndex(row => row[0] === 'select');
+  const reads = f.events.slice(select).filter(row => row[0] === 'target' && row[1] === 'get tempradio');
+  assert.ok(reads.length > 1 && reads.length <= 72);
+  assert.ok(f.options.now() - reads[0][2] >= 35000 && f.options.now() - reads[0][2] <= 35500);
+  for (const endpoint of ['source', 'target'])
+    assert.deepEqual(f.writes().filter(row => row[0] === endpoint).map(row => row[1]), [trial[endpoint]]);
+});
+
+test('a persistent active target preamble mismatch is bounded, detailed and never opens the full window', async () => {
+  const f = fixture({sourceSupports: false, targetSecondary: false, targetPreamble: 64});
+  await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options), error => {
+    assert.match(error.message, /Target/i);
+    assert.match(error.message, /909\.950,250,5,5/);
+    assert.match(error.message, /128/);
+    assert.match(error.message, /64/);
+    return true;
+  });
+  const select = f.events.findIndex(row => row[0] === 'select');
+  const reads = f.events.slice(select).filter(row => row[0] === 'target' && row[1] === 'get tempradio');
+  assert.ok(reads.length > 1 && reads.length <= 72);
+  assert.ok(f.options.now() - reads[0][2] >= 35000 && f.options.now() - reads[0][2] <= 35500);
+  for (const endpoint of ['source', 'target'])
+    assert.deepEqual(f.writes().filter(row => row[0] === endpoint).map(row => row[1]), [trial[endpoint]]);
+});
+
+test('a legacy primary trial expiring during reauthentication is identified and not renewed', async () => {
+  const f = fixture({legacy: true, targetSecondary: false, resetDelay: 120001, expirePrimaryLease: true});
+  await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options), error => {
+    assert.match(error.message, /Target/i);
+    assert.match(error.message, /(?:expired|expiry|elapsed|ended)/i);
+    assert.match(error.message, /trial window/i);
+    assert.match(error.message, /Reported: off/);
+    return true;
+  });
+  for (const endpoint of ['source', 'target']) {
+    const writes = f.writes().filter(row => row[0] === endpoint).map(row => row[1]);
+    assert.deepEqual(writes, ['tempradio 910.525,62.5,7,5,2,128']);
+  }
+});
+
+test('dual-channel setup prepares source R2 before switching the target and completes immediately on new-channel proof', async () => {
+  const f = fixture({fastProbe: true, targetApplyDelay: 0, probeDelay: 0}), before = f.before();
+  const result = await setup.prepare(f.link, key, 'pw', selected, f.options);
+  assert.equal(result.ready, true); assert.equal(result.sourceProfile, 1); assert.equal(result.targetProfile, 1);
+  const sourceWrite = f.events.findIndex(row => row[0] === 'source' && row[1] === secondary.source);
+  const targetWrite = f.events.findIndex(row => row[0] === 'target' && row[1] === secondary.target);
+  const firstProbe = f.events.slice(targetWrite + 1).find(row => row[0] === 'peer-probe');
+  assert.ok(sourceWrite >= 0 && sourceWrite < targetWrite);
+  assert.equal(firstProbe[1], 1); assert.ok(firstProbe[2] - f.events[targetWrite][2] < 2500);
+  assert.equal(f.events.slice(targetWrite + 1).filter(row => row[0] === 'peer-probe' && row[1] === 0).length, 0);
+  assert.equal(f.states.source[0], null); assert.equal(f.before(), before);
+  assert.equal(f.writes().filter(row => row[0] === 'source').length, 1);
+  assert.equal(f.writes().filter(row => row[0] === 'target').length, 1);
+  assert.ok(!f.events.some(row => row[0] === 'wait' && row[1] === 2500));
+});
+
+test('dual-channel setup keeps checking the new channel and checks the original only after failed new probes', async () => {
+  const f = fixture({fastProbe: true, targetSecondary: false, targetApplyDelay: 14000});
+  const result = await setup.prepare(f.link, key, 'pw', selected, f.options);
+  assert.equal(result.ready, true); assert.equal(result.sourceProfile, 1); assert.equal(result.targetProfile, 0);
+  const targetWrite = f.events.findIndex(row => row[0] === 'target' && row[1] === trial.target);
+  const probes = f.events.slice(targetWrite + 1).filter(row => row[0] === 'peer-probe');
+  assert.equal(probes[0][1], 1); assert.ok(probes.some(row => row[1] === 0));
+  for (let n = 0; n < probes.length; n++) if (probes[n][1] === 0) {
+    assert.ok(n > 0 && probes[n - 1][1] === 1, 'original-channel check preceded a failed new-channel check');
+  }
+  const oldReplies = f.events.slice(targetWrite + 1).filter(row => row[0] === 'peer-probe-result' && row[1] === 0);
+  assert.ok(oldReplies.length > 0); assert.ok(oldReplies.every(row => row[3] === 'pending'));
+  const setters = f.events.filter(row => row[0] === 'target' && row[1].startsWith('tempradio '));
+  assert.deepEqual(setters.map(row => row[1]), [trial.target, primary.target]);
+  assert.equal(f.states.source[0], null);
+});
+
+test('a missed target switch is repeated only after fresh original-channel proof and the five-second grace', async () => {
+  const f = fixture({fastProbe: true, targetSecondary: false, targetSetterIgnored: 1, targetApplyDelay: 0});
+  const result = await setup.prepare(f.link, key, 'pw', selected, f.options);
+  assert.equal(result.ready, true);
+  const trials = f.events.filter(row => row[0] === 'target' && row[1] === trial.target);
+  assert.equal(trials.length, 2); assert.ok(trials[1][2] - trials[0][2] >= 5000);
+  const first = f.events.indexOf(trials[0]), second = f.events.indexOf(trials[1]);
+  const proof = f.events.slice(first + 1, second).filter(row => row[0] === 'peer-probe-result' && row[1] === 0);
+  assert.ok(proof.length > 0); assert.equal(proof.at(-1)[3], 'off');
+  assert.equal(f.writes().filter(row => row[0] === 'source').length, 1);
+  assert.equal(f.states.source[0], null);
+});
+
+test('three missed target switches stop rather than repeating setup indefinitely', async () => {
+  const f = fixture({fastProbe: true, targetSecondary: false, targetSetterIgnored: 100});
+  await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options));
+  const trials = f.events.filter(row => row[0] === 'target' && row[1] === trial.target);
+  assert.equal(trials.length, 3);
+  for (let n = 1; n < trials.length; n++) {
+    assert.ok(trials[n][2] - trials[n - 1][2] >= 5000);
+    const previous = f.events.indexOf(trials[n - 1]), current = f.events.indexOf(trials[n]);
+    assert.ok(f.events.slice(previous, current).some(row => row[0] === 'peer-probe-result' && row[1] === 0 && row[3] === 'off'));
+  }
+  assert.ok(!f.events.some(row => row[0] === 'target' && row[1] === primary.target));
+  assert.equal(f.writes().filter(row => row[0] === 'source').length, 1);
+});
+
+test('an accepted pending target switch is never sent again even when its acknowledgement was lost', async () => {
+  const f = fixture({fastProbe: true, targetSecondary: false, targetAckLost: true, targetApplyDelay: 100000});
+  await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options));
+  const targetWrite = f.events.findIndex(row => row[0] === 'target' && row[1] === trial.target);
+  const oldReplies = f.events.slice(targetWrite + 1).filter(row => row[0] === 'peer-probe-result' && row[1] === 0);
+  assert.ok(oldReplies.length > 0); assert.ok(oldReplies.every(row => row[3] === 'pending'));
+  assert.deepEqual(f.events.filter(row => row[0] === 'target' && row[1].startsWith('tempradio ')).map(row => row[1]), [trial.target]);
+  assert.equal(f.states.source[0], null);
+});
+
+test('USB failure during a channel probe stops without another target switch command', async () => {
+  const f = fixture({fastProbe: true, targetSecondary: false, probeUsbFailureAt: 2, targetApplyDelay: 100000});
+  await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options), /USB disconnected/);
+  assert.equal(f.events.filter(row => row[0] === 'peer-probe').length, 2);
+  assert.deepEqual(f.events.filter(row => row[0] === 'target' && row[1].startsWith('tempradio ')).map(row => row[1]), [trial.target]);
+  assert.equal(f.states.source[0], null);
+});
+
+test('new-channel reachability with the wrong target preamble does not authorize a full update window', async () => {
+  const f = fixture({fastProbe: true, targetSecondary: false, targetApplyDelay: 0, targetPreamble: 64});
+  await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options));
+  assert.ok(f.events.some(row => row[0] === 'peer-probe-result' && row[1] === 1 && row[3] === 'active'));
+  assert.deepEqual(f.events.filter(row => row[0] === 'target' && row[1].startsWith('tempradio ')).map(row => row[1]), [trial.target]);
+  assert.equal(f.states.source[0], null);
 });
 
 test('shared secondary parser requires live RXTX and configured preamble, not just the pending getter', async () => {
