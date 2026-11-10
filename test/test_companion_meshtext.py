@@ -216,6 +216,9 @@ class CompanionMeshtextTest(unittest.TestCase):
     def test_binary_mediamesh_presets_commit_delay_replay_and_failure_rollback(self):
         self.run_case("channel-presets")
 
+    def test_binary_regional_mediamesh_presets_and_transactional_rejection(self):
+        self.run_case("regional-channel-presets")
+
     def test_private_cli_provisioning_metadata_masking_and_transactional_delete(self):
         self.run_case("cli")
 

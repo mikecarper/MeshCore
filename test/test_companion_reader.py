@@ -544,6 +544,7 @@ struct MyMesh {
   Stream output;
   unsigned ordinary = 0;
   Stream& terminalOutput() { return output; }
+  void printTerminalError(const char*);
   void terminalCommand(const char* command, bool reader_prompt = true,
                        mesh::ReaderTryWrite reader_try_write = nullptr) {
 @TERMINAL@
@@ -558,6 +559,7 @@ struct MyMesh {
 @SERVICE@
   }
 };
+@TERMINAL_ERROR@
 int main() {
   assert(isCompanionReaderRequest("  GET\tREADER 3:16 2"));
   assert(isCompanionReaderRequest("get reader"));
@@ -603,7 +605,8 @@ int main() {
   }
   assert(mesh.output.text.find("eternal life.") != std::string::npos);
 }
-'''.replace("@PREDICATE@", predicate).replace("@TERMINAL@", terminal).replace("@RESCUE@", rescue).replace("@SERVICE@", service)
+'''.replace("@PREDICATE@", predicate).replace("@TERMINAL@", terminal).replace("@RESCUE@", rescue).replace("@SERVICE@", service).replace(
+            "@TERMINAL_ERROR@", extract_braced(source, "void MyMesh::printTerminalError("))
         with tempfile.TemporaryDirectory(prefix="meshcore-reader-morse-") as directory:
             directory = Path(directory)
             generated = directory / "interlock.cpp"

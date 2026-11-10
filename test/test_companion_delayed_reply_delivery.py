@@ -36,6 +36,7 @@ def production_methods(source, base, packet, dispatcher):
         "bool MyMesh::hasFiniteDelayedReplyForRoute(",
     ))
     terminal = "\n".join(extract_braced(source, signature) for signature in (
+        "void MyMesh::printTerminalError(",
         "void MyMesh::clearTerminalLogin(", "void MyMesh::serviceTerminalLogin(",
         "void MyMesh::clearTerminalLogin(uint32_t now)",
         "void MyMesh::sendTerminalLogin(", "void MyMesh::printTerminalSendStatus(",

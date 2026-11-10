@@ -3886,7 +3886,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       return;
     }
 #endif
-    if (_radio_profiles.handle(command, reply, 160, sender_timestamp != 0)) return;
+    if (_radio_profiles.handle(command, reply, 160, sender_timestamp != 0, &_prefs->freq)) return;
 #if defined(ENABLE_OTA)
     const auto* ota_context = mesh::ota::ota_context_if_active();
     const float adaptive_ota_pace = ota_context

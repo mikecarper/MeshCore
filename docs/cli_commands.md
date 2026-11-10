@@ -25,8 +25,14 @@ switching until reboot. See
 for hardware limits and reliability considerations.
 
 For a saved MediaMesh second profile, use `set radio2 mediamesh`
-(911.150 MHz, 250 kHz, SF7, CR 4/5, `rxtx`, automatic preamble), or
-`set radio2 mediamesh-range` for 125 kHz. These leave the primary profile
+or the narrower `set radio2 mediamesh-range`. Settings are chosen from the
+saved primary frequency when selected: USA uses 911.150 MHz, EU868 869.525 MHz,
+the listed AU/NZ/Brazil/Thailand/Vietnam presets 922.500 MHz, and EU433
+434.250 MHz. USA and the other non-EU868 groups use 250/125 kHz, SF7, CR 4/5;
+EU868 uses 125/62.5 kHz, SF5, CR 4/7. Both use `rxtx` and automatic preamble.
+Unknown custom primary frequencies require an explicit radio2 tuple. Existing
+saved profiles do not retune when the primary changes or on upgrade; primary
+`tempradio` does not affect preset selection. These leave the primary profile
 and crossing policy unchanged. Both radio2 and `radio2.cross` default to `off`.
 On repeaters, room servers and sensors, either preset also saves an allowed
 `#mediamesh` forwarding region. `set radio2 off` or `set radio2 auto` disables

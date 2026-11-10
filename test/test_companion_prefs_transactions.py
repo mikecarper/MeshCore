@@ -165,6 +165,7 @@ struct MyMesh {
   bool setGpsEnabled(bool);
   @APPLY_GPS_PREFS@
 #endif
+  void printTerminalError(const char* message);
   MyMesh& terminalOutput() { return *this; }
   void print(const char* value) { output+=value; }
   template<typename... Args> size_t printf(const char* format,Args... args) {
@@ -488,6 +489,7 @@ class CompanionPrefsTransactionTests(unittest.TestCase):
             '@APPLY_GPS_PREFS@': extract_braced(header, 'void applyGpsPrefs('),
             '@GPS_METHOD@': extract_braced(text, 'bool MyMesh::setGpsEnabled('),
             '@METHODS@': '\n'.join(extract_braced(text,sig) for sig in (
+                'void MyMesh::printTerminalError(',
                 'bool MyMesh::saveAdvertName(', 'bool MyMesh::saveAdvertLocation(',
                 'bool MyMesh::applyAndSaveRxPowerSaving(',
                 'bool MyMesh::applyAndSaveRxBoostedGain(',

@@ -385,6 +385,7 @@ public:
   void setTerminalInputEditing(const Stream& output, bool editing) {
     if (_terminal_output == &output) _terminal_input_editing = editing;
   }
+  void printTerminalError(const char* message);
   void handleTerminalCommand(char* command, bool reader_prompt = true,
                              mesh::ReaderTryWrite reader_try_write = nullptr);
 #if COMPANION_FEATURE_NETWORK_TERMINAL || defined(WITH_WEBCONFIG)

@@ -36,7 +36,7 @@ inline CompanionChannelAlias parseCompanionChannelAlias(const char* name) {
 inline const char* companionChannelRadio2Preset(const char* name) {
   const auto alias = parseCompanionChannelAlias(name);
   return alias.kind == CompanionChannelKind::Radio2
-      && mesh::cli::radio2PresetTuple(alias.tail) ? alias.tail : nullptr;
+      && mesh::cli::isRadio2Preset(alias.tail) ? alias.tail : nullptr;
 }
 
 inline bool companionChannelCanonicalName(const char* name, char* out, size_t size) {

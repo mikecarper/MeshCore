@@ -173,7 +173,10 @@ class RadioProfileCLI {
 #endif
   }
   void loop();
-  bool handle(const char* command, char* reply, size_t capacity = 160, bool remote_origin = false);
+  // Read saved primary settings at command admission, before temporary tuning.
+  // The optional pointer is consumed synchronously and is never retained.
+  bool handle(const char* command, char* reply, size_t capacity = 160,
+              bool remote_origin = false, const float* primary_frequency = nullptr);
   // Remote infrastructure commands must keep both RX-origin generations alive
   // until their exact response packets finish, not merely wait a fixed delay.
   void beginReplyCommand() { remote_command_ = true; }
@@ -184,7 +187,7 @@ class RadioProfileCLI {
   // A channel join can stage a named preset before its channel save. Commit
   // synchronously only after that save succeeds; cancellation leaves saved
   // RF intent and the running modem unchanged.
-  bool stageChannelPreset(const char* name);
+  bool stageChannelPreset(const char* name, const float* primary_frequency = nullptr);
   bool finishChannelPreset(bool commit);
   // Passive RF borrowing is RAM-only and never replaces explicit saved
   // settings (including Off). Repeated identical requests do not retune.

@@ -45,6 +45,7 @@ class TraceProfileTimingTests(unittest.TestCase):
         if mutation:
             terminal, binary = mutation(terminal, binary)
         methods += extract_braced(companion, "uint32_t MyMesh::calcDirectTimeoutMillisFor(") + "\n"
+        methods += extract_braced(companion, "void MyMesh::printTerminalError(") + "\n"
         methods += terminal + "\nvoid MyMesh::handleTraceFrame(size_t len) {\n"
         methods += binary.replace("} else if", "if", 1) + "\n}\n"
         constants = "\n".join(re.findall(

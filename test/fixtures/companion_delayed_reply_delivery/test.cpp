@@ -171,6 +171,7 @@ struct MyMesh : BaseChatMesh {
   bool addContact(const ContactInfo&) { return false; }
   bool hasTerminalOutput() const { return true; }
   Stream& terminalOutput() { return terminal_stream; }
+  void printTerminalError(const char*);
   void cancelPendingRadioParamApply() { command_radio_reply_route = nullptr; }
   void cancelSigningSession() { sign_data_reply_route = nullptr; }
   void expireExpectedAcks() {}

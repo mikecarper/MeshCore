@@ -26,7 +26,7 @@ class RadioProfileCLITest(unittest.TestCase):
             self.assertEqual(compiled.returncode, 0, compiled.stderr)
             for scenario in (None, 'permanent_order', 'temporary_boundary', 'lease_creation',
                              'save_failure', 'schedule_permutations', 'storage_isolation',
-                             'relative_schedule', 'spectrum_overlap', 'mediamesh', 'media_scope'):
+                             'relative_schedule', 'spectrum_overlap', 'mediamesh', 'regional_mediamesh', 'media_scope'):
                 with self.subTest(scenario=scenario):
                     ran = subprocess.run([str(binary)] + ([scenario] if scenario else []),
                                          capture_output=True, text=True, timeout=10)
@@ -60,6 +60,8 @@ class RadioProfileCLITest(unittest.TestCase):
 #undef main
 int main() {
   Fixture f;
+  const float saved_primary_frequency = 910.525f;
+  f.saved_primary_frequency = &saved_primary_frequency;
   MediaScope scope;
   f.cli.setMediaMeshScopeHandler(MediaScope::update, &scope);
   f.cmd("set radio2 mediamesh");
@@ -122,7 +124,7 @@ int main() {
                     '-o', str(exe)], check=True, capture_output=True, text=True)
                 for scenario in (None, 'permanent_order', 'temporary_boundary', 'lease_creation',
                                  'save_failure', 'schedule_permutations', 'storage_isolation',
-                                 'relative_schedule', 'spectrum_overlap', 'mediamesh', 'channel_preset',
+                                 'relative_schedule', 'spectrum_overlap', 'mediamesh', 'regional_mediamesh', 'channel_preset',
                                  'media_scope'):
                     with self.subTest(fleet=fleet_enabled, carrier=carrier_enabled,
                                       scenario=scenario or 'commands_persistence_and_timers'):

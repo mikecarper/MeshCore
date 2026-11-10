@@ -10,6 +10,8 @@ import subprocess
 import tempfile
 import unittest
 
+from cpp_source import body
+
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / 'test/fixtures/cli_reply_text.json'
 SELECTION = re.compile(
@@ -19,12 +21,18 @@ TOKENS = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|'
 SHARED_TERMINAL_ERROR = re.compile(
     r'terminalOutput\(\)\.printf\("  ERROR: %s",\s*'
     r'MESH_CLI_REPLY_TEXT\(("(?:\\.|[^"\\])*"),\s*("(?:\\.|[^"\\])*")\)\)')
+SHARED_TERMINAL_ERROR_MEMBER = re.compile(
+    r'(?<![A-Za-z_0-9:.])printTerminalError\(\s*'
+    r'MESH_CLI_REPLY_TEXT\(("(?:\\.|[^"\\])*"),\s*("(?:\\.|[^"\\])*")\)\)')
 
 
 def expand_shared_terminal_errors(source):
-    # This one reviewed storage change shares a fixed prefix through printf.
-    # Reconstruct its original literal print for the existing whole-source and
-    # message guards. The executable test below checks the real formatted bytes.
+    # Normalize only the reviewed member-call shape to the prior printf call,
+    # then reconstruct its original literal print for the whole-source/message
+    # guards. The executable test invokes the actual member implementation.
+    source = SHARED_TERMINAL_ERROR_MEMBER.sub(
+        lambda match: 'terminalOutput().printf("  ERROR: %s", MESH_CLI_REPLY_TEXT('
+                      + ', '.join(match.groups()) + '))', source)
     def expand(match):
         messages = [json.dumps('  ERROR: ' + json.loads(value))
                     for value in match.groups()]
@@ -89,8 +97,11 @@ class CliReplyTextTests(unittest.TestCase):
         if not compiler:
             self.skipTest('host C++ compiler required')
         source = (ROOT / 'examples/companion_radio/MyMesh.cpp').read_text()
-        calls = list(SHARED_TERMINAL_ERROR.finditer(source))
+        calls = list(SHARED_TERMINAL_ERROR_MEMBER.finditer(source))
         self.assertEqual(len(calls), 57)
+        self.assertFalse(SHARED_TERMINAL_ERROR.search(source),
+                         "all reviewed shared-prefix calls must use the member")
+        implementation = body(source, "void MyMesh::printTerminalError(")
         approved = {(row['verbose'], row['concise']) for row in
                     json.loads(FIXTURE.read_text())['messages']
                     if row['file'] == 'examples/companion_radio/MyMesh.cpp'}
@@ -99,9 +110,19 @@ class CliReplyTextTests(unittest.TestCase):
                                 for value in call.groups()), approved)
         harness = ('#include <cstdio>\n#include <CLIReplyText.h>\n'
                    '#ifdef _WIN32\n#include <fcntl.h>\n#include <io.h>\n#endif\n'
-                   'int main() {\n#ifdef _WIN32\n_setmode(_fileno(stdout), _O_BINARY);\n#endif\n' +
-                   '\n'.join(call.group().replace('terminalOutput().printf', 'std::printf')
-                             + ';' for call in calls) + '\n}\n')
+                   'struct MockOutput {\n'
+                   '  int printf(const char* format, const char* message) {\n'
+                   '    return std::printf(format, message);\n'
+                   '  }\n};\n'
+                   'struct MyMesh {\n'
+                   '  MockOutput output;\n'
+                   '  MockOutput& terminalOutput() { return output; }\n'
+                   '  void printTerminalError(const char* message);\n'
+                   '  void exercise() {\n' +
+                   '\n'.join(call.group() + ';' for call in calls) + '\n}\n};\n' +
+                   implementation + '\n'
+                   'int main() {\n#ifdef _WIN32\n_setmode(_fileno(stdout), _O_BINARY);\n#endif\n'
+                   'MyMesh mesh; mesh.exercise();\n}\n')
         with tempfile.TemporaryDirectory(prefix='terminal-error-prefix-') as folder:
             work = Path(folder)
             (work / 'test.cpp').write_text(harness)

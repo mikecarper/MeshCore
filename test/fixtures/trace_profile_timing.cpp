@@ -162,6 +162,7 @@ public:
   void serviceTerminalTrace() {}
   void serviceBinaryTraceReply() {}
   Output& terminalOutput() { return output; }
+  void printTerminalError(const char*);
   Rng* getRNG() { return &rng; }
   void writeErrFrame(uint8_t code) { error = code; }
   uint32_t calcDirectTimeoutMillisFor(uint32_t, uint8_t) const;

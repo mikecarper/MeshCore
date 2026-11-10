@@ -212,7 +212,7 @@ public:
     assert(setChannel(index,value)); _mt_profile_dirty=true; refreshMeshtextProfile();
   }
   const char* cli(const char* command,bool expected=true) {
-    static char reply[256]; assert(_radio_profiles.handle(command,reply,sizeof(reply)));
+    static char reply[256]; assert(_radio_profiles.handle(command,reply,sizeof(reply),false,&_prefs.freq));
     if(strncmp(command,"get ",4) && strncmp(command,"del ",4)) {
       if((!strncmp(reply,"OK",2))!=expected) { fprintf(stderr,"%s -> %s\n",command,reply); assert(false); }
     }
@@ -506,10 +506,11 @@ static void assertMediaMeshConfig(const mesh::RadioProfileConfig& config,float b
   assert(config.params.protocol==mesh::RadioProfileProtocol::MeshCore);
 }
 static void channelPresets() {
+  const float saved_primary_frequency = 910.525f;
   // These use the actual binary command branch and RadioProfileCLI image
   // writer. Channel persistence itself remains this fixture's save boundary.
   for(bool range:{false,true}) {
-    Preferences::reset(); MyMesh node; node.beginMeshtext();
+    Preferences::reset(); MyMesh node; node._prefs.freq = saved_primary_frequency; node.beginMeshtext();
     const auto primary=node.radio.p.primary;
     const auto requested=channel(range?"r2-mediamesh-range":"#r2-mediamesh");
     applySet(node,0,requested);
@@ -523,14 +524,14 @@ static void channelPresets() {
     node.advance(1); assertMediaMeshConfig(node.radio.p.secondary,range?125:250);
     assert(node.radio.p.primary==primary && node.radio.p.cross==mesh::RadioCrossMode::Off);
     assert(!node.radio.p.secondary_temporary && !node._mt_active);
-    MyMesh reboot; reboot.fs=node.fs; reboot.stored[0]=raw;
+    MyMesh reboot; reboot._prefs.freq = saved_primary_frequency; reboot.fs=node.fs; reboot.stored[0]=raw;
     reboot._radio_profiles.begin(&reboot.fs,&reboot.radio,&reboot.clock); reboot.beginMeshtext();
     assertMediaMeshConfig(reboot.radio.p.secondary,range?125:250);
     assert(reboot._radio_profiles.manualSecondaryConfigured() && !reboot._mt_active);
     assertUntouched(node); assertUntouched(reboot);
   }
 
-  Preferences::reset(); MyMesh node; node.beginMeshtext();
+  Preferences::reset(); MyMesh node; node._prefs.freq = saved_primary_frequency; node.beginMeshtext();
   applySet(node,0,channel("#r2-mediamesh")); assert(node.ok); node.advance(2000);
   // The newest join/rename chooses the tuple, even with another named alias
   // present. Names do not continuously force RF over later operator choices.
@@ -561,7 +562,7 @@ static void channelPresets() {
   assertUntouched(node);
 
   for(bool fail_rf_commit:{false,true}) {
-    Preferences::reset(); MyMesh failed; failed.beginMeshtext();
+    Preferences::reset(); MyMesh failed; failed._prefs.freq = saved_primary_frequency; failed.beginMeshtext();
     failed.cli("set radio2 912.5,250,8,5,rx,80"); failed.advance(2000);
     failed.commit(0,channel("ordinary",16));
     const auto old_channel=failed.stored[0];
@@ -581,7 +582,7 @@ static void channelPresets() {
     assert(failed.radio.p.secondary.mode==old_profile.mode && failed.radio.p.secondary.params==old_profile.params);
     assertUntouched(failed);
   }
-  Preferences::reset(); MyMesh conflicting; active(conflicting);
+  Preferences::reset(); MyMesh conflicting; conflicting._prefs.freq = saved_primary_frequency; active(conflicting);
   const auto old_profile=conflicting.radio.p.secondary;
   const auto old_disk=conflicting.fs.files;
   applySet(conflicting,1,channel("#r2-mediamesh"));
@@ -592,6 +593,93 @@ static void channelPresets() {
   assert(!conflicting._radio_profiles.hasReplyMutation()); assertUntouched(conflicting);
   puts("PASS channel-presets");
 }
+
+static void regionalChannelPresets() {
+  struct Case { float primary, secondary, normal_bw, range_bw; uint8_t sf, cr; };
+  const Case cases[] = {
+    {910.525f, 911.150f, 250, 125, 7, 5},
+    {927.875f, 911.150f, 250, 125, 7, 5},
+    {869.618f, 869.525f, 125, 62.5f, 5, 7},
+    {917.375f, 922.500f, 250, 125, 7, 5},
+    {433.650f, 434.250f, 250, 125, 7, 5},
+  };
+  for (const auto& item : cases) for (bool range : {false, true}) {
+    Preferences::reset(); MyMesh node;
+    node._prefs.freq = item.primary;
+
+    node.beginMeshtext();
+    const auto primary = node.radio.p.primary;
+    const auto requested = channel(range ? "#r2-mediamesh-range" : "#r2-mediamesh");
+    applySet(node, 0, requested);
+    assert(node.ok && node.error == -1 && !node.radio.p.enabled());
+    const auto saved = node._radio_profiles.savedSecondaryConfig();
+    assert(saved.mode == mesh::RadioProfileMode::RxTx);
+    assert(fabsf(saved.params.freq - item.secondary) < 0.0001f);
+    assert(saved.params.bw == (range ? item.range_bw : item.normal_bw));
+    assert(saved.params.sf == item.sf && saved.params.cr == item.cr && !saved.params.preamble);
+    assert(saved.params.protocol == mesh::RadioProfileProtocol::MeshCore);
+    ChannelDetails raw; assert(node.getChannelForSave(0, raw));
+    assert(!strcmp(raw.name, requested.name) && !memcmp(raw.channel.secret, requested.channel.secret, 32));
+    assert(node._prefs.freq == item.primary && node.radio.p.primary == primary);
+    node.advance(2000);
+    assert(node.radio.p.secondary.params == saved.params);
+    assert(!node._mt_active && !node._radio_profiles.hasReplyMutation());
+    // Replaying the same app record must preserve a subsequent manual Off,
+    // even if the saved primary has since moved to another region.
+    node.cli("set radio2 off"); node.advance(2000);
+    node._prefs.freq = item.secondary == 869.525f ? 910.525f : 869.618f;
+    const auto disk = node.fs.files;
+    applySet(node, 0, requested);
+    assert(node.ok && node.fs.files == disk && !node.radio.p.enabled());
+    assert(node._radio_profiles.savedSecondaryConfig().mode == mesh::RadioProfileMode::Off);
+    assertUntouched(node);
+  }
+  for (float primary : {869.618f, 917.375f, 433.650f}) for (bool fail_rf_commit : {false, true}) {
+    Preferences::reset(); MyMesh node;
+    node._prefs.freq = primary;
+
+    node.beginMeshtext();
+    node.cli("set radio2 912.5,125,8,5,rx,80"); node.advance(2000);
+    node.commit(0, channel("ordinary", 16));
+    const auto old_channel = node.stored[0];
+    const auto old_profile = node.radio.p.secondary;
+    const auto disk = node.fs.files;
+    const uint32_t intent = node._radio_profiles.secondaryIntentGeneration();
+    if (fail_rf_commit) node.fs.fail_rename_from = {"/radio_profiles.reply"};
+    else node.save_result = false;
+    applySet(node, 0, channel("#r2-mediamesh"));
+    assert(!node.ok && node.error == ERR_CODE_FILE_IO_ERROR);
+    assert(!strcmp(node.stored[0].name, old_channel.name)
+        && !memcmp(node.stored[0].channel.secret, old_channel.channel.secret, 32));
+    assert(node.fs.files == disk && node._radio_profiles.secondaryIntentGeneration() == intent);
+    assert(node._radio_profiles.savedSecondaryConfig().params == old_profile.params);
+    assert(!node._radio_profiles.hasReplyMutation());
+    node.advance(2000);
+    assert(node.radio.p.secondary.params == old_profile.params);
+    assertUntouched(node);
+  }
+  for (float unknown : {909.5f, 915.0f, 868.1f, 433.9f}) {
+    Preferences::reset(); MyMesh node;
+    node._prefs.freq = unknown;
+
+    node.beginMeshtext();
+    node.commit(0, channel("ordinary", 16));
+    const auto old_channel = node.stored[0];
+    const auto disk = node.fs.files;
+    const uint32_t intent = node._radio_profiles.secondaryIntentGeneration();
+    for (const char* name : {"#r2-mediamesh", "#r2-mediamesh-range"}) {
+      applySet(node, 0, channel(name));
+      assert(!node.ok && node.error == ERR_CODE_BAD_STATE);
+      assert(!strcmp(node.stored[0].name, old_channel.name)
+          && !memcmp(node.stored[0].channel.secret, old_channel.channel.secret, 32));
+      assert(node.fs.files == disk && node._radio_profiles.secondaryIntentGeneration() == intent);
+      assert(!node.radio.p.enabled() && !node._radio_profiles.hasReplyMutation());
+    }
+    assertUntouched(node);
+  }
+  puts("PASS regional-channel-presets");
+}
+
 static void privateCLI() {
   Preferences::reset(); MyMesh node; node.beginMeshtext(); char reply[256];
   const char* key128="0102030405060708090a0b0c0d0e0f10";
@@ -1742,6 +1830,7 @@ int main(int argc,char** argv) {
   else if(!strcmp(argv[1],"transmit"))transmit();
   else if(!strcmp(argv[1],"commands"))commands();
   else if(!strcmp(argv[1],"channel-presets"))channelPresets();
+  else if(!strcmp(argv[1],"regional-channel-presets"))regionalChannelPresets();
   else if(!strcmp(argv[1],"cli"))privateCLI();
   else if(!strcmp(argv[1],"hops"))hops();
   else if(!strcmp(argv[1],"shortname"))shortname();

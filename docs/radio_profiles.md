@@ -144,12 +144,46 @@ Enable the saved MediaMesh profile with one command:
 set radio2 mediamesh
 ```
 
-This sets **911.150 MHz, 250 kHz, SF7, CR 4/5, `rxtx`, automatic preamble**.
-For the same profile at **125 kHz**, use:
+For a narrower profile, use:
 
 ```text
 set radio2 mediamesh-range
 ```
+
+The preset is chosen from the **saved primary frequency** when you run the
+command or add/rename a Companion channel to a preset alias. Both presets use
+`rxtx` and automatic preamble:
+
+| Saved primary frequency (MHz) | MediaMesh center (MHz) | `mediamesh`: bandwidth / SF / CR | `mediamesh-range`: bandwidth / SF / CR |
+| --- | --- | --- | --- |
+| USA 910.525, including other community presets on that frequency; Southern California 927.875 | 911.150 | 250 kHz / SF7 / 4/5 | 125 kHz / SF7 / 4/5 |
+| EU868: 869.400–869.650 | 869.525 | 125 kHz / SF5 / 4/7 | 62.5 kHz / SF5 / 4/7 |
+| Australia 915.075, 915.800, 916.575 or 923.125; New Zealand 917.375; Brazil 923.125; Thailand 921.000; Vietnam 920.250 | 922.500 | 250 kHz / SF7 / 4/5 | 125 kHz / SF7 / 4/5 |
+| EU433 433.650; Portugal433 433.375 | 434.250 | 250 kHz / SF7 / 4/5 | 125 kHz / SF7 / 4/5 |
+
+The known primary frequencies come from the
+[community radio presets](https://api.meshcore.nz/api/v1/config). The regional
+MediaMesh centers and EU868 modem settings are this firmware's defaults, not
+an established MediaMesh standard for each country. Frequency alone cannot
+identify a country: Australia and Brazil share 923.125 MHz, and Southern
+California's 927.875 MHz lies within the range also used in Australia and New
+Zealand. Custom primary frequencies outside the groups above reject the named
+presets; configure an explicit `set radio2 <tuple>` instead.
+
+Changing the primary frequency later does not retune an existing radio2
+profile. Existing saved profiles are not migrated on upgrade or reboot.
+Select the preset again to resolve it against a new saved primary frequency.
+An active primary `tempradio` does not change this choice.
+
+On EU868, the normal 125 kHz profile occupies **869.4625–869.5875 MHz**.
+Its nominal bandwidth overlaps `Narrow_Fast` at 869.44165 MHz / 62.5 kHz by
+**10.4 kHz** and the 869.618 MHz / 62.5 kHz primary by **0.75 kHz**. Selecting it
+still succeeds and retains the existing [channel-spacing warning](#channel-spacing);
+different spreading factors do not remove the bandwidth overlap. The
+62.5 kHz range profile occupies **869.49375–869.55625 MHz**, leaving **20.85 kHz**
+and **30.5 kHz** clear of those channels respectively.
+These SF5 profiles require a radio that supports SF5. Existing hardware
+validation rejects them on SX127x radios without changing the saved settings.
 
 On Companions, adding `#r2-mediamesh` in the app also saves the `mediamesh`
 profile; `#r2-mediamesh-range` selects `mediamesh-range`. Renaming another
@@ -164,7 +198,7 @@ Meshtext channels and an active foreign-protocol radio2 session cannot share
 this setup. The supplied channel name and key retain the normal alias rules
 [below](#companion-channel-name-routing-aliases).
 
-The RF settings match the presets documented by
+The USA RF settings match the presets documented by
 [MeshCore Open TAK](https://github.com/jade-on-mesh/meshcore-open-tak/blob/main/documentation/media-mesh.md)
 and [Wadamesh TAK](https://github.com/jade-on-mesh/wadamesh-tak/blob/main/MEDIAMESH.md).
 Nodes exchanging media need matching radio settings.
@@ -182,9 +216,9 @@ default scope for outgoing traffic or enable crossing between profiles.
 Default/home regions, the wildcard policy and app-selected scopes stay
 unchanged. Companions need no additional forwarding-region permission.
 
-Both leave the primary profile and `radio2.cross` unchanged. The center is
-625 kHz above a 910.525 MHz primary. Automatic preamble remains scan-aware;
-neither preset fixes it at 32 symbols. See [preamble](#preamble) for the
+Both leave the primary profile and `radio2.cross` unchanged. With a USA
+910.525 MHz primary, the center is 625 kHz higher. Automatic preamble remains
+scan-aware; neither preset fixes it at 32 symbols. See [preamble](#preamble) for the
 switching measurement and recommendations.
 
 On Companions, the default `tx.media auto` sends recognized binary photo/voice
@@ -221,7 +255,7 @@ the public key, at payload offset 38 (full key) or 14 (8-byte prefix):
 | SF | 1 | Spreading factor |
 | CR | 1 | Coding-rate denominator (`5` means 4/5) |
 
-For example, the MediaMesh preset reports frequency `911150`, bandwidth
+For example, the USA MediaMesh preset reports frequency `911150`, bandwidth
 `250000`, SF `7`, CR `5` and flags `0x05`. An active `tempradio2` reports its
 current settings with bit 3 set. Clients use automatic preamble; the trailer
 does not carry a preamble value.

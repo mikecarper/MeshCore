@@ -502,7 +502,7 @@
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
       "verbose": "all four schedule slots occupied",
-      "concise": "all four slots full"
+      "concise": "all slots full"
     },
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
@@ -877,32 +877,32 @@
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
       "verbose": "radio profiles unsupported",
-      "concise": "profiles unsupported"
+      "concise": "unsupported"
     },
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
       "verbose": "use get/set tx.reply auto|radio|radio2|both|off [force for radio2/both]",
-      "concise": "get/set tx.reply auto|radio|radio2|both|off [force for radio2/both]"
+      "concise": "tx.reply auto|radio|radio2|both|off [force for radio2/both]"
     },
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
       "verbose": "use get/set radio2.cross [auto|on|off]",
-      "concise": "get/set radio2.cross [auto|on|off]"
+      "concise": "radio2.cross [auto|on|off]"
     },
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
       "verbose": "clear tempradioat2 schedules first",
-      "concise": "clear tempradioat2 first"
+      "concise": "clear tempradioat2"
     },
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
       "verbose": "temporary schedule overlaps active session",
-      "concise": "temp overlaps active session"
+      "concise": "temp/session overlap"
     },
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
       "verbose": "temporary schedules overlap",
-      "concise": "temp schedules overlap"
+      "concise": "schedule overlap"
     },
     {
       "file": "src/helpers/CommonRadioPrefs.cpp",
@@ -1587,32 +1587,42 @@
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
       "verbose": "radio.fast changes require local USB or BLE",
-      "concise": "radio.fast needs local USB or BLE"
+      "concise": "local USB/BLE required"
     },
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
       "verbose": "radio settings held; retry after recovery",
-      "concise": "radio held; retry after recovery"
+      "concise": "held; retry recovery"
     },
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
       "verbose": "SPI MHz: 0,2,4,8,9,16 where supported",
-      "concise": "SPI MHz: 0,2,4,8,9,16 if supported"
+      "concise": "SPI MHz: 0,2,4,8,9,16"
     },
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
       "verbose": "radio tuning could not be applied/saved",
-      "concise": "radio tuning apply/save failed"
+      "concise": "apply/save failed"
     },
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
       "verbose": "this role requires local USB for radio2 changes",
-      "concise": "radio2 changes require local USB"
+      "concise": "radio2: USB only"
     },
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
       "verbose": "radio acknowledgement pending",
       "concise": "radio ack pending"
+    },
+    {
+      "file": "src/helpers/RadioProfileCLI.cpp",
+      "verbose": "automatic radio2 requires no pending change, lease or schedule",
+      "concise": "radio2 change/lease/schedule pending"
+    },
+    {
+      "file": "src/helpers/RadioProfileCLI.cpp",
+      "verbose": "no regional MediaMesh preset; use tuple",
+      "concise": "no preset; use tuple"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -1761,15 +1771,15 @@
     }
   ],
   "noncompact_tokens_sha256": {
-    "src/helpers/CommonCLI.cpp": "2b97a53fc9befd3efe1cac7640601ad12a6c5df1f39549d4136ee59fd4e7e713",
+    "src/helpers/CommonCLI.cpp": "c01f654568af96b7d4eb503380d2a637bd46532e1b6416c9e140e195f2b67cea",
     "examples/simple_repeater/MyMesh.cpp": "a847bef5258c777bff3d9a48a8fc74e52de3a47b4484329ebdf2b18768cf81f2",
-    "src/helpers/RadioProfileCLI.cpp": "6156c5287a843f10a0753c5d557958ebddf0ae5007a085b6720b8c8c20505dd7",
+    "src/helpers/RadioProfileCLI.cpp": "8b8b4058870e7ae1e234be19336b42dfd0cad7907d7fbc6207d29131e83e275d",
     "src/helpers/WirelessControl.h": "d96f79fbc5736d9e08d4839c76b4af5c6cfccab5d3c2f01226cdbfeed1da56c5",
     "src/helpers/PowerSavingDiagnostics.h": "18b78f5780046ea8c772c4ce6c337741ae0c027039d9399c94c5f4205d114000",
     "src/helpers/FloodAdvertCLI.h": "0f378e4d0f6c3b9b79991068a4b4208139484d2144ee1d7c5094d39043463be4",
     "src/helpers/LedSettings.cpp": "df0681234ca1337148ad59caa935857bc692f98bf18603ca6d099c0382028400",
     "src/helpers/StorageLayout.cpp": "5dd1c8bcbe2902e1f22d14f9ab425465bdc38926fae23989987d850b484cbb18",
-    "examples/companion_radio/MyMesh.cpp": "bc766fa2835981ea305a9586aacb87b48834fc4b03bcc6ed7413d0908d2586fd",
+    "examples/companion_radio/MyMesh.cpp": "6e06d3904254d09abaec1392cf28a7029d09d1c2e3218cb1951bd54a177ac3ad",
     "src/helpers/CommonRadioPrefs.cpp": "de964f85c2645ff238cdd75fefdf15c97a09edcd5fff953375e0c02238c5db5c",
     "examples/companion_radio/CompanionRetry.h": "e0ae10c7b2f778346f4645c4e147d87e1fbc7f8b99484752a8eed914bb21380f",
     "examples/companion_radio/Notifications.cpp": "74983770da7bcdf89af1b3e231bcf8058864e486cb99a425a369db859bd0ae43",
