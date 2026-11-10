@@ -104,11 +104,30 @@ class ContactFrameTests(unittest.TestCase):
         self.assertEqual(lengths, set(HIL.FORBIDDEN_CONTACT_UPDATE_LENGTHS))
         self.assertEqual(
             lengths,
-            {135, *range(137, 144), *range(145, 148)},
+            {135, *range(137, 144), *range(145, 147)},
         )
         self.assertTrue(
             all(case.frame[0] == HIL.CMD_ADD_UPDATE_CONTACT for case in cases)
         )
+
+    def test_147_byte_rejections_always_have_nonzero_padding(self):
+        # A zero lastmod must not accidentally make a malformed HIL case the
+        # accepted legacy frame. Exercise every reserved byte independently.
+        self.contact["lastmod"] = 0
+        cases = {
+            case.name: case.frame
+            for case in HIL.malformed_cases(self.contact)
+            if case.name.startswith("nonzero_legacy_padding_")
+        }
+        self.assertEqual(
+            set(cases), {f"nonzero_legacy_padding_{offset}" for offset in range(144, 147)}
+        )
+        gps_only = HIL.encode_contact_update(self.contact, include_lastmod=False)
+        for offset in range(144, 147):
+            frame = cases[f"nonzero_legacy_padding_{offset}"]
+            self.assertEqual(len(frame), HIL.CONTACT_UPDATE_LEGACY_PADDED_LEN)
+            self.assertEqual(frame[:144], gps_only)
+            self.assertEqual(frame[144:], bytes(int(index == offset) for index in range(144, 147)))
 
     def test_invalid_type_and_path_offsets_are_exact(self):
         cases = {case.name: case.frame for case in HIL.malformed_cases(self.contact)}
@@ -226,8 +245,8 @@ class MalformedExecutionTests(unittest.IsolatedAsyncioTestCase):
 
         await subject.test_malformed_updates(contacts)
 
-        self.assertEqual(len(fake.mc.commands.frames), 17)
-        self.assertEqual(fake.contact_reads, 17)
+        self.assertEqual(len(fake.mc.commands.frames), 19)
+        self.assertEqual(fake.contact_reads, 19)
         self.assertEqual(subject.steps[-1]["step"], "malformed_contact_updates")
         self.assertTrue(subject.steps[-1]["unchanged_after_each"])
         self.assertTrue(
@@ -519,7 +538,7 @@ class OfflineEntryPointTests(unittest.TestCase):
         self.assertTrue(args.self_test)
         result = HIL.offline_self_test()
         self.assertTrue(result["ok"])
-        self.assertEqual(result["malformed_cases"], 17)
+        self.assertEqual(result["malformed_cases"], 19)
 
 
 if __name__ == "__main__":

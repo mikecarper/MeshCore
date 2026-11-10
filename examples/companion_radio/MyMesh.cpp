@@ -516,11 +516,18 @@ static bool isPersistentContactType(uint8_t type) {
 }
 
 bool MyMesh::updateContactFromFrame(ContactInfo &contact, uint32_t& last_mod, const uint8_t *frame, int len) {
+  // Older clients appended three reserved zero bytes after the complete GPS
+  // fields. Accept that layout without treating padding as a partial lastmod.
+  const bool legacy_zero_padding = frame != NULL
+      && len == CONTACT_UPDATE_FRAME_GPS_LEN + 3
+      && frame[CONTACT_UPDATE_FRAME_GPS_LEN] == 0
+      && frame[CONTACT_UPDATE_FRAME_GPS_LEN + 1] == 0
+      && frame[CONTACT_UPDATE_FRAME_GPS_LEN + 2] == 0;
   if (frame == NULL || len < CONTACT_UPDATE_FRAME_MIN_LEN
       || (len > CONTACT_UPDATE_FRAME_MIN_LEN
           && len < CONTACT_UPDATE_FRAME_GPS_LEN)
       || (len > CONTACT_UPDATE_FRAME_GPS_LEN
-          && len < CONTACT_UPDATE_FRAME_LASTMOD_LEN)
+          && len < CONTACT_UPDATE_FRAME_LASTMOD_LEN && !legacy_zero_padding)
       || frame[0] != CMD_ADD_UPDATE_CONTACT) {
     return false;
   }

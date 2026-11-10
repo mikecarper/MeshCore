@@ -317,14 +317,18 @@ struct Fixture {
     usb_stream.write_capacity = other_stream.write_capacity = 4096;
     for (unsigned i = 0; i < 8; ++i) manager.loop();
   }
-  void command(uint8_t key, uint8_t code = CMD_ADD_UPDATE_CONTACT) {
+  void prepareContactCommand(uint8_t key, uint8_t code = CMD_ADD_UPDATE_CONTACT) {
     memset(node.cmd_frame, 0, sizeof(node.cmd_frame));
     node.cmd_frame[0] = code;
     memset(node.cmd_frame + 1, key, PUB_KEY_SIZE);
-    if (code == CMD_REMOVE_CONTACT) { node.handleContactCommand(1 + PUB_KEY_SIZE); return; }
+    if (code == CMD_REMOVE_CONTACT) return;
     node.cmd_frame[1 + PUB_KEY_SIZE] = ADV_TYPE_CHAT;
     node.cmd_frame[1 + PUB_KEY_SIZE + 2] = OUT_PATH_UNKNOWN;
     memcpy(node.cmd_frame + 1 + PUB_KEY_SIZE + 3 + MAX_PATH_SIZE, "updated", 8);
+  }
+  void command(uint8_t key, uint8_t code = CMD_ADD_UPDATE_CONTACT) {
+    prepareContactCommand(key, code);
+    if (code == CMD_REMOVE_CONTACT) { node.handleContactCommand(1 + PUB_KEY_SIZE); return; }
     node.handleContactCommand(CONTACT_UPDATE_FRAME_MIN_LEN);
   }
   void advert(uint8_t key, uint8_t hops = 0) {
@@ -496,6 +500,39 @@ int main() {
     assert(f.node.ok_replies == 1 && f.node.error_replies == 0);
     unchanged(entry, prior); f.received(entry.ack);
     if (MESH_ENABLE_ONE_KEY_DM) assert((f.node.learned == std::vector<uint8_t>{9}));
+    ++checks;
+  }
+  for (int length : {CONTACT_UPDATE_FRAME_GPS_LEN, CONTACT_UPDATE_FRAME_GPS_LEN + 3}) {
+    for (bool existing : {false, true}) {
+      Fixture f;
+      if (existing) f.add(9);
+      f.prepareContactCommand(9);
+      const int32_t latitude = 47512345, longitude = -122234567;
+      memcpy(f.node.cmd_frame + CONTACT_UPDATE_FRAME_MIN_LEN, &latitude, sizeof(latitude));
+      memcpy(f.node.cmd_frame + CONTACT_UPDATE_FRAME_MIN_LEN + 4, &longitude, sizeof(longitude));
+      f.node.handleContactCommand(length);
+      const ContactInfo expected = makeContact(9);
+      const auto* accepted = f.node.lookupPersistentContactByPubKey(expected.id.pub_key, PUB_KEY_SIZE);
+      assert(accepted != nullptr && strcmp(accepted->name, "updated") == 0);
+      assert(accepted->gps_lat == latitude && accepted->gps_lon == longitude);
+      // Both formats omit lastmod. The trailing legacy padding is not a
+      // timestamp; new contacts and updates keep the command's RTC fallback.
+      assert(accepted->lastmod == f.node.getRTCClock()->getCurrentTime());
+      assert(f.node.ok_replies == 1 && f.node.error_replies == 0 && f.node.schedules == 1);
+      ++checks;
+    }
+  }
+  for (int offset = CONTACT_UPDATE_FRAME_GPS_LEN; offset < CONTACT_UPDATE_FRAME_GPS_LEN + 3; ++offset) {
+    Fixture f; auto* peer = f.add(9);
+    const ContactInfo previous = *peer;
+    f.prepareContactCommand(9);
+    f.node.cmd_frame[offset] = 1;
+    f.node.handleContactCommand(CONTACT_UPDATE_FRAME_GPS_LEN + 3);
+    assert(f.node.ok_replies == 0 && f.node.error_replies == 1);
+    assert(f.node.last_error == ERR_CODE_ILLEGAL_ARG && f.node.schedules == 0);
+    assert(peer->id.matches(previous.id) && strcmp(peer->name, previous.name) == 0);
+    assert(peer->lastmod == previous.lastmod && peer->gps_lat == previous.gps_lat
+        && peer->gps_lon == previous.gps_lon);
     ++checks;
   }
   for (unsigned failure = 0; failure < 2; ++failure) {
@@ -687,9 +724,9 @@ int main() {
     ++checks;
   }
 #if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
-  assert(checks == 37);
+  assert(checks == 44);
 #else
-  assert(checks == 34);
+  assert(checks == 41);
 #endif
   assert(outstanding_allocations.empty());
   printf("PASS: %u production contact lifetime checks\n", checks);

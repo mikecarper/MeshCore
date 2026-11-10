@@ -193,7 +193,7 @@ class CompanionContactPersistenceContractTests(unittest.TestCase):
         ):
             self.assertIn(contact_type, valid_types)
 
-    def test_partially_present_optional_contact_fields_are_rejected(self):
+    def test_partial_optional_fields_require_complete_data_or_legacy_zero_padding(self):
         parser = function_body(
             self.mesh, "bool MyMesh::updateContactFromFrame("
         )
@@ -209,6 +209,7 @@ class CompanionContactPersistenceContractTests(unittest.TestCase):
             "          && len < CONTACT_UPDATE_FRAME_LASTMOD_LEN",
             parser,
         )
+        self.assertIn("!legacy_zero_padding", parser)
 
     def test_update_and_add_ack_only_after_scheduling(self):
         section = command_section(
