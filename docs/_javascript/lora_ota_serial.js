@@ -120,6 +120,119 @@
       return [1, new Uint8Array()];
     }
   }
+  // Older Full Companions already expose the host-folder byte stream. It is
+  // independent of their 176-byte app commands: the firmware reads bounded
+  // file slices here and builds the unchanged OTA radio packets itself.
+  class CompanionFolderSource {
+    constructor(write, info, blob, options = {}) {
+      this.write = write; this.options = options;
+      this.seeder = new SeederData(info, blob, options.compress);
+      this.decoder = new StreamDecoder(); this.mode = 'binary';
+      this.responses = Promise.resolve(); this.transition = null;
+      this.failure = null; this.startedAt = 0; this.lastReadAt = 0;
+      this.waitVersion = 0; this.wakeWait = null;
+      this.handoffDrain = null; this.binaryBarrierPending = false;
+    }
+    ownsStream() { return this.mode !== 'binary'; }
+    blocksAppCommands() { return this.ownsStream() || this.binaryBarrierPending; }
+    fail(error) {
+      this.failure = error;
+      if (this.transition) this.transition.finish(error);
+      this.options.onFailure?.(error);
+    }
+    feed(bytes) {
+      for (const event of this.decoder.feed(bytes)) {
+        if (event.type === 'request') {
+          // USB is ordered: requests preceding the off barrier still have a
+          // retained response boundary in firmware. Finish those replies even
+          // while stopping; never accept a new request after that barrier.
+          if (this.mode === 'binary') continue;
+          const run = this.responses.then(async () => {
+            if (this.failure) throw this.failure;
+            const [status, payload] = await this.seeder.request(event.op, event.args);
+            await this.write(responseFrame(event.op, status, payload));
+            if(status===0&&(event.op===3||event.op===9))this.lastReadAt=Date.now();
+            this.options.onRead?.(event.op, event.args, status);
+          });
+          this.responses = run.catch(error => this.fail(error));
+        } else if (this.transition) this.transition.line(event.line);
+      }
+    }
+    async drainResponses() {
+      for (;;) {
+        const pending = this.responses;
+        await pending;
+        if (this.failure) throw this.failure;
+        if (pending === this.responses) return;
+      }
+    }
+    async change(start) {
+      if (this.handoffDrain) await this.handoffDrain;
+      const expected = start ? 'binary' : 'folder';
+      if (this.failure) throw this.failure;
+      if (this.mode === (start ? 'folder' : 'binary')) return;
+      if (this.mode !== expected || this.transition)
+        throw new Error('USB folder handoff is already in progress');
+      // An MCU can receive a USB reply and issue its next read before the
+      // host's write promise settles. Drain the current generation AND every
+      // request chained to it before writing the protocol-switch control.
+      await this.drainResponses();
+      this.mode = start ? 'starting' : 'stopping';
+      this.decoder = new StreamDecoder();
+      return new Promise((resolve, reject) => {
+        let settled = false, acknowledged = false;
+        const complete = value => {
+          if (settled) return;
+          settled = true; clearTimeout(timer); this.transition = null; resolve(value);
+        };
+        const finish = (error, value) => {
+          if (settled) return;
+          if (error) { settled = true; clearTimeout(timer); this.transition = null; reject(error); return; }
+          if (acknowledged) return;
+          acknowledged = true; this.transition = null;
+          // A protocol barrier is recognized synchronously by feed(), before
+          // the next byte in this same USB read reaches the binary decoder.
+          this.mode = start ? 'folder' : 'binary';
+          if (start) { this.startedAt = this.lastReadAt = Date.now(); complete(value); return; }
+          // Firmware quarantines an outstanding native reply across this
+          // barrier. Do not let the next app command overtake its queued bytes.
+          this.binaryBarrierPending = true;
+          const drain = this.handoffDrain = this.drainResponses();
+          drain.then(() => {
+            if (settled) return;
+            this.handoffDrain = null; this.binaryBarrierPending = false; complete(value);
+          }, error => finish(error));
+        };
+        const timer = setTimeout(() => {
+          const error = new Error('USB folder '+(start ? 'start' : 'stop')+' was not confirmed; reconnect the USB source');
+          this.fail(error); finish(error);
+        }, this.options.transitionTimeout ?? 15000);
+        this.transition = {finish, line: line => {
+          if (/^ERR\b|^Error\b/i.test(line)) {
+            this.fail(new Error('USB folder handoff failed: '+line)); return;
+          }
+          if (start && /^OK folder (?:attached|refreshed)\b/.test(line)) finish(null, line);
+          else if (!start && /^OK - Binary mode$/.test(line)) finish(null, line);
+        }};
+        this.write(encoder.encode('ota folder '+(start ? 'on' : 'off')+'\r\n'))
+          .catch(error => this.fail(error));
+      });
+    }
+    start() { return this.change(true); }
+    stop() { return this.change(false); }
+    interruptWait() { ++this.waitVersion; this.wakeWait?.(); }
+    async waitServeWindow() {
+      const version=this.waitVersion, deadline=Date.now()+(this.options.maxWaitMs??120000);
+      while(this.mode==='folder'&&version===this.waitVersion){
+        const remaining=Math.min(deadline,Math.max(this.startedAt,this.lastReadAt)+(this.options.pollDelayMs??10000))-Date.now();
+        if(remaining<=0)return;
+        await new Promise(resolve=>{
+          const timer=setTimeout(()=>{this.wakeWait=null;resolve();},Math.min(remaining,250));
+          this.wakeWait=()=>{clearTimeout(timer);this.wakeWait=null;resolve();};
+        });
+      }
+    }
+  }
   class RepeaterTransport {
     constructor(port, options = {}) {
       this.port = port; this.options = options; this.portOpened = false; this.commandTimeout = options.commandTimeout ?? 12000;
@@ -131,22 +244,26 @@
       this.ownsPeer = false;
       this.authenticatedKey = null; this.lastPeerUse = 0; this.aclOnly = !!options.aclOnly;
       this.knownRepeater = options.knownRepeater ? key(options.knownRepeater) : null;
+      this.knownTargetSupported = false;
       if (this.aclOnly && !this.knownRepeater) throw new Error('ACL access requires a complete known repeater key');
       this.supportsRoutedPath = false; this.clockChecked = false;
       this.otaRadioProfile=0;this.otaTargetProfile=0;this.supportsOtaRadio2=false;
     }
     async open() {
       try {
-        await portHelper.openSerialPort(this.port, {signal:this.options.openSignal, onAttempt:this.options.onOpenAttempt, onSuccess:this.options.onOpenSuccess, onAcquired:()=>{this.portOpened=true;}, onReleased:()=>{this.portOpened=false;}, delayMs:this.options.openRetryDelayMs});
+        const adopted=portHelper.adoptDetectedSource(this,'repeater');
+        if(!adopted)await portHelper.openSerialPort(this.port, {signal:this.options.openSignal, onAttempt:this.options.onOpenAttempt, onSuccess:this.options.onOpenSuccess, onAcquired:()=>{this.portOpened=true;}, onReleased:()=>{this.portOpened=false;}, delayMs:this.options.openRetryDelayMs});
         this.portOpened = true;
         if (this.options.openSignal?.aborted) throw new DOMException('Connection canceled', 'AbortError');
-        this.reader = this.port.readable.getReader(); this.writer = this.port.writable.getWriter(); this.running = true;
+        if(!adopted){this.reader = this.port.readable.getReader(); this.writer = this.port.writable.getWriter();} this.running = true;
         this.readTask = this.readLoop();
         await sleep(this.options.openSettle ?? 750);
         const identity = await this.localCommand('get public.key');
         const match = identity.match(/\b[0-9a-f]{64}\b/i);
         if (!match) throw new Error('The repeater did not report its complete public key');
         this.sourceKey = match[0].toLowerCase();
+        if(this.detectedSourceKey && this.sourceKey!==this.detectedSourceKey)
+          throw new Error('The USB source identity changed during connection. Connect the intended radio again.');
         const peerStatus = await this.localCommand('ota.peer status');
         if (!/^OTApeer v=1 session=[01] busy=[01] peers=\d+$/.test(peerStatus)) {
           const unsupported = /^(?:(?:err(?:or)?\s*[:\-]?\s*)?(?:unknown|unsupported)\b|err\s+use\s+ota\.peer\b)/i.test(peerStatus);
@@ -156,7 +273,7 @@
         }
         if (!/^OTApeer v=1 session=0 busy=0 peers=\d+$/.test(peerStatus))
           throw new Error('The source already has an OTA peer session or job; finish it before connecting');
-        if (this.knownRepeater) {
+        if (this.knownRepeater || this.options.deferredTarget) {
           const caps = await this.localCommand('ota.peer capabilities');
           if (!/^OTApeer known_repeater=1(?: routed_path=1)?$/.test(caps)) {
             const unsupported = /^(?:(?:err(?:or)?\s*[:\-]?\s*)?(?:unknown|unsupported)\b|err\s+use\s+ota\.peer\b|otapeer\s+known_repeater=0(?:\s|$))/i.test(caps);
@@ -165,6 +282,7 @@
             throw error;
           }
           this.supportsRoutedPath = caps.endsWith(' routed_path=1');
+          this.knownTargetSupported = true;
           if (this.supportsRoutedPath && await this.localCommand('ota.peer path') !== 'OTApeer path=off')
             throw new Error('The repeater already has an OTA route; clear it before starting');
         } else {
@@ -177,6 +295,13 @@
         return this;
       } catch (error) { await this.close(); throw error; }
     }
+    selectTarget(publicKey) {
+      const selected=key(publicKey);
+      if(this.knownRepeater===selected)return;
+      if(!this.knownTargetSupported || !this.running || this.failure || this.serving || this.ownsPeer || this.authenticatedKey || this.knownRepeater)
+        throw new Error('Disconnect before choosing another target.');
+      this.knownRepeater=selected;
+    }
     async write(bytes) {
       const operation = this.writeQueue.then(async () => {
         if (!this.running || !this.writer || this.failure) throw this.failure || new Error('The repeater is disconnected');
@@ -187,7 +312,8 @@
     async readLoop() {
       try {
         while (this.running) {
-          const {value, done} = await this.reader.read();
+          const initial=this.sourceProbeBytes;this.sourceProbeBytes=null;
+          const {value, done} = initial?.length ? {value:initial,done:false} : await this.reader.read();
           if (done) { if (this.running) throw new Error('The repeater disconnected'); break; }
           for (const event of this.decoder.feed(value)) {
             if (event.type === 'request') {
@@ -440,5 +566,5 @@
       this.ownsPeer = false;
     }
   }
-  return {StreamDecoder, SeederData, RepeaterTransport, responseFrame, rawDeflate, hex};
+  return {StreamDecoder, SeederData, CompanionFolderSource, RepeaterTransport, responseFrame, rawDeflate, hex};
 });

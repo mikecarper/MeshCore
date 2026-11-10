@@ -13,18 +13,17 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
   <p data-role="browser-support" class="lora-ota-notice" role="alert" hidden>USB access is unavailable in this browser. Open this page in Chrome or Edge on a computer. Firefox does not provide the Web Serial connection this updater needs.</p>
   <section class="lora-ota-step">
     <h2>1. Connect and choose the remote device</h2>
-    <details class="lora-ota-advanced"><summary>USB connection type (Companion by default)</summary>
+    <details class="lora-ota-advanced"><summary>USB connection options</summary>
     <label>USB device
-      <select data-role="source"><option value="companion">Companion</option><option value="repeater">Repeater</option></select>
+      <select data-role="source"><option value="auto">Detect automatically</option><option value="companion">Companion</option><option value="repeater">Repeater</option></select>
     </label>
     </details>
-    <p>The USB radio sends the update to the remote device over LoRa.</p>
-    <p>Choose a device and enter its admin password if needed. The page checks update support and finds matching firmware.</p>
+    <p>The USB radio sends the update over LoRa. Choose the remote device and enter its admin password if needed.</p>
     <p class="lora-ota-actions"><button type="button" data-role="connect">Connect USB source</button> <button type="button" data-role="reconnect" hidden disabled>Reconnect USB source</button> <button type="button" data-role="disconnect" class="lora-ota-secondary" disabled>Disconnect</button></p>
     <p data-role="source-info" role="status" hidden></p>
     <p data-role="ota-availability" class="lora-ota-availability" role="status" aria-live="polite" hidden></p>
     <p data-role="source-update-help" role="status" hidden>This source needs updated firmware for this OTA workflow. If it is still connected here, disconnect it before opening the flasher. <a data-role="source-update-link" href="https://mikecarper.github.io/meshfirmware/" target="_blank" rel="noopener noreferrer">Update source firmware</a></p>
-    <p data-role="contact-status" role="status">Connect a Companion to load contacts.</p>
+    <p data-role="contact-status" role="status">Connect your USB radio to choose the remote device.</p>
     <section data-role="target-controls" hidden>
     <label>Search contacts by name or public-key prefix<input data-role="contact-search" autocomplete="off" spellcheck="false" disabled></label>
     <p><strong>Device to update</strong></p>
@@ -34,7 +33,7 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
     <details class="lora-ota-advanced">
       <summary>Enter a public key manually</summary>
       <label>Target public key (64 hex characters)<input data-role="key" size="64" autocomplete="off" spellcheck="false"></label>
-      <p>For a USB Repeater source, enter the target key here before connecting.</p>
+      <p>For a USB Repeater source, enter the remote device key here.</p>
     </details>
     </section>
     <section data-role="legacy-warning" hidden>
@@ -71,14 +70,14 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
     <label>Installed firmware (optional)<input data-role="base" type="file" accept=".bin,.zip"></label>
     <p data-role="firmware-base-status" role="status"></p>
     </details>
-    <p>Preparing loads your selected image, checks compatibility and sets up the temporary update channel when supported. Automatic setup turns off automatic OTA fetch/install and preserves RX power saving; any saved changes are listed in the diagnostic log.</p>
+    <p>Prepare update checks the firmware, sets up a temporary channel and tests the link. Your normal radio channels stay unchanged.</p>
     <p class="lora-ota-actions"><button type="button" data-role="inspect" disabled>Prepare update</button></p>
   </section>
   <section class="lora-ota-step">
     <h2>3. Update the remote device</h2>
-    <p data-role="update-summary">Prepare the firmware first. The update will transfer, install and verify the running firmware.</p>
+    <p data-role="update-summary">The selected firmware will be sent over LoRa, installed and verified automatically.</p>
     <p data-role="update-progress" role="status" aria-live="polite" hidden></p>
-    <p class="lora-ota-actions"><button type="button" data-role="update" disabled>Update remote firmware</button></p>
+    <p class="lora-ota-actions"><button type="button" data-role="update" disabled>Update remote firmware</button> <button type="button" data-role="transfer-stop" class="lora-ota-secondary" hidden disabled>Stop transfer</button></p>
     <details class="lora-ota-advanced"><summary>Separate transfer, resume and install controls</summary>
     <p class="lora-ota-actions"><button type="button" data-role="transfer" disabled>Transfer</button> <button type="button" data-role="resume" class="lora-ota-secondary" disabled>Resume</button> <button type="button" data-role="install" disabled>Install and verify</button></p>
     </details>
@@ -87,9 +86,12 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
   <details class="lora-ota-advanced" data-role="radio-setup-panel">
     <summary>Update channel and manual radio setup</summary>
     <p>Prepare update configures both radios and tests the link automatically. It checks temporary radio2 first on each device, using the full window when available. Primary-channel fallback starts with a two-minute trial and extends only after the target responds on the new channel. Saved normal channels stay unchanged.</p>
-    <p>For 902-928 MHz radios, the default is 909.950 MHz, or a separated alternate. Older Companions use their saved channel for compatibility; both temporary windows are aligned automatically. Other regions keep the saved channel unless you choose another below.</p>
+    <p>Recognized community radio settings select a regional update profile automatically. An active temporary channel is kept unless you choose a region or edit the radio settings. Unrecognized settings keep the current channel. <a href="#regional-update-defaults">Regional defaults and limits</a>.</p>
     <details class="lora-ota-advanced">
       <summary>Update channel options</summary>
+      <label>Region<select data-role="radio-region"><option value="auto">Auto (recognized radio settings)</option></select></label>
+      <p data-role="radio-region-status">Detected from recognized radio settings. Choose a region to override.</p>
+      <button type="button" data-role="radio-reset" class="lora-ota-secondary" hidden>Reset manual overrides</button>
       <label>Update frequency (MHz)<input data-role="radio-frequency" type="number" min="150" max="2500" step="0.001" placeholder="Choose a frequency"></label>
       <label>Bandwidth (kHz)<select data-role="radio-bandwidth"><option value="7.8">7.8</option><option value="10.4">10.4</option><option value="15.6">15.6</option><option value="20.8">20.8</option><option value="31.25">31.25</option><option value="41.7">41.7</option><option value="62.5">62.5</option><option value="125">125</option><option value="250" selected>250</option><option value="500">500</option></select></label>
       <label>Spreading factor<select data-role="radio-sf"><option value="5">SF5</option><option value="6">SF6</option><option value="7" selected>SF7</option><option value="8">SF8</option><option value="9">SF9</option><option value="10">SF10</option><option value="11">SF11</option><option value="12">SF12</option></select></label>
@@ -110,7 +112,7 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
 
   <details class="lora-ota-advanced">
     <summary>Advanced connection and firmware options</summary>
-    <p><label><input type="checkbox" data-role="acl" checked> Source is already in the target ACL</label></p>
+    <p><label><input type="checkbox" data-role="acl"> Use existing ACL access only (ignore the password)</label></p>
     <p><label>Admin-route relay public keys, nearest first (optional; one per line)<textarea data-role="relays" rows="3" cols="64" spellcheck="false"></textarea></label></p>
     <p><label>Candidate relay public keys for route search (optional; one per line)<textarea data-role="candidates" rows="3" cols="64" spellcheck="false"></textarea></label></p>
     <p><label>Minimum SNR (dB) <input data-role="snr" type="number" value="-5" step="0.25"></label> <label>Maximum observation age (hours) <input data-role="age" type="number" value="24" min="1" max="168"></label></p>
@@ -165,16 +167,58 @@ Older Companions use their shared message queue. Unrelated pending messages may
 be saved in this browser and cannot be restored to the Companion. Keep other
 apps disconnected and avoid changing radio settings during the update.
 
-The USB Companion must report `188` for `get usb.raw.max`. Older firmware's
-176-byte command limit cannot carry a complete OTA manifest or the larger data
-packets, even if small adverts work. Update the source Companion first; the
-remote target can still use its supported older OTA firmware. The page checks
-this limit before preparing the target or starting a download.
+Older Keymind Cascade Full Companions can use their existing USB mOTA
+firmware-source mode. The page selects it automatically when the older
+176-byte command limit prevents raw-packet updates, then restores Binary
+Companion mode for status checks and when finished. No manual mode change or
+Companion firmware update is needed when that capability is available.
+
+Newer Companions can send complete OTA packets directly when `get usb.raw.max`
+reports `188`. A Companion without either capability needs updated firmware;
+the page checks before changing the target. Older remote devices remain
+supported when their firmware includes compatible LoRa OTA.
 
 ## Setup and advanced details
 
-This updater is experimental; direct and multi-hop updates have not yet been
-verified on hardware. Wi-Fi support is still under development.
+<details id="regional-update-defaults">
+<summary>Regional update defaults and limits</summary>
+
+Fast profiles use **SF5, CR7**; known SX127x radios use **SF7**. Auto matches the saved frequency, bandwidth,
+spreading factor and coding rate against a checked snapshot of the
+[MeshCore community suggestions](https://api.meshcore.nz/api/v1/config).
+These identify suggested profiles, not a device's country or certification.
+Choose **Region** under **Update channel options** to override the suggestion.
+
+| Area | Update MHz / BW kHz | Operating limits and reference |
+| --- | --- | --- |
+| EU / UK, including the matching Swiss profile | **869.525 / 250** | 500 mW ERP; 10% duty cycle or the applicable compliant channel-access alternative. [EU decision](https://eur-lex.europa.eu/eli/dec_impl/2025/105/oj/eng), [UK IR 2030](https://www.ofcom.org.uk/siteassets/resources/documents/spectrum/interface-requirements/ir-2030.pdf), [Swiss RIR1008-09](https://www.ofcomnet.ch/api/RIR/1008/09). |
+| EU / UK 433 MHz | **433.925 / 250** | 10 mW ERP and 10% duty cycle for this operating category. [EU decision](https://eur-lex.europa.eu/eli/dec_impl/2025/105/oj/eng), [UK IR 2030](https://www.ofcom.org.uk/siteassets/resources/documents/spectrum/interface-requirements/ir-2030.pdf). |
+| US / Canada | **909.950 / 500** | The fixed-channel DTS category requires measured 6 dB bandwidth of at least 500 kHz; nominal BW500 alone does not establish equipment compliance. Power, spectral density and antenna limits also apply. [FCC §15.247](https://www.ecfr.gov/current/title-47/chapter-I/subchapter-A/part-15/subpart-C/section-15.247), [ISED RSS-247](https://ised-isde.canada.ca/site/spectrum-management-telecommunications/en/devices-and-equipment/radio-equipment-standards/radio-standards-specifications-rss/rss-247-digital-transmission-systems-dtss-frequency-hopping-systems-fhss-and-licence-exempt-local). |
+| Costa Rica | **909.950 / 250** | This segment permits up to 24 dBm conducted / 30 dBm EIRP, subject to equipment approval. [2026 decree, Table 22](https://micitt.go.cr/sites/default/files/marco_juridico_legal/Decreto%20n.%C2%B0%2045769-MICITT%20MODIFICACI%C3%93N%20PARCIAL%20A%20LOS%20ART%C3%8DCULOS%204%2C%2014%2C%2015%20Y%2016%20DEL%20DECRETO.pdf). |
+| Australia | **921.500 / 250** | Digital modulation: up to 1 W EIRP and 25 mW per 3 kHz radiated peak power density. [LIPD 2025, Table 8 / clause 43](https://www.legislation.gov.au/F2025L01047/asmade/2025-09-05/text/original/pdf). |
+| Brazil | **921.500 / 500** | New fixed-channel digital certifications require measured 6 dB bandwidth of at least 500 kHz, plus power and spectral-density limits. Previously approved equipment can retain its original requirements. [Ato 14448](https://informacoes.anatel.gov.br/legislacao/atos-de-requisitos-tecnicos-de-gestao-do-espectro/2017/1139-ato-14448), [2026 transition](https://informacoes.anatel.gov.br/legislacao/component/content/article/174-atos-de-certificacao-de-produtos/2026/2132-ato-4746). |
+| Thailand | **921.500 / 250** | Fixed-channel duty limits depend on EIRP: 1% below 50 mW, 10% above 50 mW; higher powers can require an operating licence. [NBTC standard](https://standard.nbtc.go.th/getattachment/Standards/มาตรฐานทางเทคนิคของเครื่องโทรคมนาคม/1033-2565.pdf.aspx?lang=th-TH), [authorization rules](https://standard.nbtc.go.th/getattachment/Standards/กฎระเบียบที่เกี่ยวข้อง/หลักเกณฑ์-920-925-MHz.pdf.aspx?lang=th-TH). |
+| Vietnam | **921.500 / 250** | Licence-exempt LPWAN: up to 25 mW ERP, 1% endpoint / 10% qualifying access-station duty cycle. A repeater is not automatically a qualifying gateway. [2025 consolidated rules, Appendix 19](https://congbaocdn.chinhphu.vn/CongBaoCP/VanBan/2025/6/45035/56681-1-2025761-7621-vbhn-bkhcn.pdf). |
+
+The shared Australia/Brazil community preset selects **921.500 / 500**;
+choosing Australia explicitly selects BW250. New Zealand and unknown custom
+profiles retain their saved settings: the full conditions of the current
+[New Zealand SRD licence](https://www.rsm.govt.nz/about/publications/gazette-notices/general-user-radio-licence-gurl-notices)
+were not verified for a new fast profile.
+
+Profiles select the update channel. Existing power and airtime settings are
+retained; the browser does not raise them or certify antenna gain, actual
+emissions or equipment approval. Both radios must already satisfy the applicable
+power and duty-cycle limits. Limits checked **10 November 2026**.
+
+</details>
+
+Direct updates were tested over LoRa with a released 1.18.0.1 Full Companion:
+transfer recovery, automatic window extension, stopping, replacing firmware,
+installation and post-reboot verification passed. See the
+[Mercerwood test results](test-results/browser_lora_ota_mercerwood_2026-11-10.safe.json).
+Repeater-source and multi-hop hardware tests remain unverified. This updater is
+experimental; Wi-Fi support is still under development.
 
 Guarded mode requires a custom Keymind Cascade Full Companion built from commit
 `bede4d85f` or later with both guarded features enabled. The 1.18.0.1 release
@@ -193,7 +237,9 @@ Repeater with `ota.peer` and USB folder support. Older Companions use their
 shared message queue: unrelated messages moved into the browser can be
 downloaded, but cannot be restored to the Companion. The page prepares the
 update channel and required OTA preferences automatically on
-compatible direct connections. The temporary channel expires; the required
+compatible direct connections. Once data transfer starts, long updates can extend
+temporary windows that this browser set up and can still verify. Existing or
+unverified windows retain their original deadline. The required
 OTA policy changes remain saved and are listed in the diagnostic log. RX power saving is not changed or required to be off; radio2 handles its own receive mode. Missing setting acknowledgements are checked automatically before setup continues.
 On older Companions with USB radio controls, the page automatically aligns both
 temporary channels with the Companion's saved settings. It tests primary
@@ -276,6 +322,9 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_sim.js"></script>
 <script src="../_javascript/lora_ota_chain.js"></script>
 <script src="../_javascript/lora_ota_chain_ui.js"></script>
+<script src="../_javascript/lora_ota_region_profiles.js"></script>
 <script src="../_javascript/lora_ota_radio_setup.js"></script>
+<script src="../_javascript/lora_ota_recovery.js"></script>
+<script src="../_javascript/lora_ota_lease.js"></script>
 <script src="../_javascript/lora_ota_catalog.js"></script>
 <script src="../_javascript/lora_ota_browser.js"></script>

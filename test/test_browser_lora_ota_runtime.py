@@ -58,7 +58,7 @@ HARNESS = r'''<script>
         return;
       }
       const cmd=dec.decode(bytes).trim();cmds.push('local '+cmd);
-      let reply=({'get public.key':source,'ota.peer status':'OTApeer v=1 session=0 busy=0 peers=1',
+      let reply=({'get public.key':source,'board':'Test board','ota.peer status':'OTApeer v=1 session=0 busy=0 peers=1',
         'ota.peer capabilities':'OTApeer known_repeater=1 routed_path=1','ota.peer path':'OTApeer path=off',
         'ota.peer close':'OTApeer closed','get tempradio':radio,'get radio':radio,
         'get radio.rxps':'off,1000,1000','ota config':config,'ota stats':'fetch idle'})[cmd];

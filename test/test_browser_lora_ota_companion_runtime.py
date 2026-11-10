@@ -87,6 +87,9 @@ HARNESS = r'''<script>
     const bh=new Uint8Array(await crypto.subtle.digest('SHA-256',expected.slice(0,at))).slice(0,8);expected.set(bh,at+8);body=hex(bh);v.setUint32(at+16,0x01120001,true);v.setUint32(at+20,0x12345678,true);expected.set(enc.encode('board'),at+24);
     pkg=await MeshCoreMotaPackage.parseMota(await MeshCoreMotaPackage.buildFullMota(expected));mid=hex(pkg.merkleRoot);
     const dt=new DataTransfer();dt.items.add(new File([expected],'firmware.bin'));el('file').files=dt.files;el('password').value='password';
+    // These protocol-focused fixtures use the explicit override. Automatic
+    // detection is exercised separately with both real transport types.
+    el('source').value='companion';el('source').dispatchEvent(new Event('change'));
     if(el('source').value!=='companion')throw Error('Companion is not default');el('connect').click();await wait(()=>!el('inspect').disabled||el('status').textContent.includes('Error:'));
     if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);
     const buttons=()=>[...el('contact').querySelectorAll('button[data-contact-key]')];

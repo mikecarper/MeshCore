@@ -14,7 +14,7 @@ function fixture(options = {}) {
     autofetch: options.autoPolicies ? 'signed' : 'off', autoinstall: options.autoPolicies ? 'trusted' : 'off'}]));
   const saved = {source: [910.5250244, 62.5, 7, 5], target: [910.5250244, 62.5, 7, 5]};
   const states = {source: [null, null], target: [null, null]};
-  if (options.initialPrimary) for (const label of ['source', 'target']) states[label][0] = {started: 0, tuple: options.initialPrimary, minutes: 120};
+  if (options.initialPrimary) for (const label of ['source', 'target']) states[label][0] = {started: 0, tuple: options.initialPrimary, minutes: options.initialMinutes ?? 120};
   const requested = options.legacy ? {...selected, frequency: saved.source[0], bandwidth: saved.source[1], sf: saved.source[2], cr: saved.source[3]} : selected;
   const expectedTuple = [requested.frequency, requested.bandwidth, requested.sf, requested.cr];
   const savedSecondary = {source: options.sourceBusy ? '> 908.15,250,7,5,rxtx,48' : '> off (manual)',
@@ -28,6 +28,7 @@ function fixture(options = {}) {
     async probeOtaRadio() { events.push(['probe']); this.supportsOtaRadio2 = !options.legacy && options.sourceSupports !== false; },
     async verifyPeer(k, password) {
       events.push(['verify', k, password, clock]); assert.equal(k, key); proofs++;
+      if (states.source[0]) clock += options.verifyDelayAfterSwitch ?? 0;
       if (!options.fastProbe && events.some(row => row[0] === 'select')) {
         assert.ok(clock - (targetAckAt ?? 0) >= (options.targetDelay ?? 2500), 'authentication preceded target retune');
         assert.ok(live('source', this.otaRadioProfile), 'source selected profile not live');
@@ -104,7 +105,7 @@ function fixture(options = {}) {
     const frequency = tuple[0];
     if (profile) return `> ${tuple.join(',')},rxtx,${pre}; 0d2h0m (120 min) left`;
     if (!live(label, 0)) return 'TempRadio pending: 909.950,250.00,5,5,preamble=128';
-    return label === 'source' ? `TempRadio active: ${tuple.join(',')} 7190s left,preamble=${pre}` : `> ${tuple.join(',')},${pre}`;
+    return label === 'source' ? `TempRadio active: ${tuple.join(',')} ${Math.max(0, Math.floor((state.minutes ?? 120) * 60 - (clock - state.started) / 1000))}s left,preamble=${pre}` : `> ${tuple.join(',')},${pre}`;
   }
   async function read(label, command) {
     events.push([label, command, clock]);
@@ -344,8 +345,8 @@ test('a persistent active target preamble mismatch is bounded, detailed and neve
     assert.deepEqual(f.writes().filter(row => row[0] === endpoint).map(row => row[1]), [trial[endpoint]]);
 });
 
-test('a legacy primary trial expiring during reauthentication is identified and not renewed', async () => {
-  const f = fixture({legacy: true, targetSecondary: false, resetDelay: 120001, expirePrimaryLease: true});
+test('a legacy primary trial expiring during identity verification is identified and not renewed', async () => {
+  const f = fixture({legacy: true, targetSecondary: false, verifyDelayAfterSwitch: 120001, expirePrimaryLease: true});
   await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options), error => {
     assert.match(error.message, /Target/i);
     assert.match(error.message, /(?:expired|expiry|elapsed|ended)/i);
@@ -357,6 +358,17 @@ test('a legacy primary trial expiring during reauthentication is identified and 
     const writes = f.writes().filter(row => row[0] === endpoint).map(row => row[1]);
     assert.deepEqual(writes, ['tempradio 910.525,62.5,7,5,2,128']);
   }
+});
+
+test('legacy folder channel changes retain the authorized session and still prove the target key', async () => {
+  const f=fixture({sourceSupports:false});
+  f.link.otaSupported=false;f.link.otaMode='legacy';f.link.usesUsbFolderFallback=true;
+  const result=await setup.prepare(f.link,key,'pw',selected,f.options);
+  assert.equal(result.ready,true);
+  assert.equal(f.events.some(row=>row[0]==='reset'),false,'A radio change must not force the older primary-only login acknowledgement');
+  const sourceWrite=f.events.findIndex(row=>row[0]==='protected-local');
+  assert.ok(sourceWrite>=0);
+  assert.ok(f.events.slice(sourceWrite).some(row=>row[0]==='target'&&row[1]==='get public.key'),'The new channel still needs a complete identity proof');
 });
 
 test('dual-channel setup prepares source R2 before switching the target and completes immediately on new-channel proof', async () => {
@@ -645,13 +657,50 @@ test('primary link failure leaves only short leases and never opens the full win
   }
 });
 
-test('already matching primary windows need only prerequisite changes and live proof', async () => {
+test('a matching idle source primary gets a full explicit lease without changing the target window', async () => {
   const f = fixture({initialPrimary: [909.95, 250, 5, 5], factoryDefaults: true});
   const result = await setup.prepare(f.link, key, 'pw', selected, {...f.options, useActivePrimary: true});
   assert.equal(result.adoptedSource, true); assert.equal(result.adoptedTarget, true);
   assert.deepEqual(result.source, [909.95, 250, 5, 5]);
-  assert.ok(!f.events.some(row => /^(?:tempradio |set tempradio2 )/.test(row[1] || '')));
+  assert.equal(result.refreshedSourcePrimary, true);
+  assert.deepEqual(f.writes().filter(row=>['source','target'].includes(row[0])).map(row=>row.slice(0,2)), [['source', primary.source]]);
+  const written = f.events.findIndex(row => row[0] === 'source' && row[1] === primary.source);
+  assert.ok(f.events.slice(written + 1).some(row => row[0] === 'target' && row[1] === 'get public.key'));
+  assert.deepEqual(f.link.otaLeaseProof.explicitProfiles, [true, false]);
   assert.equal(f.preferences.source.rxps, 'on'); assert.equal(f.preferences.target.rxps, 'on');
+});
+
+test('a short matching source primary is refreshed once before an existing target fetch is adopted', async () => {
+  const f = fixture({initialPrimary: [909.95, 250, 5, 5], initialMinutes: 4, targetDownload: true});
+  const result = await setup.prepare(f.link, key, 'pw', selected, f.options);
+  assert.equal(result.refreshedSourcePrimary, true);
+  assert.deepEqual(f.writes().filter(row=>['source','target'].includes(row[0])).map(row=>row.slice(0,2)), [['source', primary.source]]);
+  assert.equal(f.states.source[0].minutes, 120);assert.equal(f.states.target[0].minutes, 4);
+  assert.deepEqual(f.link.otaLeaseProof.explicitProfiles, [true, false]);
+});
+
+test('a raw-only legacy source retains matching primary windows without a refresh even when optional idle getters exist', async () => {
+  const f = fixture({legacy:true,initialPrimary:[910.5250244,62.5,7,5],initialMinutes:4,
+    overrides:[['source:ota stats','fetch idle'],['source:ota folder','folder=off']]});
+  const result=await setup.prepare(f.link,key,'pw',selected,f.options);
+  assert.equal(result.adoptedSource,true);assert.equal(result.refreshedSourcePrimary,false);
+  assert.equal(f.writes().length,0);assert.equal(f.states.source[0].minutes,4);
+});
+
+test('the matching source becoming busy during preflight prevents its lease refresh', async () => {
+  let reads = 0;
+  const f = fixture({initialPrimary: [909.95, 250, 5, 5], initialMinutes: 4,
+    overrides:[['source:ota stats',()=>++reads < 3 ? 'fetch idle' : 'fetch active id=12345678']]});
+  await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options), /active or unverified OTA download/);
+  assert.equal(f.writes().length, 0);assert.equal(f.states.source[0].minutes, 4);
+});
+
+test('a refreshed matching source requires a fresh full target key before ownership is recorded', async () => {
+  const f = fixture({initialPrimary: [909.95, 250, 5, 5], initialMinutes: 4,
+    overrides:[['target:get public.key',()=>f.writes().length ? '56'.repeat(32) : key]]});
+  await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options), /complete public key/);
+  assert.deepEqual(f.writes().filter(row=>['source','target'].includes(row[0])).map(row=>row.slice(0,2)), [['source', primary.source]]);
+  assert.equal(f.link.otaLeaseProof, undefined);
 });
 
 test('radio frequencies are formatted to three decimal places', () => {

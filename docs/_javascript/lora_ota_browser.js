@@ -5,15 +5,26 @@
   if (!ui) return;
   const $ = name => ui.querySelector('[data-role="' + name + '"]');
   let link, session, info, expectedSigner, activeTask, preparing, chainPrepared, chainConfig, connectController;
-  let contacts=[], targetLocked=false, contactKey='', disconnectGeneration=0;
+  let contacts=[], targetLocked=false, contactKey='', disconnectGeneration=0, activeSourceKind=null;
+  const sourceKind=()=>activeSourceKind||($('source').value==='auto'?'companion':$('source').value);
+  const aclIntent=()=>$('acl').checked||$('password').value.length===0;
+  const repeaterAclIntent=()=>sourceKind()==='repeater'&&aclIntent();
   let catalogFile=null, catalogBaseFile=null, catalogDest=null, catalogVersion='', catalogInstallSupported=false, catalogCandidates=[], catalogGeneration=0;
   let preservedCount=0, preservedExportSnapshot=null, preservedExportToken=null, preservedExportInterrupted=false;
   let investigationTimer=null, investigationStage='', investigationStopping=false, investigationActive=false;
   let sourceOtaUnsupported=false, targetAvailability=null, preparedDownload=null, preparedReplacement=null, uiBusy=false, updatePhase='';
+  let sourceBytesRead=0, sourceActivityAt=0, lastTransferPercent=null, radioOverride=false;
+  let targetRadioHwId=null;
+  let transferStopJob=null,transferStopTask=null;
+  function refreshTransferStop(){
+    $('transfer-stop').hidden=updatePhase!=='transfer';
+    $('transfer-stop').disabled=updatePhase!=='transfer'||!!transferStopTask||transferStopJob===session;
+  }
   function status(message, state='working') {
     $('workflow-status').textContent=message;
     $('workflow-status').dataset.state=state;
     if(updatePhase){$('update-progress').hidden=false;$('update-progress').textContent=message;}
+    refreshTransferStop();
   }
   function openDetails(element) {
     for(let node=element;node && node!==ui;node=node.parentElement)if(node.tagName==='DETAILS')node.open=true;
@@ -38,11 +49,25 @@
   }
   const log = text => {
     $('status').textContent += String(text) + '\n'; $('status').scrollTop = $('status').scrollHeight;
-    if(updatePhase==='transfer') {
+    if(updatePhase==='transfer'&&transferStopJob!==session) {
       const percent=/\bdownload:.*?\((\d{1,3})%\)/i.exec(String(text));
-      if(percent && Number(percent[1])<=100)status('Transferring firmware over LoRa: '+Number(percent[1])+'%. Keep this page open.');
+      if(percent && Number(percent[1])<=100){
+        lastTransferPercent=Number(percent[1]);
+        status('Transferring firmware over LoRa: '+lastTransferPercent+'%. Keep this page open.');
+      }
     }
   };
+  function onFolderRead({op,args,status:result}) {
+    if(result!==0 || ![3,9].includes(op) || args?.length!==7 || updatePhase!=='transfer'||transferStopJob===session)return;
+    const length=args[5]+256*args[6];if(!length)return;
+    sourceBytesRead+=length;
+    if(Date.now()-sourceActivityAt<1000)return;
+    sourceActivityAt=Date.now();
+    const confirmed=lastTransferPercent===null?'':lastTransferPercent+'% last reported by the remote device. ';
+    // Host-file reads show real source activity, not remote reception or
+    // verification. Repeated metadata/proof reads can exceed the image size.
+    status('Transferring firmware over LoRa. '+confirmed+'The USB radio has read '+Math.ceil(sourceBytesRead/1024)+' KB of firmware data. Keep this page open.');
+  }
   function showSourceUpdate(kind) {
     if(kind==='companion' || kind==='repeater') {
       const role=kind==='companion'?'companionFull':'repeater';
@@ -105,15 +130,26 @@
   const editable = ['source', 'key', 'acl', 'relays', 'candidates', 'snr', 'age', 'password', 'file', 'base', 'image', 'signer',
     'chain-files', 'chain-attest', 'chain-objective', 'chain-preamble', 'chain-minutes'];
   const radioFields=['radio-frequency','radio-bandwidth','radio-sf','radio-cr','radio-preamble','radio-minutes'];
+  const radioDefaults=Object.fromEntries([...radioFields,'radio-region'].map(name=>[name,$(name).value]));
+  for(const profile of LoraOtaRadioSetup.regions||[]){
+    const option=document.createElement('option');option.value=profile.id;option.textContent=profile.label;$('radio-region').appendChild(option);
+  }
   function radioOptions() {
     return {frequency:Number($('radio-frequency').value),bandwidth:Number($('radio-bandwidth').value),
       sf:Number($('radio-sf').value),cr:Number($('radio-cr').value),
       preamble:Number($('radio-preamble').value),minutes:Number($('radio-minutes').value)};
   }
+  const radioHardware=()=>({sourceBoard:link?.firmwareBoardName,targetHwId:targetRadioHwId});
+  const explicitRadioChoice=()=>radioOverride||$('radio-region').value!=='auto';
+  function chosenRadioMatches(probe) {
+    const options=radioOptions();
+    return Array.isArray(probe.tempRadio)&&LoraOtaRadioSetup.same(probe.tempRadio,[options.frequency,options.bandwidth,options.sf,options.cr])&&
+      probe.verifiedRadio?.preamble===options.preamble;
+  }
   function showRadioCommands() {
     try {
       const options=radioOptions();
-      if(link?.browserRawSource && link.otaSupported!==true && Array.isArray(link.radio)) {
+      if(link?.browserRawSource && link.otaSupported!==true && !link.usesUsbFolderFallback && Array.isArray(link.radio)) {
         // Older source firmware cannot bind a different temporary channel.
         // Suggest the usable saved tuple, not the separate-channel default.
         [options.frequency,options.bandwidth,options.sf,options.cr]=link.radio;
@@ -126,27 +162,89 @@
     return !!link && !link.relays?.length && typeof link.closeRadioSession==='function' &&
       (!link.browserRawSource || link.localCliSupported===true);
   }
-  function suggestRadioChannel() {
-    if(!$('radio-frequency').value && Array.isArray(link?.radio)) {
-      const frequency=LoraOtaRadioSetup.recommend(link.radio);
-      if(frequency!==null)$('radio-frequency').value=frequency.toFixed(3);
+  async function recoverUpdateChannel(target) {
+    if(!globalThis.LoraOtaRecovery || link.relays?.length)return null;
+    const result=await LoraOtaRecovery.restoreSource(link,target,readJournal(),{override:explicitRadioChoice(),progress:message=>{status(message);log(message);}});
+    if(!result.requiresVerification)return null;
+    [$('radio-frequency').value,$('radio-bandwidth').value,$('radio-sf').value,$('radio-cr').value]=
+      [result.tuple[0].toFixed(3),...result.tuple.slice(1).map(String)];
+    $('radio-preamble').value=String(result.preamble);showRadioCommands();
+    $('radio-region-status').textContent='Using the verified temporary channel for this interrupted update.';
+    return result;
+  }
+  async function confirmUpdateChannel(result,target,password) {
+    if(!result?.requiresVerification)return;
+    let verifiedKey=target,adminVerified=false;
+    if(!link.browserRawSource){
+      verifiedKey=String(await link.remoteCommand(target,password,'get public.key')).trim().replace(/^>\s*/,'');
+      if(verifiedKey.toLowerCase()!==target.toLowerCase())throw Error('Target did not prove its full public key on the recovered channel');
+      // An ACL command replaces the Repeater source's current peer session.
+      // Renew its ordinary access proof before extending our source lease.
+      if(link.authenticatedKey?.toLowerCase()!==target.toLowerCase())await link.verifyPeer(target,password);
+    }else if(link.otaSupported!==true && link.investigationPermission==='unknown'){
+      const config=String(await link.investigateCommand(target,password,'ota config')).trim().replace(/^>\s*/,'');
+      // Some old ACL replies omit the role. This read is restricted to admins
+      // by the target; a publicly readable identity alone does not prove it.
+      if(!/^ota config:/i.test(config)||!/(?:^|\s)autofetch=(?:on|off)(?:\s|$)/i.test(config)||
+          !/(?:^|\s)autoinstall=(?:on|off)(?:\s|$)/i.test(config))throw Error('Target administration could not be verified on the recovered channel');
+      adminVerified=true;
+    }
+    await LoraOtaRecovery.confirmSource(link,result,{verifiedKey,adminVerified,progress:log});
+  }
+  async function suggestRadioChannel() {
+    if(!radioOverride) {
+      const source=link,region=$('radio-region').value;
+      let saved=source?.radio,active=null;
+      const readable=typeof source?.localCommand==='function'&&(!source.browserRawSource||source.localCliSupported===true);
+      if(readable)try{
+        if(!Array.isArray(saved))saved=LoraOtaRadioSetup.primary(await source.localCommand('get radio'));
+        active=await LoraOtaRadioSetup.readTemporary(command=>source.localCommand(command),source.otaRadioProfile??0);
+      }catch(error){if(source.failure)throw error;}
+      if(source!==link||region!==$('radio-region').value)return;
+      let profile=LoraOtaRadioSetup.recommendProfile(saved,{region,active,hardware:radioHardware()});
+      if(!radioOverride&&source&&!source.browserRawSource&&profile?.sf===5&&['region','community'].includes(profile.selection)&&typeof source.firmwareBoardName!=='string'){
+        source.firmwareBoardName=String(await source.localCommand('board')).trim().replace(/^>\s*/,'');
+        if(source!==link||region!==$('radio-region').value)return;
+        profile=LoraOtaRadioSetup.recommendProfile(saved,{region,active,hardware:radioHardware()});
+      }
+      if(!radioOverride&&profile){
+        $('radio-frequency').value=profile.frequency.toFixed(3);$('radio-bandwidth').value=String(profile.bandwidth);
+        $('radio-sf').value=String(profile.sf);$('radio-cr').value=String(profile.cr);
+        if(profile.preamble!==undefined)$('radio-preamble').value=String(profile.preamble);
+        $('radio-region-status').textContent=profile.label+': '+profile.frequency.toFixed(3)+' MHz, BW'+profile.bandwidth+', SF'+profile.sf+', CR'+profile.cr+'.'+
+          (profile.ambiguous?' Country cannot be determined from these radio settings.':'')+
+          (profile.hardwareAdjusted?' '+profile.hardwareReason+'.':'');
+      }else if(!radioOverride){
+        $('radio-region-status').textContent='Connect a radio to detect its settings, or choose a region.';
+      }
+    }
+    if(radioOverride){
+      $('radio-region-status').textContent='Your manually selected radio settings take precedence.';
     }
     showRadioCommands();
-    $('radio-setup-status').textContent=canPrepareRadioChannel()
+    $('radio-setup-status').textContent=!link?'Connect a USB radio to prepare the update channel.':canPrepareRadioChannel()
       ? 'The update channel will be prepared automatically when you check the firmware. Temporary radio2 is preferred when available and unused.'
       : 'Update this Companion to enable automatic channel setup: its firmware cannot read and set temporary channels over USB.';
   }
+  async function applyTargetRadioHardware(hwId){
+    if(targetRadioHwId===hwId)return;
+    targetRadioHwId=hwId;
+    if(!radioOverride)await suggestRadioChannel();
+  }
   async function prepareRadioChannel(target,password,options={}) {
-    if(!$('radio-frequency').value || link.browserRawSource && link.otaSupported!==true) {
+    if(!$('radio-frequency').value || link.browserRawSource && link.otaSupported!==true && !link.usesUsbFolderFallback) {
       const reply=String(await link.localCommand('get radio')).trim().replace(/^>\s*/,'');
       const match=/^(\d+(?:\.\d+)?),(\d+(?:\.\d+)?),(\d+),(\d+)$/.exec(reply);
       if(!match)throw Error('Cannot read the Companion saved radio settings for automatic setup.');
-      const saved=match.slice(1).map(Number), compatibility=link.browserRawSource && link.otaSupported!==true;
-      const frequency=compatibility ? saved[0] : LoraOtaRadioSetup.recommend(saved);
-      $('radio-frequency').value=(frequency??saved[0]).toFixed(3);
-      if(compatibility || frequency===null) {
-        $('radio-bandwidth').value=String(saved[1]);$('radio-sf').value=String(saved[2]);$('radio-cr').value=String(saved[3]);
+      const saved=match.slice(1).map(Number), compatibility=link.browserRawSource && link.otaSupported!==true && !link.usesUsbFolderFallback;
+      const chosen=radioOptions();
+      if(compatibility&&explicitRadioChoice()&&!LoraOtaRadioSetup.same(saved,[chosen.frequency,chosen.bandwidth,chosen.sf,chosen.cr])){
+        const error=Error('This USB Companion can use only its saved primary channel for OTA. Use those saved settings or update the source Companion to use another profile.');
+        error.sourceUpdateRequired='companion';throw error;
       }
+      const profile=compatibility?{frequency:saved[0],bandwidth:saved[1],sf:saved[2],cr:saved[3]}:LoraOtaRadioSetup.recommendProfile(saved,{region:$('radio-region').value,hardware:radioHardware()});
+      $('radio-frequency').value=profile.frequency.toFixed(3);
+      $('radio-bandwidth').value=String(profile.bandwidth);$('radio-sf').value=String(profile.sf);$('radio-cr').value=String(profile.cr);
       showRadioCommands();
     }
     const showChanges=changes=>{
@@ -163,22 +261,27 @@
       $('radio-frequency').value=result.source[0].toFixed(3);
       $('radio-bandwidth').value=String(result.source[1]);$('radio-sf').value=String(result.source[2]);$('radio-cr').value=String(result.source[3]);
       $('radio-preamble').value=String(result.preamble);showRadioCommands();
+      $('radio-region-status').textContent='Verified update channel: '+result.source[0].toFixed(3)+' MHz, BW'+result.source[1]+', SF'+result.source[2]+', CR'+result.source[3]+'.';
       showChanges(result.changedSettings);return result;
     }catch(error){showChanges(error.changedSettings);throw error;}
   }
   async function ensureRadioChannel(target,password) {
     const probe=new LoraOtaSession.DirectSession(link,target,password,null,{progress:log});
-    try{return await probe.inspectRadios();}
+    try{
+      const result=await probe.inspectRadios();
+      if(!explicitRadioChoice()||chosenRadioMatches(probe))return result;
+    }
     catch(error) {
       // Fix verified setup requirements automatically. The setup preflight
       // still refuses pending/unknown state and transport failures.
       if(!canPrepareRadioChannel() || !error.radioSetupRequired)throw error;
-      await prepareRadioChannel(target,password,{useActivePrimary:true});
-      const result=await probe.inspectRadios();
-      $('radio-setup-status').textContent='Update channel ready. Source: '+(link.otaRadioProfile===1?'temporary radio2':'temporary primary')+
-        '; target: '+(link.otaTargetProfile===1?'temporary radio2':'temporary primary')+'.';
-      return result;
     }
+    if(!canPrepareRadioChannel())throw Error('This USB source cannot prepare your selected update channel automatically.');
+    await prepareRadioChannel(target,password,{useActivePrimary:!explicitRadioChoice()});
+    const result=await probe.inspectRadios();
+    $('radio-setup-status').textContent='Update channel ready. Source: '+(link.otaRadioProfile===1?'temporary radio2':'temporary primary')+
+      '; target: '+(link.otaTargetProfile===1?'temporary radio2':'temporary primary')+'.';
+    return result;
   }
   async function checkRadioChannel(prepare) {
     invalidate();busy(true);
@@ -187,7 +290,9 @@
       requireUpdatesAvailable();
       if(link.relays?.length)throw Error('Prepare matching temporary settings on every route participant manually.');
       const target=selectTarget(),password=$('acl').checked?'':$('password').value;
+      const recovered=await recoverUpdateChannel(target);
       await link.verifyPeer(target,password);
+      await confirmUpdateChannel(recovered,target,password);
       if(prepare)await prepareRadioChannel(target,password);
       const probe=new LoraOtaSession.DirectSession(link,target,password,null,{progress:log});
       const result=await probe.inspectRadios();
@@ -200,19 +305,20 @@
     finally { busy(false);$('inspect').disabled=!link || updatesBlocked(); }
   }
   function busy(active) {
-    if(link && $('source').value==='companion' && (link.guard || link.authenticated || link.investigationEnabled || link.investigationAuthenticated || link.serving))targetLocked=true;
+    if(link && sourceKind()==='companion' && (link.guard || link.authenticated || link.investigationEnabled || link.investigationAuthenticated || link.serving))targetLocked=true;
     uiBusy=active;updateButton();
+    refreshTransferStop();
     $('inspect').disabled=active || !link || updatesBlocked();
-    $('find-route').disabled=active || !link || updatesBlocked() || !!link.relays || !link.aclOnly || !link.supportsRoutedPath;
+    $('find-route').disabled=active || !link || updatesBlocked() || !!link.relays || !repeaterAclIntent() || !link.supportsRoutedPath;
     for(const [name,states] of [['transfer',['idle']],['resume',['active','failed']],['install',['ready']]])
       $(name).disabled=active || !link || !session || updatesBlocked() || !states.includes(preparedDownload);
     $('resume').textContent=preparedDownload==='failed' ? 'Restart' : 'Resume';
-    $('target-controls').hidden=!link && $('source').value==='companion';
+    $('target-controls').hidden=!link && sourceKind()==='companion';
     $('disconnect').disabled=!link && !connectController;
     $('reconnect').hidden=!link?.failure;
     $('reconnect').disabled=active || !link?.failure;
-    for (const name of editable) $(name).disabled = active || (updatesBlocked() && ['file','base','image','signer','chain-files','chain-attest','chain-objective','chain-preamble','chain-minutes'].includes(name)) || (!!link && (name === 'source' || name === 'acl' || name === 'relays' || (name === 'key' && ($('source').value === 'repeater' || targetLocked))));
-    $('contact-search').disabled = active || !link || $('source').value !== 'companion' || targetLocked;
+    for (const name of editable) $(name).disabled = active || (updatesBlocked() && ['file','base','image','signer','chain-files','chain-attest','chain-objective','chain-preamble','chain-minutes'].includes(name)) || (!!link && (name === 'source' || name === 'acl' || name === 'relays' || (name === 'key' && (targetLocked || !!link.knownRepeater))));
+    $('contact-search').disabled = active || !link || sourceKind() !== 'companion' || targetLocked;
     updateContactButtons();
     $('investigate').disabled = active || !link || !!link.failure;
     $('legacy-inbox-export').disabled = active || !preservedCount;
@@ -223,6 +329,8 @@
     for (const name of ['repeat-read', 'repeat-off', 'repeat-on']) $(name).disabled = active || !link || !!link.failure;
     $('repeat-node').disabled = $('repeat-key').disabled = $('repeat-kind').disabled = active;
     for(const name of radioFields)$(name).disabled=active;
+    $('radio-region').disabled=active;
+    $('radio-reset').disabled=active;
     $('radio-check').disabled=active || !link || updatesBlocked();
     $('radio-prepare').disabled=active || updatesBlocked() || !canPrepareRadioChannel();
     const pending = readChainJournal();
@@ -333,9 +441,10 @@
   });
   refreshPreservedMessages();
   function usesSharedCompanionInbox() {
-    return $('source').value==='companion' && link?.otaSupported===false;
+    return sourceKind()==='companion' && link?.otaSupported===false;
   }
   function clearInvestigation() {
+    targetRadioHwId=null;
     targetAvailability=null;
     showAvailability(sourceOtaUnsupported ? {state:'unsupported',message:'LoRa updates are unavailable with this USB Companion: its firmware cannot send OTA packets. Update the source Companion firmware first.'} : null);
     $('investigation').hidden = true; $('investigation').textContent = '';
@@ -363,7 +472,9 @@
     const list=$('contact'), current=contactKey, matches=LoraOtaContacts.choices(contacts,$('contact-search').value);
     list.replaceChildren();
     list.hidden=!matches.length;
-    $('contact-status').textContent=!link || $('source').value!=='companion' ? 'Connect a Companion to load contacts.' :
+    $('contact-status').textContent=sourceKind()!=='companion'
+      ? (link ? 'Repeater connected. Select Find matching firmware to check the remote device.' : 'Enter the remote device key, then connect the USB Repeater.')
+      : !link ? 'Connect a Companion to load contacts.' :
       matches.length ? matches.length+' '+(matches.length===1?'device':'devices')+' found. Select a device.' : 'No matching contacts.';
     for(const contact of matches) {
       const button=document.createElement('button');
@@ -380,7 +491,8 @@
   }
   $('contact-search').addEventListener('input',renderContacts);
   $('key').addEventListener('input',()=>{if(contactKey!==$('key').value.toLowerCase()){contactKey='';updateContactButtons();}clearInvestigation();invalidate();});
-  $('password').addEventListener('input',clearInvestigation);
+  $('password').addEventListener('input',()=>{clearInvestigation();invalidate();busy(uiBusy);});
+  $('acl').addEventListener('change',()=>busy(uiBusy));
   $('file').addEventListener('change',()=>{
     catalogFile=null;
     if($('file').files[0])$('firmware-catalog-status').textContent='Using your selected firmware file. Choose Prepare update.';
@@ -390,18 +502,19 @@
       catalogBaseFile ? 'Using the downloaded installed firmware matching the reported target hash.' : '';
   });
   $('source').addEventListener('change',()=>{
+    if(!link)activeSourceKind=null;
     $('source-update-help').hidden=true;clearInvestigation();
-    if(!link){$('acl').checked=$('source').value==='repeater';$('target-controls').hidden=$('source').value==='companion';}
-    if($('source').value==='repeater')openDetails($('key'));
+    if(!link){$('target-controls').hidden=sourceKind()==='companion';renderContacts();}
+    if(sourceKind()==='repeater')openDetails($('key'));
   });
   $('acl').checked=false;
   function selectTarget() {
     const key=$('key').value.trim();
     if(!/^[0-9a-f]{64}$/i.test(key))throw Error('Choose a contact or enter the complete target public key.');
-    if($('source').value==='companion'){
-      if(!targetLocked)link.selectTarget(key);
-      else if(link.knownRepeater!==key.toLowerCase())throw Error('Disconnect before choosing another target.');
-    }
+    if(!targetLocked && typeof link.selectTarget==='function')link.selectTarget(key);
+    else if(link.knownRepeater && link.knownRepeater!==key.toLowerCase())throw Error('Disconnect before choosing another target.');
+    if(sourceKind()==='repeater' && link.options?.deferredTarget && !link.relays?.length)
+      link.aclOnly=$('acl').checked;
     return key;
   }
   async function compressor(raw) {
@@ -420,7 +533,11 @@
     if (activeTask) { log('Waiting for the current radio request to finish...'); await activeTask.catch(() => {}); }
     if (link) await link.close();
     sourceOtaUnsupported=false;
-    link = session = chainPrepared = chainConfig = null;contacts=[];targetLocked=false;contactKey='';
+    link = session = chainPrepared = chainConfig = null;contacts=[];targetLocked=false;contactKey='';activeSourceKind=null;radioOverride=false;
+    transferStopJob=transferStopTask=null;
+    for(const [name,value] of Object.entries(radioDefaults))$(name).value=value;
+    $('radio-reset').hidden=true;
+    $('radio-region-status').textContent='Detected from recognized radio settings. Choose a region to override.';showRadioCommands();
     $('source-info').hidden=true; $('source-info').textContent='';
     preparedDownload=null;status('Disconnected. Connect your USB radio to start another update.', 'ready');
     $('key').value='';$('password').value='';$('contact-search').value='';clearInvestigation();renderContacts();busy(false); $('connect').disabled = false; $('inspect').disabled = true; $('find-route').disabled = true;
@@ -429,37 +546,46 @@
   }
   async function reconnect() {
     if(uiBusy || !link?.failure)return;
-    const previous=link, sourceKey=link.sourceKey, port=link.port;
+    const previous=link, sourceKey=link.sourceKey, port=link.port, kind=sourceKind();
     if(!port || !sourceKey)throw Error('Disconnect, then connect the USB source again.');
     busy(true);invalidate();session=null;
     await previous.close();link=null;targetLocked=false;
-    await connect({port,sourceKey});
+    await connect({port,sourceKey,kind});
   }
   async function connect(recovery=null) {
     const controller = connectController = new AbortController();
+    let detectedSource=null;
     $('source-update-help').hidden=true;
     $('connect').disabled = true; $('connect').textContent = 'Connecting...'; busy(true);
     $('contact-status').textContent = 'Choose a USB device...';
     try {
       if (!navigator.serial) throw Error('USB access is unavailable. Open this page in Chrome or Edge on a computer; Firefox does not support this USB connection.');
-      const companion=$('source').value==='companion', key = $('key').value.trim();
-      if (!companion && !/^[0-9a-f]{64}$/i.test(key)) throw Error('Enter the target\'s complete public key.');
+      const selected=recovery?.kind || $('source').value, key = $('key').value.trim();
+      if (key && !/^[0-9a-f]{64}$/i.test(key)) throw Error('Enter the target\'s complete public key.');
+      if (selected==='repeater' && !key && !recovery) throw Error('Enter the target\'s complete public key.');
       const relays = $('relays').value.trim() ? $('relays').value.trim().split(/[\s,]+/) : [];
-      if (companion && relays.length) throw Error('Companion updates currently require a zero-hop connection.');
-      if (relays.length && !$('acl').checked) throw Error('Routed updates require existing ACL access on every relay and the target.');
+      if (relays.length && !aclIntent()) throw Error('Routed updates require existing ACL access on every relay and the target. Leave the password blank or choose the ACL-only override.');
       if (relays.some(r => !/^[0-9a-f]{64}$/i.test(r)) || relays.length > 8) throw Error('Enter up to eight full relay public keys.');
-      const port = recovery?.port || await navigator.serial.requestPort();
+      if (relays.length && !key) throw Error('Enter the target\'s complete public key for a routed update.');
+      const port = recovery?.port || await LoraOtaPort.requestSerialPort(navigator.serial, {signal:controller.signal});
       if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
       $('contact-status').textContent = 'Connecting to radio...';
-      if(companion)$('acl').checked=false;
       const openOptions = {openSignal:controller.signal, onOpenAttempt:(attempt,maxAttempts)=>{
         if(!controller.signal.aborted) $('contact-status').textContent='Opening USB port (attempt '+attempt+' of '+maxAttempts+')...';
       }, onOpenSuccess:()=>{
         if(!controller.signal.aborted) $('contact-status').textContent='Connecting to radio...';
       }};
+      if(selected==='auto'){
+        $('contact-status').textContent='Detecting the USB radio...';
+        detectedSource=await LoraOtaPort.detectSource(port,{...openOptions,signal:controller.signal});
+        activeSourceKind=detectedSource.kind;openOptions.detectedSource=detectedSource;
+      }else activeSourceKind=selected;
+      const companion=sourceKind()==='companion';
+      if (companion && relays.length) throw Error('Companion updates currently require a zero-hop connection.');
+      const deferredTarget=!companion&&!key;
       const direct = companion
-        ? new LoraOtaCompanion.CompanionTransport(port, {...openOptions, remoteTimeout:75000, onPreserved:refreshPreservedMessages, onInvestigationProgress})
-        : new LoraOtaSerial.RepeaterTransport(port, {...openOptions, knownRepeater:key, aclOnly:$('acl').checked, remoteTimeout:75000});
+        ? new LoraOtaCompanion.CompanionTransport(port, {...openOptions, remoteTimeout:75000, onPreserved:refreshPreservedMessages, onInvestigationProgress, onFolderRead})
+        : new LoraOtaSerial.RepeaterTransport(port, {...openOptions, knownRepeater:key||null, deferredTarget, aclOnly:!!relays.length||!deferredTarget&&$('acl').checked, remoteTimeout:75000});
       link = relays.length ? new LoraOtaRoute.RoutedRepeaterTransport(direct, key, relays) : direct;
       await link.open();
       if(recovery && link.sourceKey!==recovery.sourceKey)throw Error('The reconnected USB radio has a different identity. Disconnect and choose the intended source.');
@@ -474,6 +600,7 @@
         }
         const sourceVersion=link.firmwareVersion ? link.firmwareVersion+(link.firmwareVersionTruncated?'...':'') : 'version unavailable';
         const sourceMode=link.rawPacketSupport==='unsupported' ? 'OTA packet sending unsupported' :
+          link.usbFolderSupported && link.usbRawFrameMax<188 ? 'USB firmware-source compatibility selected automatically' :
           link.otaMode==='guarded' ? 'guarded OTA selected automatically' : 'raw-packet OTA compatibility selected automatically';
         $('source-info').textContent='Companion firmware: '+sourceVersion+'  /  '+sourceMode+'.';
         $('source-info').hidden=false;
@@ -483,18 +610,25 @@
         renderContacts();
         log('Loaded '+LoraOtaContacts.choices(contacts).length+' eligible contacts.');
         if(link.rawPacketSupport==='unsupported')log('This Companion does not support sending raw OTA packets.');
+        else if(link.usbFolderSupported && link.usbRawFrameMax<188)log('Using this Companion\'s existing USB firmware-source mode automatically; no source firmware update is needed.');
         else if(link.otaMode!=='guarded' && link.rawPacketSupport!=='supported')log('Using raw-packet compatibility. Packet-send support will be checked when the transfer starts.');
-      } else $('contact-status').textContent = 'Connected. Enter the target public key.';
-      suggestRadioChannel();
+      } else {
+        $('source-info').textContent='USB Repeater detected. The update will be sent over LoRa.';
+        $('source-info').hidden=false;
+        $('contact-status').textContent = key ? 'Repeater connected. Select Find matching firmware to check the remote device.' : 'Repeater connected. Enter the remote device key, then select Find matching firmware.';
+        $('target-controls').hidden=false;
+        if(!key)openDetails($('key'));
+      }
+      await suggestRadioChannel();
       busy(false); $('connect').disabled = true; $('inspect').disabled = updatesBlocked();
       $('chain-plan').disabled = updatesBlocked();
-      $('find-route').disabled = !link.aclOnly || !link.supportsRoutedPath || !!link.relays;
+      $('find-route').disabled = !repeaterAclIntent() || !link.supportsRoutedPath || !!link.relays;
       log('Connected to source ' + link.sourceKey + '.');
       status(recovery ? 'USB reconnected. Select Prepare update to recheck the radios, or Find matching firmware to check the device.' : 'Connected. Choose the remote device and select Find matching firmware.', 'ready');
     } catch (error) {
       if(!controller.signal.aborted && error?.name!=='NotFoundError')fail(error);
       if (link) { try { await link.close(); } catch (_) {} }
-      link = session = null; $('connect').disabled = false; $('inspect').disabled = true;
+      link = session = null;activeSourceKind=null; $('connect').disabled = false; $('inspect').disabled = true;
       sourceOtaUnsupported=false;targetAvailability=null;showAvailability(null);
       $('legacy-warning').hidden=true;
       $('source-info').hidden=true; $('source-info').textContent='';
@@ -503,7 +637,11 @@
         : error?.usbOpenFailed
           ? 'Could not open the USB port. It may be in use by another app or browser tab. Disconnect the radio there and try again. If it still fails, reconnect its USB data cable.'
           : 'Connection failed: ' + (error?.message || error) + '. Try again.';
-    } finally { if(connectController===controller)connectController=null; $('connect').textContent = 'Connect USB source'; busy(false); }
+    } finally {
+      await detectedSource?.close();
+      if(connectController===controller)connectController=null;
+      $('connect').textContent = 'Connect USB source'; busy(false);
+    }
   }
   async function loadCatalogCandidate(candidate, generation) {
     requireUpdatesAvailable();
@@ -576,7 +714,7 @@
     output.textContent = 'Investigating target...\n';
     $('investigation-progress').hidden=false;
     investigationStopping=false;investigationActive=true;
-    $('investigation-stop').hidden=!($('source').value==='companion' && typeof link?.cancelInvestigation==='function');
+    $('investigation-stop').hidden=!(sourceKind()==='companion' && typeof link?.cancelInvestigation==='function');
     $('investigation-stop').disabled=false;
     showInvestigationProgress('Preparing target connection...');
     const add = text => { output.textContent += text + '\n'; };
@@ -591,7 +729,7 @@
     let next = 0, allReplies = true, targetReplied = false, esp32Target;
     const noPassword = $('acl').checked || $('password').value.length === 0;
     const password = $('acl').checked ? '' : $('password').value;
-    const companion = $('source').value === 'companion';
+    const companion = sourceKind() === 'companion';
     const checkStopped=()=>{if(investigationStopping)throw Error('Investigation stopped by user');};
     // A completed repeater job timeout can be retried; a serial or browser-side
     // job timeout cannot, because the previous operation may still be running.
@@ -624,6 +762,7 @@
       if (!link) throw Error('Connect a source radio first.');
       requireUpdatesAvailable();
       target = selectTarget().toLowerCase();
+      const recovered=await recoverUpdateChannel(target);
       if(!companion) {
         if(!link.relays?.length && await link.localCommand('ota.peer path')==='OTApeer path=off')investigationTimeoutMs=7000;
         showInvestigationProgress('Setting the source reply timeout...');
@@ -645,12 +784,13 @@
         showInvestigationProgress(link.authenticated ? 'Checking target identity...' : noPassword ? 'Checking existing access without a password...' : 'Logging in and checking target identity...');
         await link.investigateVerifyPeer(target, password);
       } else {
-        if($('source').value!=='companion' && !link.authenticated && !noPassword)add('> login (password hidden)');
+        if(sourceKind()!=='companion' && !link.authenticated && !noPassword)add('> login (password hidden)');
         showInvestigationProgress(link.authenticated ? 'Checking target identity...' : noPassword ? 'Checking existing access without a password...' : 'Logging in and checking target identity...');
         if(noPassword) await repeaterRead('Checking target identity', () => link.verifyPeer(target, password), () => true);
         else await link.verifyPeer(target, password);
       }
       checkStopped();targetReplied=true;verified = !standard || link.investigationVerified===true;
+      if(verified)await confirmUpdateChannel(recovered,target,password);
       add(verified ? 'Identity: full public key verified (' + target.slice(0, 12).toUpperCase() + ')' :
         'Identity not fully verified: this target does not support the full-key check. Results are diagnostics only; firmware selection and updates are disabled.');
       if(standard) {
@@ -772,15 +912,17 @@
   }
   async function findRoute() {
     invalidate(); busy(true); $('find-route').disabled = true; $('inspect').disabled = true;
+    let aclLink=null,previousAclOnly;
     try {
-      if (!link || link.relays || !link.aclOnly || !link.supportsRoutedPath) throw Error('Connect in ACL mode without a manual route first.');
-      const target = $('key').value.trim().toLowerCase();
+      if (!link || link.relays || !repeaterAclIntent() || !link.supportsRoutedPath) throw Error('Route search requires existing ACL access. Leave the password blank or choose the ACL-only override.');
+      const target = selectTarget().toLowerCase();
       const candidates = $('candidates').value.trim() ? $('candidates').value.trim().split(/[\s,]+/).map(k => k.toLowerCase()) : [];
       const allowlist = [link.sourceKey, target, ...candidates];
       if (allowlist.some(k => !/^[0-9a-f]{64}$/.test(k)) || new Set(allowlist).size !== allowlist.length) throw Error('Enter unique full keys for candidate repeaters.');
       const minSnrDb = Number($('snr').value), hours = Number($('age').value);
       if (!Number.isFinite(minSnrDb) || !Number.isFinite(hours) || hours <= 0 || hours > 168) throw Error('Enter a valid SNR floor and observation age.');
       log('Checking cached neighbor observations and ACL access...');
+      aclLink=link;previousAclOnly=link.aclOnly;link.aclOnly=true;
       const observed = await LoraOtaCollect.collectAdminNeighbors({link,allowlist,minSnrDb,maxAgeSeconds:Math.floor(hours*3600),maxRelays:8,
         progress:event => log('Checked neighbor table ' + event.queries + '.')});
       const ranked = LoraOtaDiscovery.rankRoutes({source:link.sourceKey,target,allowlist,observations:observed.observations,
@@ -796,7 +938,10 @@
       if (observed.truncated) log('The search reached its query limit; other paths may exist.');
       log('Measurements are cached, may be stale, and do not identify the radio profile.');
     } catch (error) { fail(error); }
-    finally { busy(false); $('inspect').disabled = !link || updatesBlocked(); $('find-route').disabled = !link || !!link.relays || !link.aclOnly || !link.supportsRoutedPath; }
+    finally {
+      if(aclLink&&link===aclLink)aclLink.aclOnly=previousAclOnly;
+      busy(false); $('inspect').disabled = !link || updatesBlocked();
+    }
   }
   async function inspect() {
     const generation=disconnectGeneration;
@@ -807,11 +952,13 @@
       if (!link) throw Error('Connect a source radio first.');
       requireUpdatesAvailable();
       const targetKey=selectTarget(), password=$('acl').checked ? '' : $('password').value;
-      const standard=$('source').value==='companion' && link.otaSupported===false;
+      const standard=sourceKind()==='companion' && link.otaSupported===false;
       // A fresh USB connection must prove the target again. Preparation can
       // do that itself, including after reconnecting an older Companion.
+      const recovered=await recoverUpdateChannel(targetKey);
       if(standard && !link.investigationEnabled)await link.enableStandardInvestigation();
-      const verify=()=>link.verifyPeer(targetKey,password);
+      const verify=async()=>{const result=await link.verifyPeer(targetKey,password);await confirmUpdateChannel(recovered,targetKey,password);return result;};
+      if(recovered)await verify();
       const remote=command=>standard ? link.investigateCommand(targetKey,password,command) : link.remoteCommand(targetKey,password,command);
       let file = catalogFile || $('file').files[0];
       if(!file && $('firmware-choice').value && catalogDest) {
@@ -898,8 +1045,14 @@
       try { dest = await session.inspect({allowExisting:true,allowReplacement:true}); }
       catch(error) {
         if(link.relays?.length || !error.radioSetupRequired || !canPrepareRadioChannel())throw error;
+        await applyTargetRadioHardware(info.hwId);
         await ensureRadioChannel(targetKey,password);
         dest = await session.inspect({allowExisting:true,allowReplacement:true});
+      }
+      if(dest.download!=='installed')await applyTargetRadioHardware(dest.hwId);
+      if(dest.download!=='installed'&&!link.relays?.length&&explicitRadioChoice()&&!chosenRadioMatches(session)){
+        await ensureRadioChannel(targetKey,password);
+        dest=await session.inspect({allowExisting:true,allowReplacement:true});
       }
       preparedDownload=['idle','active','failed','ready','replace'].includes(dest.download)?dest.download:null;
       preparedReplacement=dest.download==='replace' ? dest.existingDownload : null;
@@ -924,30 +1077,35 @@
       if (dest.download === 'installed') log('The previously requested install is verified.');
     } catch (error) {
       invalidate(); fail(error);
-      if(link && $('source').value==='companion' && link.otaSupported===false)
+      if(link && sourceKind()==='companion' && link.otaSupported===false)
         $('firmware-catalog-status').textContent='Package check could not be completed: '+(error?.message||error);
     }
     finally { preparing = null; busy(false); $('inspect').disabled = !link || updatesBlocked(); }
   }
   async function transfer(resume) {
+    const job=session;transferStopJob=transferStopTask=null;
     preparedDownload=null;
+    updatePhase='transfer';sourceBytesRead=0;sourceActivityAt=0;lastTransferPercent=null;
     $('transfer').disabled = true; $('resume').disabled = true; $('inspect').disabled = true; busy(true);
-    try { await session.start({resume}); preparedDownload='ready';log('Transfer complete. Check the target and select Install.'); $('install').disabled = false;status('Transfer complete. Select Install and verify update.', 'ready'); }
-    catch (error) { fail(error); }
-    finally { busy(false); $('inspect').disabled = !link || updatesBlocked(); }
+    try { await job.start({resume}); if(transferStopJob===job)return;preparedDownload='ready';log('Transfer complete. Check the target and select Install.'); $('install').disabled = false;status('Transfer complete. Select Install and verify update.', 'ready'); }
+    catch (error) { if(transferStopJob!==job||link?.failure||link?.folderUnknown)fail(error); }
+    finally { updatePhase='';busy(false); $('inspect').disabled = !link || updatesBlocked(); }
   }
   async function updateRemote() {
     if(uiBusy || !session || !preparedDownload || updatesBlocked())return;
     const job=session, download=preparedDownload, replacement=preparedReplacement;
+    transferStopJob=transferStopTask=null;
     preparedDownload=preparedReplacement=null;busy(true);
     for(const name of ['inspect','transfer','resume','install'])$(name).disabled=true;
     try {
       if(download!=='ready') {
         updatePhase='transfer';
+        sourceBytesRead=0;sourceActivityAt=0;lastTransferPercent=null;
         status(download==='replace' ? 'Replacing the unfinished update with your selected firmware...' :
           download==='failed' ? 'Restarting the interrupted transfer over LoRa...' :
           download==='active' ? 'Resuming the transfer over LoRa...' : 'Transferring firmware over LoRa. Keep this page open...');
         await job.start({resume:['active','failed'].includes(download),...(download==='replace' ? {replace:replacement} : {})});
+        if(transferStopJob===job)return;
         log('Transfer complete. Installing the verified package.');
       }
       // Use the session's fresh identity, staged-package and journal checks.
@@ -959,6 +1117,7 @@
       status('Update complete. The remote device is running the verified firmware.', 'complete');
       $('update-summary').textContent='Installed and verified on '+result.hwId+'. You can disconnect the USB radio.';
     } catch(error) {
+      if(transferStopJob===job&&!link?.failure&&!link?.folderUnknown)return;
       fail(error);
       $('update-summary').textContent=(link?.failure ? 'Update stopped. Select Reconnect USB source, then Prepare update.' :
         'Update stopped. Select Prepare update to read the device state.')+
@@ -966,6 +1125,27 @@
     } finally {
       updatePhase='';busy(false);$('inspect').disabled=!link || updatesBlocked();
     }
+  }
+  async function stopTransfer(){
+    if(transferStopTask)return transferStopTask;
+    if(updatePhase!=='transfer'||!session)return;
+    const job=session,connection=link,generation=disconnectGeneration,updating=activeTask;
+    transferStopJob=job;status('Stopping transfer...');$('transfer-stop').disabled=true;
+    const stopping=(async()=>{
+      await job.stop();
+      if(updating)await updating;
+      if(link!==connection||disconnectGeneration!==generation)return;
+      if(link?.failure)throw link.failure;
+      if(link?.folderUnknown)throw Error('Transfer stopped, but the USB source did not confirm release. Disconnect and reconnect it before preparing another update.');
+      preparedDownload=preparedReplacement=null;
+      $('update-progress').hidden=true;
+      $('update-summary').textContent='Transfer stopped. Keep this firmware to resume, or choose different firmware to replace it.';
+      log('Transfer stopped. The remote download is kept.');
+      status('Transfer stopped. Select Prepare update to continue.', 'ready');
+    })();
+    transferStopTask=stopping;
+    try{await stopping;}catch(error){if(link===connection&&disconnectGeneration===generation)fail(error);}
+    finally{if(transferStopTask===stopping)transferStopTask=null;refreshTransferStop();}
   }
   function run(operation) {
     // Reserve the UI before starting async work; a second action must not
@@ -982,6 +1162,7 @@
     return task;
   }
   $('update').addEventListener('click',()=>run(()=>updateRemote()));
+  $('transfer-stop').addEventListener('click',()=>stopTransfer());
   $('firmware-role').addEventListener('change',()=>run(async()=>{
     catalogGeneration++;catalogFile=null;catalogBaseFile=null;catalogCandidates=[];invalidate();
     $('firmware-base-status').textContent='';
@@ -1010,7 +1191,17 @@
   $('investigate').addEventListener('click', () => run(()=>investigate()));
   $('radio-prepare').addEventListener('click',()=>run(()=>checkRadioChannel(true)));
   $('radio-check').addEventListener('click',()=>run(()=>checkRadioChannel(false)));
-  for(const name of radioFields)$(name).addEventListener('input',()=>{invalidate();showRadioCommands();});
+  for(const name of radioFields)$(name).addEventListener('input',()=>{
+    radioOverride=true;$('radio-reset').hidden=false;invalidate();showRadioCommands();$('radio-region-status').textContent='Your manually selected radio settings take precedence.';
+  });
+  $('radio-region').addEventListener('change',()=>run(async()=>{
+    invalidate();busy(true);
+    try{await suggestRadioChannel();}catch(error){fail(error);}finally{busy(false);}
+  }));
+  $('radio-reset').addEventListener('click',()=>run(async()=>{
+    radioOverride=false;$('radio-reset').hidden=true;invalidate();busy(true);
+    try{await suggestRadioChannel();}catch(error){fail(error);}finally{busy(false);}
+  }));
   showRadioCommands();
   $('investigation-stop').addEventListener('click',()=>{
     if(!link || typeof link.cancelInvestigation!=='function')return;

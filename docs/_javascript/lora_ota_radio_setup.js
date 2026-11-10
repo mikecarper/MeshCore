@@ -1,9 +1,10 @@
 /* Explicit, guarded temporary-channel setup. Importing performs no I/O. */
 (function (root, factory) {
-  const api = factory();
+  const profiles = typeof module === 'object' && module.exports ? require('./lora_ota_region_profiles.js') : root.LoraOtaRegionProfiles;
+  const api = factory(profiles);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.LoraOtaRadioSetup = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (profiles) {
   'use strict';
   const bandwidths = [7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125, 250, 500];
   const fullKey = value => typeof value === 'string' && /^[0-9a-f]{64}$/i.test(value);
@@ -41,6 +42,24 @@
     // occupied bandwidth. This does not establish regional permission or RF quiet.
     const separation = (savedTuple[1] + 250) / 2000 + 0.025;
     return [909.95, 908.5, 907.5, 911.5].find(f => Math.abs(f - savedTuple[0]) > separation) ?? null;
+  }
+  function recommendProfile(savedTuple, options = {}) {
+    try {
+      if (!options || typeof options !== 'object' || Array.isArray(options)) return null;
+      // Retain the previous (savedTuple, activeReadback) call shape for pages
+      // already using the temporary-channel helper.
+      const region = options.region === undefined ? 'auto' : options.region;
+      const active = options.active === undefined && options.state ? options : options.active;
+      if (region !== 'auto') return profiles?.recommend(savedTuple, {region,hardware:options.hardware}) || null;
+      if (active?.state === 'active') {
+        const tuple = active.tuple;
+        if (!Array.isArray(tuple) || tuple.length !== 4) return null;
+        settings({frequency:tuple[0],bandwidth:tuple[1],sf:tuple[2],cr:tuple[3],minutes:1,preamble:active.preamble});
+        return {id:'active',label:'Current temporary channel',frequency:tuple[0],bandwidth:tuple[1],sf:tuple[2],cr:tuple[3],
+          preamble:active.preamble,selection:'active',matched:false,ambiguous:false};
+      }
+      return profiles?.recommend(savedTuple, {hardware:options.hardware}) || null;
+    } catch (_) { return null; }
   }
   function primary(reply) {
     const m = bare(reply).match(/^(\d+(?:\.\d+)?),(\d+(?:\.\d+)?),(\d+),(\d+)$/);
@@ -148,9 +167,10 @@
   async function prepare(link, key, password, value, {progress = () => {}, useActivePrimary = false,
       wait = ms => new Promise(r => setTimeout(r, ms)), now = () => Date.now()} = {}) {
     let v = settings(value), expected = [v.frequency, v.bandwidth, v.sf, v.cr];
-    const companion = link?.browserRawSource === true, legacy = companion && link.otaSupported === false;
+    const companion = link?.browserRawSource === true, legacy = companion && link.otaSupported === false && link.usesUsbFolderFallback !== true;
+    const unprobedLegacy = legacy && link.usesUsbFolderFallback !== true;
     need(link && !link.serving && !link.failure && (!link.relays || (Array.isArray(link.relays) && link.relays.length === 0)) &&
-      (!companion || (link.localCliSupported === true && (legacy || (link.otaSupported === true && (link.otaMode === undefined || link.otaMode === 'guarded'))))),
+      (!companion || (link.localCliSupported === true && (legacy || link.usesUsbFolderFallback === true || (link.otaSupported === true && (link.otaMode === undefined || link.otaMode === 'guarded'))))),
       'Automatic channel setup requires an idle direct connection with USB radio controls.');
     need(fullKey(key) && fullKey(link.sourceKey) && fullKey(link.knownRepeater) && key.toLowerCase() === link.knownRepeater.toLowerCase() &&
       key.toLowerCase() !== link.sourceKey.toLowerCase(), 'Select the complete target public key before preparing the channel.');
@@ -167,13 +187,14 @@
       requiredReply(temporaryPrimary.raw, 'get tempradio', sourceKind);
       need(['off', 'active'].includes(temporaryPrimary.state), label + ' has a pending or unverified primary temporary radio.');
       const config = await read('ota config');
-      const otaPolicy = legacy && label === 'source' && unsupported(config) ? null : policy(config);
-      let existingDownload = false;
+      const otaPolicy = unprobedLegacy && label === 'source' && unsupported(config) ? null : policy(config);
+      let existingDownload = false, idleSourceVerified = false;
       if (label === 'source') {
         const stats = bare(await read('ota stats')), fetch = [...stats.matchAll(/\bfetch\s+([a-z]+)\b/gi)];
-        need(legacy && unsupported(stats) || fetch.length === 1 && fetch[0][1].toLowerCase() === 'idle', 'Source has an active or unverified OTA download.');
+        need(unprobedLegacy && unsupported(stats) || fetch.length === 1 && fetch[0][1].toLowerCase() === 'idle', 'Source has an active or unverified OTA download.');
         const folder = bare(await read('ota folder'));
-        need(legacy && unsupported(folder) || /^folder=off(?:\s|$)/i.test(folder), 'Source has an attached or unverified OTA folder.');
+        need(unprobedLegacy && unsupported(folder) || /^folder=off(?:\s|$)/i.test(folder), 'Source has an attached or unverified OTA folder.');
+        idleSourceVerified = fetch.length === 1 && fetch[0][1].toLowerCase() === 'idle' && /^folder=off(?:\s|$)/i.test(folder);
       } else {
         const status = bare(await read('ota status'));
         const idle = /\bno download\b/i.test(status) && !/\bdownload:/i.test(status);
@@ -212,7 +233,7 @@
       const adoptPrimary = temporaryPrimary.state === 'active' && same(temporaryPrimary.tuple, expected) && temporaryPrimary.preamble === v.preamble;
       const overlapsPrimary = Math.abs(saved[0] - v.frequency) <= (saved[1] + v.bandwidth) / 2000 + 0.001;
       return {saved, temporaryPrimary, savedSecondary, temporarySecondary, cross, schedules, secondaryFree, matchingSecondary, overlappingSecondary,
-        overlapsPrimary, adoptPrimary, adoptSecondary, otaPolicy, existingDownload};
+        overlapsPrimary, adoptPrimary, adoptSecondary, otaPolicy, existingDownload, idleSourceVerified};
     }
     function sameSaved(a, b) {
       return same(a.saved, b.saved) && secondarySignature(a.savedSecondary) === secondarySignature(b.savedSecondary) && a.cross === b.cross &&
@@ -479,7 +500,10 @@
         await link.selectOtaRadio(sourceProfile);
         // Closing a Repeater peer relinquishes ownership; its verifyPeer()
         // performs a fresh login. resetRemoteSession() requires that old owner.
-        if (companion) await link.resetRemoteSession(key, password);
+        // Older encrypted CLI authorization survives a radio-only change.
+        // Its login acknowledgement may use the normal primary radio, so
+        // retain that verified ACL and prove the full key on the new channel.
+        if (companion && link.otaSupported === true) await link.resetRemoteSession(key, password);
         await link.verifyPeer(key, password);
         keyProof(await remote('get public.key'), key);
         await verifyActive(remote, targetProfile, 'Target', !targetProfile && !adoptTarget ? acknowledgedAt + trialMinutes * 60000 : null);
@@ -500,15 +524,41 @@
           need(/^(?:>\s*)?OK(?:\s|$)/i.test(String(reply).trim()), 'Source update-window extension was not confirmed.');
         }
         await wait(2500);
-        if (companion) await link.resetRemoteSession(key, password);
+        if (companion && link.otaSupported === true) await link.resetRemoteSession(key, password);
         await link.verifyPeer(key, password); keyProof(await remote('get public.key'), key);
         await verifyActive(remote, targetProfile, 'Target'); await verifyActive(local, sourceProfile, 'Source');
       }
+      let refreshedSourcePrimary = false;
+      if (!unprobedLegacy && !sourceProfile && adoptSource && source.idleSourceVerified) {
+        // A matching source window can be left over from installation with
+        // only a few minutes remaining. It is our idle USB radio; refresh only
+        // that exact tuple with an explicit preamble before handing it a file.
+        const fresh = await baseline('source', local);
+        need(fresh.idleSourceVerified && fresh.adoptPrimary && sameSaved(fresh, source) &&
+          samePrimary(fresh.temporaryPrimary, source.temporaryPrimary) &&
+          secondarySignature(fresh.temporarySecondary) === secondarySignature(source.temporarySecondary),
+          'Source changed or became busy before its matching update window could be refreshed.');
+        await link.closeRadioSession();
+        sourceAttempted = true;
+        progress('Refreshing the idle USB source update window to ' + v.minutes + ' minutes.');
+        const reply = await (companion ? link.applyTemporaryRadio(write.source) : local(write.source));
+        need(/^(?:>\s*)?OK(?:\s|$)/i.test(String(reply).trim()), 'Source update-window refresh was not confirmed.');
+        await verifyActive(local, sourceProfile, 'Source');
+        await link.verifyPeer(key, password); keyProof(await remote('get public.key'), key);
+        await verifyActive(remote, targetProfile, 'Target');
+        await preserved(local, source, sourceProfile, 'Source'); await preserved(remote, target, targetProfile, 'Target');
+        refreshedSourcePrimary = true;
+      }
       progress('Both temporary profiles verified. Saved radio channels are unchanged.');
+      const prior=link.otaLeaseProof,previouslyOwned=!!(prior&&prior.source===link.sourceKey&&prior.target===key&&
+        same(prior.tuple||[],expected)&&prior.preamble===v.preamble&&prior.sourceProfile===sourceProfile&&prior.targetProfile===targetProfile);
+      link.otaLeaseProof={source:link.sourceKey,target:key,tuple:expected.slice(),preamble:v.preamble,
+        sourceProfile,targetProfile,explicitProfiles:[!adoptSource||refreshedSourcePrimary||previouslyOwned&&prior.explicitProfiles?.[0]===true,
+          !adoptTarget||previouslyOwned&&prior.explicitProfiles?.[1]===true]};
       return {ready: true, source: expected.slice(), target: expected.slice(), savedSource: source.saved, savedTarget: target.saved,
         savedSourceSecondary: source.savedSecondary, savedTargetSecondary: target.savedSecondary,
         sourceProfile, targetProfile, preamble: v.preamble, minutes: v.minutes, changedSettings,
-        adoptedSource: adoptSource, adoptedTarget: adoptTarget};
+        adoptedSource: adoptSource, adoptedTarget: adoptTarget, refreshedSourcePrimary};
     } catch (error) {
       const partial = targetAttempted || sourceAttempted ? ' Temporary setup may be partially active; check both radios before any further write. ' +
         (targetSwitchWrites > 1 ? 'Further switch requests followed fresh checks on the original channel; no settings were automatically restored.' : 'No write was retried or automatically restored.') : '';
@@ -519,5 +569,6 @@
       result.targetSetupAttempted = targetAttempted; result.sourceSetupAttempted = sourceAttempted; throw result;
     }
   }
-  return {recommend, commands, prepare, readTemporary, formatRadio, primary, same, requiredReply};
+  return {recommend, recommendProfile, regions:profiles?.profiles || [], commands, prepare, readTemporary, formatRadio, primary, same, requiredReply,
+    settings, temporary, secondary, crossing, schedule};
 });

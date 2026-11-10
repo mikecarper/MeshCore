@@ -713,3 +713,95 @@ test('overlapping temporary source radio2 is ended before the primary reconnect'
   assert(f.calls.indexOf('local set tempradio2 off') < f.calls.indexOf('local tempradio 909.960,125,8,5,10,128'));
   assert(!f.calls.includes('local set radio2 off'));
 });
+
+test('reusing a stopped Session waits for its old read and detach before serving a new package', async () => {
+  const events=[];let read,detach,reads=0,stops=0;
+  const waitingRead=new Promise(resolve=>{read=resolve;}),waitingDetach=new Promise(resolve=>{detach=resolve;});
+  const id='01234567';
+  const link={sourceKey:'aa'.repeat(32),async serve(){events.push('serve');},async stopServing(){
+    events.push('stop');if(++stops===1)await waitingDetach;
+  }};
+  const session=new DirectSession(link,'bb'.repeat(32),'',{merkleRoot:Uint8Array.from([1,35,69,103]),blob:new Uint8Array()});
+  session.inspect=async()=>({download:'active'});
+  session.readDownload=async()=>++reads===1?waitingRead:{id,state:'ready',status:'ready'};
+  const first=session.start({resume:true});first.catch(()=>{});
+  while(!reads)await new Promise(resolve=>setImmediate(resolve));
+  const stopping=session.stop(),second=session.start({resume:true});
+  await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(events,['serve','stop']);
+  read({id,state:'active',status:'active'});
+  await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(events,['serve','stop']);
+  detach();await stopping;await assert.rejects(first,/Stopped/);await second;
+  assert.deepEqual(events,['serve','stop','serve','stop']);
+  assert.equal(stops,2);assert.equal(session.serving,false);assert.equal(session.stopServingTask,null);
+});
+
+test('a running Session cannot start another package over its active source', async () => {
+  let finish,reads=0;
+  const pending=new Promise(resolve=>{finish=resolve;});
+  const link={sourceKey:'aa'.repeat(32),async serve(){},async stopServing(){}};
+  const session=new DirectSession(link,'bb'.repeat(32),'',{merkleRoot:Uint8Array.from([1,35,69,103]),blob:new Uint8Array()});
+  session.inspect=async()=>({download:'active'});
+  session.readDownload=async()=>{reads++;return pending;};
+  const active=session.start({resume:true});active.catch(()=>{});
+  while(!reads)await new Promise(resolve=>setImmediate(resolve));
+  await assert.rejects(session.start({resume:true}),/already running/);
+  await session.stop();finish({id:'01234567',state:'active',status:'active'});
+  await assert.rejects(active,/Stopped/);
+});
+
+test('Stop during its pending serve detaches on successful handoff without waiting for a transfer read', async () => {
+  const events=[];let attach,entered;
+  const attaching=new Promise(resolve=>{attach=resolve;}),started=new Promise(resolve=>{entered=resolve;});
+  const link={sourceKey:'aa'.repeat(32),async serve(){events.push('attach');entered();await attaching;events.push('attached');},
+    async stopServing(){events.push('detach');}};
+  const session=new DirectSession(link,'bb'.repeat(32),'',{merkleRoot:Uint8Array.from([1,35,69,103]),blob:new Uint8Array()});
+  session.inspect=async()=>({download:'active'});
+  session.readDownload=async()=>{throw Error('Stop must not enter a status/quiet transfer read');};
+  const active=session.start({resume:true});active.catch(()=>{});await started;
+  const stopped=session.stop();assert.equal(session.serving,false);
+  assert.equal(session.stop(),stopped,'Stop shares the same handoff/detach operation');
+  await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(events,['attach']);
+  attach();await stopped;
+  assert.deepEqual(events,['attach','attached','detach']);
+  await assert.rejects(active,/Stopped/);assert.equal(session.serving,false);
+});
+
+test('a rejected pending serve never authorizes detaching another source owner', async () => {
+  let reject,entered,detaches=0;
+  const attaching=new Promise((_resolve,fail)=>{reject=fail;}),started=new Promise(resolve=>{entered=resolve;});
+  const link={sourceKey:'aa'.repeat(32),serving:true,async serve(){entered();await attaching;},async stopServing(){detaches++;}};
+  const session=new DirectSession(link,'bb'.repeat(32),'',{merkleRoot:Uint8Array.from([1,35,69,103]),blob:new Uint8Array()});
+  session.inspect=async()=>({download:'active'});
+  const active=session.start({resume:true});active.catch(()=>{});await started;
+  const stopped=session.stop();reject(Error('Another package already owns the source'));
+  await stopped;await assert.rejects(active,/Another package/);
+  assert.equal(detaches,0);assert.equal(link.serving,true);assert.equal(session.serving,false);
+});
+
+test('Stop racing normal final cleanup shares one detach request', async () => {
+  let finish,entered,detaches=0;
+  const detaching=new Promise(resolve=>{finish=resolve;}),started=new Promise(resolve=>{entered=resolve;});
+  const link={sourceKey:'aa'.repeat(32),async serve(){},async stopServing(){detaches++;entered();await detaching;}};
+  const session=new DirectSession(link,'bb'.repeat(32),'',{merkleRoot:Uint8Array.from([1,35,69,103]),blob:new Uint8Array()});
+  session.inspect=async()=>({download:'active'});
+  session.readDownload=async()=>({id:'01234567',state:'ready',status:'ready'});
+  const active=session.start({resume:true});await started;
+  const stopped=session.stop();finish();await stopped;await active;
+  assert.equal(detaches,1);assert.equal(session.serving,false);
+});
+
+test('Stop wakes the normal twenty-second transfer poll and retains the target download', async () => {
+  const commands=[];let detaches=0;
+  const link={sourceKey:'aa'.repeat(32),async serve(){},async stopServing(){detaches++;},
+    async remoteCommand(_key,_password,command){commands.push(command);throw Error('No target mutation is permitted');}};
+  const session=new DirectSession(link,'bb'.repeat(32),'',{merkleRoot:Uint8Array.from([1,35,69,103]),blob:new Uint8Array()},
+    {pollMs:20000});
+  delete session.pollWake; // Old live sessions can adopt the new methods safely.
+  session.inspect=async()=>({download:'active'});
+  session.readDownload=async()=>({id:'01234567',state:'active',status:'active'});
+  const active=session.start({resume:true});active.catch(()=>{});
+  while(typeof session.pollWake!=='function')await new Promise(resolve=>setImmediate(resolve));
+  const start=Date.now();await session.stop();await assert.rejects(active,/Stopped/);
+  assert.ok(Date.now()-start<250,'Stop must not wait for the twenty-second timer');
+  assert.equal(detaches,1);assert.deepEqual(commands,[]);assert.equal(session.pollWake,null);
+});

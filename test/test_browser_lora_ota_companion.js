@@ -45,7 +45,7 @@ class Port{
 async function run(){
   const d=new Decoder(),frame=wire(Uint8Array.of(29,1,2));assert.deepEqual(d.feed(frame.slice(0,2)),[]);assert.deepEqual(Array.from(d.feed(frame.slice(2))[0]),[29,1,2]);
   const port=new Port(),link=new CompanionTransport(port,{openSettle:0,commandTimeout:1000,remoteTimeout:1000});
-  await link.open();assert.equal(link.sourceKey,source);assert.equal(link.firmwareVersion,'v1.18.0.2-dev-12345678');assert.equal(link.otaMode,'guarded');assert.equal(await link.localCommand('get radio'),'> 910.525,62.5,7,5');
+  await link.open();assert.equal(link.sourceKey,source);assert.equal(link.firmwareVersion,'v1.18.0.2-dev-12345678');assert.equal(link.firmwareBoardName,'Test board');assert.equal(port.frames.filter(frame=>frame[0]===22).length,1);assert.equal(link.otaMode,'guarded');assert.equal(await link.localCommand('get radio'),'> 910.525,62.5,7,5');
   assert.equal(await link.localCommand('get radio.rxps'),'> off,unsupported');port.rxps='Error: unsupported';assert.equal(await link.localCommand('get radio.rxps'),'Error: unsupported');
   const contacts=await link.contacts();assert.equal(contacts.length,4);assert.equal(contacts[0].key,key);assert.equal(contacts[0].hops,null);assert.equal(contacts.find(c=>c.type===4).name,'Sensor');
   link.selectTarget('33'.repeat(32));assert.equal(link.peerType,4);link.selectTarget(key);
