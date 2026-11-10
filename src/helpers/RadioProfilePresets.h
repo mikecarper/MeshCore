@@ -8,6 +8,10 @@ inline bool isRadio2Preset(const char* name) {
   return name && (!strcmp(name, "mediamesh") || !strcmp(name, "mediamesh-range"));
 }
 
+#if defined(STM32_PLATFORM)
+// Keep software-float conversion shared by preset selection and matching.
+__attribute__((noinline, noclone))
+#endif
 inline uint32_t mediaMeshFrequencyKHz(float frequency) {
   // Reject non-finite/out-of-band values before converting to an integer.
   // All named centers use whole kHz; rounding tolerates ordinary readback.

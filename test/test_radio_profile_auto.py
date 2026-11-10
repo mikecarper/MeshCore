@@ -209,7 +209,10 @@ static void automaticPermission() {
   assert(f.cli.canAutoSecondary());
   MediaScope scope;
   f.cli.setMediaMeshScopeHandler(MediaScope::update, &scope);
+  const float saved_primary = 910.525f;
+  f.saved_primary_frequency = &saved_primary;
   f.cmd("set radio2 mediamesh"); f.advance(2000);
+  assert(f.radio.p.primary.freq == 909.5f); // Presets use saved, not active, primary settings.
   assert(scope.enabled && scope.durable);
   f.cmd("set radio2 auto");
   assert(!scope.enabled && !scope.durable);

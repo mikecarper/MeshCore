@@ -119,8 +119,9 @@ struct StrHelper {
  using BaseChatMesh = MyMesh;
  // This publication fixture only mutates ordinary channels. RF preset
  // behavior is exercised with the real CLI by the Meshtext fixture.
+ struct { float freq = 910.525f; } _prefs;
  struct {
-   bool stageChannelPreset(const char*) { assert(false); return false; }
+   bool stageChannelPreset(const char*, const float*) { assert(false); return false; }
    bool finishChannelPreset(bool) { assert(false); return false; }
  } _radio_profiles;
  bool handleTxRoutingCommand(const char*,char*,size_t);

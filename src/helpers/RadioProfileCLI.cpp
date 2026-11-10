@@ -1274,7 +1274,11 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     if (verb != Set || length >= sizeof(mode) || !parseRadioTxPolicy(mode, policy)
         || (*suffix && !force)
         || (force && policy != RADIO_TX_BOTH && policy != RADIO_TX_SECONDARY)) {
+#if defined(STM32_PLATFORM) && MESH_CLI_COMPACT_REPLIES
+      cli::formatError(reply, capacity, "tx.reply MODE [force:radio2/both]");
+#else
       cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("use get/set tx.reply auto|radio|radio2|both|off [force for radio2/both]", "tx.reply auto|radio|radio2|both|off [force for radio2/both]"));
+#endif
       return true;
     }
     const uint8_t previous = reply_setting_;
@@ -1320,7 +1324,13 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
       auto mode = !strcmp(args, "auto") ? RadioCrossMode::Auto : !strcmp(args, "on") ? RadioCrossMode::On : RadioCrossMode::Off;
       if (save(saved_, primary_preamble_, mode)) { cross_ = mode; publish(); snprintf(reply, capacity, "OK"); }
       else cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("settings could not be saved", "settings not saved"));
-    } else cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("use get/set radio2.cross [auto|on|off]", "radio2.cross [auto|on|off]"));
+    } else {
+#if defined(STM32_PLATFORM) && MESH_CLI_COMPACT_REPLIES
+      cli::formatError(reply, capacity, "auto|on|off");
+#else
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("use get/set radio2.cross [auto|on|off]", "radio2.cross [auto|on|off]"));
+#endif
+    }
     return true;
   }
   if (scan) {
@@ -1463,13 +1473,24 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     }
     return true;
   }
-  if (verb != Set) { cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("invalid radio2 command", "bad radio2 command")); return true; }
+  if (verb != Set) {
+#if defined(STM32_PLATFORM) && MESH_CLI_COMPACT_REPLIES
+    cli::formatError(reply, capacity, "bad command");
+#else
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("invalid radio2 command", "bad radio2 command"));
+#endif
+    return true;
+  }
   char local[140];
   if (base && cli::isRadio2Preset(args)) {
     const float primary = primary_frequency
         ? *primary_frequency : radio_->profiles()->primary.freq;
     if (!formatMediaMeshPreset(args, primary, local, sizeof(local))) {
+#if defined(STM32_PLATFORM) && MESH_CLI_COMPACT_REPLIES
+      cli::formatError(reply, capacity, "use tuple");
+#else
       cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("no regional MediaMesh preset; use tuple", "no preset; use tuple"));
+#endif
       return true;
     }
   } else {
@@ -1499,12 +1520,20 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
   if (!valid) { snprintf(reply, capacity, MESH_CLI_REPLY_TEXT("Error: use %s f,bw,sf,cr,rx|rxtx%s[,preamble|auto]", "Error: %s f,bw,sf,cr,rx|rxtx%s[,preamble|auto]"), key,
       scheduled_temp ? ",start,end (UTC or +minutes)" : scheduled ? ",start (UTC or +minutes)" : temporary ? ",minutes" : ""); return true; }
   if (base && !mediaMeshScopeReady(config)) {
+#if defined(STM32_PLATFORM) && MESH_CLI_COMPACT_REPLIES
+    cli::formatError(reply, capacity, "scope unavailable/full"); return true;
+#else
     cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("MediaMesh region unavailable or full", "MediaMesh region unavailable/full")); return true;
+#endif
   }
   if (scheduled) {
     if (!epoch || start <= epoch || (uint64_t)(start-epoch) * 1000 > 0x7fffffffULL
         || (scheduled_temp && (end <= start || (uint64_t)(end-epoch) * 1000 > 0x7fffffffULL))) {
+#if defined(STM32_PLATFORM) && MESH_CLI_COMPACT_REPLIES
+      cli::formatError(reply, capacity, "future UTC, <=24 days"); return true;
+#else
       cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("future UTC start/end required, within 24 days", "future UTC start/end within 24 days")); return true;
+#endif
     }
     if (scheduled_temp) {
       const uint64_t pending_left = temp_pending_

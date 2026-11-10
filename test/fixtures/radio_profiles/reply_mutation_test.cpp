@@ -27,6 +27,8 @@ static void secondaryReplies() {
                              "set tempradio2 off", "del tempradioat2 all"}) {
     for (bool success : {false, true}) {
       Fixture f(true);
+      const float saved_primary = 910.525f;
+      f.saved_primary_frequency = &saved_primary;
       f.cmd("set radio2 910.5,500,8,5,rxtx"); f.advance(2000);
       const auto saved = f.fs.files["/radio_profiles"];
       const uint32_t before = f.radio.p.generation[1];
@@ -34,6 +36,7 @@ static void secondaryReplies() {
       StaticPoolPacketManager manager(8);
       Inspector inspector(f.radio, ms, manager);
       f.cli.beginReplyCommand(); f.cmd(command); f.cli.endReplyCommand();
+      assert(f.radio.p.primary.freq == 909.5f); // Saved region selection leaves active RF unchanged.
       assert(f.cli.hasReplyMutation());
       const uint32_t mutation = f.cli.replyMutationGeneration();
       assert(strstr(f.cmd("get radio2.status"), "reply transmission"));

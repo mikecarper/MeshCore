@@ -60,7 +60,10 @@ template <typename Radio>
 bool handleAGCMaintenanceCommand(Radio*, const char*, uint32_t, char*, size_t) { return false; }
 struct RadioProfileCLI {
   bool remote_origin=false;
-  bool handle(const char*, char*, size_t, bool remote=false) { remote_origin=remote;return false; }
+  float primary_frequency=0;
+  bool handle(const char*, char*, size_t, bool remote=false, const float* primary=nullptr) {
+    assert(primary); primary_frequency=*primary; remote_origin=remote; return false;
+  }
   static bool parseSuffix(const char* input, unsigned fields, char* legacy, size_t size, uint16_t& preamble) {
     return cli::parseRadioPreambleSuffix(input, fields, legacy, size, preamble);
   }
@@ -291,12 +294,15 @@ int main() {
     assert(!strstr(reply,"secret") && !strstr(reply,"token") && !strstr(reply,"A5A5"));
   }
   const unsigned preset_calls=node._radio_presets.local_calls;
+  const float previous_primary=node._prefs.freq;
   assert(node.handleCommand("set freq 915.25",0,reply));
   assert(!node._radio_profiles.remote_origin);
+  assert(node._radio_profiles.primary_frequency==previous_primary);
   assert(node._radio_presets.local_calls==preset_calls+1);
   assert(node._prefs.freq==915.25f && !strncmp(reply,"OK",2));
   assert(node.handleCommand("set freq 920",100,reply));
   assert(node._radio_profiles.remote_origin);
+  assert(node._radio_profiles.primary_frequency==915.25f);
   assert(node._radio_presets.local_calls==preset_calls+1); // never over LoRa
   assert(node._prefs.freq==920.0f && !strcmp(reply,"OK"));
   for(uint32_t stamp:{0u,100u}) {
