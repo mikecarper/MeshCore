@@ -1,0 +1,17 @@
+{
+  "date": "2026-11-10",
+  "environment": "wio-e5-mini_repeater",
+  "result": "pass",
+  "flash_limit_bytes": 245760,
+  "firmware_binary_bytes": 245712,
+  "binary_flash_margin_bytes": 48,
+  "baseline_linker_overflow_bytes": 92,
+  "total_binary_reduction_bytes": 140,
+  "platformio_gauge_used_bytes": 245364,
+  "platformio_gauge_note": "The gauge excludes vectors/init sections; its apparent 396-byte margin is not the actual binary margin. This corrects the margin quoted in commit 46dfa9131.",
+  "static_ram_bytes": 20640,
+  "runtime_ram_gate": "pass",
+  "focused_profile_reply_and_mini_tests_passed": 25,
+  "features_and_flash_filesystem_limits": "unchanged",
+  "firmware_sha256": "412d4055dd78ff11ee76efe5ae937fb8f23fa9e29c848ee25535bec5c4b9305b"
+}
