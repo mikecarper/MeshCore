@@ -12,44 +12,89 @@ WORKFLOW = ROOT / ".github/workflows/run-unit-tests.yml"
 
 
 class UnitTestJobSplit(unittest.TestCase):
-    def test_all_split_groups_are_required_and_summary_checks_actual_results(self):
-        source = WORKFLOW.read_text()
-        jobs = re.findall(r"^  (test-[a-z0-9-]+):\s*$", source, re.MULTILINE)
-        self.assertGreaterEqual(len(jobs), 2)
-        self.assertEqual(len(set(jobs)), len(jobs))
-        summary = re.search(r"^  test:\s*$([\s\S]*?)(?=^  [a-zA-Z0-9_-]+:\s*$|\Z)",
-                            source, re.MULTILINE)
-        self.assertIsNotNone(summary)
-        body = summary.group(1)
+    @staticmethod
+    def job(source, name):
+        match = re.search(r"^  " + re.escape(name) + r":\s*$([\s\S]*?)(?=^  [a-zA-Z0-9_-]+:\s*$|\Z)",
+                          source, re.MULTILINE)
+        if not match:
+            raise AssertionError("Missing workflow job: " + name)
+        return match.group(1)
+
+    def assert_gate(self, source, name, dependencies, variable):
+        body = self.job(source, name)
         self.assertIn("if: ${{ always() }}", body)
         needs = re.search(r"^    needs:\s*\[([^\]]+)\]", body, re.MULTILINE)
         self.assertIsNotNone(needs)
-        self.assertEqual(set(jobs), {name.strip() for name in needs.group(1).split(",")})
-        self.assertIn("TEST_GROUP_RESULTS: ${{ toJSON(needs) }}", body)
+        self.assertEqual(set(dependencies), {item.strip() for item in needs.group(1).split(",")})
+        self.assertIn(variable + ": ${{ toJSON(needs) }}", body)
+        self.assertNotIn("continue-on-error", body)
         match = re.search(r"^          import json, os, sys\n([\s\S]*?)^          PYCODE\s*$",
                           body, re.MULTILINE)
         self.assertIsNotNone(match)
         script = "import json, os, sys\n" + "\n".join(
             line[10:] for line in match.group(1).splitlines()) + "\n"
+        for dependency in dependencies:
+            for result in ("success", "failure", "skipped", "cancelled"):
+                statuses = {item: {"result": "success"} for item in dependencies}
+                statuses[dependency]["result"] = result
+                with self.subTest(gate=name, dependency=dependency, result=result):
+                    completed = subprocess.run(
+                        [sys.executable, "-c", script],
+                        env={**os.environ, variable: json.dumps(statuses)},
+                        capture_output=True, text=True)
+                    self.assertEqual(completed.returncode, 0 if result == "success" else 1,
+                                     completed.stdout + completed.stderr)
+                    if result != "success":
+                        self.assertIn(dependency + ": " + result, completed.stdout)
+
+    def test_all_split_groups_are_required_and_summary_checks_actual_results(self):
+        source = WORKFLOW.read_text()
+        jobs = re.findall(r"^  (test-[a-z0-9-]+):\s*$", source, re.MULTILINE)
+        self.assertGreaterEqual(len(jobs), 2)
+        self.assertEqual(len(set(jobs)), len(jobs))
+        self.assert_gate(source, "test", [*jobs, "universal-lora-smoke"], "TEST_GROUP_RESULTS")
         for name in jobs:
-            group = re.search(r"^  " + re.escape(name) + r":\s*$([\s\S]*?)(?=^  [a-zA-Z0-9_-]+:\s*$|\Z)",
-                              source, re.MULTILINE)
-            self.assertIsNotNone(group)
-            self.assertIn("uses: actions/checkout@v6", group.group(1))
-            self.assertIn("uses: ./.github/actions/setup-build-environment", group.group(1))
-            self.assertIn("pkg install -e native", group.group(1))
-        for result in ("success", "failure", "skipped", "cancelled"):
-            statuses = {name: {"result": "success"} for name in jobs}
-            statuses[jobs[0]]["result"] = result
-            with self.subTest(result=result):
-                completed = subprocess.run(
-                    [sys.executable, "-c", script],
-                    env={**os.environ, "TEST_GROUP_RESULTS": json.dumps(statuses)},
-                    capture_output=True, text=True)
-                self.assertEqual(completed.returncode, 0 if result == "success" else 1,
-                                 completed.stdout + completed.stderr)
-                if result != "success":
-                    self.assertIn(jobs[0] + ": " + result, completed.stdout)
+            body = self.job(source, name)
+            self.assertIn("uses: actions/checkout@v6", body)
+            self.assertIn("uses: ./.github/actions/setup-build-environment", body)
+            # Only these metadata-only profile assertions need no native libraries.
+            if name != "test-build-profiles":
+                self.assertIn("pkg install -e native", body)
+
+    def test_profile_assertions_are_split_and_cannot_run_the_full_serial_suite(self):
+        source = WORKFLOW.read_text()
+        body = self.job(source, "test-build-profiles")
+        matrix = re.search(r"^        suite:\s*\[([^\]]+)\]", body, re.MULTILINE)
+        self.assertIsNotNone(matrix)
+        self.assertEqual([item.strip() for item in matrix.group(1).split(",")],
+                         ["esp32-release", "companion-transport", "nrf52-storage"])
+        self.assertIn("fail-fast: false", body)
+        self.assertIn("max-parallel: 3", body)
+        self.assertNotIn("continue-on-error", body)
+        self.assertIn('run: bash test/test_build_profiles.sh --suite "${{ matrix.suite }}"', body)
+        self.assertIn("python3 -B test/test_build_profile_suites.py -v", body)
+        self.assertNotRegex(source, r"(?m)^\s+(?:run: )?bash test/test_build_profiles\.sh\s*$")
+
+    def test_universal_gate_requires_contracts_and_all_build_shards(self):
+        source = WORKFLOW.read_text()
+        self.assert_gate(source, "universal-lora-smoke",
+                         ["universal-lora-contracts", "universal-lora-builds"], "UNIVERSAL_RESULTS")
+        builds = self.job(source, "universal-lora-builds")
+        matrix = re.search(r"^        shard:\s*\[([^\]]+)\]", builds, re.MULTILINE)
+        self.assertIsNotNone(matrix)
+        self.assertEqual([item.strip() for item in matrix.group(1).split(",")],
+                         ["tbeam", "t3s3", "meshadventurer", "e22-tenstar", "muzi"])
+        self.assertIn("fail-fast: false", builds)
+        self.assertIn("max-parallel: 3", builds)
+        self.assertNotIn("continue-on-error", builds)
+        self.assertIn("uses: actions/checkout@v6", builds)
+        self.assertIn("uses: ./.github/actions/setup-build-environment", builds)
+        self.assertIn('run: bash tools/ci/run_universal_lora_smoke.sh "${{ matrix.shard }}"', builds)
+        self.assertIn("name: universal-lora-build-logs-${{ matrix.shard }}", builds)
+        contracts = self.job(source, "universal-lora-contracts")
+        self.assertIn("python3 -B test/test_universal_lora_ci_split.py -v", contracts)
+        self.assertEqual(source.count("run: bash tools/ci/run_universal_lora_smoke.sh contracts"), 1)
+        self.assertIn("run: bash tools/ci/run_universal_lora_smoke.sh contracts", contracts)
 
 
 if __name__ == "__main__":

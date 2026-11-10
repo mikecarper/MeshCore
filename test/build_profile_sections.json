@@ -1,0 +1,265 @@
+{
+  "schema": 1,
+  "baseline_commit": "8803974f4a86905cc11d50f20435a8f698011b91",
+  "original_lines": 2366,
+  "original_sha256": "c681c918c75686fb66d2dac56f6ddfd2eb0a5755305ca33e475dfd9669bea6f0",
+  "suites": [
+    "esp32-release",
+    "companion-transport",
+    "nrf52-storage"
+  ],
+  "sections": [
+    {
+      "id": "bootstrap",
+      "suite": "shared",
+      "file": "test/build_profile_bootstrap.sh",
+      "kind": "raw",
+      "start_line": 1,
+      "end_line": 11,
+      "sha256": "a04b3ead17cd601a88ab40ee39fa444997a4ea4a7339a690a3597976bf219b78"
+    },
+    {
+      "id": "debug_and_release_utilities",
+      "suite": "esp32-release",
+      "file": "test/build_profile_esp32_release.sh",
+      "kind": "function",
+      "start_line": 12,
+      "end_line": 55,
+      "sha256": "5e329a081bcfd6a789e69cd82a5d218e47ca581ba12dfc69bf53c947b2c303df"
+    },
+    {
+      "id": "reduced_rak_sensors",
+      "suite": "nrf52-storage",
+      "file": "test/build_profile_nrf52_storage.sh",
+      "kind": "function",
+      "start_line": 56,
+      "end_line": 85,
+      "sha256": "e85a817148c9d2612e707cb8b80aa4109f4a687c948148cc1026f5347c58be93"
+    },
+    {
+      "id": "esp32_runtime_policy",
+      "suite": "esp32-release",
+      "file": "test/build_profile_esp32_release.sh",
+      "kind": "function",
+      "start_line": 86,
+      "end_line": 116,
+      "sha256": "328cae45f9d48ae71ad2800af5c046d2a68ee06e9b4cf2dced38b3b93f705f51"
+    },
+    {
+      "id": "output_versions",
+      "suite": "esp32-release",
+      "file": "test/build_profile_esp32_release.sh",
+      "kind": "function",
+      "start_line": 117,
+      "end_line": 134,
+      "sha256": "11968371e07701f9392a9d0d5a92f7cb3a9b76cafc930ad1a2438fa00fa69108"
+    },
+    {
+      "id": "resolved_board_inheritance",
+      "suite": "esp32-release",
+      "file": "test/build_profile_esp32_release.sh",
+      "kind": "function",
+      "start_line": 135,
+      "end_line": 557,
+      "sha256": "f371c14d04586f44cf6fc0bcfad968fa53d77e40b2dda1bbdc118c54e2e1d6a9"
+    },
+    {
+      "id": "metadata",
+      "suite": "shared",
+      "file": "test/build_profile_common.sh",
+      "kind": "function",
+      "start_line": 558,
+      "end_line": 563,
+      "sha256": "4570ab2e35785a1cd82b782e8f1076d04f7a103f40e162189659a61e93f64d79"
+    },
+    {
+      "id": "wio_full_display_base",
+      "suite": "companion-transport",
+      "file": "test/build_profile_companion_transport.sh",
+      "kind": "function",
+      "start_line": 564,
+      "end_line": 568,
+      "sha256": "b31911d015d5e996fd9ba30fdb70c64d375b612e7ce841b420178f86b77fafe1"
+    },
+    {
+      "id": "interactive_release_menu",
+      "suite": "esp32-release",
+      "file": "test/build_profile_esp32_release.sh",
+      "kind": "function",
+      "start_line": 569,
+      "end_line": 616,
+      "sha256": "29b5743a2d3638bd86806c4d51a1bcf7eea20642102eb88b79f5fc8503ca89b2"
+    },
+    {
+      "id": "cardputer_companion_aliases",
+      "suite": "companion-transport",
+      "file": "test/build_profile_companion_transport.sh",
+      "kind": "function",
+      "start_line": 617,
+      "end_line": 631,
+      "sha256": "b965cb352c476adb4f3d47ecb6661d437c5032720a097893c11d4133be067cd4"
+    },
+    {
+      "id": "esp32_canonical_release",
+      "suite": "esp32-release",
+      "file": "test/build_profile_esp32_release.sh",
+      "kind": "function",
+      "start_line": 632,
+      "end_line": 702,
+      "sha256": "27615f29aa402b9e37d8d806447beab2acbc6fdce37f9c0a8643a3ceecaa9521"
+    },
+    {
+      "id": "companion_build_routing",
+      "suite": "companion-transport",
+      "file": "test/build_profile_companion_transport.sh",
+      "kind": "function",
+      "start_line": 703,
+      "end_line": 732,
+      "sha256": "b19136bb8de9f1a889365b75f9adafd98a6d0b88527be4fde6c612995937457b"
+    },
+    {
+      "id": "release_matrix_scheduling",
+      "suite": "esp32-release",
+      "file": "test/build_profile_esp32_release.sh",
+      "kind": "function",
+      "start_line": 733,
+      "end_line": 780,
+      "sha256": "e0b5a5dc9c76a99200f4cb900ef5a31b653e302847bc41c257408133aef4f652"
+    },
+    {
+      "id": "esp32_full_ota_roles",
+      "suite": "esp32-release",
+      "file": "test/build_profile_esp32_release.sh",
+      "kind": "function",
+      "start_line": 781,
+      "end_line": 791,
+      "sha256": "eb6cfaff8ff86186c85537d3b8b98bdb25644eaecfada446e4d7bd5e744c5305"
+    },
+    {
+      "id": "nrf52_room_and_qspi",
+      "suite": "nrf52-storage",
+      "file": "test/build_profile_nrf52_storage.sh",
+      "kind": "function",
+      "start_line": 792,
+      "end_line": 992,
+      "sha256": "4d9de73897ce247eca6688793d92fff80dc3b868142b58bc0a1bf0b194bcb448"
+    },
+    {
+      "id": "kiss_transport_boundaries",
+      "suite": "companion-transport",
+      "file": "test/build_profile_companion_transport.sh",
+      "kind": "function",
+      "start_line": 993,
+      "end_line": 1015,
+      "sha256": "fb8e739f2e3ac06334bbe6dc3ba4badcb678738a9017c863775bd3662761b6e7"
+    },
+    {
+      "id": "unsupported_ota_platforms",
+      "suite": "nrf52-storage",
+      "file": "test/build_profile_nrf52_storage.sh",
+      "kind": "function",
+      "start_line": 1016,
+      "end_line": 1044,
+      "sha256": "49dc2810440743892be2abebb9b374781e6c2e9d2b8ae36172d27956cbcbbd38"
+    },
+    {
+      "id": "t1000_declared_ota",
+      "suite": "companion-transport",
+      "file": "test/build_profile_companion_transport.sh",
+      "kind": "function",
+      "start_line": 1045,
+      "end_line": 1089,
+      "sha256": "94716cecb11c2733ffcccd510f8bf74932224f3af84fbfa926766813fda4434b"
+    },
+    {
+      "id": "esp32_observer_identity",
+      "suite": "esp32-release",
+      "file": "test/build_profile_esp32_release.sh",
+      "kind": "function",
+      "start_line": 1090,
+      "end_line": 1138,
+      "sha256": "e7d871592e97b95dbdc47e96aaec00e579931018a453c6ed3427fb415bfffd16"
+    },
+    {
+      "id": "full_companion_overlays",
+      "suite": "companion-transport",
+      "file": "test/build_profile_companion_transport.sh",
+      "kind": "function",
+      "start_line": 1139,
+      "end_line": 1333,
+      "sha256": "9ff2840be1f29e19019859772a014be41873cdf9232b561e8add695163255e20"
+    },
+    {
+      "id": "nrf52_ota_implementation",
+      "suite": "nrf52-storage",
+      "file": "test/build_profile_nrf52_storage.sh",
+      "kind": "function",
+      "start_line": 1334,
+      "end_line": 1350,
+      "sha256": "9f8a6604a2402facd3bff8e9cc954df70ec62846a2436f43d98773891c448490"
+    },
+    {
+      "id": "esp32_async_tcp",
+      "suite": "esp32-release",
+      "file": "test/build_profile_esp32_release.sh",
+      "kind": "function",
+      "start_line": 1351,
+      "end_line": 1385,
+      "sha256": "9ac60294ce0a4ba07749ff74ab6a5ad3e205462e50e17f3c24a3e012ce0716a6"
+    },
+    {
+      "id": "companion_mqtt_selection",
+      "suite": "companion-transport",
+      "file": "test/build_profile_companion_transport.sh",
+      "kind": "function",
+      "start_line": 1386,
+      "end_line": 1424,
+      "sha256": "a6ea4100d4aa1d352c2661b349797fcd2cdeff46b19c7f448a81f4a98d70c236"
+    },
+    {
+      "id": "esp32_logging_contract",
+      "suite": "esp32-release",
+      "file": "test/build_profile_esp32_release.sh",
+      "kind": "function",
+      "start_line": 1425,
+      "end_line": 1473,
+      "sha256": "581f6f29ca8e718f94c7e98ce29a3b45235a8271f4126ff295e9ac9cda20da01"
+    },
+    {
+      "id": "esp32_merged_bridges",
+      "suite": "esp32-release",
+      "file": "test/build_profile_esp32_release.sh",
+      "kind": "function",
+      "start_line": 1474,
+      "end_line": 1652,
+      "sha256": "fb8275625bb1cced094c5fc70edcbeed4361952c2f58389e1ebb28d8bc4478a1"
+    },
+    {
+      "id": "portable_and_nrf52_storage",
+      "suite": "nrf52-storage",
+      "file": "test/build_profile_nrf52_storage.sh",
+      "kind": "function",
+      "start_line": 1653,
+      "end_line": 2052,
+      "sha256": "38f18545540709c879b456fe05888cff4c3b666951054f3f085f7dd0e0ab105b"
+    },
+    {
+      "id": "companion_transport_contracts",
+      "suite": "companion-transport",
+      "file": "test/build_profile_companion_transport.sh",
+      "kind": "function",
+      "start_line": 2053,
+      "end_line": 2365,
+      "sha256": "d070e5e4356e5beb955a8c07749779d185edc064a4447b79b872425ead1ca573"
+    },
+    {
+      "id": "finish",
+      "suite": "shared",
+      "file": "test/build_profile_common.sh",
+      "kind": "function",
+      "start_line": 2366,
+      "end_line": 2366,
+      "sha256": "ed7951a535ff6fb64415a7d9b00ba41ac92e289d1e44b53127ec6b9677b320a2"
+    }
+  ]
+}

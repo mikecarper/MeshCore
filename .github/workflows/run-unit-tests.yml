@@ -371,53 +371,67 @@ jobs:
       - name: Qualify combined Cardputer-Adv Full Companion
         run: bash build.sh build-firmware M5Stack_Cardputer_Adv_companion_radio_full --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade
 
-  universal-lora-smoke:
+  universal-lora-contracts:
+    name: Universal LoRa host contracts
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v6
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Verify shard coverage and failure handling
+        run: python3 -B test/test_universal_lora_ci_split.py -v
       - name: Verify chip probing, forwarding, and build contracts
-        run: |
-          python3 -B test/test_universal_lora.py -v
-          python3 -B test/test_universal_lora_builds.py -v
-          python3 -B test/test_universal_lora_gpio.py -v
-          python3 -B test/test_portable_lora_probe.py -v
-          python3 -B test/test_universal_lr_policy.py -v
-          python3 -B test/test_muzi_universal_builds.py -v
-          python3 -B test/test_muzi_universal_startup.py -v
-          python3 -B test/test_muzi_qspi_capacity.py -v
-          python3 -B test/test_notification_rtc_storage.py -v
-          python3 -B test/test_companion_channels_rtc.py -v
-          python3 -B test/test_universal_sx126x_builds.py -v
-          python3 -B test/test_universal_sx126x_defaults.py -v
-          python3 -B test/test_universal_radio_startup.py -v
-          python3 -B test/test_universal_radio_boot_policy.py -v
-          python3 -B test/test_universal_radio_lto.py -v
-          python3 -B test/test_consolidated_profiles.py -v
-          node test/test_universal_radio_picker.js
-      - name: Qualify universal T-Beam and T3 S3 Full firmware
-        # Sequential builds: PlatformIO shares the checkout's build tree.
-        run: |
-          for target in Tbeam_companion_radio_full LilyGo_T3S3_companion_radio_full Tbeam_repeater LilyGo_T3S3_repeater Tbeam_room_server LilyGo_T3S3_room_server Tbeam_repeater_observer_mqtt Tbeam_room_server_observer_mqtt Generic_E22_repeater Meshadventurer_repeater Meshadventurer_companion_radio_full Meshadventurer_room_server Tenstar_C3_repeater; do
-            bash build.sh build-firmware "$target" --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade --require-ota
-          done
-      - name: Compile the remaining role interfaces
-        run: bash tools/ci/pio_retry.sh run -e Tbeam_kiss_modem -e LilyGo_T3S3_kiss_modem -e LilyGo_T3S3_terminal_chat -e Generic_E22_kiss_modem -e Meshadventurer_kiss_modem -e Meshadventurer_terminal_chat -e Tenstar_C3_kiss_modem
-      - name: Compile Muzi shared radio recipes
-        # Infrastructure remains a local qualification build until its
-        # board-matched LoRa OTA loader has passed physical qualification.
-        run: bash tools/ci/pio_retry.sh run -e muzi_base_repeater -e muzi_base_room_server -e muzi_base_companion_radio_usb -e muzi_base_companion_radio_ble
-      - name: Qualify Muzi Full Companion
-        run: bash build.sh build-firmware muzi_base_companion_radio_full --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade
+        run: bash tools/ci/run_universal_lora_smoke.sh contracts
+
+  universal-lora-builds:
+    name: Universal LoRa (${{ matrix.shard }})
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        shard: [tbeam, t3s3, meshadventurer, e22-tenstar, muzi]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+      # Each matrix cell has its own checkout; builds remain sequential inside it.
+      - name: Qualify board family and remaining role interfaces
+        run: bash tools/ci/run_universal_lora_smoke.sh "${{ matrix.shard }}"
       - name: Upload universal build failure logs
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: universal-lora-build-logs
+          name: universal-lora-build-logs-${{ matrix.shard }}
           path: out/build-logs/*.log
           if-no-files-found: ignore
           retention-days: 7
+
+  # Keep the existing check name and require every matrix cell and host contract.
+  universal-lora-smoke:
+    if: ${{ always() }}
+    needs: [universal-lora-contracts, universal-lora-builds]
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Require every universal LoRa shard to pass
+        env:
+          UNIVERSAL_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os, sys
+          results = json.loads(os.environ["UNIVERSAL_RESULTS"])
+          failed = {name: info["result"] for name, info in results.items()
+                    if info["result"] != "success"}
+          if failed:
+              for name, result in sorted(failed.items()):
+                  print(f"::error::{name}: {result}")
+              sys.exit(1)
+          print("All universal LoRa contracts and build shards passed.")
+          PYCODE
 
   headless-kiss-smoke:
     runs-on: ubuntu-26.04
@@ -1634,6 +1648,24 @@ jobs:
           MESHCORE_REQUIRE_ROOM_BROWSER=1 python3 -B test/test_room_mail_web_ui.py -v
 
 
+  test-build-profiles:
+    name: Build profiles (${{ matrix.suite }})
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        suite: [esp32-release, companion-transport, nrf52-storage]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+      # These assertions use project metadata, not firmware compilation or native libraries.
+      - name: Verify profile-suite coverage and isolation
+        run: python3 -B test/test_build_profile_suites.py -v
+      - name: Verify independent build-profile family
+        run: bash test/test_build_profiles.sh --suite "${{ matrix.suite }}"
+
   test-build-ota:
     name: Build, OTA and release packaging
     runs-on: ubuntu-26.04
@@ -1753,7 +1785,6 @@ jobs:
           python3 -B test/test_esp32_partition_migrator_ap_password.py -v
           python3 -B test/test_waveshare_partition_migration.py -v
           python3 -B test/test_usb_partition_bridge_set.py -v
-          bash test/test_build_profiles.sh
           python3 -B test/test_onboard_qspi_profiles.py -v
           bash test/test_full_infrastructure_selection.sh
           bash test/test_nrf52_ota_profiles.sh
@@ -1832,7 +1863,7 @@ jobs:
   test:
     name: test
     if: ${{ always() }}
-    needs: [test-core, test-bridges-telemetry, test-radio-power, test-companion, test-client-compat, test-display, test-build-ota]
+    needs: [test-core, test-bridges-telemetry, test-radio-power, test-companion, test-client-compat, test-display, test-build-ota, test-build-profiles, universal-lora-smoke]
     runs-on: ubuntu-26.04
     steps:
       - name: Require every test group to pass
