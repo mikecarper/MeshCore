@@ -947,7 +947,7 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: use path <direct|clear|hops separated by spaces or commas>\r\n",
-      "concise": "  ERROR: path <direct|clear|hops separated by spaces/commas>\r\n"
+      "concise": "  ERROR: path direct|clear|hops (space/comma)\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -957,7 +957,7 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: all path hops must use the same width\r\n",
-      "concise": "  ERROR: path hops need equal width\r\n"
+      "concise": "  ERROR: mixed hop widths\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -977,7 +977,7 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: message must be 1-%u UTF-8 bytes for this node name\r\n",
-      "concise": "  ERROR: message 1-%u UTF-8 bytes for node name\r\n"
+      "concise": "  ERROR: message 1-%u UTF-8 bytes\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -992,7 +992,7 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: unable to send remote command\r\n",
-      "concise": "  ERROR: cmd send failed\r\n"
+      "concise": "  ERROR: send failed\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -1002,27 +1002,27 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: trace hash size must be 1, 2, or 4 bytes\r\n",
-      "concise": "  ERROR: trace hash: 1, 2, or 4 bytes\r\n"
+      "concise": "  ERROR: trace hash 1|2|4 bytes\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: unable to estimate trace timeout\r\n",
-      "concise": "  ERROR: trace timeout estimate failed\r\n"
+      "concise": "  ERROR: trace timeout failed\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: trace tag is quarantined or reply history is full\r\n",
-      "concise": "  ERROR: trace quarantined or history full\r\n"
+      "concise": "  ERROR: trace quarantine/history full\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: recipient has no traceable round-trip path\r\n",
-      "concise": "  ERROR: recipient has no trace return path\r\n"
+      "concise": "  ERROR: no trace return path\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: every prefix must be exactly %u hex digits\r\n",
-      "concise": "  ERROR: prefix needs %u hex digits\r\n"
+      "concise": "  ERROR: prefix: %u hex digits\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -1037,32 +1037,32 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: message must be 1-%u characters\r\n",
-      "concise": "  ERROR: message 1-%u characters\r\n"
+      "concise": "  ERROR: message 1-%u chars\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: FEM RX gain control is unsupported on this board\r\n",
-      "concise": "  ERROR: FEM RX gain unsupported\r\n"
+      "concise": "  ERROR: FEM gain unsupported\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: FEM TX gain control is unsupported on this board\r\n",
-      "concise": "  ERROR: FEM TX gain unsupported\r\n"
+      "concise": "  ERROR: FEM gain unsupported\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: airtime factor must be 0-9\r\n",
-      "concise": "  ERROR: airtime factor 0-9\r\n"
+      "concise": "  ERROR: airtime 0-9\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: airtime factor could not be saved\r\n",
-      "concise": "  ERROR: airtime factor not saved\r\n"
+      "concise": "  ERROR: setting not saved\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: name could not be saved\r\n",
-      "concise": "  ERROR: name not saved\r\n"
+      "concise": "  ERROR: setting not saved\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -1077,12 +1077,12 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: latitude could not be saved\r\n",
-      "concise": "  ERROR: latitude not saved\r\n"
+      "concise": "  ERROR: setting not saved\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: longitude could not be saved\r\n",
-      "concise": "  ERROR: longitude not saved\r\n"
+      "concise": "  ERROR: setting not saved\r\n"
     },
     {
       "file": "src/helpers/CommonCLI.cpp",
@@ -1377,12 +1377,12 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: failed to apply FEM RX gain\r\n",
-      "concise": "  ERROR: FEM RX gain failed\r\n"
+      "concise": "  ERROR: FEM gain failed\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: failed to apply FEM TX gain\r\n",
-      "concise": "  ERROR: FEM TX gain failed\r\n"
+      "concise": "  ERROR: FEM gain failed\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -1397,7 +1397,7 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: trace timeout is out of range\r\n",
-      "concise": "  ERROR: trace timeout invalid\r\n"
+      "concise": "  ERROR: bad trace timeout\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -1662,32 +1662,32 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: unable to send trace\r\n",
-      "concise": "  ERROR: trace send failed\r\n"
+      "concise": "  ERROR: send failed\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: recipient has no valid direct path\r\n",
-      "concise": "  ERROR: recipient has no direct path\r\n"
+      "concise": "  ERROR: no direct recipient path\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: round-trip trace path is too long\r\n",
-      "concise": "  ERROR: round-trip trace path too long\r\n"
+      "concise": "  ERROR: trace path too long\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: use trace path <1|2|4> <prefixes...>\r\n",
-      "concise": "  ERROR: trace path <1|2|4> <prefixes...>\r\n"
+      "concise": "  ERROR: trace path <1|2|4> <prefixes>\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: use channel <name-or-slot> <message>\r\n",
-      "concise": "  ERROR: channel <name-or-slot> <message>\r\n"
+      "concise": "  ERROR: channel <name|slot> <message>\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: channel not found (use 'channels')\r\n",
-      "concise": "  ERROR: channel not found; see 'channels'\r\n"
+      "concise": "  ERROR: unknown channel; see channels\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -1702,7 +1702,7 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: unable to send advert\r\n",
-      "concise": "  ERROR: advert send failed\r\n"
+      "concise": "  ERROR: send failed\r\n"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -1753,6 +1753,11 @@
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "  ERROR: no recipient selected\r\n",
       "concise": "  ERROR: use 'to' first\r\n"
+    },
+    {
+      "file": "examples/companion_radio/MyMesh.cpp",
+      "verbose": "ERR usb.raw.max requires a local transport",
+      "concise": "ERR local transport only"
     }
   ],
   "noncompact_tokens_sha256": {

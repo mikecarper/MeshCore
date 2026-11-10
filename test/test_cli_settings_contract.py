@@ -302,6 +302,7 @@ namespace mesh { struct Utils {
         sets |= {k for verb, k in re.findall(r'"(get|set) ([\w.]+) ?"', shared) if verb == 'set'}
         self.assertEqual(gets - sets, {
             'bootloader.ver',                        # Installed bootloader identity
+            'usb.raw.max',                           # Read-only local USB receive capacity
             'contact.cache', 'contact.cache.timing',  # Contact-storage diagnostics
             'display.wifi',                          # Connection/display status
             'wifi.tcp',                              # Read-only app listener/traffic diagnostic
