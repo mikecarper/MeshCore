@@ -57,6 +57,7 @@ PROFILE_BUILD_WORKERS=1
 PIO_BUILD_JOBS_OVERRIDE=""
 PIO_BUILD_DIR_OVERRIDE=""
 RESOLVED_BUILD_TARGETS=()
+RELEASE_SHARD_ALL_TARGETS=()
 RESUME_BUILD_OUTPUT="${RESUME_BUILD_OUTPUT:-0}"
 REQUIRE_OTA_UPDATES="${REQUIRE_OTA_UPDATES:-}"
 OTA_EXCLUDED_TARGETS=()
@@ -6749,6 +6750,61 @@ resolve_bulk_command_targets() {
   mapfile -t RESOLVED_BUILD_TARGETS < <("$resolver_name")
 }
 
+validate_release_build_shard() {
+  local command_name=${1:-}
+  local shard_index=${MESHCORE_RELEASE_SHARD_INDEX-}
+  local shard_count=${MESHCORE_RELEASE_SHARD_COUNT-}
+
+  if [ -z "${MESHCORE_RELEASE_SHARD_INDEX+x}" ] \
+      && [ -z "${MESHCORE_RELEASE_SHARD_COUNT+x}" ]; then
+    return 0
+  fi
+  if [ "$command_name" != "build-firmwares-logging-matrix" ]; then
+    echo "Release sharding is valid only with build-firmwares-logging-matrix." >&2
+    return 1
+  fi
+  if ! [[ "$shard_index" =~ ^(0|[1-9][0-9]{0,8})$ ]] \
+      || ! [[ "$shard_count" =~ ^[1-9][0-9]{0,8}$ ]] \
+      || [ "$shard_index" -ge "$shard_count" ]; then
+    echo "Set both MESHCORE_RELEASE_SHARD_INDEX (zero-based) and MESHCORE_RELEASE_SHARD_COUNT, with index less than count." >&2
+    return 1
+  fi
+}
+
+apply_release_build_shard() {
+  local command_name=${1:-}
+  local target position=0
+  local selected=()
+
+  RELEASE_SHARD_ALL_TARGETS=()
+  validate_release_build_shard "$command_name" || return $?
+  if [ -z "${MESHCORE_RELEASE_SHARD_INDEX+x}" ]; then
+    return 0
+  fi
+  RELEASE_SHARD_ALL_TARGETS=("${RESOLVED_BUILD_TARGETS[@]}")
+  for target in "${RELEASE_SHARD_ALL_TARGETS[@]}"; do
+    if [ "$((position % MESHCORE_RELEASE_SHARD_COUNT))" -eq "$MESHCORE_RELEASE_SHARD_INDEX" ]; then
+      selected+=("$target")
+    fi
+    position=$((position + 1))
+  done
+  if [ ${#selected[@]} -eq 0 ]; then
+    echo "Release shard ${MESHCORE_RELEASE_SHARD_INDEX}/${MESHCORE_RELEASE_SHARD_COUNT} has no targets; refusing an empty worker." >&2
+    return 1
+  fi
+  RESOLVED_BUILD_TARGETS=("${selected[@]}")
+  echo "Release shard ${MESHCORE_RELEASE_SHARD_INDEX}/${MESHCORE_RELEASE_SHARD_COUNT}: ${#selected[@]} of ${#RELEASE_SHARD_ALL_TARGETS[@]} canonical targets."
+}
+
+write_release_build_shard_ledgers() {
+  if [ -z "${MESHCORE_RELEASE_SHARD_INDEX+x}" ]; then
+    return 0
+  fi
+  local stem="release-shard-${MESHCORE_RELEASE_SHARD_INDEX}-of-${MESHCORE_RELEASE_SHARD_COUNT}"
+  printf '%s\n' "${RESOLVED_BUILD_TARGETS[@]}" > "${OUTPUT_DIR}/${stem}-targets.txt" || return $?
+  printf '%s\n' "${RELEASE_SHARD_ALL_TARGETS[@]}" > "${OUTPUT_DIR}/${stem}-all-targets.txt"
+}
+
 get_build_platform_sort_rank() {
   case "$1" in
     NRF52_PLATFORM)
@@ -6876,6 +6932,9 @@ resolve_command_targets() {
     )
     echo "Bulk target order: nRF52, ESP32, RP2040, STM32; alphabetical within each platform, one PlatformIO process at a time."
   fi
+  # Assign a canonical target only after aliases have been normalized. Every
+  # generated Full/reduced/logging profile then stays with that target's worker.
+  apply_release_build_shard "$1"
 }
 
 configure_effective_build_profile() {
@@ -7820,6 +7879,7 @@ run_logging_matrix_build_targets() {
     echo "No build targets resolved."
     return 1
   fi
+  write_release_build_shard_ledgers || return $?
   LOGGING_MATRIX_FAILURES=()
   LOGGING_MATRIX_DEFERRED_TARGETS=()
   mapfile -t ordinary_full_targets < <(select_ordinary_full_targets "${targets[@]}")
@@ -8254,6 +8314,7 @@ launch_background_build() {
     PLATFORMIO_CORE_DIR PLATFORMIO_BUILD_DIR PLATFORMIO_BUILD_FLAGS
     PLATFORMIO_BUILD_UNFLAGS PLATFORMIO_BUILD_SRC_FILTER
     PLATFORMIO_EXTRA_SCRIPTS DISABLE_DEBUG OPTION3_PIO_JOBS OUTPUT_DIR
+    MESHCORE_RELEASE_SHARD_INDEX MESHCORE_RELEASE_SHARD_COUNT
     FIRMWARE_VERSION FIRMWARE_BUILD_NUMBER BUILD_PROFILE_OVERRIDE
     BUILD_PROFILE_EXPLICIT SINGLE_TARGET_FULL_BUILD EXACT_IDENTITY_FULL_BUILD FIRMWARE_PROFILE_OVERRIDE
     MESHDEBUG_OVERRIDE PACKET_LOGGING_OVERRIDE MQTT_BRIDGE_OVERRIDE
@@ -8425,6 +8486,7 @@ main() {
   if [ $# -gt 0 ]; then
     validate_command "$@"
   fi
+  validate_release_build_shard "${1:-}" || exit 1
 
   # Hold one checkout-wide lock from PlatformIO configuration discovery through
   # the final target. Detached and foreground builds must never share or clean
