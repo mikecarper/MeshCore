@@ -72,6 +72,29 @@ test('clock check reads only and refuses an unsynchronized source', async () => 
   assert.deepEqual(calls,['clock']);
 });
 
+test('minute-boundary clock retry requires a fresh in-range reply', async () => {
+  const savedNow=Date.now, fixed=Date.UTC(2026,10,10,19,47,0); Date.now=()=>fixed;
+  try {
+    const link=new RepeaterTransport({}), replies=['19:46 - 10/11/2026 UTC','19:47 - 10/11/2026 UTC'];
+    let reads=0; link.localCommand=async command=>{assert.equal(command,'clock');reads++;return replies.shift();};
+    await link.checkClock(); assert.equal(reads,2); assert.equal(link.clockChecked,true);
+    const originalTimer=globalThis.setTimeout;let staleReads=0;
+    globalThis.setTimeout=(fn,_ms,...args)=>originalTimer(fn,0,...args);
+    try {
+      const stale=new RepeaterTransport({});stale.localCommand=async()=>{staleReads++;return '19:46 - 10/11/2026 UTC';};
+      await assert.rejects(stale.checkClock(),/out of sync/);assert.equal(staleReads,6);assert.equal(stale.clockChecked,false);
+    } finally { globalThis.setTimeout=originalTimer; }
+    const future=new RepeaterTransport({});let futureReads=0;
+    future.localCommand=async()=>{futureReads++;return '20:00 - 10/11/2026 UTC';};
+    await assert.rejects(future.checkClock(),/out of sync/);assert.equal(futureReads,1);assert.equal(future.clockChecked,false);
+    for(const reply of ['19:47:00 - 10/11/2026 UTC','19:47 - 31/11/2026 UTC',
+      '19:47 - 10/11/2026 UTC 19:47 - 10/11/2026 UTC']) {
+      const invalid=new RepeaterTransport({});invalid.localCommand=async()=>reply;
+      await assert.rejects(invalid.checkClock(),/Cannot verify|invalid UTC/);assert.equal(invalid.clockChecked,false);
+    }
+  } finally { Date.now=savedNow; }
+});
+
 class FakePort {
   constructor() { this.queue = []; this.pending = null; this.frames = []; this.commands = []; this.canceled = false; this.folder = false; }
   push(value) { if (this.pending) { const p=this.pending; this.pending=null; p({value,done:false}); } else this.queue.push(value); }

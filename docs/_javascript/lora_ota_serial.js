@@ -418,10 +418,22 @@
           throw new Error('Source clock returned an invalid UTC date');
         return Math.floor(date.getTime() / 1000);
       };
-      const start = parse(await this.localCommand('clock')), now = Math.floor(Date.now()/1000);
-      if (start > now + 600 || start + 59 < now)
+      for (let attempt = 0; attempt <= 5; attempt++) {
+        const start = parse(await this.localCommand('clock')), now = Math.floor(Date.now()/1000);
+        if (start <= now + 600 && start + 59 >= now) {
+          this.clockChecked = true;
+          return;
+        }
+        // A minute-resolution clock can still show the previous minute at
+        // a boundary even with only a second or two of skew. Re-read it for
+        // at most five seconds; never accept the old reading or widen the
+        // clock bounds. A materially stale or future clock still fails now.
+        if (start + 59 < now && now - (start + 59) <= 5 && attempt < 5) {
+          await sleep(1000);
+          continue;
+        }
         throw new Error('Source clock is out of sync with this computer. Check both clocks and correct the repeater clock before retrying.');
-      this.clockChecked = true;
+      }
     }
     validatePeer(publicKey, password) {
       const k = key(publicKey);
