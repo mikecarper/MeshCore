@@ -483,6 +483,22 @@ power loss during that write can require cable recovery. The
 [migration guide](esp32_wifi_partition_migration.md) states what each route
 preserves and which older layouts it accepts.
 
+### XIAO ESP32-S3: Meshtastic USB reset
+
+If a Seeed XIAO ESP32-S3 running Meshtastic does not enter the flash loader
+automatically, try connecting it through a USB hub with a data-capable cable,
+then retry the flasher's automatic reset. If the flasher offers a **1200-baud
+reset**, use it. The device may disappear and return as a different serial
+port; select the new port in the flasher. A serial error during the reset can
+simply mean the device disconnected while changing modes.
+
+This workaround was tested on one XIAO S3 Wio running Meshtastic 2.7.15 on
+Windows: the direct USB reset failed and the hub succeeded. After installing
+MeshCore 1.18.0.1, automatic loader entry also worked without the hub. Results
+may differ by firmware and computer. If the hub does not help, use the board's
+BOOT/RESET procedure to enter download mode. A similar ESP32-S3 USB-mode reset
+issue is described in [Espressif's issue tracker](https://github.com/espressif/arduino-esp32/issues/10204).
+
 ## LoRa OTA and OTAFIX
 
 A LoRa OTA capable build can receive and stage updates for its role. A later
