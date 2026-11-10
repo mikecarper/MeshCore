@@ -1,6 +1,7 @@
 """Native regression for the exact RAK15002 receiver capability and selector."""
 
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
@@ -243,7 +244,10 @@ int main() {
         dispatcher = method(cli, "bool handle_ota_command(")
         self.assertLess(dispatcher.index("return handle_status(reply, c)"),
                         dispatcher.index("c.prepareRakStorage()"))
-        self.assertIn('"qspi|storage|self|id|stats|pace|wire|help|?|h"', dispatcher)
+        guard = re.search(r'if\s*\(!is_cmd\(a,\s*"([^"]+)",\s*&rest\)\)\s*c\.prepareRakStorage\(\)', dispatcher)
+        self.assertIsNotNone(guard, "read-only OTA commands must bypass storage preparation")
+        self.assertEqual(set(guard.group(1).split('|')),
+                         {'qspi', 'storage', 'self', 'id', 'ram', 'stats', 'pace', 'wire', 'help', '?', 'h'})
 
     def test_existing_local_combined_loader_advertises_the_exact_new_capability(self):
         candidate = (ROOT.parent / "Adafruit_nRF52_Bootloader_OTAFIX" /
