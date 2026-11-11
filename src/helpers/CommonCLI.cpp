@@ -5092,23 +5092,14 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
   if (handleObserverSetCmd(sender_timestamp, config, reply)) return;
 #if defined(WITH_ESPNOW_BRIDGE)
   if (memcmp(config, "espnow.enabled ", 15) == 0) {
-    const char* value = config + 15;
-    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+    char command[48];
+    if (strlen(config) > sizeof(command) - 5) {
       mesh::cli::formatError(reply, 160, "use set espnow.enabled on|off");
-    } else {
-      const bool enable = strcmp(value, "on") == 0;
-#if defined(WITH_MQTT_BRIDGE) || defined(WITH_RS232_BRIDGE) \
-    || defined(ESPNOW_BRIDGE_MERGED)
-      _prefs->espnow_bridge_enabled = enable;
-#endif
-#if !defined(WITH_MQTT_BRIDGE) && !defined(WITH_RS232_BRIDGE)
-      _prefs->bridge_enabled = enable;
-#endif
-      const bool applied = _callbacks->setEspNowBridgeState(enable);
-      savePrefs();
-      strcpy(reply, applied ? "OK"
-                            : "Error: ESP-NOW runtime change failed; setting saved");
+      return;
     }
+    snprintf(command, sizeof(command), "set %.*s", int(sizeof(command) - 5), config);
+    mesh::wireless::control().handle(command, reply, 160, millis(),
+        _callbacks->wirelessCommandSource(sender_timestamp));
     return;
   }
 #endif
@@ -6056,19 +6047,11 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     if (!parseOnOffStrict(&config[15], enable)) {
       mesh::cli::formatError(reply, 160, "usage set bridge.enabled on|off");
     } else {
-#if defined(WITH_ESPNOW_BRIDGE) \
-    && (defined(WITH_MQTT_BRIDGE) \
-        || (defined(ESPNOW_BRIDGE_MERGED) && !defined(WITH_RS232_BRIDGE)))
-      // bridge.enabled retains its ESP-NOW meaning; mqtt.enabled is the
-      // independent MQTT switch when the profile also has that transport.
-      _prefs->espnow_bridge_enabled = enable;
-#if !defined(WITH_MQTT_BRIDGE)
-      _prefs->bridge_enabled = enable;
-#endif
-      const bool applied = _callbacks->setEspNowBridgeState(enable);
-      savePrefs();
-      strcpy(reply, applied ? "OK"
-                            : "Error: ESP-NOW runtime change failed; setting saved");
+#if defined(WITH_ESPNOW_BRIDGE) && (defined(WITH_MQTT_BRIDGE) || !defined(WITH_RS232_BRIDGE))
+      // Both names select the same persisted ESP-NOW service and share the
+      // management fallback and reply-drain path.
+      mesh::wireless::control().handle(enable ? "set espnow on" : "set espnow off",
+          reply, 160, millis(), _callbacks->wirelessCommandSource(sender_timestamp));
 #else
 #if defined(WITH_RS232_BRIDGE) && !defined(WITH_MQTT_BRIDGE)
       if (enable

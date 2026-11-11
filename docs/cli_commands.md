@@ -949,6 +949,8 @@ Room servers provide local history and its CLI reads, without batch transmission
   needed to leave at least 2048 bytes free and replies with the days and pages
   actually available. For example, a request can return
   `OK - telemetry.gps days=18 pages=36 requested=30`.
+  The requested capacity is saved and requested again after reboot; available
+  RAM can still reduce the actual capacity. Recorded samples remain RAM-only.
 - `direct`: Set the shared `data.tx` path to zero-hop and, in the legacy
   combined command, enable the telemetry schedule.
 - `path`: A comma-separated direct route using the same one-, two-, or
@@ -2409,7 +2411,11 @@ intervals and the 24-hour watchdog policy. An explicitly saved normal-mode
 - `get radioat` and `get tempradioat` list all entries when `n` is omitted.
 - `del radioat` and `del tempradioat` delete all entries when `n` is omitted.
 - Each queue supports 3 entries. Scheduled entries are not saved across reboot.
-- `radioat` saves the new radio preferences when it fires. `tempradioat` applies temporarily, then reverts to the saved radio preferences.
+- `radioat` saves the pending schedule before acknowledging it, including
+  additions and deletions. Queued permanent changes survive reboot. They wait
+  for a valid UTC clock; an overdue entry runs once the clock is valid. The
+  resulting radio preferences are saved when the entry fires.
+  `tempradioat` applies temporarily, then reverts to the saved radio preferences.
 - `tempradioat` uses the repeater timing table above, with duration calculated
   from `end_time - start_time`. Its acceptance reply includes total minutes, `NdNhNm`,
   and the planned `rx.watchdog` setting. Queuing a future entry does not change
@@ -2965,6 +2971,8 @@ set wifi.enabled 1
 get espnow
 set espnow off
 set espnow on
+get espnow.enabled
+set espnow.enabled off
 get 2.4ghz
 set 2.4ghz off
 set 2.4ghz on
@@ -2974,18 +2982,20 @@ set 2.4ghz on all
 | Control | Effect |
 | --- | --- |
 | `wifi` / `wifi.enabled` | One saved WiFi setting for infrastructure WiFi, setup AP, TCP/WebUI, MQTT and UDP. Both setters accept `on`, `off`, `1`, `0` and survive reboot. ESP-NOW remains available. |
-| `espnow` | The ESP-NOW bridge or primary ESP-NOW mesh transport in this build. Infrastructure WiFi remains available. |
-| `2.4ghz off` | Stop WiFi, Bluetooth, and ESP-NOW; remember which were enabled. LoRa and wired transports remain available. |
-| `2.4ghz on` | Restore the states saved by the first `off`. Repeated `off` preserves that snapshot. With no previous `off`, keep the current states. |
-| `2.4ghz on all` | Enable every service available in this build and boot. `2.4ghz on force` is an alias. |
+| `espnow` / `espnow.enabled` | One saved setting for the ESP-NOW bridge or primary ESP-NOW mesh transport. Both setters accept `on`, `off`, `1`, `0`. Infrastructure WiFi remains available. |
+| `2.4ghz off` | Save a master pause for WiFi, Bluetooth, and ESP-NOW, together with their restore snapshot. The pause survives reboot and preserves individual preferences. LoRa and wired transports remain available. |
+| `2.4ghz on` | Clear the saved pause and restore the snapshot. Repeated `off` preserves the first snapshot. Any individual saved Off chosen since that snapshot takes precedence. |
+| `2.4ghz on all` | Enable and save every service usable in this build and boot, then clear the pause. `2.4ghz on force` is an alias. |
 
 These commands work in Companion, repeater, and room-server firmware where the
 services are available. `wifi` and `wifi.enabled` save the same preference;
 `get wifi.enabled` returns the saved `0|1`, while `get wifi` reports live WiFi
 activity. Saved Off prevents background WebUI, MQTT and UDP startup after reboot.
 `set webui off` only changes the web interface's automatic-start preference.
-The `espnow` and `2.4ghz` controls remain temporary until reboot. Saved WiFi
-credentials, Bluetooth preferences, and bridge settings stay intact. `get 2.4ghz` lists each
+`get espnow.enabled` reports the saved `on|off` choice; `get espnow` reports live
+activity. The combined pause and its snapshot survive reboot. A normal `on`
+resumes the individual choices; `on all` explicitly saves those choices On.
+Saved WiFi credentials and individual bridge settings stay intact. `get 2.4ghz` lists each
 service as `on`, `off`, or `unavailable`. An nRF52 Companion controls its Bluetooth
 and reports WiFi/ESP-NOW as unavailable. Exclusive WiFi/Bluetooth builds retain
 their boot transport restriction; `on all` cannot reclaim a released Bluetooth stack.
@@ -7928,8 +7938,8 @@ Ethernet module. Use the `_ethernet` firmware variants (for example,
 
 `RAK_4631_companion_radio_full` is a distinct combined profile: it can compile
 both physical RAK13800 Ethernet and an optional RAK15002 SD mOTA archive. They
-share CS26, so they are mutually exclusive. In that Full profile Ethernet is
-off at boot and is deliberately controlled only for the current boot:
+share CS26, so they are mutually exclusive. Ethernet defaults off on a fresh
+install. `set eth on/off` saves the choice across reboot in the shared profiles:
 
 ```text
 get eth
@@ -7954,8 +7964,8 @@ supported hot-swap flow. This combined hardware path is not yet qualified.
 
 The SD-capable Ethernet-room receiver,
 `RAK_4631_room_server_ethernet_lora_ota_no_external_sensors`, uses the same
-shared CS26 safety rule but has its own cooperative Ethernet control. It starts
-off on every reboot and is never persisted. From USB or an already established
+shared CS26 safety rule but has its own cooperative Ethernet control. Its
+`eth on/off` aliases also save the choice. From USB or an already established
 Telnet session, use either spelling:
 
 ```text
@@ -7985,8 +7995,8 @@ is active.
   `_ethernet` Companion image does not expose a CLI; the combined RAK4631 Full
   profile above instead exposes `get eth` / `set eth on|off`.
 - The normal `_ethernet` variants obtain an IP address via DHCP automatically
-  on boot. The combined RAK4631 Full profile does not: Ethernet starts off
-  until `set eth on` succeeds.
+  on boot. The combined RAK4631 Full profile starts off on a fresh install and
+  restores a saved `set eth on` through the same SD/OTA ownership checks.
 - A TCP server listens on port 23 (default) for CLI connections.
 - Connect with any TCP client (e.g. `nc`, PuTTY) to access the same CLI available over serial.
 

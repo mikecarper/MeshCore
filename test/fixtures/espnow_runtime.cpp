@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/WirelessControl.h>
 #include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/bridges/ESPNowBridgeFormat.h>
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
@@ -66,6 +67,7 @@ public:
   ESPNowBridge bridge;
   uint32_t shared_espnow_retry_at = 0;
   FakeCLI _cli;
+  uint8_t wirelessCommandSource(uint32_t) {return mesh::wireless::Independent;}
   void configureBridgeFilter(AbstractBridge*) {}
   void defaults() { @DEFAULTS@ }
   void boot() {
@@ -98,11 +100,45 @@ public:
   explicit CommonCLI(MyMesh& mesh) : _prefs(&mesh._prefs), _callbacks(&mesh) {}
   void savePrefs() { ++saves; stored = *_prefs; }
   void set(const char* input, char* reply) {
+    const uint32_t sender_timestamp = 0;
+    struct Drain {
+      char* reply;
+      ~Drain() {
+        auto& control=mesh::wireless::control();
+        if(!control.pending())return;
+        fake_millis+=250;control.service(fake_millis);
+        char status[160];control.handle("get espnow",status,sizeof(status),fake_millis,mesh::wireless::Independent);
+        if(strstr(status,"failed"))strcpy(reply,status);
+      }
+    } drain{reply};
     char config[256] = {};
     assert(strlen(input) < sizeof(config)); strcpy(config, input);
     @SET_BRANCHES@
   }
   void get(const char* config, char* reply) { @GET_BRANCHES@ }
+};
+class RuntimeBackend : public mesh::wireless::Backend {
+ MyMesh& mesh_;CommonCLI& cli_;
+public:
+ RuntimeBackend(MyMesh& mesh,CommonCLI& cli):mesh_(mesh),cli_(cli){}
+ uint8_t available()const override{return mesh::wireless::EspNow;}
+ uint8_t enabled()const override{return mesh_.isEspNowBridgeRunning()?uint8_t(mesh::wireless::EspNow):0;}
+ uint8_t clients()const override{return mesh::wireless::Independent;}
+ bool hasEspNowPreference()const override{return true;}
+ bool espNowPreference()const override {
+#ifdef ESPNOW_BRIDGE_MERGED
+  return mesh_._prefs.espnow_bridge_enabled;
+#else
+  return mesh_._prefs.bridge_enabled;
+#endif
+ }
+ bool saveEspNowPreference(bool on)override {
+  mesh_._prefs.bridge_enabled=mesh_._prefs.espnow_bridge_enabled=on;
+  cli_.savePrefs();return true;
+ }
+ mesh::wireless::Result set(uint8_t,bool on)override {
+  return mesh_.setEspNowBridgeState(on)?mesh::wireless::Result::Done:mesh::wireless::Result::Failed;
+ }
 };
 static void expect_get(CommonCLI& cli, const char* key, const char* expected) {
   char reply[256] = {}; cli.get(key, reply); assert(strcmp(reply, expected) == 0);
@@ -131,25 +167,26 @@ int main() {
   }
   MyMesh mesh; mesh.defaults();
   CommonCLI cli(mesh);
+  RuntimeBackend backend(mesh,cli);mesh::wireless::control().begin(backend);
   char reply[256] = {};
   cli.set("bridge.enabled off", reply);
-  assert(strcmp(reply, "OK") == 0 && !mesh.bridgesPreventSleep());
+  assert(strncmp(reply, "OK", 2) == 0 && !mesh.bridgesPreventSleep());
   assert_aliases(cli, false, false);
   const unsigned initial_begins = mesh.bridge.begins;
   cli.set("bridge.channel 6", reply);
-  assert(strcmp(reply, "OK") == 0 && mesh.bridge.begins == initial_begins);
+  assert(strncmp(reply, "OK", 2) == 0 && mesh.bridge.begins == initial_begins);
   cli.set("bridge.secret combined-secret", reply);
-  assert(strcmp(reply, "OK") == 0 && mesh.bridge.begins == initial_begins);
+  assert(strncmp(reply, "OK", 2) == 0 && mesh.bridge.begins == initial_begins);
   cli.set("bridge.format raw", reply);
   assert(strncmp(reply, "OK", 2) == 0 && mesh.bridge.begins == initial_begins);
   cli.set("espnow.enabled on", reply);
-  assert(strcmp(reply, "OK") == 0 && mesh.bridgesPreventSleep());
+  assert(strncmp(reply, "OK", 2) == 0 && mesh.bridgesPreventSleep());
   assert_aliases(cli, true, true);
   mesh::Packet packet;
   mesh.routeRx(&packet); mesh.routeTx(&packet); mesh.serviceBridges();
   assert(mesh.bridge.sent == 1 && mesh.bridge.loops == 1); // RX is routed once.
   cli.set("bridge.source tx", reply);
-  assert(strcmp(reply, "OK") == 0);
+  assert(strncmp(reply, "OK", 2) == 0);
   mesh.routeRx(&packet); mesh.routeTx(&packet);
   assert(mesh.bridge.sent == 2); // TX is routed once, RX no longer feeds bridge.
   const unsigned configured_begins = mesh.bridge.begins;
@@ -204,15 +241,15 @@ int main() {
   // Runtime switches through either spelling must not leave the radio running.
   for (unsigned cycle = 0; cycle < 100; ++cycle) {
     cli.set("bridge.enabled off", reply);
-    assert(strcmp(reply, "OK") == 0 && !mesh.bridgesPreventSleep());
+    assert(strncmp(reply, "OK", 2) == 0 && !mesh.bridgesPreventSleep());
     assert_aliases(cli, false, false);
     cli.set("espnow.enabled on", reply);
-    assert(strcmp(reply, "OK") == 0 && mesh.bridgesPreventSleep());
+    assert(strncmp(reply, "OK", 2) == 0 && mesh.bridgesPreventSleep());
     assert_aliases(cli, true, true);
     cli.set("espnow.enabled off", reply);
-    assert(strcmp(reply, "OK") == 0 && !mesh.bridgesPreventSleep());
+    assert(strncmp(reply, "OK", 2) == 0 && !mesh.bridgesPreventSleep());
     cli.set("bridge.enabled on", reply);
-    assert(strcmp(reply, "OK") == 0 && mesh.isBridgeRunning());
+    assert(strncmp(reply, "OK", 2) == 0 && mesh.isBridgeRunning());
   }
   cli.set("espnow.enabled off", reply);
   const unsigned sent_when_off = mesh.bridge.sent;

@@ -25,6 +25,22 @@ SHARED_TERMINAL_ERROR_MEMBER = re.compile(
     r'(?<![A-Za-z_0-9:.])printTerminalError\(\s*'
     r'MESH_CLI_REPLY_TEXT\(("(?:\\.|[^"\\])*"),\s*("(?:\\.|[^"\\])*")\)\)')
 
+# New transactional-setting failures, reviewed with the persistence change.
+# Their shorter forms must retain uncertain-publication wording. The storage
+# tests separately verify that failed saves preserve the active configuration.
+UNCERTAIN_STORAGE_REPLIES = {
+    'Error: radioat save unconfirmed; live queue unchanged': 'Error: save unconfirmed',
+    'Err - GPS retention save unconfirmed; active setting unchanged': 'Err - save unconfirmed',
+    'Error: radioat deletion not saved': 'Error: save unconfirmed',
+}
+# Here 2.4ghz labels the command which just failed, rather than a numeric
+# setting or limit. Share these compact errors with the other saved services.
+WIRELESS_CONTEXT_REPLIES = {
+    'Error: 2.4ghz setting could not be saved': 'Error: save unconfirmed',
+    'Error: 2.4ghz save failed; previous settings restore unconfirmed':
+        'Error: save/restore unconfirmed',
+}
+
 
 def expand_shared_terminal_errors(source):
     # Normalize only the reviewed member-call shape to the prior printf call,
@@ -63,10 +79,27 @@ class CliReplyTextTests(unittest.TestCase):
             category = r'^[ \t]*(Error|ERROR|ERR|Err|OK)(?=[: ,\-])'
             self.assertEqual(re.findall(category, old), re.findall(category, new))
             self.assertEqual(re.findall(r'[\r\n]', old), re.findall(r'[\r\n]', new))
-            self.assertEqual(re.findall(r'\d+(?:\.\d+)?', old),
-                             re.findall(r'\d+(?:\.\d+)?', new))
+            reviewed_wireless_context = (row['file'] == 'src/helpers/WirelessControl.h'
+                                         and old in WIRELESS_CONTEXT_REPLIES)
+            if reviewed_wireless_context:
+                self.assertEqual(new, WIRELESS_CONTEXT_REPLIES[old])
+                self.assertEqual(re.findall(r'\d+(?:\.\d+)?', old), ['2.4'])
+                self.assertFalse(re.findall(r'\d+(?:\.\d+)?', new))
+            else:
+                self.assertEqual(re.findall(r'\d+(?:\.\d+)?', old),
+                                 re.findall(r'\d+(?:\.\d+)?', new))
             self.assertFalse(old.startswith(('> ', '{', 'KEYBACKUP ', 'ACK')))
             protected = old.lower().replace('[reboot]', '')
+            reviewed_storage = (row['file'] == 'examples/simple_repeater/MyMesh.cpp'
+                                and old in UNCERTAIN_STORAGE_REPLIES)
+            if reviewed_storage:
+                self.assertEqual(new, UNCERTAIN_STORAGE_REPLIES[old])
+                self.assertIn('save unconfirmed', new)
+                protected = protected.replace('save unconfirmed', '')
+            if (row['file'] == 'src/helpers/WirelessControl.h'
+                    and old == 'OK - WiFi setting saved; reboot to apply'):
+                self.assertEqual(new, 'OK - saved; reboot to apply')
+                protected = protected.replace('reboot', '')
             if (row['file'] == 'src/helpers/ota/OtaCli.cpp' and
                     old == 'ERR self serve requires ESP32 or external-storage nRF52; host sources use ota folder'):
                 # This describes source capabilities, not host data or its retention.
@@ -77,7 +110,7 @@ class CliReplyTextTests(unittest.TestCase):
             for protected in ('[reboot]', 'default'):
                 if protected in old:
                     self.assertIn(protected, new)
-            if 'unchanged' in old:
+            if 'unchanged' in old and not reviewed_storage:
                 self.assertIn('sleep policy unchanged', old)
                 self.assertIn('sleep policy unchanged', new)
         for file, messages in expected.items():

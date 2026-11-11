@@ -258,7 +258,7 @@ struct DebugPort { template<class... Args> void printf(const char*, Args...) {} 
 DebugPort& usbDebugPort() { static DebugPort port; return port; }
 namespace wireless {
 constexpr uint8_t WiFi = 1;
-struct Control { bool disabled = false; bool blocked(uint8_t) const { return disabled; } };
+struct Control { bool disabled = false; bool blocked(uint8_t) const { return disabled; } bool backgroundBlocked(int service) const {return blocked(service);} };
 Control& control() { static Control control; return control; }
 }
 namespace wifi {

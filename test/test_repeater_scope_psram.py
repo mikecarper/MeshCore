@@ -268,7 +268,7 @@ def production_program():
     constructor = source.index("MyMesh::MyMesh(")
     start = source.index("#if !MESH_REPEATER_PSRAM_TABLES\n  memset(flood_channel_scopes", constructor)
     resets = source[start:source.index("#if MESH_ENABLE_FLOOD_GROUP_MODERATION", start)]
-    begin_start = source.index("void MyMesh::begin(FILESYSTEM *fs) {")
+    begin_start = source.index("void MyMesh::begin(FILESYSTEM *fs, bool durable) {")
     begin_start = source.index("{", begin_start) + 1
     begin = source[begin_start:source.index("#if MESH_ENABLE_FLOOD_RULE_ENGINE", begin_start)]
     methods = [

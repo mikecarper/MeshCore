@@ -345,8 +345,60 @@ enum ClockSyncResult : uint8_t {
   CLOCK_SYNC_RESULT_CORRECTED_BACKWARD = 7
 };
 
-static bool clockSyncLeapYear(uint16_t year) {
+static constexpr bool clockSyncLeapYear(uint16_t year) {
   return (year % 4U == 0 && year % 100U != 0) || year % 400U == 0;
+}
+
+// RTClib represents dates as an offset from 2000 and counts a leap day every
+// four years. Evaluate that same arithmetic at compile time for build epochs;
+// the small scheduler must not retain runtime calendar conversion just to
+// compare its clock with a constant boundary.
+static constexpr uint32_t clockSyncDaysBeforeYear(uint16_t year_offset) {
+  return 365UL * year_offset + (year_offset + 3U) / 4U;
+}
+
+static constexpr uint16_t clockSyncYearFromDays(uint16_t days) {
+  return (days / 1461U) * 4U
+      + (days % 1461U == 0 ? 0 : (days % 1461U - 1U) / 365U);
+}
+
+static constexpr uint8_t clockSyncMonthFromDays(uint16_t year_offset, uint16_t days) {
+  return days < 31 ? 1 : days < 59U + (year_offset % 4U == 0) ? 2
+      : 3U + (5U * (days - 59U - (year_offset % 4U == 0)) + 2U) / 153U;
+}
+
+static constexpr uint16_t clockSyncDaysBeforeMonth(uint16_t year_offset, uint8_t month) {
+  return month <= 2 ? (month - 1U) * 31U
+      : 59U + (year_offset % 4U == 0) + (153U * (month - 3U) + 2U) / 5U;
+}
+
+struct ClockSyncBuildDate {
+  uint16_t year_offset;
+  uint8_t month, day;
+  uint32_t second_of_day;
+  constexpr explicit ClockSyncBuildDate(uint32_t epoch)
+      : year_offset(clockSyncYearFromDays(uint16_t((epoch - 946684800UL) / 86400UL))),
+        month(clockSyncMonthFromDays(year_offset,
+            uint16_t((epoch - 946684800UL) / 86400UL) - clockSyncDaysBeforeYear(year_offset))),
+        day(uint16_t((epoch - 946684800UL) / 86400UL)
+            - clockSyncDaysBeforeYear(year_offset) - clockSyncDaysBeforeMonth(year_offset, month) + 1U),
+        second_of_day((epoch - 946684800UL) % 86400UL) {}
+};
+
+static constexpr uint8_t clockSyncYearOffset(uint16_t year) {
+  return year >= 2000 ? year - 2000 : year;
+}
+
+static constexpr uint32_t clockSyncUpperEpoch(ClockSyncBuildDate built, uint16_t upper_year) {
+  return 946684800UL + built.second_of_day + 86400UL * uint16_t(
+      clockSyncDaysBeforeYear(clockSyncYearOffset(upper_year))
+      + clockSyncDaysBeforeMonth(clockSyncYearOffset(upper_year), built.month)
+      + (built.month == 2 && built.day == 29 && !clockSyncLeapYear(upper_year) ? 28 : built.day) - 1U);
+}
+
+static constexpr uint32_t clockSyncBuildMaximum(uint32_t epoch, uint16_t years) {
+  return clockSyncUpperEpoch(ClockSyncBuildDate(epoch),
+      uint16_t(2000U + ClockSyncBuildDate(epoch).year_offset + years));
 }
 
 static uint32_t clockSyncMinimumValidEpoch() {
@@ -360,6 +412,11 @@ static uint32_t clockSyncMinimumValidEpoch() {
 }
 
 static uint32_t clockSyncMaximumValidEpoch() {
+#if FIRMWARE_BUILD_EPOCH > 0
+  static constexpr uint32_t maximum =
+      clockSyncBuildMaximum(uint32_t(FIRMWARE_BUILD_EPOCH), CLOCK_SYNC_VALID_YEARS);
+  return maximum;
+#else
   static uint32_t maximum = 0;
   if (maximum == 0) {
     DateTime built(clockSyncMinimumValidEpoch());
@@ -370,6 +427,7 @@ static uint32_t clockSyncMaximumValidEpoch() {
                        built.hour(), built.minute(), built.second()).unixtime();
   }
   return maximum;
+#endif
 }
 
 static bool clockSyncEpochIsValid(uint32_t epoch) {
@@ -402,7 +460,7 @@ static bool selectorIsEmpty(const char* text) {
 
 static bool selectorIsAll(const char* text) {
   text = skipLocalSpaces(text);
-  if (text == NULL || memcmp(text, "all", 3) != 0) {
+  if (text == NULL || strncmp(text, "all", 3) != 0) {
     return false;
   }
   text += 3;
@@ -4088,7 +4146,7 @@ bool MyMesh::prepareStartupStorage() {
   return true;
 }
 
-void MyMesh::begin(FILESYSTEM *fs) {
+void MyMesh::begin(FILESYSTEM *fs, bool durable) {
 #if MESH_REPEATER_PSRAM_TABLES
   if (!prepareStartupStorage()) abort();
 #endif
@@ -4102,6 +4160,8 @@ void MyMesh::begin(FILESYSTEM *fs) {
   // load persisted prefs
   mesh::hilStartupTrace("mesh_prefs_begin");
   _cli.loadPrefs(_fs);
+  scheduled_radio_store.begin(durable ? _fs : nullptr, scheduled_radio_settings);
+  refreshScheduledRadioState();
   _cli.radioProfiles().beginRepeaterFloodPolicy();
 #ifdef WITH_UDP_BRIDGE
   udp_bridge_settings.begin(_fs);
@@ -4192,7 +4252,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
 #if defined(WITH_BRIDGE)
   if (_prefs.bridge_enabled
 #ifdef WITH_MQTT_BRIDGE
-      && !mesh::wireless::control().blocked(mesh::wireless::WiFi)
+      && !mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)
 #endif
       ) {
 #ifdef WITH_MQTT_BRIDGE
@@ -4302,7 +4362,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
       && !WebConfigServer::hasConfiguredWiFi(_cli.getObserverPrefs());
 #endif
   start_webui = WebConfigServer::loadEnabled(start_webui)
-      && !mesh::wireless::control().blocked(mesh::wireless::WiFi);
+      && !mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi);
 #ifdef WITH_MQTT_BRIDGE
   if (start_webui && !WebConfigServer::hasConfiguredWiFi(_cli.getObserverPrefs())) {
   #if defined(WITH_ESPNOW_BRIDGE)
@@ -4343,7 +4403,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   applyGpsPrefs();
 #if MESH_ENABLE_TELEMETRY_HISTORY
   if (sensors.getLocationProvider() != NULL) {
-    const uint8_t gps_days = resizeTelemetryGpsDays(7);
+    const uint8_t gps_days = resizeTelemetryGpsDays(scheduled_radio_store.days());
     MESH_DEBUG_PRINTLN("Telemetry GPS retention: %u days", (unsigned)gps_days);
   }
 #endif
@@ -4750,6 +4810,19 @@ void MyMesh::queueSavedRadioApply() {
   scheduled_radio_retry_failures = 0;
 }
 
+bool MyMesh::saveScheduledRadioSettings(int replacement_slot,
+    const ScheduledRadioSetting* replacement, const uint8_t* deleted) {
+  return scheduled_radio_store.save(scheduled_radio_settings,
+      MAX_SCHEDULED_RADIO_SETTINGS, scheduled_radio_store.days(),
+      replacement_slot, replacement, deleted);
+}
+
+bool MyMesh::scheduledRadioClockReady() const {
+  // Default software-clock seeds are not UTC. Retained/external RTC time or
+  // a later manual/GPS/mesh/network correction must pass the normal bounds.
+  return clockSyncEpochIsValid(getRTCClock()->getCurrentTime());
+}
+
 void MyMesh::refreshScheduledRadioState() {
   next_scheduled_radio_time = 0;
   scheduled_temp_radio_started = false;
@@ -4786,6 +4859,7 @@ void MyMesh::refreshScheduledRadioState() {
         ? (uint32_t)save_remaining_ms : 0;
     for (const auto& setting : scheduled_radio_settings) {
       if (!setting.active) continue;
+      if (!setting.temporary && !scheduledRadioClockReady()) continue;
       const uint32_t deadline = setting.temporary && setting.started ? setting.end_time : setting.start_time;
       uint32_t seconds = deadline > now ? deadline - now : 0;
       if (seconds > SCHEDULED_RADIO_CLOCK_CHECKPOINT_SECS) seconds = SCHEDULED_RADIO_CLOCK_CHECKPOINT_SECS;
@@ -5027,6 +5101,9 @@ void MyMesh::addScheduledRadioParams(bool temporary, float freq, float bw, uint8
   }
 #endif
   uint32_t now = getRTCClock()->getCurrentTime();
+  if (!temporary && !scheduledRadioClockReady()) {
+    strcpy(reply, MESH_CLI_REPLY_TEXT("Error: set or sync clock before radioat", "Error: set/sync clock")); return;
+  }
   if (!isValidScheduledRadioParams(freq, bw, sf, cr)) {
     strcpy(reply, "Error, invalid radio params");
     return;
@@ -5078,6 +5155,10 @@ void MyMesh::addScheduledRadioParams(bool temporary, float freq, float bw, uint8
       ? mesh::TempRadioLeaseDeadline::fromEpochEnd(
             current_uptime_millis, now, end_time)
       : 0;
+  if (!temporary && !saveScheduledRadioSettings(slot, accepted)) {
+    *accepted = {};
+    strcpy(reply, MESH_CLI_REPLY_TEXT("Error: radioat save unconfirmed; live queue unchanged", "Error: save unconfirmed")); return;
+  }
   // A newly requested schedule must not inherit the backoff of an older radio
   // apply failure, especially when its deadline is sooner than that retry.
   scheduled_radio_retry_at = 0;
@@ -5087,6 +5168,8 @@ void MyMesh::addScheduledRadioParams(bool temporary, float freq, float bw, uint8
     fleet_schedule_slot_ = slot;
     fleet_schedule_pending_ = true;
     fleet_schedule_delivered_ = false;
+    fleet_schedule_persisted_ = !temporary;
+    fleet_schedule_cancelled_ = false;
     fleet_schedule_delete_all_temp_ = false;
     memset(fleet_schedule_delete_mask_, 0, sizeof(fleet_schedule_delete_mask_));
   }
@@ -5194,14 +5277,26 @@ void MyMesh::deleteScheduledRadioParams(bool temporary, const char* selector, ch
           && (all || idx == i)) fleet_schedule_delete_mask_[i / 8] |= uint8_t(1U << (i % 8));
     }
     fleet_schedule_slot_ = -1;
+    if (!temporary && !saveScheduledRadioSettings(-1, nullptr, fleet_schedule_delete_mask_)) {
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error: radioat deletion not saved", "Error: save unconfirmed")); return;
+    }
     fleet_schedule_delete_all_temp_ = all && temporary;
     fleet_schedule_pending_ = true;
     fleet_schedule_delivered_ = false;
+    fleet_schedule_persisted_ = !temporary;
+    fleet_schedule_cancelled_ = false;
     strcpy(reply, "OK - schedule deletion after reply");
     return;
   }
 #endif
   if (selectorIsEmpty(selector) || selectorIsAll(selector)) {
+    if (!temporary) {
+      uint8_t deleted[(MAX_SCHEDULED_RADIO_SETTINGS + 7) / 8];
+      memset(deleted, 0xff, sizeof(deleted));
+      if (!saveScheduledRadioSettings(-1, nullptr, deleted)) {
+        strcpy(reply, MESH_CLI_REPLY_TEXT("Error: radioat deletion not saved", "Error: save unconfirmed")); return;
+      }
+    }
     int deleted = 0;
     bool restore_radio = false;
     for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
@@ -5237,6 +5332,12 @@ void MyMesh::deleteScheduledRadioParams(bool temporary, const char* selector, ch
     strcpy(reply, "Error: not found");
     return;
   }
+  if (!temporary) {
+    ScheduledRadioSetting removed = {};
+    if (!saveScheduledRadioSettings(idx, &removed)) {
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error: radioat deletion not saved", "Error: save unconfirmed")); return;
+    }
+  }
   clearScheduledRadioSetting(idx, true);
   strcpy(reply, "OK");
 }
@@ -5250,6 +5351,11 @@ void MyMesh::finishFleetReplyMutation(bool delivered) {
   if (!fleet_schedule_pending_) return;
   fleet_schedule_delivered_ = delivered;
   if (!delivered) {
+    if (fleet_schedule_persisted_) {
+      // Roll back from the main loop, never from Dispatcher completion hooks.
+      fleet_schedule_cancelled_ = fleet_schedule_delivered_ = true;
+      return;
+    }
     fleet_schedule_pending_ = false;
     fleet_schedule_setting_ = {};
     memset(fleet_schedule_delete_mask_, 0, sizeof(fleet_schedule_delete_mask_));
@@ -5258,10 +5364,20 @@ void MyMesh::finishFleetReplyMutation(bool delivered) {
 
 void MyMesh::serviceFleetScheduleReply() {
   if (!fleet_schedule_pending_ || !fleet_schedule_delivered_) return;
+  if (fleet_schedule_cancelled_) {
+    if (scheduled_radio_save_retry_at && !millisHasNowPassed(scheduled_radio_save_retry_at)) return;
+    if (!saveScheduledRadioSettings()) {
+      scheduled_radio_save_retry_at = futureMillis(60000);
+      if (!scheduled_radio_save_retry_at) scheduled_radio_save_retry_at = 1;
+      return;
+    }
+  }
   // Dispatcher completion hooks only mark delivery. All schedule/radio work
   // runs here, with the original UTC endpoints and monotonic lease bound.
   fleet_schedule_pending_ = fleet_schedule_delivered_ = false;
-  if (fleet_schedule_slot_ >= 0) {
+  if (fleet_schedule_cancelled_) {
+    // The durable candidate was cancelled before it could become live.
+  } else if (fleet_schedule_slot_ >= 0) {
     const uint64_t uptime = uptime_millis + (uint32_t)(millis() - last_millis);
     const bool expired = fleet_schedule_setting_.temporary
         && (getRTCClock()->getCurrentTime() >= fleet_schedule_setting_.end_time
@@ -5280,6 +5396,7 @@ void MyMesh::serviceFleetScheduleReply() {
     }
   }
   fleet_schedule_setting_ = {};
+  fleet_schedule_persisted_ = fleet_schedule_cancelled_ = false;
   memset(fleet_schedule_delete_mask_, 0, sizeof(fleet_schedule_delete_mask_));
   scheduled_radio_retry_at = 0;
   scheduled_radio_retry_failures = 0;
@@ -5345,7 +5462,7 @@ void MyMesh::processScheduledRadioSettings(bool tx_gap) {
   if (schedule_check_due) {
     now = getRTCClock()->getCurrentTime();
     schedule_due = now >= next_scheduled_radio_time;
-    if (!schedule_due) refreshScheduledRadioState();
+    if (!schedule_due || !scheduledRadioClockReady()) refreshScheduledRadioState();
   }
   bool saved_apply_due = saved_radio_apply_pending && !temp_radio_handoff_pending
       && !scheduled_temp_radio_started;
@@ -5383,11 +5500,16 @@ void MyMesh::processScheduledRadioSettings(bool tx_gap) {
     }
   }
 
-  while (schedule_due && (!scheduled_radio_save_retry_at || millisHasNowPassed(scheduled_radio_save_retry_at))) {
+  while (schedule_due
+#if MESH_ENABLE_FLEET_CONTROL
+      && !fleet_schedule_pending_
+#endif
+      && (!scheduled_radio_save_retry_at || millisHasNowPassed(scheduled_radio_save_retry_at))) {
     int due_idx = -1;
     for (int i = 0; i < MAX_SCHEDULED_RADIO_SETTINGS; i++) {
       const ScheduledRadioSetting& setting = scheduled_radio_settings[i];
-      if (!setting.active || setting.temporary || now < setting.start_time) {
+      if (!setting.active || setting.temporary || now < setting.start_time
+          || !scheduledRadioClockReady()) {
         continue;
       }
       if (due_idx < 0 || setting.start_time < scheduled_radio_settings[due_idx].start_time
@@ -5410,6 +5532,12 @@ void MyMesh::processScheduledRadioSettings(bool tx_gap) {
     setting.active = false;
     setting.started = false;
     saved_params_changed = true;
+    if (!saveScheduledRadioSettings()) {
+      setting.active = true;
+      scheduled_radio_save_retry_at = futureMillis(60000);
+      if (!scheduled_radio_save_retry_at) scheduled_radio_save_retry_at = 1;
+      break;
+    }
   }
 
   if (saved_params_changed) {
@@ -11949,7 +12077,7 @@ bool MyMesh::startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup
     getWebUIStatus(reply);
     return true;
   }
-  if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) {
+  if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) {
     strcpy(reply, "Error: WiFi disabled; use set wifi on or set 2.4ghz on");
     return true;
   }
@@ -12039,7 +12167,7 @@ bool MyMesh::setWebUIEnabled(bool enabled, char* reply) {
     return true;
   }
   if (enabled) {
-    if (mesh::wireless::control().blocked(mesh::wireless::WiFi)
+    if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)
         || mesh::wireless::control().pendingDisable(mesh::wireless::WiFi)) {
       strcpy(reply, "OK - webui on saved; WiFi is off");
     } else if (_webconfig && _webconfig->isRunning()) {
@@ -13030,6 +13158,15 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
             requested_days)) {
       strcpy(reply, "Err - use: set telemetry.gps <1-30>");
       return;
+    }
+#if MESH_ENABLE_FLEET_CONTROL
+    if (fleet_schedule_pending_) {
+      strcpy(reply, "Err - fleet schedule acknowledgement pending"); return;
+    }
+#endif
+    if (!scheduled_radio_store.save(scheduled_radio_settings,
+            MAX_SCHEDULED_RADIO_SETTINGS, requested_days)) {
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Err - GPS retention save unconfirmed; active setting unchanged", "Err - save unconfirmed")); return;
     }
     const uint8_t actual_days = resizeTelemetryGpsDays(requested_days);
     snprintf(reply, 160,
@@ -14998,7 +15135,7 @@ bool MyMesh::isUDPBridgeNetworkEnabled() const {
   if (!udp_bridge_settings.healthy() || !udp_bridge_settings.prefs().enabled
       || udp_network_paused || mesh::wireless::control().masterOff()
       || mesh::wireless::control().pendingDisable(mesh::wireless::WiFi)
-      || mesh::wireless::control().blocked(mesh::wireless::WiFi)) return false;
+      || mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) return false;
   const size_t secret_length = strnlen(_prefs.bridge_secret, sizeof(_prefs.bridge_secret));
   if (secret_length == 0 || secret_length >= sizeof(_prefs.bridge_secret)) return false;
   for (const auto& peer : udp_bridge_settings.prefs().peers) {

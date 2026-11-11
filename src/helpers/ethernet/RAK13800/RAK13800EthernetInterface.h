@@ -53,6 +53,8 @@ class RAK13800EthernetInterface : public SerialEthernetInterface {
   bool (*_canReleaseSpi)(void*) = nullptr;
   bool (*_releasedSpi)(void*) = nullptr;
   void* _spiContext = nullptr;
+  bool (*_saveMode)(void*, bool) = nullptr;
+  void* _saveContext = nullptr;
   bool _ownsSharedSpi = false, _releasePending = false;
 #endif
   const char* _spiError = "off";
@@ -68,8 +70,8 @@ public:
   RAK13800EthernetInterface() = default;
   bool begin();
   void loop() override;
-  bool tryEnable();
-  bool tryDisable();
+  bool tryEnable(bool persist = false);
+  bool tryDisable(bool persist = false);
   bool hardwareActive() const;
   const char* last_error() const { return _spiError; }
   const char* status() const;
@@ -79,6 +81,9 @@ public:
                             bool (*released)(void*), void* context) {
     _prepareSpi = prepare; _canReleaseSpi = can_release;
     _releasedSpi = released; _spiContext = context;
+  }
+  void setModePersistenceHook(bool (*save)(void*, bool), void* context) {
+    _saveMode = save; _saveContext = context;
   }
   // Logical transport registration must not acquire the optional shared bus.
   void enable() override { if (_wanted.load()) SerialEthernetInterface::enable(); }

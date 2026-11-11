@@ -426,6 +426,7 @@ int main() {
         fixture = r'''
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
 #include <helpers/esp32/ManagementPassword.h>
+#include <helpers/WirelessControl.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -471,6 +472,7 @@ int main() {
         fixture = r'''
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
 #include <helpers/esp32/ManagementPassword.h>
+#include <helpers/WirelessControl.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -598,6 +600,7 @@ int main() {
         fixture = r'''
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
 #include <helpers/esp32/ManagementPassword.h>
+#include <helpers/WirelessControl.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -723,6 +726,7 @@ int main() {
         fixture = r'''
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
 #include <helpers/esp32/ManagementPassword.h>
+#include <helpers/WirelessControl.h>
 #include <cassert>
 #include <cstdint>
 uint32_t now = 0;
@@ -790,6 +794,7 @@ int main() {
         fixture = r'''
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
 #include <helpers/esp32/ManagementPassword.h>
+#include <helpers/WirelessControl.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -847,6 +852,7 @@ int main() {
         fixture = r'''
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
 #include <helpers/esp32/ManagementPassword.h>
+#include <helpers/WirelessControl.h>
 #include <cassert>
 #include <cstdint>
 static unsigned delays = 0;

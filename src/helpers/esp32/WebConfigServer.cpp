@@ -888,7 +888,7 @@ static bool scanSetupNetworks() {
 
 bool WebConfigServer::startSetupMode(char reply[]) {
   _start_retryable = false;
-  if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) {
+  if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) {
     strcpy(reply, "Error: WiFi disabled; use set wifi on or set 2.4ghz on");
     return false;
   }
@@ -1102,7 +1102,7 @@ bool WebConfigServer::beginSavedStation(uint32_t now) {
 
 bool WebConfigServer::startAutoMode(char reply[]) {
   _start_retryable = false;
-  if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) {
+  if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) {
     strcpy(reply, "Error: WiFi disabled; use set wifi on or set 2.4ghz on");
     return false;
   }
@@ -1130,7 +1130,7 @@ bool WebConfigServer::startAutoMode(char reply[]) {
 
 bool WebConfigServer::requestStart(bool force_ap, char reply[]) {
   _start_retryable = false;
-  if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) {
+  if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) {
     _start_mode = MODE_OFF;
     strcpy(reply, "Error: WiFi disabled; use set wifi on or set 2.4ghz on");
     return false;

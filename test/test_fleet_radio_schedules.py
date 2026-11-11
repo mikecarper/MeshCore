@@ -248,6 +248,7 @@ static int primary(int argc,char** argv){
   assert(f.node.temp_radio_applied&&f.node.applies==1);f.advance(59);assert(!f.node.temp_radio_applied);
  }else if(scenario=="primary_queue_failure"){
   f.mesh.queue_ok=false;f.send("set radioat 910.5,500,8,5,+1",false);
+  f.node.processScheduledRadioSettings(); // Durably cancel from the main loop.
   assert(!f.node.hasFleetReplyMutation());f.advance(61);assert(f.node.saves==0&&f.node.restores==0);
  }else if(scenario=="primary_tx_failure"){
   f.send("set tempradioat 910.5,500,8,5,+1,+2");f.drain(false);f.advance(61);
@@ -265,6 +266,7 @@ static int primary(int argc,char** argv){
   f.handle("set radioat 911.5,500,8,5,+2",f.reply);
   assert(strstr(f.reply,"acknowledgement pending")&&f.node.countScheduledRadioSettings(false)==0);
   f.handle("del radioat all",f.reply);assert(strstr(f.reply,"acknowledgement pending"));f.drain(false);
+  f.node.processScheduledRadioSettings(); // Reply failure rolls its durable candidate back.
   f.handle("set radioat 911.5,500,8,5,+2",f.reply);assert(!strncmp(f.reply,"OK",2));
   assert(f.node.countScheduledRadioSettings(false)==1);
  }else if(scenario=="primary_active_delete"){
@@ -365,6 +367,7 @@ void finalizeHMAC(const uint8_t* key,size_t size,void* out,size_t n){{SHA256Base
   uint8_t fleet_schedule_delete_mask_[(MAX_SCHEDULED_RADIO_SETTINGS+7)/8]{};
   int fleet_schedule_slot_=-1;
   bool fleet_command_=false,fleet_schedule_pending_=false,fleet_schedule_delivered_=false,fleet_schedule_delete_all_temp_=false;
+  bool fleet_schedule_persisted_=false,fleet_schedule_cancelled_=false;
   void beginFleetCommand()override{fleet_command_=true;}
   void endFleetCommand()override{fleet_command_=false;}
   bool hasFleetReplyMutation()const override{return fleet_schedule_pending_;}

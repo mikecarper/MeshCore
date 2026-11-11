@@ -163,7 +163,7 @@ WIRELESS = r'''
 #pragma once
 namespace mesh {namespace wireless {
 enum {WiFi=1};
-struct Control {bool blocked(int) const {return ::blocked;}};
+struct Control {bool blocked(int) const {return ::blocked;} bool backgroundBlocked(int service) const {return blocked(service);}};
 inline Control& control() {static Control value;return value;}
 }}
 '''

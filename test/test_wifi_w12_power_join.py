@@ -26,7 +26,7 @@ uint8_t stored=0;
 constexpr int ESP_ERR_WIFI_NOT_STARTED=-30, ESP_ERR_WIFI_NOT_INIT=-31;
 enum wl_status_t { WL_IDLE_STATUS=0, WL_CONNECT_FAILED=1 };
 namespace mesh { namespace wireless {
-enum { WiFi=1 }; struct Control { bool blocked(int) const { return false; } };
+enum { WiFi=1 }; struct Control { bool blocked(int) const { return false; } bool backgroundBlocked(int service) const {return blocked(service);} };
 Control& control() { static Control c; return c; }
 }}
 namespace mesh { namespace wifi {

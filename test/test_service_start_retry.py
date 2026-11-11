@@ -18,7 +18,7 @@ uint32_t millis() { return now; }
 namespace mesh {
 namespace wireless {
 enum { WiFi = 1 };
-struct Control { bool disabled = false; bool blocked(int) { return disabled; } };
+struct Control { bool disabled = false; bool blocked(int) { return disabled; } bool backgroundBlocked(int service) {return blocked(service);} };
 Control& control() { static Control c; return c; }
 }
 namespace wifi {

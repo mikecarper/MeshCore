@@ -191,13 +191,15 @@ int main() {
                     self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
                     self.assertIn(f"PASS: RAK4631 Ethernet runtime scenario {scenario}", checked.stdout)
 
-    def test_room_wires_default_off_after_mesh_begin_and_keeps_renewal_stream(self):
+    def test_room_loads_saved_mode_after_mesh_begin_and_keeps_renewal_stream(self):
         source = (ROOT / "examples/simple_room_server/main.cpp").read_text()
         setup = method(source, "void setup()")
-        configure = setup.index("ethernet_configure(hooks)")
+        configure = setup.index("ethernet_configure(hooks, ethernet_mode_settings.enabled())")
         self.assertLess(setup.index("the_mesh.begin(fs)"), configure)
         self.assertLess(configure, setup.index("ethernet_start_task()"))
         self.assertNotIn("ethernet_configure(hooks, true)", setup)
+        self.assertLess(setup.index("ethernet_mode_settings.begin(volatile_primary_fs ? nullptr : fs)"), configure)
+        self.assertIn("hooks.save =", setup)
         for assignment in ("hooks.prepare = prepareSdEthernet",
                            "hooks.can_release = canReleaseSdEthernet",
                            "hooks.released = releaseSdEthernet",

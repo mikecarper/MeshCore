@@ -151,7 +151,7 @@ class EspNowLifecycleTests(unittest.TestCase):
         observer = (ROOT/'src/helpers/CommonCLI_Observer.cpp').read_text()
         prefs = (ROOT/'src/helpers/CommonCLI.h').read_text()
         self.assertIn('uint8_t espnow_bridge_enabled = 1;', prefs)
-        self.assertIn('setEspNowBridgeState(enable)', common)
+        self.assertIn('handle(enable ? "set espnow on" : "set espnow off"', common)
         self.assertIn('_prefs->espnow_bridge_enabled', common)
         mqtt_switch = method(common, 'if (strncmp(config, "mqtt.enabled ", 13) == 0)')
         self.assertIn('enable ? _callbacks->setMqttBridgeState(true)', mqtt_switch)

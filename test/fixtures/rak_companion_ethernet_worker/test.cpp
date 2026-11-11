@@ -537,6 +537,33 @@ int main(int argc, char** argv) {
       assert(Ethernet.begin_count == 1 && !live_tasks && !spi_active);
       break;
     }
+    case 39: { // Explicit mode saves precede runtime work; automatic shutdown preserves intent.
+      struct Mode { bool allowed = false, enabled = false; unsigned saves = 0; } mode;
+      f.owner.setModePersistenceHook([](void* p, bool enabled) {
+        on_main(); auto& saved = *static_cast<Mode*>(p); ++saved.saves;
+        if (!saved.allowed) return false;
+        saved.enabled = enabled; return true;
+      }, &mode);
+      assert(!f.owner.tryEnable(true) && !mode.enabled && mode.saves == 1);
+      assert(!f.owner.hardwareActive() && !live_tasks && !spi_begins);
+      assert(!mesh::ota::rak4631_ethernet_owns_spi());
+      mode.allowed = true; fail_create.store(true);
+      assert(!f.owner.tryEnable(true) && mode.enabled && mode.saves == 2);
+      assert(std::strstr(f.owner.last_error(), "setting saved"));
+      fail_create.store(false); f.online(); // Saved-on boot/runtime start does not save again.
+      assert(mode.enabled && mode.saves == 2);
+      f.off_allowed = false;
+      assert(!f.owner.tryDisable(true) && mode.saves == 2 && mode.enabled);
+      f.off_allowed = true; mode.allowed = false;
+      assert(!f.owner.tryDisable(true) && mode.enabled && mode.saves == 3);
+      assert(std::strcmp(f.owner.status(), "online") == 0 && live_tasks == 1);
+      mode.allowed = true;
+      assert(f.owner.tryDisable(true) && !mode.enabled && mode.saves == 4);
+      f.off();
+      f.online(); f.owner.disable(); f.off();
+      assert(!mode.enabled && mode.saves == 4); // Interface/power teardown is runtime-only.
+      break;
+    }
     case 18: { // An occupied OTA owner rejects OFF without cancelling the connected session.
       f.online(); f.connect(); f.off_allowed = false; f.pending = true;
       assert(!f.owner.tryDisable()); f.pump(50);

@@ -8,6 +8,27 @@ from test_radio_receive_contract import method
 
 ROOT = Path(__file__).resolve().parents[1]
 
+POLICY_STORE_STUB = r'''
+#pragma once
+using FILESYSTEM = int;
+namespace mesh { namespace wireless {
+struct Policy { uint8_t mode=0,mask=0,primary_espnow=0; };
+struct PolicyStore {
+ Policy data; bool saves=true;
+ bool begin(FILESYSTEM*){return true;}
+ bool save(const Policy& p){if(!saves)return false;data=p;return true;}
+ const Policy& value()const{return data;}
+ bool healthy()const{return true;}
+ bool present()const{return data.mode||data.primary_espnow;}
+};
+inline PolicyStore& policyStore(){static PolicyStore store;return store;}
+}}
+'''
+
+def policy_store_stub(folder):
+    (folder/'helpers').mkdir(exist_ok=True)
+    (folder/'helpers/WirelessPolicyStore.h').write_text(POLICY_STORE_STUB)
+
 HARNESS = r'''
 #include <helpers/WirelessControl.h>
 #include <cassert>
@@ -132,25 +153,49 @@ int main(int argc,char** argv) {
    Fixture f;f.b.active=0;
    f.run("set wifi on");
 #if defined(ESP_PLATFORM)
+#if MESH_CLI_COMPACT_REPLIES
+   assert(strcmp(f.reply,"OK - WiFi on (boot); get wifi.status")==0);
+#else
    assert(strcmp(f.reply,"OK - WiFi enabled for this boot; use get wifi.status to check connection")==0);
+#endif
+#else
+#if MESH_CLI_COMPACT_REPLIES
+   assert(strcmp(f.reply,"OK - wifi on (boot); get wifi")==0);
 #else
    assert(strcmp(f.reply,"OK - wifi on requested (this boot); get wifi for status")==0);
+#endif
 #endif
    assert(f.c.pending()&&f.b.active==0); // Enabling does not claim a connection.
    f.run("get wifi");assert(strcmp(f.reply,"wifi off (pending)")==0);
    f.tick();f.run("get wifi");assert(strcmp(f.reply,"wifi on")==0);
    f.run("set wifi off");
 #if defined(ESP_PLATFORM)
+#if MESH_CLI_COMPACT_REPLIES
+   assert(strcmp(f.reply,"OK - WiFi off (boot)")==0);
+#else
    assert(strcmp(f.reply,"OK - WiFi disabled for this boot")==0);
+#endif
+#else
+#if MESH_CLI_COMPACT_REPLIES
+   assert(strcmp(f.reply,"OK - wifi off (boot); get wifi")==0);
 #else
    assert(strcmp(f.reply,"OK - wifi off requested (this boot); get wifi for status")==0);
+#endif
 #endif
    f.tick();assert(f.b.active==0);
    // Keep the independent ESP-NOW/master control responses unchanged.
    f.run("set espnow on");
+#if MESH_CLI_COMPACT_REPLIES
+   assert(strcmp(f.reply,"OK - espnow on (boot); get espnow")==0);
+#else
    assert(strcmp(f.reply,"OK - espnow on requested (this boot); get espnow for status")==0);
+#endif
    f.tick();f.run("set 2.4ghz off");
+#if MESH_CLI_COMPACT_REPLIES
+   assert(strcmp(f.reply,"OK - 2.4ghz off (boot); get 2.4ghz")==0);
+#else
    assert(strcmp(f.reply,"OK - 2.4ghz off requested (this boot); get 2.4ghz for status")==0);
+#endif
  }
 }
 '''
@@ -390,7 +435,10 @@ class WirelessControlTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp)/'wireless.cpp'
             source.write_text('#include <cstdlib>\n'+HARNESS)
-            for platform, defines in (('other', []), ('esp32', ['-DESP_PLATFORM=1'])):
+            for platform, defines in (
+                    ('other', []), ('esp32', ['-DESP_PLATFORM=1']),
+                    ('nrf52-compact', ['-DNRF52_PLATFORM=1', '-DBLE_PIN_CODE=123456', '-DWITH_MQTT_BRIDGE=1', '-DWITH_ESPNOW_BRIDGE=1', '-DMESH_CLI_COMPACT_REPLIES=1']),
+                    ('esp32-compact', ['-DESP_PLATFORM=1', '-DMESH_CLI_COMPACT_REPLIES=1'])):
                 binary = Path(tmp)/('wireless-' + platform)
                 subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++11', '-Wall', '-Wextra', '-Werror',
                                 *defines, '-I', str(ROOT/'src'), str(source), '-o', str(binary)], check=True)
@@ -419,6 +467,7 @@ class WirelessControlTests(unittest.TestCase):
         adapter += '\n'+method(main, 'static void serviceCompanionBluetoothControl(')
         adapter += '\n'+method(main, 'bool handleCompanionBluetoothCommand(')
         source_text = prefix+r'''
+#include <helpers/WirelessPolicyBackend.h>
 #include "examples/companion_radio/CompanionWireless.h"
 bool companion_wifi_requested=true,companion_wifi_active=true;
 bool companion_wifi_setup_requested=false,companion_wifi_disable_in_progress=false;
@@ -465,7 +514,7 @@ int main(){
  // A stale framed BLE route must not disguise an actual USB ASCII request.
  bluetooth_interface.frame=true;uint8_t frame[176];interface_manager.checkRecvFrame(frame);
  handleCompanionWirelessCommand("set 2.4ghz off",reply,sizeof(reply),CompanionWirelessSource::Usb);
- assert(strstr(reply,"requested"));stop_pending=true;now_ms+=250;
+ assert(strstr(reply,"saved"));stop_pending=true;now_ms+=250;
  mesh::wireless::control().service(now_ms);
  assert(radio_driver.active&&bluetooth_interface.enabled); // wait for WiFi tasks/sockets first
  stop_pending=false;mesh::wireless::control().service(++now_ms);
@@ -542,7 +591,7 @@ int main(){
  // A restore can remove WiFi too. Keep a BLE-only saved snapshot after a
  // failed restore, then simulate both management services recovering.
  companion_wifi_requested=companion_wifi_active=false;wifi_interface.disable();
- interface_manager.enableBluetooth();
+ the_mesh.bluetooth_preference=true;interface_manager.enableBluetooth();
  handleCompanionWirelessCommand("set 2.4ghz off",reply,sizeof(reply),CompanionWirelessSource::Usb);
  now_ms+=250;mesh::wireless::control().service(now_ms);
  bluetooth_interface.enable_fails=true;
@@ -567,11 +616,12 @@ int main(){
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)
             (folder/'Arduino.h').write_text('#pragma once\n#include <cstdint>\n#include <cstddef>\n#include <initializer_list>\n')
+            policy_store_stub(folder)
             (folder/'adapter.cpp').write_text(source_text)
             binary=folder/'adapter'
             subprocess.run([os.environ.get('CXX','g++'), '-std=c++17',
                             '-I',str(folder),'-I',str(ROOT),'-I',str(ROOT/'src'),
-                            '-DESP32=1','-DBLE_PIN_CODE=1','-DWIFI_SSID=""',
+                            '-DESP32=1','-DMESH_COMPANION_WIRELESS_POLICY=1','-DBLE_PIN_CODE=1','-DWIFI_SSID=""',
                             '-DWITH_WEBCONFIG=1','-DMESH_PRIMARY_ESPNOW=1',
                             '-DENABLE_USB_INTERFACE=1','-DCOMPANION_FEATURE_TEXT_TERMINAL=1',
                             '-DCOMPANION_FEATURE_NETWORK_TERMINAL=1',
@@ -607,7 +657,7 @@ int main(){
         }
         for name, bit in gates.items():
             with self.subTest(file=name):
-                self.assertIn(f'control().blocked(mesh::wireless::{bit})', (ROOT/name).read_text())
+                self.assertIn(f'control().{"backgroundBlocked" if bit == "WiFi" else "blocked"}(mesh::wireless::{bit})', (ROOT/name).read_text())
 
     def test_actual_infrastructure_transport_adapter(self):
         source = r'''
@@ -652,6 +702,9 @@ struct {
  bool isMqttBridgeRunning(){return bridge;}
  bool isMqttBridgeStartPending(){return mqtt_pending;}
  bool isEspNowBridgeRunning(){return bridge;}
+ bool espnow_pref=true;
+ bool isEspNowEnabledPreference()const{return espnow_pref;}
+ bool setEspNowEnabledPreference(bool on){espnow_pref=on;return true;}
  bool setMqttBridgeState(bool on){bridge=on;mqtt_pending=false;return true;}
  bool setEspNowBridgeState(bool on){bridge=on;return true;}
  bool stopWebConfig(char*){web=false;stopping=true;return true;}
@@ -747,6 +800,7 @@ int main(){
         with tempfile.TemporaryDirectory() as tmp:
             folder=Path(tmp)
             (folder/'helpers/esp32').mkdir(parents=True)
+            policy_store_stub(folder)
             (folder/'WiFi.h').write_text('#pragma once\n')
             (folder/'helpers/esp32/WiFiRadioPolicy.h').write_text('#pragma once\n')
             (folder/'helpers/esp32/InfrastructureWiFiPreference.h').write_text(r'''

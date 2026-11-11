@@ -769,6 +769,8 @@ jobs:
           python3 -B test/test_fleet_role_wiring.py -v
           python3 -B test/test_fleet_location.py -v
           python3 -B test/test_fleet_radio_schedules.py -v
+          python3 -B test/test_repeater_schedule_persistence.py -v
+          python3 -B test/test_clock_sync_calendar_bound.py -v
           python3 -B test/test_fleet_clock_control.py -v
 
       - name: Verify split test jobs and aggregate gate
@@ -928,6 +930,10 @@ jobs:
       - name: Verify WiFi, ESP-NOW and combined wireless controls
         run: |
           python3 -B test/test_wireless_control.py -v
+          python3 -B test/test_wireless_policy_store.py -v
+          python3 -B test/test_wireless_saved_group.py -v
+          python3 -B test/test_wireless_no_services.py -v
+          python3 -B test/test_wireless_arm_capabilities.py -v
           python3 -B test/test_infrastructure_wifi_preference.py -v
           python3 -B test/test_companion_wifi_persistence.py -v
           python3 -B test/test_webui_saved_intent.py -v
@@ -1822,6 +1828,7 @@ jobs:
           python3 -B test/test_rak_combined_ota.py -v
           python3 -B test/test_rak_ethernet_transmit.py -v
           python3 -B test/test_rak4631_ethernet_runtime.py -v
+          python3 -B test/test_ethernet_mode_settings.py -v
           python3 -B test/test_ethernet_terminal_shutdown.py -v
           python3 -B test/test_rak_sd_receiver.py -v
           python3 -B test/test_rak15002_shared_spi.py -v

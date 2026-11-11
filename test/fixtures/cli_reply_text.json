@@ -525,21 +525,6 @@
       "concise": "Error: %s f,bw,sf,cr,rx|rxtx%s[,preamble|auto]"
     },
     {
-      "file": "src/helpers/WirelessControl.h",
-      "verbose": "Error: requested wireless service unavailable in this build/boot",
-      "concise": "Error: wireless unavailable this build/boot"
-    },
-    {
-      "file": "src/helpers/WirelessControl.h",
-      "verbose": "Error: 2.4ghz is off; use set 2.4ghz on first",
-      "concise": "Error: 2.4ghz off; set 2.4ghz on first"
-    },
-    {
-      "file": "src/helpers/WirelessControl.h",
-      "verbose": "Error: use set wifi/espnow on|off [force]; set 2.4ghz on [all|force]|off [force]",
-      "concise": "Error: set wifi/espnow on|off [force]; set 2.4ghz on [all|force]|off [force]"
-    },
-    {
       "file": "src/helpers/PowerSavingDiagnostics.h",
       "verbose": "OK - power diagnostics %s (RAM only; sleep policy unchanged)",
       "concise": "OK - power diag %s (RAM only; sleep policy unchanged)"
@@ -1768,18 +1753,153 @@
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "ERR usb.raw.max requires a local transport",
       "concise": "ERR local transport only"
+    },
+    {
+      "file": "examples/simple_repeater/MyMesh.cpp",
+      "verbose": "Error: set or sync clock before radioat",
+      "concise": "Error: set/sync clock"
+    },
+    {
+      "file": "examples/simple_repeater/MyMesh.cpp",
+      "verbose": "Error: radioat save unconfirmed; live queue unchanged",
+      "concise": "Error: save unconfirmed"
+    },
+    {
+      "file": "examples/simple_repeater/MyMesh.cpp",
+      "verbose": "Error: radioat deletion not saved",
+      "concise": "Error: save unconfirmed"
+    },
+    {
+      "file": "examples/simple_repeater/MyMesh.cpp",
+      "verbose": "Err - GPS retention save unconfirmed; active setting unchanged",
+      "concise": "Err - save unconfirmed"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "Error: use set wifi/espnow on|off [force]; set 2.4ghz on [all|force]|off [force]",
+      "concise": "Error: set wifi/espnow on|off [force]; set 2.4ghz on [all]|off [force]"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "Error: requested wireless service unavailable in this build/boot",
+      "concise": "Error: wireless unavailable"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "Error: scheduled sleep; use set power.awake <minutes> first",
+      "concise": "Error: asleep; set power.awake <minutes>"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "Error: wireless change pending; get 2.4ghz for status",
+      "concise": "Error: pending; get 2.4ghz"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "Error: 2.4ghz is off; use set 2.4ghz on first",
+      "concise": "Error: 2.4ghz off; set 2.4ghz on"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "Error: no remaining management connection; use %s or USB/Ethernet",
+      "concise": "Error: no remaining link; use %s/USB/Ethernet"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "Error: enable-all preference unavailable; use set 2.4ghz on",
+      "concise": "Error: cannot save all; set 2.4ghz on"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "OK - WiFi setting saved; reboot to apply",
+      "concise": "OK - saved; reboot to apply"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "Error: ESP-NOW setting could not be saved",
+      "concise": "Error: save unconfirmed"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "Error: ESP-NOW save failed; previous settings restore unconfirmed",
+      "concise": "Error: save/restore unconfirmed"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "Error: Bluetooth setting could not be saved",
+      "concise": "Error: save unconfirmed"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "Error: Bluetooth save failed; previous settings restore unconfirmed",
+      "concise": "Error: save/restore unconfirmed"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "Error: 2.4ghz setting could not be saved",
+      "concise": "Error: save unconfirmed"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "Error: 2.4ghz save failed; previous settings restore unconfirmed",
+      "concise": "Error: save/restore unconfirmed"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "OK - WiFi enabled (saved); use get wifi.status to check connection",
+      "concise": "OK - WiFi on (saved); get wifi.status"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "OK - WiFi disabled (saved)",
+      "concise": "OK - WiFi off (saved)"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "OK - WiFi enabled for this boot; use get wifi.status to check connection",
+      "concise": "OK - WiFi on (boot); get wifi.status"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "OK - WiFi disabled for this boot",
+      "concise": "OK - WiFi off (boot)"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": "OK - %s %s requested (this boot); get %s for status",
+      "concise": "OK - %s %s (boot); get %s"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": " (cancelled: connection lost)",
+      "concise": " (cancelled: link lost)"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": " (cancelled: saved setting could not be restored)",
+      "concise": " (cancelled: saved unconfirmed)"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": " (runtime apply failed; setting saved)",
+      "concise": " (apply failed; setting saved)"
+    },
+    {
+      "file": "src/helpers/WirelessControl.h",
+      "verbose": " (runtime apply failed)",
+      "concise": " (apply failed)"
     }
   ],
   "noncompact_tokens_sha256": {
-    "src/helpers/CommonCLI.cpp": "a68e204a8af04a95c1cddf5f136acee3e419ccd7af53b6ef53ba52024714b0e7",
-    "examples/simple_repeater/MyMesh.cpp": "3b3372cfdff09ffaf5dd7f0d6ff2da9828b5d37d488f0747413ceb83b0a93403",
+    "src/helpers/CommonCLI.cpp": "8509dd4c8de16afa8617ae380f2bd4ac9021881351ff80c73d83c95eb05dd53f",
+    "examples/simple_repeater/MyMesh.cpp": "c4d5d8e80b1e63cac678171ef01b9989ce18bbd1a25738fe9fa17e272bc70a0d",
     "src/helpers/RadioProfileCLI.cpp": "97ea304775ffc7c10ae7f705a1337124434af8f53ee108c1e04df88dde1c4395",
-    "src/helpers/WirelessControl.h": "d96f79fbc5736d9e08d4839c76b4af5c6cfccab5d3c2f01226cdbfeed1da56c5",
+    "src/helpers/WirelessControl.h": "4d6bb50c5192bc9934723ba2fe3550da8cfe44e0ff17288aff2883c2ea415cdc",
     "src/helpers/PowerSavingDiagnostics.h": "18b78f5780046ea8c772c4ce6c337741ae0c027039d9399c94c5f4205d114000",
     "src/helpers/FloodAdvertCLI.h": "0f378e4d0f6c3b9b79991068a4b4208139484d2144ee1d7c5094d39043463be4",
     "src/helpers/LedSettings.cpp": "df0681234ca1337148ad59caa935857bc692f98bf18603ca6d099c0382028400",
     "src/helpers/StorageLayout.cpp": "5dd1c8bcbe2902e1f22d14f9ab425465bdc38926fae23989987d850b484cbb18",
-    "examples/companion_radio/MyMesh.cpp": "97827df320f6fb76d910b66357073567e01f42a2f23f1c5db52c747566cfcc8e",
+    "examples/companion_radio/MyMesh.cpp": "b6f22f2f5ac5bd6be85c0c4dae1da3107fe0da173c8095fbe8044d6d99e6bcfd",
     "src/helpers/CommonRadioPrefs.cpp": "de964f85c2645ff238cdd75fefdf15c97a09edcd5fff953375e0c02238c5db5c",
     "examples/companion_radio/CompanionRetry.h": "e0ae10c7b2f778346f4645c4e147d87e1fbc7f8b99484752a8eed914bb21380f",
     "examples/companion_radio/Notifications.cpp": "74983770da7bcdf89af1b3e231bcf8058864e486cb99a425a369db859bd0ae43",

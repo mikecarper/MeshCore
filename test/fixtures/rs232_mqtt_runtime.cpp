@@ -6,6 +6,7 @@
 #include <initializer_list>
 #include <new>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/WirelessControl.h>
 #include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/bridges/ESPNowBridgeFormat.h>
 #include <helpers/bridges/RS232PowerSettings.h>
@@ -220,6 +221,7 @@ public:
   FakeAlerter _alerter;
   mesh::LocalIdentity self_id;
   FakeRadio radio; FakeRadio* _radio = &radio;
+  uint8_t wirelessCommandSource(uint32_t) { return mesh::wireless::Independent; }
   void* _mgr = nullptr; void* _ms = nullptr;
   void* getRTCClock() { return nullptr; }
   FakeRng rng;
@@ -275,6 +277,20 @@ public:
   void savePrefs() { ++saves; stored = *_prefs; }
   bool trySavePrefs() { if (fail_save) return false; savePrefs(); return true; }
   void set(const char* input, char* reply) {
+    const uint32_t sender_timestamp = 0;
+    (void)sender_timestamp;
+    struct Drain {
+      char* reply;
+      ~Drain() {
+        auto& control = mesh::wireless::control();
+        if (!control.pending()) return;
+        fake_millis += 250;
+        control.service(fake_millis);
+        char status[160];
+        control.handle("get espnow", status, sizeof(status), fake_millis, mesh::wireless::Independent);
+        if (strstr(status, "failed")) strcpy(reply, status);
+      }
+    } drain{reply};
     char config[256] = {}; assert(strlen(input) < sizeof(config)); strcpy(config, input);
     @SET_BRANCHES@
   }
@@ -288,12 +304,38 @@ public:
     }
   }
 };
+#ifdef WITH_ESPNOW_BRIDGE
+class RuntimeBackend : public mesh::wireless::Backend {
+  MyMesh& mesh_;
+  CommonCLI& cli_;
+public:
+  RuntimeBackend(MyMesh& mesh, CommonCLI& cli) : mesh_(mesh), cli_(cli) {}
+  uint8_t available() const override { return mesh::wireless::EspNow; }
+  uint8_t enabled() const override {
+    return mesh_.isEspNowBridgeRunning() ? uint8_t(mesh::wireless::EspNow) : 0;
+  }
+  uint8_t clients() const override { return mesh::wireless::Independent; }
+  bool hasEspNowPreference() const override { return true; }
+  bool espNowPreference() const override { return mesh_._prefs.espnow_bridge_enabled; }
+  bool saveEspNowPreference(bool on) override {
+    const auto previous = mesh_._prefs.espnow_bridge_enabled;
+    mesh_._prefs.espnow_bridge_enabled = on;
+    if (cli_.trySavePrefs()) return true;
+    mesh_._prefs.espnow_bridge_enabled = previous;
+    return false;
+  }
+  mesh::wireless::Result set(uint8_t, bool on) override {
+    return mesh_.setEspNowBridgeState(on) ? mesh::wireless::Result::Done : mesh::wireless::Result::Failed;
+  }
+};
+#endif
 static void expect_get(CommonCLI& cli, const char* key, const char* expected) {
   char reply[256] = {}; cli.get(key, reply); assert(strcmp(reply, expected) == 0);
 }
 int main() {
   {
     MyMesh fresh; fresh.defaults(); CommonCLI cli(fresh);
+    RuntimeBackend backend(fresh, cli); mesh::wireless::control().begin(backend);
     assert(fresh._prefs.bridge_enabled && fresh._prefs.espnow_bridge_enabled);
     assert(!fresh._prefs.rs232_bridge_enabled);
     const unsigned before = Serial2.begins;
@@ -309,7 +351,7 @@ int main() {
     assert(fresh.bridgesPreventSleep());  // Running MQTT still owns the radio.
     char pause_reply[256] = {};
     cli.set("espnow.enabled off", pause_reply);
-    assert(strcmp(pause_reply, "OK") == 0);
+    assert(strncmp(pause_reply, "OK", 2) == 0 && strstr(pause_reply, "saved"));
     assert(fresh.requestMqttBridgeStop());
     assert(fresh.isMqttBridgeStopping() && fresh.bridgesPreventSleep());
     fresh.serviceBridges();
@@ -320,10 +362,19 @@ int main() {
     assert(!fresh.bridgesPreventSleep());
     assert(fresh.setBridgeState(true));
     assert(fresh.isMqttBridgeRunning() && fresh.bridgesPreventSleep());
+    const unsigned failed_save_begins = fresh.espnow_bridge.begins;
+    const unsigned failed_save_count = cli.saves;
+    cli.fail_save = true;
     cli.set("espnow.enabled on", pause_reply);
-    assert(strcmp(pause_reply, "OK") == 0 && fresh.isEspNowBridgeRunning());
+    assert(strncmp(pause_reply, "Error", 5) == 0 && !fresh._prefs.espnow_bridge_enabled);
+    assert(!fresh.isEspNowBridgeRunning() && fresh.isMqttBridgeRunning());
+    assert(fresh.espnow_bridge.begins == failed_save_begins && cli.saves == failed_save_count);
+    cli.fail_save = false;
+    cli.set("espnow.enabled on", pause_reply);
+    assert(strncmp(pause_reply, "OK", 2) == 0 && strstr(pause_reply, "saved") && fresh.isEspNowBridgeRunning());
   }
-  MyMesh mesh; mesh.defaults(); mesh.boot(); CommonCLI cli(mesh);
+  MyMesh mesh; mesh.defaults(); CommonCLI cli(mesh);
+  RuntimeBackend backend(mesh, cli); mesh::wireless::control().begin(backend); mesh.boot();
   char reply[256] = {};
   cli.set("rs232.enabled on", reply);
   assert(strcmp(reply, "OK") == 0 && mesh.isRs232BridgeRunning());
@@ -398,7 +449,7 @@ int main() {
   cli.set("bridge.format raw", reply); assert(strncmp(reply, "OK", 2) == 0);
   assert(Serial2.begins == uart_before_wireless && mesh.mqtt_bridge->begins == wifi_starts);
   cli.set("bridge.enabled off", reply);
-  assert(strcmp(reply, "OK") == 0 && !mesh.isEspNowBridgeRunning());
+  assert(strncmp(reply, "OK", 2) == 0 && strstr(reply, "saved") && !mesh.isEspNowBridgeRunning());
   assert(mesh.isMqttBridgeRunning() && mesh.isRs232BridgeRunning());
   // A failed intent save must not signal an uncancellable worker stop.
   cli.fail_save = true;
@@ -429,7 +480,7 @@ int main() {
   assert(strstr(reply, "unconfirmed") && strstr(reply, "reboot") && !mesh._prefs.bridge_enabled);
   assert(!mesh.isMqttBridgeRunning());
   cli.fail_save = false;
-  cli.set("espnow.enabled on", reply); assert(strcmp(reply, "OK") == 0);
+  cli.set("espnow.enabled on", reply); assert(strncmp(reply, "OK", 2) == 0 && strstr(reply, "saved"));
   cli.set("mqtt.enabled on", reply); assert(strcmp(reply, "OK") == 0);
   mesh.serviceBridges(); assert(mesh.isEspNowBridgeRunning());
   // Browser OTA releases only WiFi users and leaves the enabled UART running.

@@ -141,6 +141,12 @@ public:
   mesh::RxInactivityWatchdog rx_inactivity_watchdog;
   mesh::RepeaterRadioTiming radio_timing;
   ScheduledRadioSetting scheduled_radio_settings[MAX_SCHEDULED_RADIO_SETTINGS]{};
+  bool schedule_save_ok = true, schedule_clock_ready = true;
+  unsigned schedule_writes = 0;
+  bool saveScheduledRadioSettings(int = -1, const ScheduledRadioSetting* = nullptr, const uint8_t* = nullptr) {
+    ++schedule_writes; return schedule_save_ok;
+  }
+  bool scheduledRadioClockReady() const { return schedule_clock_ready; }
   uint64_t uptime_millis = 1;
   uint32_t last_millis = 1;
   uint32_t next_local_advert = 0, next_flood_advert = 0;

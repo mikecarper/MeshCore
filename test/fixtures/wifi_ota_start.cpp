@@ -404,7 +404,7 @@ int main() {
   assert(control.masterOff() && control.blocked(mesh::wireless::WiFi));
   WiFi.allow_ap = true;
   start(false, "192.168.4.1", "Join WiFi MeshCore-OTA");
-  assert(!control.masterOff() && !control.blocked(mesh::wireless::WiFi));
+  assert(control.masterOff() && !control.blocked(mesh::wireless::WiFi));
   assert(control.blocked(mesh::wireless::Bluetooth) && control.blocked(mesh::wireless::EspNow));
   assert(board.stopOTAUpdate(reply.text));
 #ifdef LIGHTWEIGHT_WIFI_OTA

@@ -29,7 +29,7 @@ struct {
 namespace mesh {
 namespace wireless {
 enum { WiFi = 1 };
-struct Control { bool blocked(int) const { return false; } };
+struct Control { bool blocked(int) const { return false; } bool backgroundBlocked(int service) const {return blocked(service);} };
 Control& control() { static Control value; return value; }
 }
 namespace wifi {

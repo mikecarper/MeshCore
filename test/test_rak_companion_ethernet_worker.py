@@ -117,6 +117,12 @@ class RakCompanionEthernetWorkerTests(unittest.TestCase):
                     result = subprocess.run([str(binary), str(scenario)], text=True, capture_output=True, timeout=10)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_saved_mode_admission_failures_and_runtime_shutdown(self):
+        with tempfile.TemporaryDirectory(prefix="meshcore-companion-ethernet-mode-") as folder:
+            binary = build_worker(self, folder)
+            checked = subprocess.run([str(binary), "39"], text=True, capture_output=True, timeout=10)
+            self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+
     def test_stop_notification_before_publication_negative_controls(self):
         driver = ROOT / "src/helpers/ethernet/RAK13800/RAK13800EthernetInterface.cpp"
         source = driver.read_text()
@@ -124,7 +130,7 @@ class RakCompanionEthernetWorkerTests(unittest.TestCase):
                    "  SerialEthernetInterface::disable();")
         unsafe = ("  SerialEthernetInterface::disable();\n  _wanted.store(false);\n"
                   "  _state.store(State::Stopping);")
-        for signature, scenario in (("bool RAK13800EthernetInterface::tryDisable()", 17),
+        for signature, scenario in (("bool RAK13800EthernetInterface::tryDisable(bool persist)", 17),
                 ("bool RAK13800EthernetInterface::shutdownForPowerOff(", 38)):
             with self.subTest(shutdown=signature), tempfile.TemporaryDirectory(
                     prefix="meshcore-ethernet-stop-order-") as folder:

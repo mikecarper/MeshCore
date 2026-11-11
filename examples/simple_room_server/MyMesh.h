@@ -596,6 +596,33 @@ public:
   MQTTPrefs* getObserverPrefs() { return _cli.getObserverPrefs(); }
 #endif
 
+#ifdef WITH_ESPNOW_BRIDGE
+  bool isEspNowEnabledPreference() const {
+#if defined(WITH_MQTT_BRIDGE) || defined(WITH_RS232_BRIDGE) || defined(ESPNOW_BRIDGE_MERGED)
+    return _prefs.espnow_bridge_enabled != 0;
+#else
+    return _prefs.bridge_enabled != 0;
+#endif
+  }
+  bool setEspNowEnabledPreference(bool enabled) {
+    const uint8_t previous_bridge = _prefs.bridge_enabled;
+    const uint8_t previous_espnow = _prefs.espnow_bridge_enabled;
+#if defined(WITH_MQTT_BRIDGE) || defined(WITH_RS232_BRIDGE) || defined(ESPNOW_BRIDGE_MERGED)
+    _prefs.espnow_bridge_enabled = enabled;
+#endif
+#if !defined(WITH_MQTT_BRIDGE) && !defined(WITH_RS232_BRIDGE)
+    _prefs.bridge_enabled = enabled;
+#endif
+    if (_cli.saveCommonPrefs()) return true;
+    _prefs.bridge_enabled = previous_bridge;
+    _prefs.espnow_bridge_enabled = previous_espnow;
+    // Publication can precede a failed verification. Confirm the previous
+    // image again before a later reboot may load it.
+    _cli.saveCommonPrefs();
+    return false;
+  }
+#endif
+
   void savePrefs(
       PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Common) override {
     _cli.savePrefs(_fs, scope);
@@ -784,6 +811,7 @@ public:
   // MQTT's WiFi task associates asynchronously. ESP-NOW must wait for that
   // station interface so it can share the AP-selected channel safely.
   bool startSharedEspNowBridgeIfReady() {
+    if (mesh::wireless::control().blocked(mesh::wireless::EspNow)) return false;
 #ifdef WITH_WEBCONFIG
     if (_unconfigured_setup_espnow_suspended) return false;
 #endif
@@ -814,7 +842,7 @@ public:
   }
 
   bool setMqttBridgeState(bool enable) override {
-    if (enable && mesh::wireless::control().blocked(mesh::wireless::WiFi)) return false;
+    if (enable && mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) return false;
     if (!enable) {
       if (bridge) bridge->end();
       _alerter.setBridge(nullptr);
@@ -870,6 +898,8 @@ public:
   }
 
   bool setEspNowBridgeState(bool enable) override {
+    if (enable && mesh::wireless::control().blocked(mesh::wireless::EspNow)
+        && !mesh::wireless::control().allowService(mesh::wireless::EspNow)) return false;
     if (!enable) {
       if (espnow_bridge.isRunning()) espnow_bridge.end();
       shared_espnow_retry_at = 0;
@@ -891,7 +921,7 @@ public:
   }
 
   bool restartMqttBridge() override {
-    if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) return true;
+    if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) return true;
 #ifdef WITH_WEBCONFIG
     if (_wc_batch_active) {
       _wc_restart_pending = true;
@@ -926,7 +956,7 @@ public:
 
   bool setBridgeState(bool enable) override {
 #if defined(WITH_MQTT_BRIDGE) && !defined(WITH_ESPNOW_BRIDGE)
-    if (enable && mesh::wireless::control().blocked(mesh::wireless::WiFi)) return false;
+    if (enable && mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) return false;
 #endif
 #ifdef WITH_MQTT_BRIDGE
     if (!enable && bridge && bridge->isStartPending()) bridge->end();
@@ -1004,7 +1034,7 @@ public:
 
   bool restartBridge() override {
 #if defined(WITH_MQTT_BRIDGE) && !defined(WITH_ESPNOW_BRIDGE)
-    if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) return true;
+    if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) return true;
 #endif
 #if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
 #ifdef WITH_WEBCONFIG

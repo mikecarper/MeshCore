@@ -59,6 +59,10 @@
 #ifdef ETHERNET_ENABLED
   #define ETHERNET_CLI_BANNER "MeshCore Repeater CLI"
   #include <helpers/nrf52/EthernetCLI.h>
+#if defined(RAK4631_COMBINED_ETHERNET)
+  #include <helpers/nrf52/EthernetModeSettings.h>
+  static mesh::nrf52::EthernetModeSettings ethernet_mode_settings;
+#endif
 #endif
 
 #if defined(ESP32) && defined(CONFIG_BT_ENABLED) && !defined(BLE_PIN_CODE)
@@ -212,7 +216,9 @@ static void serviceRequiredPsramFailure() {
 #endif
 
 void setup() {
+#ifdef MESH_INFRASTRUCTURE_WIRELESS_POLICY
   mesh::wireless::control().begin(infrastructure_wireless);
+#endif
   mesh::prepareUsbLoggingPort();
   Serial.begin(115200);
 #if MESH_USB_CONSOLE_COOPERATIVE
@@ -285,6 +291,16 @@ void setup() {
 #if defined(NRF52_PLATFORM)
   if (volatile_primary_fs) regulator_prefs_fs = nullptr;
 #endif
+#ifdef MESH_INFRASTRUCTURE_WIRELESS_POLICY
+  mesh::wireless::loadBootPolicy(regulator_prefs_fs,
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+      true
+#else
+      false
+#endif
+  );
+#endif
+
   mesh::leds::beginSettings(board, regulator_prefs_fs);
 #if defined(MESH_SOLARXIAO_POWER) && MESH_SOLARXIAO_POWER
   mesh::solar::beginSettings(board, regulator_prefs_fs, MESH_ENABLE_TELEMETRY_HISTORY);
@@ -455,7 +471,11 @@ void setup() {
   mesh::hilStartupTrace("sensors_ready");
 
   mesh::hilStartupTrace("mesh_begin");
+#if defined(NRF52_PLATFORM)
+  the_mesh.begin(fs, !volatile_primary_fs);
+#else
   the_mesh.begin(fs);
+#endif
   mesh::hilStartupTrace("mesh_ready");
 #if defined(OTA_BOOTLOADER_MIGRATION)
   mesh::ota::bootloader_migration_begin(volatile_primary_fs ? nullptr : fs);
@@ -510,13 +530,15 @@ void setup() {
 #ifdef ETHERNET_ENABLED
 #if defined(RAK4631_COMBINED_ETHERNET)
   EthernetCliHooks hooks;
+  ethernet_mode_settings.begin(volatile_primary_fs ? nullptr : fs);
+  hooks.save = [](void*, bool enabled) { return ethernet_mode_settings.setEnabled(enabled); };
   hooks.prepare = prepareCombinedEthernet;
   hooks.can_release = canReleaseCombinedEthernet;
   hooks.released = releaseCombinedEthernet;
 #if defined(OTA_RAK15002_SD_STORE)
   hooks.storage_conflict = [](void*) { return mesh::ota::ota_rak15002_sd_card_present(); };
 #endif
-  ethernet_configure(hooks);  // First prototype defaults OFF on every restart.
+  ethernet_configure(hooks, ethernet_mode_settings.enabled());
 #endif
   ethernet_start_task();
 #endif

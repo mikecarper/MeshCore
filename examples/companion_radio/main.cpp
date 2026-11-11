@@ -29,6 +29,12 @@
 #include <helpers/CompanionReader.h>
 #include "CompanionBluetooth.h"
 #include "CompanionWireless.h"
+#if defined(BLE_PIN_CODE) || (defined(ESP32) && defined(WIFI_SSID)) \
+    || (defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)) \
+    || (defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW)
+#define MESH_COMPANION_WIRELESS_POLICY 1
+#include <helpers/WirelessPolicyBackend.h>
+#endif
 #include "CompanionWiFi.h"
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
 #include <WiFi.h>
@@ -233,6 +239,10 @@ static bool isNetworkTerminalActive();
 #if defined(ETHERNET_ENABLED)
   #include <helpers/ethernet/EthernetInterface.h>
   ETHERNET_CLASS ethernet_interface;
+#if defined(OTA_RAK15002_SD_STORE) && defined(ETHERNET_USE_RAK13800)
+  #include <helpers/nrf52/EthernetModeSettings.h>
+  static mesh::nrf52::EthernetModeSettings ethernet_mode_settings;
+#endif
 #endif
 
 // include hardware serial interface
@@ -713,11 +723,11 @@ bool handleRak4631PeripheralCommand(const char* command, char* reply, size_t cap
     if (value && strcmp(value, "on") && strcmp(value, "off")) {
       snprintf(reply, capacity, "Error: use set eth on|off");
     } else if (value && !(strcmp(value, "on") == 0
-        ? ethernet_interface.tryEnable() : ethernet_interface.tryDisable())) {
+        ? ethernet_interface.tryEnable(true) : ethernet_interface.tryDisable(true))) {
       snprintf(reply, capacity, "Error: %s", ethernet_interface.last_error());
     } else {
-      snprintf(reply, capacity, "%s eth=%s; RAK13800 (this boot)", get ? ">" : "OK -",
-               ethernet_interface.status());
+      snprintf(reply, capacity, "%s eth=%s; saved=%s; RAK13800", get ? ">" : "OK -",
+               ethernet_interface.status(), ethernet_mode_settings.enabled() ? "on" : "off");
     }
     return true;
   }
@@ -2330,7 +2340,7 @@ static bool saveCompanionWiFiPreference(bool enabled) {
   }
 
   void requestCompanionWiFiSetup() {
-    if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) return;
+    if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) return;
     companion_wifi_setup_stop_requested = false;
     companion_wifi_setup_requested = true;
   }
@@ -2747,7 +2757,7 @@ static bool saveCompanionWiFiPreference(bool enabled) {
   }
 
   static void startCompanionWiFi() {
-    if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) return;
+    if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) return;
     if (companion_wifi_active) return;
     if (!mesh::wifi::stationMutationAllowed()) return;
 
@@ -3131,7 +3141,8 @@ static bool saveCompanionWiFiPreference(bool enabled) {
     companion_bluetooth_initialized = true;
     companion_bluetooth_start_failure[0] = 0;
     serviceCompanionUsbBluetoothPriority();
-    if (interface_manager.isEnabled() && the_mesh.isBluetoothEnabledPreference()) {
+    if (interface_manager.isEnabled() && the_mesh.isBluetoothEnabledPreference()
+        && !mesh::wireless::control().blocked(mesh::wireless::Bluetooth)) {
       interface_manager.enableBluetooth();
     }
   }
@@ -3464,8 +3475,28 @@ bool handleCompanionBluetoothCommand(const char* command, char* reply,
   }
 #endif
 
-class CompanionWirelessBackend : public mesh::wireless::Backend {
+class CompanionWirelessBackend : public
+#ifdef MESH_COMPANION_WIRELESS_POLICY
+    mesh::wireless::PolicyBackend
+#else
+    mesh::wireless::Backend
+#endif
+{
 public:
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  bool hasEspNowPreference() const override { return true; }
+  bool espNowPreference() const override { return primaryEspNowPreference(); }
+  bool saveEspNowPreference(bool enabled) override {
+    return savePrimaryEspNowPreference(enabled);
+  }
+#endif
+#if defined(BLE_PIN_CODE)
+  bool hasBluetoothPreference() const override { return true; }
+  bool bluetoothPreference() const override { return the_mesh.isBluetoothEnabledPreference(); }
+  bool saveBluetoothPreference(bool enabled) override {
+    return the_mesh.setBluetoothEnabledPreference(enabled);
+  }
+#endif
 #if (defined(ESP32) && defined(WIFI_SSID)) \
     || (defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE))
   bool hasWiFiPreference() const override { return true; }
@@ -3811,6 +3842,16 @@ void setup() {
   if (!mesh::storage::internalPrimaryFilesystemReady(primary_fs_boot)
       || store.isVolatilePrimaryFS()) regulator_prefs_fs = nullptr;
 #endif
+#ifdef MESH_COMPANION_WIRELESS_POLICY
+  mesh::wireless::loadBootPolicy(regulator_prefs_fs,
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+      true
+#else
+      false
+#endif
+  );
+#endif
+
 #if !defined(WIO_E5_MINI_HEADLESS_COMPANION_UI)
   mesh::leds::beginSettings(board, regulator_prefs_fs);
 #endif
@@ -4041,7 +4082,9 @@ void setup() {
 
   // Bind the saved policy only after MyMesh has loaded the persisted prefs,
   // and before any WiFi interface or automatic service can start.
+#ifdef MESH_COMPANION_WIRELESS_POLICY
   mesh::wireless::control().begin(companion_wireless);
+#endif
 
 #if COMPANION_FEATURE_BLE_MOTA_SOURCE
   the_mesh.setMotaSourceControl(&ble_mota_source_control);
@@ -4063,7 +4106,8 @@ void setup() {
 #if defined(BLE_PIN_CODE)
   // Keep stack registration available for a later USB `set bluetooth on`,
   // without advertising even briefly when startup enables all interfaces.
-  interface_manager.setBluetoothAutoEnable(the_mesh.isBluetoothEnabledPreference());
+  interface_manager.setBluetoothAutoEnable(the_mesh.isBluetoothEnabledPreference()
+      && !mesh::wireless::control().blocked(mesh::wireless::Bluetooth));
   serviceCompanionUsbBluetoothPriority();
 #endif
 
@@ -4225,7 +4269,8 @@ void setup() {
   StrHelper::strncpy(pico_wifi_pwd,
       wifi_prefs->wifi_ssid[0] ? wifi_prefs->wifi_pwd : WIFI_PWD,
       sizeof(pico_wifi_pwd));
-  pico_wifi_active = wifi_prefs->wifi_enabled && pico_wifi_ssid[0];
+  pico_wifi_active = wifi_prefs->wifi_enabled && pico_wifi_ssid[0]
+      && !mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi);
   if (pico_wifi_active) {
     WiFi.setTimeout(WIFI_RETRY_TIMEOUT);
     WiFi.beginNoBlock(pico_wifi_ssid, pico_wifi_pwd);
@@ -4318,8 +4363,14 @@ void setup() {
 #if defined(OTA_RAK15002_SD_STORE) && defined(ETHERNET_USE_RAK13800)
   ethernet_interface.setSpiOwnershipHooks(prepareCompanionRakEthernet,
       canReleaseCompanionRakEthernet, releasedCompanionRakEthernet, nullptr);
+  ethernet_mode_settings.begin(store.isVolatilePrimaryFS() ? nullptr : store.getPrimaryFS());
+  ethernet_interface.setModePersistenceHook(
+      [](void*, bool enabled) { return ethernet_mode_settings.setEnabled(enabled); }, nullptr);
 #endif
   ethernet_interface.begin();
+#if defined(OTA_RAK15002_SD_STORE) && defined(ETHERNET_USE_RAK13800)
+  if (ethernet_mode_settings.enabled()) (void)ethernet_interface.tryEnable();
+#endif
   interface_manager.addInterface(InterfaceType::Ethernet, &ethernet_interface);
 #endif
 
@@ -4439,7 +4490,7 @@ void loop() {
   board.prepareSleepCycle();
 #endif
 #if defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
-  if (pico_wifi_active && !mesh::wireless::control().blocked(mesh::wireless::WiFi)
+  if (pico_wifi_active && !mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)
       && WiFi.status() != WL_CONNECTED
       && static_cast<uint32_t>(millis() - last_wifi_reconnect_attempt)
           >= WIFI_RETRY_INTERVAL) {

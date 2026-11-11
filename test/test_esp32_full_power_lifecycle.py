@@ -220,6 +220,8 @@ bool WebConfigServer::allow_start = true;
 constexpr unsigned OTA_TX_DRAIN_TIMEOUT_MS = 1, OTA_MQTT_STOP_SETTLE_MS = 1;
 const char* ota_resolve_base(int) { return "test"; }
 struct MyMesh {
+  bool isEspNowEnabledPreference() const { return _prefs.espnow_bridge_enabled != 0; }
+  bool setEspNowEnabledPreference(bool enabled) { _prefs.espnow_bridge_enabled=enabled;return true; }
   Prefs _prefs; RoleCLI _cli;
   Prefs* getNodePrefs() { return &_prefs; }
   ObserverPrefs* getObserverPrefs() { return &_cli.prefs; }

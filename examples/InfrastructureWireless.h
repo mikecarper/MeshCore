@@ -2,6 +2,10 @@
 
 // Included by the infrastructure main files after the mesh and transport objects.
 #include <helpers/WirelessControl.h>
+#if defined(WITH_WEBCONFIG) || defined(WITH_MQTT_BRIDGE) || defined(WITH_UDP_BRIDGE) || defined(WITH_ESPNOW_BRIDGE) || (defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW)
+#define MESH_INFRASTRUCTURE_WIRELESS_POLICY 1
+#include <helpers/WirelessPolicyBackend.h>
+#endif
 #if defined(ESP32) && (defined(WITH_WEBCONFIG) || defined(WITH_MQTT_BRIDGE) || defined(WITH_UDP_BRIDGE) || (defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW))
 #include <WiFi.h>
 #include <helpers/esp32/WiFiRadioPolicy.h>
@@ -10,7 +14,13 @@
 #include <helpers/esp32/InfrastructureWiFiPreference.h>
 #endif
 
-class InfrastructureWirelessBackend : public mesh::wireless::Backend {
+class InfrastructureWirelessBackend : public
+#ifdef MESH_INFRASTRUCTURE_WIRELESS_POLICY
+    mesh::wireless::PolicyBackend
+#else
+    mesh::wireless::Backend
+#endif
+{
   bool wifi_saved_ = false, resume_web_ = false, resume_mqtt_ = false;
 #ifdef WITH_UDP_BRIDGE
   bool resume_udp_ = false;
@@ -32,6 +42,23 @@ public:
 #endif
     }
     return true;
+  }
+#endif
+#if defined(WITH_ESPNOW_BRIDGE) || (defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW)
+  bool hasEspNowPreference() const override { return true; }
+  bool espNowPreference() const override {
+#ifdef WITH_ESPNOW_BRIDGE
+    return the_mesh.isEspNowEnabledPreference();
+#else
+    return primaryEspNowPreference();
+#endif
+  }
+  bool saveEspNowPreference(bool enabled) override {
+#ifdef WITH_ESPNOW_BRIDGE
+    return the_mesh.setEspNowEnabledPreference(enabled);
+#else
+    return savePrimaryEspNowPreference(enabled);
+#endif
   }
 #endif
   uint8_t available() const override {

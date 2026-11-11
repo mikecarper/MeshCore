@@ -381,7 +381,7 @@ static void portalTask(void* arg) {
 WiFiSetupPortal::WiFiSetupPortal() : _active(false), _impl(nullptr) {}
 
 bool WiFiSetupPortal::begin(const char* ap_name, SaveCallback save_callback, void* context) {
-  if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) return false;
+  if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) return false;
   if (_active) return true;
   PortalImpl* impl = static_cast<PortalImpl*>(_impl);
   if (!impl) {

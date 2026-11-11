@@ -318,6 +318,12 @@ WiFi startup. It keeps their individual settings and WiFi credentials, so
 enabling WiFi again can restore the configured services. ESP-NOW has its own
 control.
 
+`set espnow on/off` and `set espnow.enabled on/off` likewise save the same
+ESP-NOW choice on bridge and primary ESP-NOW builds. `set 2.4ghz off` saves a
+combined pause across reboot without changing individual service preferences.
+Use `set 2.4ghz on` to resume, or `set 2.4ghz on all` to enable and save every
+service usable in the current boot.
+
 `get wifi.enabled` reports the saved setting; `get wifi` reports live WiFi
 activity. `set webui off` remains separate: it saves the web interface's startup
 choice without disabling MQTT or UDP. The normal management-connection check

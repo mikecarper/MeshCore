@@ -312,8 +312,21 @@ struct {bool ota=false;bool isOTAUpdateRunning()const{return ota;}
 struct {int mode_=WIFI_STA;void setAutoReconnect(bool){}
  void disconnect(bool,bool){events.push_back(2);}
  void mode(int value){mode_=value;events.push_back(value==WIFI_OFF?3:4);}} WiFi;
-namespace mesh {namespace wifi {void applyProtocolMask(int){} void restoreEspNowChannel(){}}}
+namespace mesh {namespace wifi {
+void applyProtocolMask(int){} void restoreEspNowChannel(){}
+bool infrastructureWiFiEnabled(){return true;}
+bool saveInfrastructureWiFiEnabled(bool){return true;}
+}}
+struct AdapterNode {bool bridge_enabled=false;};
+struct AdapterObserver {const char* wifi_ssid="";};
+struct WebConfigServer {
+ static bool hasConfiguredWiFi(const AdapterObserver* p){return p->wifi_ssid[0]!=0;}
+ static bool loadEnabled(bool){return false;}
+};
 struct {
+ AdapterNode node;AdapterObserver observer;
+ AdapterNode* getNodePrefs(){return &node;}
+ AdapterObserver* getObserverPrefs(){return &observer;}
  bool paused=false,configured=true,mqtt=false,web=false;unsigned web_starts=0;
  bool isUDPBridgeNetworkEnabled()const{return configured&&!paused;}
  bool isUDPBridgeConfigured()const{return configured;}
