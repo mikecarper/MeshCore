@@ -361,6 +361,14 @@ const generated = tool.configFromGenerator({
 assert.strictEqual(generated.startEpoch, config.startEpoch);
 assert.strictEqual(generated.endEpoch, config.endEpoch);
 assert.strictEqual(generated.tz, "America/Los_Angeles");
+assert.strictEqual(tool.configFromGenerator({
+  start:"2026-09-21T17:00",end:"2026-09-23T17:00",tz:"America/Los_Angeles",
+  freq:"910.1",bw:"500",sf:"12",cr:"4",tx:"-9"
+}).cr,4);
+for(const cr of ["3","9"]) assert.throws(()=>tool.configFromGenerator({
+  start:"2026-09-21T17:00",end:"2026-09-23T17:00",tz:"America/Los_Angeles",
+  freq:"910.1",bw:"500",sf:"12",cr,tx:"-9"
+}),/cr must be between 4 and 8/);
 
 const estimates = tool.radioEstimates(config);
 assert.ok(Math.abs(estimates.bitrateKbps - 8.9285714286) < 0.000001);

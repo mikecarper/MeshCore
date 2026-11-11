@@ -4,6 +4,13 @@
 
 # Radio receive calibration and recovery
 
+For the distinction between the old full receiver reset and the new periodic
+sleep/wake method, see [Old AGC reset and new receive refresh](../radio_agc.md).
+The new receive refresh preserves the noise-floor estimate and collection
+state; the legacy full-reset and recovery paths below can request fresh samples.
+At primary intervals of 240 seconds or longer, supported builds follow a
+successful refresh with the old full reset, which requests fresh samples too.
+
 Noise calibration collects 64 idle RSSI samples at least 50 ms apart. A quiet
 block takes about 3.2 seconds. Both continuous RX and temporary RXPS calibration
 windows allow up to 30 seconds; a partial block times out without publishing.
@@ -36,15 +43,19 @@ window. Both periodic maintenance and passive retry checks use this cooldown;
 retries do not restart a partially collected block. With RXPS off, or when the
 selected tuple requires continuous-RX fallback, the existing two-second
 maintenance tick and passive-probe age check are unchanged. Startup, explicit
-gain/tuning changes, AGC resets, and radio recovery still request a fresh block
+gain/tuning changes, legacy full resets, and radio recovery still request a fresh block
 promptly. Dual-profile scanning retains
 its separate refresh policy.
 
-Frequent configured AGC resets can still dominate calibration time: Cascade
-repeater builds start with an eight-second AGC interval, and MQTT observers
-use 28 seconds. With device power saving on, their adaptive AGC schedule backs
-off separately, up to 60 seconds; see [AGC reset settings](../cli_commands.md).
-AGC resets still bypass the routine noise-floor cooldown. After
+Frequent legacy full resets can still dominate calibration time because they
+request fresh noise-floor samples. The new primary receive refresh does not
+restart that collection. Current new configurations use a 16-second primary
+interval in every role; older saved values, including 8 or 28 seconds, remain
+unchanged. With device power saving on, the primary schedule backs off
+separately, up to 60 seconds (or the saved interval if longer); see
+[AGC reset settings](../cli_commands.md#view-or-change-the-agc-reset-interval).
+The independent `agc.old` timer does not use that adaptive backoff.
+Legacy full resets still bypass the routine noise-floor cooldown. After
 a timed-out startup block with no valid floor, the next routine RXPS attempt
 also waits 60 seconds; passive retries retain their existing bounded busy
 escape while waiting for a valid baseline.
@@ -58,7 +69,7 @@ has been measured for this scheduling change.
 The block estimate is the 12.5th percentile: the average of the eighth and
 ninth sorted samples, retaining fractional dBm. A published update uses 25% of
 the previous floor and 75% of the new estimate, with a -120 dBm lower bound. Initial calibration and explicit gain/tuning changes seed a new baseline.
-The old published value remains available while collecting. An AGC reset drops
+The old published value remains available while collecting. A legacy full reset drops
 partial samples while retaining a valid baseline for channel checks.
 
 An estimate more than 15 dB above the established floor is held twice. The third

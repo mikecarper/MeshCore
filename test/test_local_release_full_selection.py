@@ -867,6 +867,30 @@ class BootloaderReleaseOrchestrationTest(unittest.TestCase):
                 self.assertEqual(stage.call_args.kwargs, {"embedded_work": embedded})
                 self.assertEqual(environment["MESHCORE_NRF52_EMBED_BOOTLOADER"], "2.4.11")
 
+    def test_two_workers_join_before_one_migration_and_staging_pass(self):
+        import parallel_release_workers as workers
+        with tempfile.TemporaryDirectory() as temp:
+            root, source = Path(temp), "deadbeef" + "a" * 32
+            phases = []
+            with mock.patch.object(release, "ROOT", root), \
+                    mock.patch.object(release, "git", side_effect=lambda *args: "" if args[0] == "status" else source), \
+                    mock.patch.object(release, "resolve_pio_build_dir", return_value=root / "pinned"), \
+                    mock.patch.object(workers, "build_parallel_matrix", side_effect=lambda *args: phases.append("matrix")) as matrix, \
+                    mock.patch.object(workers, "build_parallel_embedded", side_effect=lambda *args: phases.append("embedded")) as embedded, \
+                    mock.patch.object(release, "run_logged") as serial, \
+                    mock.patch.object(release, "build_embedded_bootloader_artifacts") as serial_embed, \
+                    mock.patch.object(release, "build_migration_artifacts", side_effect=lambda *args: phases.append("migration")) as migration, \
+                    mock.patch.object(release, "stage_release", side_effect=lambda *args, **kwargs: phases.append("stage")) as stage, \
+                    mock.patch.object(sys, "argv", ["release", "--workers", "2", "--pio-jobs", "2"]), redirect_stdout(io.StringIO()):
+                release.main()
+            self.assertEqual(phases, ["matrix", "embedded", "migration", "stage"])
+            self.assertEqual(matrix.call_args.args[:5], (root, release.DEFAULT_VERSION, source, 2, 2))
+            self.assertEqual(embedded.call_args.args[:5], (root, release.DEFAULT_VERSION, source, 2, 2))
+            serial.assert_not_called()
+            serial_embed.assert_not_called()
+            migration.assert_called_once()
+            stage.assert_called_once()
+
     def test_nonempty_embedded_resume_requires_opt_in_and_dry_run_never_builds(self):
         with tempfile.TemporaryDirectory() as temp:
             root, source = Path(temp), "deadbeef" + "a" * 32

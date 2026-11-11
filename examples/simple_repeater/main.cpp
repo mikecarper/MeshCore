@@ -59,6 +59,10 @@
 #ifdef ETHERNET_ENABLED
   #define ETHERNET_CLI_BANNER "MeshCore Repeater CLI"
   #include <helpers/nrf52/EthernetCLI.h>
+#if defined(RAK4631_COMBINED_ETHERNET)
+  #include <helpers/nrf52/EthernetModeSettings.h>
+  static mesh::nrf52::EthernetModeSettings ethernet_mode_settings;
+#endif
 #endif
 
 #if defined(ESP32) && defined(CONFIG_BT_ENABLED) && !defined(BLE_PIN_CODE)
@@ -78,7 +82,19 @@ StdRNG fast_rng;
 #if MAX_RECENT_REPEATERS > 0
 // Compact rows retain the complete prefix/SNR/32-bit age at every capacity.
 // All accesses are owned by this loop, including deferred network commands.
-  #if defined(ESP32)
+  #if defined(MESH_RECENT_REPEATERS_RTC_SLOW) && MESH_RECENT_REPEATERS_RTC_SLOW
+  #if !defined(ESP32_PLATFORM) || !defined(CONFIG_IDF_TARGET_ESP32) || !defined(LILYGO_TLORA) || !defined(MESHCORE_EXPANDED_PARTITION_PROFILE)
+  #error "RTC recent history requires a qualified classic ESP32 TLora Full profile"
+  #endif
+  #if defined(FLOOD_ADVERT_RTC_SLOW_SLOTS) && FLOOD_ADVERT_RTC_SLOW_SLOTS
+  #error "RTC recent history cannot share its bank with RTC advert history"
+  #endif
+  #include <esp_attr.h>
+static_assert(MAX_RECENT_REPEATERS * sizeof(SimpleMeshTables::RecentRepeaterInfo) <= 4096,
+              "RTC recent history must leave the SDK at least 4 KiB of RTC SLOW memory");
+alignas(4) RTC_SLOW_ATTR SimpleMeshTables::RecentRepeaterInfo recent_repeater_storage[MAX_RECENT_REPEATERS];
+SimpleMeshTables tables(recent_repeater_storage, MAX_RECENT_REPEATERS);
+  #elif defined(ESP32)
 // Classic ESP32 has a much smaller link-time DRAM window than its runtime heap
 // map. Allocate this large, fixed-capacity history at startup so enabling WiFi
 // features (including WebConfig) does not overflow that static DRAM window.
@@ -200,7 +216,9 @@ static void serviceRequiredPsramFailure() {
 #endif
 
 void setup() {
+#ifdef MESH_INFRASTRUCTURE_WIRELESS_POLICY
   mesh::wireless::control().begin(infrastructure_wireless);
+#endif
   mesh::prepareUsbLoggingPort();
   Serial.begin(115200);
 #if MESH_USB_CONSOLE_COOPERATIVE
@@ -273,6 +291,16 @@ void setup() {
 #if defined(NRF52_PLATFORM)
   if (volatile_primary_fs) regulator_prefs_fs = nullptr;
 #endif
+#ifdef MESH_INFRASTRUCTURE_WIRELESS_POLICY
+  mesh::wireless::loadBootPolicy(regulator_prefs_fs,
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+      true
+#else
+      false
+#endif
+  );
+#endif
+
   mesh::leds::beginSettings(board, regulator_prefs_fs);
 #if defined(MESH_SOLARXIAO_POWER) && MESH_SOLARXIAO_POWER
   mesh::solar::beginSettings(board, regulator_prefs_fs, MESH_ENABLE_TELEMETRY_HISTORY);
@@ -443,7 +471,11 @@ void setup() {
   mesh::hilStartupTrace("sensors_ready");
 
   mesh::hilStartupTrace("mesh_begin");
+#if defined(NRF52_PLATFORM)
+  the_mesh.begin(fs, !volatile_primary_fs);
+#else
   the_mesh.begin(fs);
+#endif
   mesh::hilStartupTrace("mesh_ready");
 #if defined(OTA_BOOTLOADER_MIGRATION)
   mesh::ota::bootloader_migration_begin(volatile_primary_fs ? nullptr : fs);
@@ -498,13 +530,15 @@ void setup() {
 #ifdef ETHERNET_ENABLED
 #if defined(RAK4631_COMBINED_ETHERNET)
   EthernetCliHooks hooks;
+  ethernet_mode_settings.begin(volatile_primary_fs ? nullptr : fs);
+  hooks.save = [](void*, bool enabled) { return ethernet_mode_settings.setEnabled(enabled); };
   hooks.prepare = prepareCombinedEthernet;
   hooks.can_release = canReleaseCombinedEthernet;
   hooks.released = releaseCombinedEthernet;
 #if defined(OTA_RAK15002_SD_STORE)
   hooks.storage_conflict = [](void*) { return mesh::ota::ota_rak15002_sd_card_present(); };
 #endif
-  ethernet_configure(hooks);  // First prototype defaults OFF on every restart.
+  ethernet_configure(hooks, ethernet_mode_settings.enabled());
 #endif
   ethernet_start_task();
 #endif
@@ -773,6 +807,10 @@ static bool usbLoggingRecoverySafe(void*) {
 }
 
 void loop() {
+#if MESH_WARM_RX_REFRESH
+  // Service the short radio lease before board, sensor, UI or transport work.
+  if (radio_driver.serviceAGCMaintenanceFastLane()) return;
+#endif
 #if MESH_REPEATER_REQUIRE_PSRAM
   if (required_psram_failed) {
     serviceRequiredPsramFailure();
@@ -826,6 +864,10 @@ void loop() {
 #endif
 
   the_mesh.loop();
+#if MESH_WARM_RX_REFRESH
+  // The Dispatcher may have admitted a new lease in this pass.
+  if (radio_driver.serviceAGCMaintenanceFastLane()) return;
+#endif
   const bool morse_timing = mesh::morseTimingActive(&radio_driver);
 #if defined(USE_LR2021)
   if (!morse_timing) mesh::lr2021::loopLR2021CalibrationSettings(radio_driver);

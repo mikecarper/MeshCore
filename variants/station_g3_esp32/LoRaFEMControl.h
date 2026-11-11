@@ -19,6 +19,6 @@ private:
   void applyPAGain();
 
   Mode _mode = Mode::Sleep;
-  bool lna_enabled = true;
+  bool lna_enabled = false;
   bool pa_gain_enabled = false;
 };

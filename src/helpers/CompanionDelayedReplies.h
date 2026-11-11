@@ -18,6 +18,9 @@ public:
   static constexpr uint32_t DELIVERY_GRACE_MS = 10000;
   static constexpr uint32_t HOST_EXTRA_TIMEOUT_MS = 5000;
   static constexpr uint32_t LOGIN_QUARANTINE_MS = 30000;
+  static constexpr uint32_t LOGIN_INTERVAL_MS = 3000;
+  static constexpr uint32_t LOGIN_HOLD_MS = 3000;
+  static constexpr uint32_t LOGIN_SERVICE_GRACE_MS = 100;
 
   struct Reply {
     BaseSerialInterface* route = nullptr;
@@ -29,17 +32,25 @@ public:
     Phase phase = Empty;
     uint8_t history = NO_HISTORY;
     bool terminal = false, sent_pending = false, flood = false;
+    bool repeat_login = false;
     uint8_t frame[MAX_FRAME_SIZE] = {};
   };
 
   Reply request, trace;
+  struct DeferredLogin {
+    BaseSerialInterface* route = nullptr;
+    uint32_t deadline = 0;
+    uint8_t peer[32] = {};
+    char password[16] = {};
+    uint8_t retry_history = NO_HISTORY;
+  } deferred_login;
 
 private:
   struct RequestGuard {
     uint8_t peer[32] = {};
     uint32_t tag = 0, until = 0;
     Phase phase = Empty;
-    bool login = false;
+    bool login = false, completed_login = false;
   };
   struct TraceGuard {
     uint32_t tag = 0, auth = 0, until = 0;
@@ -47,6 +58,16 @@ private:
   };
   RequestGuard requests[HISTORY_SIZE] = {};
   TraceGuard traces[HISTORY_SIZE] = {};
+  // The effective wire password stays in volatile RAM only. A delivered
+  // success permits reopening the same login on the same live host route
+  // during its bounded history window. Never persist these credentials.
+  char login_password[16] = {};
+  bool login_password_valid = false;
+  char completed_login_password[16] = {};
+  BaseSerialInterface* completed_login_route = nullptr;
+  uint8_t completed_login_history = NO_HISTORY;
+  uint32_t last_login_send_at = 0;
+  bool login_interval_active = false;
 
   static bool due(uint32_t now, uint32_t deadline);
   static uint32_t retirementDeadline(uint32_t now, uint32_t radio_deadline,
@@ -56,13 +77,30 @@ private:
   static void reset(Reply& reply);
   static void arm(Reply& reply, uint32_t timeout, bool flood, uint32_t now);
   static bool store(Reply& reply, const uint8_t* frame, size_t len, uint32_t now);
-  static bool service(Reply& reply, BaseSerialInterface* serial, uint32_t now);
+  static bool service(Reply& reply, BaseSerialInterface* serial, uint32_t now,
+                       bool* delivered = nullptr);
+  void clearCompletedLogin();
+  bool canRepeatCompletedLogin(const uint8_t peer[32], const char* password,
+                               BaseSerialInterface* route, uint32_t now) const;
+  bool matchesActiveLogin(const uint8_t peer[32], const char* password,
+                           BaseSerialInterface* route, uint32_t now) const;
   void prune(uint32_t now);
 
 public:
 
   bool reserveRequest(Kind kind, const uint8_t peer[32],
-                      BaseSerialInterface* route, bool terminal, uint32_t now);
+                      BaseSerialInterface* route, bool terminal, uint32_t now,
+                      const char* password = nullptr);
+  void forgetLoginRoute(BaseSerialInterface* route);
+  bool loginReady(uint32_t now) const;
+  void noteLoginSent(uint32_t now);
+  bool queueLogin(const uint8_t peer[32], const char* password,
+                   BaseSerialInterface* route, uint32_t now);
+  void clearDeferredLogin();
+  bool hasDeferredLogin() const { return deferred_login.route != nullptr; }
+  void rememberLoginPassword(const char* password);
+  bool canRetryLogin(const uint8_t peer[32], const char* password,
+                     BaseSerialInterface* route, uint32_t now) const;
   bool allowRequestTag(uint32_t tag);
   void rememberLoginTag(uint32_t tag);
   void armRequest(uint32_t tag, uint32_t timeout, bool flood, uint32_t now);

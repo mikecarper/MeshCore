@@ -3,6 +3,13 @@
 #include <Arduino.h>
 
 #include "NoiseFloorEstimator.h"
+
+#ifndef MC_AGESSAMAN_NOISE_FLOOR_EXACT
+#define MC_AGESSAMAN_NOISE_FLOOR_EXACT 0
+#endif
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+#include "AgessamanNoiseFloor.h"
+#endif
 #include "../TelemetryHistoryConfig.h"
 #include "../CarrierTools.h"
 #include "../RadioDirectionPolicy.h"
@@ -18,6 +25,12 @@
 #include "RXPowerSaving.h"
 #include "HilTxFrequencyGuard.h"
 #include "ESP32RadioTrace.h"
+#include "WarmRxRefresh.h"
+#include "RxpsPulse.h"
+#include "RxpsPulseScanLease.h"
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+#include "AGCTimingDiagnostics.h"
+#endif
 #if defined(STATION_G3_ESP32)
 #include <StationG3RadioSlot.h>
 #endif
@@ -44,6 +57,15 @@ class RadioLibWrapper : public mesh::Radio {
 public:
   static constexpr bool SupportsRxPowerSaving = false;
 protected:
+#if MESH_WARM_RX_REFRESH
+  virtual bool warmRxRefreshUsesFs() const { return false; }
+  virtual uint32_t defaultAGCPulseSleepUs() const { return 0; }
+  virtual uint32_t agcPulseTimerHz() const { return 64000; }
+  virtual WarmRxRefresh::Outcome performWarmRxRefresh(WarmRxRefresh::Reason& reason) {
+    reason=WarmRxRefresh::Reason::Policy;
+    return WarmRxRefresh::Outcome::Deferred;
+  }
+#endif
   // Mode is owned by this loop, not by the ISR or another wrapper.
   uint8_t state = 0;
   uint8_t _interrupt_slot = 0xff;
@@ -56,6 +78,9 @@ protected:
   void unregisterInterruptAction();
   bool hasAssertedRadioInterrupt() const;
   bool hasPendingRadioInterrupt() const;
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  bool hasPendingSoftwareRadioInterrupt() const;
+#endif
   bool claimRadioInterrupt();
   PhysicalLayer* _radio;
 #if defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
@@ -82,8 +107,12 @@ protected:
   uint8_t _nf_published_valid = 0;
 #endif
   bool _nf_refresh_requested;
-  NoiseFloorEstimator _floor_estimator;
-  NoiseFloorEstimator _secondary_floor_estimator;
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  AgessamanNoiseFloor _agessaman_floor;
+  bool usesAgessamanNoiseFloor() const;
+  void serviceAgessamanNoiseFloor();
+  void resetAgessamanNoiseFloor();
+#endif
   uint32_t _rx_mode_checked_at = 0;
   uint8_t _rx_mode_failures = 0;
   // Independent of calibration and watchdog counters: repeated failed starts
@@ -284,6 +313,10 @@ protected:
     return profile == 1 ? _secondary_floor_estimator : _floor_estimator;
   }
   float profileNoiseFloorSecondsRemaining(uint8_t profile) const {
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+    // Accepted samples follow loop cadence, so there is no fixed time estimate.
+    if (usesAgessamanNoiseFloor()) return 0.0f;
+#endif
     if (!isCalibratingNoiseFloor()) return 0.0f;
     const NoiseFloorEstimator& estimator = profileFloorEstimator(profile);
     if (!_profiles.enabled()) return estimator.secondsRemaining();
@@ -374,6 +407,20 @@ protected:
   }
   virtual int16_t stopDutyCycleHardware() { return _radio->standby(); }
   virtual int16_t startContinuousReceive() { return _radio->startReceive(); }
+#if MESH_WARM_RX_REFRESH
+  void admitAGCPulse(uint32_t now);
+  void validateAGCScanLease();
+  void finishAGCScanLease();
+  virtual bool startAGCPulse() { return false; }
+  virtual void serviceAGCPulse() { }
+#if defined(SENSECAP_INDICATOR_LORA)
+  // Only this expander-backed radio needs to validate sleep-time DIO edges.
+  virtual uint32_t agcInputReadGeneration() const { return 0; }
+  virtual bool prepareStaleAGCIrqWake(uint32_t, uint32_t&) { return false; }
+  virtual bool retireStaleAGCIrqWake(uint32_t) { return false; }
+  bool claimAGCSoftwareInterrupt();
+#endif
+#endif
   virtual bool isPacketReady();
   // true while the chip cannot service SPI (RX duty-cycle sleep window, or
   // briefly while processing a command); radios expose this via the BUSY pin
@@ -463,6 +510,31 @@ protected:
   virtual void doResetAGC();
 
 protected:
+  // Keep infrequently accessed estimator/maintenance state after hot RX and
+  // radio pointers. Small Thumb targets encode their common field accesses
+  // directly instead of widening every access when a capability is enabled.
+  NoiseFloorEstimator _floor_estimator;
+  NoiseFloorEstimator _secondary_floor_estimator;
+#if MESH_WARM_RX_REFRESH
+#if !MESH_COMPACT_STM32_RADIO
+  WarmRxRefresh _warm_refresh;
+#endif
+  RxpsPulse _rxps_pulse;
+  RxpsPulseScanLease _agc_scan_lease;
+  bool _rxps_pulse_sleep_override=false;
+  uint8_t _rxps_pulse_retries=0;
+#if MESH_WARM_RX_LAB_TIMER
+  bool _warm_rx_lab_timer_active=false;
+  uint32_t _warm_rx_lab_timer_ms=0, _warm_rx_lab_timer_revision=0;
+#endif
+#endif
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  AGCTimingDiagnostics _agc_timing;
+#endif
+#if MESH_ENABLE_OLD_AGC && (!MESH_COMPACT_STM32_RADIO || MESH_WARM_RX_REFRESH)
+  uint32_t _old_agc_seconds=mesh::AGC_OLD_AUTO;
+#endif
+
   RadioLibWrapper(PhysicalLayer& radio, mesh::MainBoard& board)
       : _radio(&radio), _board(&board), _noise_floor_valid(false), _nf_refresh_requested(true),
         _rx_ps_enabled(false), _rx_ps_armed(false),
@@ -583,7 +655,12 @@ public:
   bool isInRecvMode() const override;
   bool setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) override;
   mesh::RadioParamApplyResult trySetRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us);
+#if !MESH_COMPACT_STM32_RADIO
+  bool isRxPowerSavingEnabled() const override { return _rx_ps_enabled; }
+#endif
+#if !MESH_COMPACT_STM32_RADIO
   bool supportsRxPowerSaving() const override { return SupportsRxPowerSaving; }
+#endif
   RxPowerSavingStatus getRxPowerSavingStatus() const;
   virtual uint32_t rxPowerSavingTransitionUs() const { return rxPowerSavingDefaultTransitionUs(); }
 #if defined(MESH_RADIO_AUTO_LR1121) && MESH_RADIO_AUTO_LR1121
@@ -593,9 +670,11 @@ public:
     rx_us = _rx_ps_rx_us;
     sleep_us = _rx_ps_sleep_us;
   }
+#if !MESH_COMPACT_STM32_RADIO
   bool isRxPowerSavingContinuousFallback() const override {
     return _rx_ps_enabled && _rx_ps_continuous_fallback;
   }
+#endif
   virtual bool supportsRxPowerSavingRfRxDisable() const { return false; }
   virtual bool setRxPowerSavingRfRxDisabled(bool) { return false; }
   virtual mesh::RadioParamApplyResult trySetRxPowerSavingRfRxDisabled(bool) {
@@ -634,6 +713,9 @@ public:
         : preambleLengthForParams(getSpreadingFactor(), static_cast<float>(LORA_BW));
   }
   bool updatePreamble(uint8_t sf, float bw) {
+#if MESH_WARM_RX_REFRESH
+    if(_rxps_pulse.pending) return false;
+#endif
     return _radio->setPreambleLength(preambleLengthForParams(sf, bw)) == RADIOLIB_ERR_NONE;
   }
   PacketMillis calcMaxPacketMillis(uint8_t sf, float bw, uint8_t cr, uint16_t preambleSymbols);
@@ -687,7 +769,83 @@ public:
     return cadScanTimeoutMillis();
   }
   void resetAGC() override;
+#if MESH_ENABLE_OLD_AGC && (!MESH_COMPACT_STM32_RADIO || MESH_WARM_RX_REFRESH)
+  // Families with no physical legacy reset explicitly opt out.
+  bool supportsOldAGC() const override { return true; }
+  bool setOldAGCInterval(uint32_t seconds) override {
+    if(!supportsOldAGC() || !mesh::validOldAGCInterval(seconds)) return false;
+    _old_agc_seconds=seconds; return true;
+  }
+  uint32_t getOldAGCInterval() const override { return supportsOldAGC()?_old_agc_seconds:0; }
+  mesh::AGCMaintenanceResult periodicOldAGCMaintenance() override;
+#endif
+#if MESH_WARM_RX_REFRESH
+#if MESH_WARM_RX_LAB_TIMER
+  bool setWarmRxLabInterval(bool active,uint32_t interval_ms) override {
+    if(!supportsWarmRxRefresh() || interval_ms>60000) return false;
+    if(!active) interval_ms=0;
+    if(active!=_warm_rx_lab_timer_active || interval_ms!=_warm_rx_lab_timer_ms) {
+      _warm_rx_lab_timer_active=active; _warm_rx_lab_timer_ms=interval_ms;
+      ++_warm_rx_lab_timer_revision;
+    }
+    return true;
+  }
+  bool getWarmRxLabInterval(uint32_t& interval_ms) const override {
+    if(!supportsWarmRxRefresh() || !_warm_rx_lab_timer_active) return false;
+    interval_ms=_warm_rx_lab_timer_ms; return true;
+  }
+  uint32_t warmRxLabTimerRevision() const override { return _warm_rx_lab_timer_revision; }
+#endif
+  mesh::AGCMaintenanceResult periodicAGCMaintenance(bool adaptive) override;
+  uint32_t agcMaintenanceRetryMs() const override {
+    // The wrong-profile wait performs no SPI. Only the already-awake fixed
+    // scheduler follows the next primary visit; adaptive sleep keeps its policy.
+    return _agc_scan_lease.fast_retry?1:supportsWarmRxRefresh()?250:50;
+  }
+  bool formatWarmRxRefresh(uint8_t page,uint32_t seconds,char* reply,size_t capacity) const override {
+    if(!supportsWarmRxRefresh()) return false;
+#if MESH_COMPACT_STM32_RADIO
+    // Tiny images retain request/completion, natural-cycle and scanner proof.
+    // Detailed timing/check pages are optional rather than storing fake zeros.
+    if(page!=0 && page!=3 && page!=6) return false;
+#endif
+    if(page==6) _agc_scan_lease.format(_profiles.enabled(),reply,capacity);
+    else _rxps_pulse.format(page,seconds,reply,capacity);
+    return true;
+  }
+  bool isAGCMaintenanceActive() const override { return _rxps_pulse.owns(); }
+  bool isAGCMaintenancePending() const override { return _rxps_pulse.pending; }
+  bool hasAGCMaintenanceWork() const override { return _rxps_pulse.pending || _rxps_pulse.hasCompletion(); }
+  bool serviceAGCMaintenanceFastLane() override {
+    if(!_rxps_pulse.owns()) return false;
+    serviceAGCPulse();
+    // Packet handoff must reach Dispatcher/FIFO processing immediately. A
+    // completed lease skips slow application work once, then resumes normally.
+    return _rxps_pulse.phase!=RxpsPulse::Phase::Packet;
+  }
+  void configureAGCMaintenance(uint32_t ms) override { _rxps_pulse.cadence(ms); }
+  void cancelAGCMaintenance() override { _rxps_pulse.cancelRequest(); }
+  bool setAGCPulseSleep(uint32_t us) override {
+    const uint32_t default_sleep=defaultAGCPulseSleepUs();
+    if(!supportsWarmRxRefresh() || !default_sleep || !(us==2616 || us==3000 || us==4000 || us==6554
+        || us==default_sleep)
+        || !_rxps_pulse.configure(us,rxPowerSavingTransitionUs(),agcPulseTimerHz())) return false;
+    _rxps_pulse_sleep_override=true;
+    return true;
+  }
+  uint32_t getAGCPulseSleep() const override {
+    const uint32_t default_sleep=defaultAGCPulseSleepUs();
+    return !supportsWarmRxRefresh() || !default_sleep?0:(_rxps_pulse_sleep_override
+        ?_rxps_pulse.sleep_us:default_sleep);
+  }
+#endif
   bool tryResetAGC() override;
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  bool formatAGCTimingDiagnostics(uint8_t page, char* reply, size_t capacity) const override {
+    _agc_timing.format(page, reply, capacity);
+    return true;
+  }
+#endif
   uint32_t getRecoveryCount() const override { return n_wd_soft + n_wd_hard; }
 
   void loop() override;
@@ -705,6 +863,10 @@ public:
   // Full-batch RF ownership for UI and recovery guards. CPU idle between
   // readings is governed separately by getNoiseFloorWakeDelay().
   bool isCalibratingNoiseFloor() const override {
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+    // Passive collection must not take radio ownership when its gate is blocked.
+    if (usesAgessamanNoiseFloor()) return false;
+#endif
     return isInRecvMode() && !_rx_ps_armed && (_nf_calib_active
         || (_nf_refresh_requested
             && (!_rx_ps_enabled || _rx_ps_continuous_fallback)));

@@ -200,7 +200,9 @@ class RS232RuntimeTests(unittest.TestCase):
         initial_start = cli.index("#ifdef WITH_RS232_BRIDGE", cli.index("bool is_fresh_install"))
         initial = cli[initial_start:cli.index("#endif", initial_start) + len("#endif")]
         boot_source = implementation[implementation.index('mesh::hilStartupTrace("mesh_bridge_begin")'):]
-        boot = extract_braced(boot_source, "if (_prefs.bridge_enabled) {")
+        # Preserve the whole feature-guarded condition. MQTT builds add their
+        # saved WiFi policy here; ordinary RS232 builds keep the same branch.
+        boot = extract_braced(boot_source, "if (_prefs.bridge_enabled")
         secondary_boot = "if (_prefs.espnow_bridge_enabled) setEspNowBridgeState(true);"
         self.assertIn(secondary_boot, boot_source)
         boot += "\n#ifdef WITH_ESPNOW_BRIDGE\n" + secondary_boot + "\n#endif\n"

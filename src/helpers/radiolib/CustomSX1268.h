@@ -1,6 +1,8 @@
 #pragma once
 
 #include <RadioLib.h>
+#include "SX126xStatus.h"
+#include <helpers/RadioAGCConfig.h>
 #include <math.h>
 #include "SX126xMorseRssi.h"
 #if defined(MESH_RADIO_AUTO_SX1268) && MESH_RADIO_AUTO_SX1268
@@ -18,6 +20,7 @@ class CustomSX1268 : public SX1268 {
   bool _headerSeen = false;
 
   public:
+#include "SX126xPulseDriverMethods.inc"
     CustomSX1268(Module *mod) : SX1268(mod) { }
     int16_t setProfileProtocol(uint8_t syncWord) {
       // This driver has no owned fast packet cache. Apply the complete

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise Full infrastructure selection and final compiler flag precedence."""
 import copy
+import configparser
 import importlib.util
 from pathlib import Path
 import shutil
@@ -44,6 +45,18 @@ class FakeEnvironment(dict):
 
 
 class FullEsp32SizeTests(unittest.TestCase):
+    def test_eora_observer_preserves_cli_text_with_shared_copies(self):
+        config = configparser.ConfigParser(interpolation=None)
+        config.read(ROOT / 'variants/ebyte_eora_s3/platformio.ini')
+        section = 'env:Ebyte_EoRa-S3_repeater_observer_mqtt'
+        for name in config.sections():
+            flags = config[name].get('build_flags', '')
+            if name == section:
+                self.assertIn('-D MESH_CLI_SHARE_REPLY_COPIES=1', flags)
+                self.assertNotIn('MESH_CLI_COMPACT_REPLIES', flags)
+            else:
+                self.assertNotIn('MESH_CLI_SHARE_REPLY_COPIES', flags)
+
     def test_only_one_full_esp32_infrastructure_role_is_selected(self):
         for role in POLICY.ROLES:
             self.assertTrue(POLICY.infrastructure_policy("espressif32", "esp32s3", "+<%s>" % role, full=True))

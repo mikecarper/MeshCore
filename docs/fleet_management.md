@@ -411,10 +411,20 @@ It contains no passwords or shared secrets and is not an online-user list.
 Anonymous owner, region, and clock requests and packets that fail authentication
 are excluded. Ordinary channel messages cannot read this list.
 
-`set radio2 mediamesh` saves 911.150 MHz, 250 kHz, SF7, CR 4/5, `rxtx`,
-with automatic scan-aware preamble. `mediamesh-range` uses 125 kHz instead.
-These presets preserve the primary profile and crossing policy; new
-configurations default to radio2 off and `radio2.cross off`.
+`set radio2 mediamesh` and `set radio2 mediamesh-range` choose settings from
+each receiver's saved primary frequency. USA uses 911.150 MHz; EU868 uses
+869.525 MHz; the listed AU/NZ/Brazil/Thailand/Vietnam primary presets use
+922.500 MHz; EU433 uses 434.250 MHz. The normal/range profiles use 250/125 kHz,
+SF7 and CR 4/5, except EU868's 125/62.5 kHz, SF5 and CR 4/7. All use `rxtx`
+and automatic scan-aware preamble. See the exact frequency groups and EU868
+overlap in [MediaMesh presets](radio_profiles.md#mediamesh-presets).
+
+Unknown custom primary frequencies reject the preset; use an explicit tuple
+for those receivers. A primary `tempradio` does not change the selection.
+Existing saved radio2 profiles are not migrated or continuously retuned;
+select the preset again after a saved primary change if needed. These presets
+preserve the primary profile and crossing policy; new configurations default
+to radio2 off and `radio2.cross off`.
 
 ## Schedule radio changes and set clocks
 

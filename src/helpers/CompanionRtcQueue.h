@@ -1,6 +1,6 @@
 #pragma once
 
-// Explicit Full recipes can move existing frame slots, never borrow or remove
+// Qualified recipes can move existing frame slots, never borrow or remove
 // them. Unselected boards retain their original storage and capacity policy.
 #ifndef COMPANION_RTC_FAST_OFFLINE_FRAMES
 #define COMPANION_RTC_FAST_OFFLINE_FRAMES 0
@@ -13,8 +13,8 @@
 #endif
 
 #if COMPANION_RTC_FAST_OFFLINE_FRAMES || COMPANION_RTC_SLOW_OFFLINE_FRAMES
-#if !defined(ESP32_PLATFORM) || !defined(COMPANION_RADIO_FULL)
-#error "RTC offline frames require a qualified ESP32 Full Companion recipe"
+#if !defined(ESP32_PLATFORM)
+#error "RTC offline frames require a qualified ESP32 Companion recipe"
 #endif
 #if defined(BOARD_HAS_PSRAM) || ONE_KEY_DM_SHARED_OFFLINE_QUEUE
 #error "RTC offline frames require the independent fixed-capacity queue"
@@ -26,14 +26,27 @@
 #include <stdlib.h>
 #include <string.h>
 #include <type_traits>
-#if !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S3)
-#error "RTC offline frames are qualified only on ESP32-C3 and ESP32-S3"
+#if defined(MESHADVENTURER) && defined(CONFIG_IDF_TARGET_ESP32) && \
+    defined(COMPANION_RADIO_FULL) && defined(MESH_NOTIFY_RTC_SETTINGS) && \
+    MESH_NOTIFY_RTC_SETTINGS && COMPANION_RTC_FAST_OFFLINE_FRAMES == 0 && \
+    COMPANION_RTC_SLOW_OFFLINE_FRAMES == 4
+#define COMPANION_RTC_CLASSIC_MESHADVENTURER 1
+#else
+#define COMPANION_RTC_CLASSIC_MESHADVENTURER 0
 #endif
-#if !CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP
+#if !defined(COMPANION_RADIO_FULL) && !COMPANION_RTC_CLASSIC_MESHADVENTURER
+#error "RTC offline frames require a qualified ESP32 Companion recipe"
+#endif
+#if !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S3) && \
+    !COMPANION_RTC_CLASSIC_MESHADVENTURER
+#error "RTC offline frames require a qualified ESP32 memory layout"
+#endif
+#if COMPANION_RTC_FAST_OFFLINE_FRAMES && !CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP
 #error "RTC offline frames require the qualified byte-accessible retained RTC configuration"
 #endif
-#if COMPANION_RTC_SLOW_OFFLINE_FRAMES && !defined(CONFIG_IDF_TARGET_ESP32S3)
-#error "The separate RTC SLOW offline-frame bank requires ESP32-S3"
+#if COMPANION_RTC_SLOW_OFFLINE_FRAMES && !defined(CONFIG_IDF_TARGET_ESP32S3) && \
+    !COMPANION_RTC_CLASSIC_MESHADVENTURER
+#error "The RTC SLOW offline-frame bank requires a qualified board"
 #endif
 // Shared OTA retains only CPU-owned message frames in these same banks.
 // BorrowableFrameBuffer keeps its context/workspace in ordinary DRAM on
@@ -62,7 +75,14 @@ template<typename Frame, size_t Count> class CompanionRtcQueue {
   static_assert(std::is_trivial<Frame>::value && std::is_standard_layout<Frame>::value,
                 "RTC frame banks require trivial plain-data frames");
   static constexpr size_t MainCount = Count - FastCount - SlowCount;
-  static_assert(sizeof(Frame) * FastCount <= 6144 && sizeof(Frame) * SlowCount <= 6144,
+  // Cardputer Full's linked RTC slow layout reserves 56 bytes outside the
+  // frame bank. Permit its 36-frame bank while leaving room for board state.
+#if defined(M5STACK_CARDPUTER_ADV) && defined(CONFIG_IDF_TARGET_ESP32S3)
+  static constexpr size_t SlowBankLimit = 6400;
+#else
+  static constexpr size_t SlowBankLimit = 6144;
+#endif
+  static_assert(sizeof(Frame) * FastCount <= 6144 && sizeof(Frame) * SlowCount <= SlowBankLimit,
                 "Leave RTC bank space for the SDK and retained board state");
   Frame* fast_frames;
   Frame* slow_frames;

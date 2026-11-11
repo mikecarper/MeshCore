@@ -15,7 +15,7 @@ def role_sources(role):
     path = ROOT / "examples" / role
     return (extract_braced((path / "main.cpp").read_text(), "void setup()"),
             extract_braced((path / "MyMesh.cpp").read_text(),
-                           "void MyMesh::begin(FILESYSTEM *fs)"))
+                           "void MyMesh::begin(FILESYSTEM *fs"))
 
 
 def require_safe_lifecycle(main, mesh):

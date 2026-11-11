@@ -154,14 +154,14 @@ class FloodAdvertRtcTests(unittest.TestCase):
     def test_all_records_and_decisions_match_original_contiguous_table(self):
         baseline=subprocess.run([str(self.build(0,0))],capture_output=True,text=True,check=True,timeout=15).stdout
         self.assertIn('limited=128',baseline)
-        for fast,slow in ((50,50),(16,0)):
+        for fast,slow in ((50,50),(16,0),(16,32)):
             with self.subTest(fast=fast,slow=slow):
                 r=subprocess.run([str(self.build(fast,slow))],capture_output=True,text=True,timeout=15)
                 self.assertEqual(r.returncode,0,r.stderr)
                 self.assertEqual(r.stdout,baseline)
 
     def test_retained_bytes_reset_and_all_bank_boundaries_survive_recreation(self):
-        for fast,slow in ((50,50),(16,0)):
+        for fast,slow in ((50,50),(16,0),(16,32)):
             with self.subTest(fast=fast,slow=slow):
                 r=subprocess.run([str(self.build(fast,slow)),'lifetime'],capture_output=True,text=True,timeout=15)
                 self.assertEqual(r.returncode,0,r.stdout+r.stderr)
@@ -242,8 +242,14 @@ class FloodAdvertRtcTests(unittest.TestCase):
             ('Heltec_Wireless_Tracker_repeater',50,50),
             ('Heltec_Wireless_Tracker_repeater_observer_mqtt',50,50),
             ('heltec_tracker_v2_repeater',50,50),
-            ('Heltec_T190_repeater_',16,0),
-            ('Heltec_T190_repeater_observer_mqtt',16,0),
+            ('Heltec_T190_repeater_',16,32),
+            ('Heltec_T190_repeater_observer_mqtt',16,32),
+            ('Heltec_v3_repeater',16,32),
+            ('Heltec_v3_repeater_observer_mqtt',16,32),
+            ('Heltec_v3_repeater_bridge_rs232',16,32),
+            ('Heltec_v3_repeater_bridge_espnow',16,32),
+            ('Heltec_v3_room_server',0,0),
+            ('Heltec_v3_companion_radio_full',0,0),
             ('Heltec_T190_room_server_',0,0),
             ('RAK_4631_repeater',0,0),
             ('heltec_tracker_v2_companion_radio_full_femon',0,0)):

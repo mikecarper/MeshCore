@@ -389,14 +389,19 @@ int main() {
         predicate = extract_braced(source, "static bool isCompanionReaderRequest(")
         harness = r'''
 #include <Arduino.h>
+#include <helpers/BaseSerialInterface.h>
 #include <helpers/CompanionReader.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include <cassert>
 #include <cstring>
 #include <string>
 #include "battery_calibration_cli_stub.h"
 #include "usb_mode_console.h"
 struct BatteryBoard {} board;
-struct Radio { bool active = false; };
+struct Radio {
+  bool active = false, pending = false;
+  bool isAGCMaintenancePending() const { return pending; }
+};
 namespace mesh {
 bool morseTimingActive(const Radio* radio) { return radio && radio->active; }
 namespace power { bool handleRegulatorCommand(const char*,char*,size_t) { return false; } }
@@ -407,6 +412,7 @@ namespace esp32 { bool handlePowerTestCommand(const char*,char*,size_t,bool) { r
 struct MyMesh {
   Radio radio;
   Radio* _radio = &radio;
+  BaseSerialInterface* _serial = nullptr;
   bool handleAlertCommand(const char*, char*, size_t) { return false; }
   bool handleCommand(const char*, uint32_t, char*);
 };
@@ -415,6 +421,14 @@ int main() {
   MyMesh mesh;
   struct Guarded { char reply[160]; uint32_t after; } out{};
   out.after = 0xaabbccdd;
+  // The shared dispatch prefix also reports transport capacity. This reader
+  // fixture has no active transport, so it uses the real interface's default.
+  assert(mesh.handleCommand("U1|get usb.raw.max", 0, out.reply));
+  assert(std::string(out.reply) == "U1|> 176");
+  assert(strlen(out.reply) < sizeof(out.reply) && out.after == 0xaabbccdd);
+  assert(mesh.handleCommand("U2|get usb.raw.max", 123, out.reply));
+  assert(std::string(out.reply) == "U2|ERR usb.raw.max requires a local transport");
+  assert(strlen(out.reply) < sizeof(out.reply) && out.after == 0xaabbccdd);
   assert(mesh.handleCommand("AA|get reader 3:16", 0, out.reply));
   assert(std::string(out.reply).find("AA|Reader 3:16 (WEB)\n") == 0);
   assert(std::string(out.reply).find("eternal life.") != std::string::npos);
@@ -432,6 +446,17 @@ int main() {
   assert(!mesh.handleCommand("get reader 3:16", 123, out.reply));
   assert(!mesh.handleCommand("AA|get reader 3:16", 123, out.reply));
   assert(!mesh.handleCommand("get name", 0, out.reply));
+  // Reader decompression must yield to the real maintenance guard while a
+  // lease owns the radio, keeping correlation tags and bounded replies.
+  mesh.radio.pending = true;
+  assert(mesh.handleCommand("G7|get reader 3:16", 0, out.reply));
+  assert(std::string(out.reply) == "G7|Error: radio maintenance pending; retry shortly");
+  assert(strlen(out.reply) < sizeof(out.reply) && out.after == 0xaabbccdd);
+  assert(!mesh.handleCommand("get name", 0, out.reply));
+  mesh.radio.pending = false;
+  assert(mesh.handleCommand("H8|get reader 3:16", 0, out.reply));
+  assert(std::string(out.reply).find("H8|Reader 3:16 (WEB)\n") == 0);
+  assert(strlen(out.reply) < sizeof(out.reply) && out.after == 0xaabbccdd);
   // Block synchronous 4 KiB decompression before it can stall Morse sampling,
   // including tagged bounded replies. Ordinary readers resume unchanged.
   mesh.radio.active = true;
@@ -519,6 +544,7 @@ struct MyMesh {
   Stream output;
   unsigned ordinary = 0;
   Stream& terminalOutput() { return output; }
+  void printTerminalError(const char*);
   void terminalCommand(const char* command, bool reader_prompt = true,
                        mesh::ReaderTryWrite reader_try_write = nullptr) {
 @TERMINAL@
@@ -533,6 +559,7 @@ struct MyMesh {
 @SERVICE@
   }
 };
+@TERMINAL_ERROR@
 int main() {
   assert(isCompanionReaderRequest("  GET\tREADER 3:16 2"));
   assert(isCompanionReaderRequest("get reader"));
@@ -578,7 +605,8 @@ int main() {
   }
   assert(mesh.output.text.find("eternal life.") != std::string::npos);
 }
-'''.replace("@PREDICATE@", predicate).replace("@TERMINAL@", terminal).replace("@RESCUE@", rescue).replace("@SERVICE@", service)
+'''.replace("@PREDICATE@", predicate).replace("@TERMINAL@", terminal).replace("@RESCUE@", rescue).replace("@SERVICE@", service).replace(
+            "@TERMINAL_ERROR@", extract_braced(source, "void MyMesh::printTerminalError("))
         with tempfile.TemporaryDirectory(prefix="meshcore-reader-morse-") as directory:
             directory = Path(directory)
             generated = directory / "interlock.cpp"

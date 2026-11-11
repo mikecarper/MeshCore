@@ -96,7 +96,17 @@ XIAO_BOOTLOADER_IDENTITIES = (
     (XIAO_BOOT_BOARD_ID_SENSE, "XIAO_DFU"),
 )
 SENSECAP_BOOTLOADER_IDENTITY = (XIAO_BOOT_BOARD_ID_BASE, "SCAP_DFU")
-QSPI_BOOTLOADER_IDENTITIES = XIAO_BOOTLOADER_IDENTITIES + (SENSECAP_BOOTLOADER_IDENTITY,)
+QSPI_V7_BOOTLOADER_IDENTITIES = XIAO_BOOTLOADER_IDENTITIES + (
+    SENSECAP_BOOTLOADER_IDENTITY,
+    (0x28861667, "WTL1_DFU"),
+)
+QSPI_V6_BOOTLOADER_IDENTITIES = (
+    (0x239A0029, "LGTE_DFU"),
+    (0x239A00DA, "LTEL_DFU"),
+    (0x239A00DA, "TNM1_DFU"),
+    (0x239A00DA, "TNM6_DFU"),
+)
+QSPI_BOOTLOADER_IDENTITIES = QSPI_V7_BOOTLOADER_IDENTITIES + QSPI_V6_BOOTLOADER_IDENTITIES
 XIAO_BOOT_IMAGE_START = 0x000F4000
 XIAO_BOOT_IMAGE_SIZE = 0x0000A000
 XIAO_BOOT_MANIFEST_MAGIC = b"BLMFCRC1"
@@ -162,10 +172,10 @@ SD_BOOTLOADER_IDENTITIES = (
 # Exact runtime continuity profiles for signed, remotely installable
 # bootloaders. A CRC-valid BLM2 envelope is not sufficient for package
 # creation: signing the wrong SoftDevice/application layout only produces a
-# package every qualified device will refuse. XIAO/Sense, Solar P1, Minew
+# package every qualified device will refuse. XIAO/Sense, Solar P1, Wio L1, Minew
 # MX25LE01, and T1000-E run S140 v7; the remaining inventory (including both Tower storage
 # profiles) runs S140 v6.
-BOOTLOADER_S140_V7_IDENTITIES = QSPI_BOOTLOADER_IDENTITIES + (
+BOOTLOADER_S140_V7_IDENTITIES = QSPI_V7_BOOTLOADER_IDENTITIES + (
     (0x239A0029, "MX25_DFU"),
     (0x28860057, "T1KE_DFU"),
 )
@@ -395,7 +405,7 @@ def build_nrf52_layout(layout: Nrf52Layout) -> bytes:
         qspi_shape = (layout.qspi_backed and not layout.sd_backed and
                       layout.linked_app_end == NRF52_BOOT_SCRATCH_START)
         if not qspi_shape:
-            raise ValueError("nRF52 bootloader scratch requires the XIAO QSPI layout")
+            raise ValueError("nRF52 bootloader scratch requires the raw-QSPI layout")
     elif layout.linked_app_end == NRF52_BOOT_SCRATCH_START:
         raise ValueError("reserved bootloader geometry requires the bootloader-scratch flag")
     expected_ceiling = (NRF52_APP_END if layout.external_backed else

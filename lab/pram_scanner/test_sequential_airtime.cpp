@@ -10,6 +10,11 @@ int main() {
   assert(sequentialReceiveAirtime(p,5,false,12,ms) && ms==33);
   p.sf=12; p.bw_hz=62500; p.preamble=128;
   assert(sequentialReceiveAirtime(p,8,true,255,ms) && ms==35931);
+  p.bw_hz=500000; p.preamble=32;
+  assert(sequentialReceiveAirtime(p,4,true,255,ms) && ms==1772);
+  assert(sequentialReceiveAirtime(p,8,true,255,ms) && ms==3181);
+  assert(!sequentialReceiveAirtime(p,3,true,255,ms) && ms==0);
+  assert(!sequentialReceiveAirtime(p,9,true,255,ms) && ms==0);
   assert(!sequentialReceiveAirtime(p,0,true,50,ms) && ms==0);
   assert(!sequentialReceiveAirtime(p,5,true,256,ms) && ms==0);
   p.bw_hz=0; assert(!sequentialReceiveAirtime(p,5,true,50,ms) && ms==0);

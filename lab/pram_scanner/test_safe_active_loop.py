@@ -36,6 +36,8 @@ struct Fake : RadioLibWrapper {
   void labMarkUncertain() { _lab_uncertain=true; }
   void labServiceUncertain() {}
   void labServiceAutomatic(bool,bool) {}
+  void labServiceHandoffRetry(bool,bool) {}
+  bool labMayRestoreExclusive() const { return true; }
   bool labExclusivePending() { return false; }
   bool labScannerSetAutomatic(bool) { return true; }
   bool isChipBusy() { return false; }

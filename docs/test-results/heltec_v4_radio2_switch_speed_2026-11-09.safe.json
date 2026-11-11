@@ -1,0 +1,1008 @@
+{
+  "schema": 1,
+  "date_utc": "2026-11-09",
+  "board": "Heltec V4.3 OLED",
+  "role": "Full Companion",
+  "baseline_commit": "20365fcea85b88a2b585295ff87b3bcf21959d62",
+  "driver_commit": "4fed55570",
+  "psram_policy_commit": "f6a71d8fe",
+  "timings": {
+    "baseline": {
+      "frequency_only": {
+        "windows": 2,
+        "stages": {
+          "admission": {
+            "switches": 2350,
+            "mean_us": 249.0136
+          },
+          "frequency": {
+            "switches": 2353,
+            "mean_us": 130.6192
+          },
+          "guard_math": {
+            "switches": 2350,
+            "mean_us": 81.8821
+          },
+          "modulation": {
+            "switches": 2351,
+            "mean_us": 52.4594
+          },
+          "post_standby": {
+            "switches": 2353,
+            "mean_us": 8.02
+          },
+          "preamble": {
+            "switches": 2350,
+            "mean_us": 6.7979
+          },
+          "protocol_and_cache": {
+            "switches": 2351,
+            "mean_us": 8.752
+          },
+          "rx_resume": {
+            "switches": 2353,
+            "mean_us": 196.5393
+          },
+          "standby": {
+            "switches": 2351,
+            "mean_us": 97.9
+          },
+          "tail": {
+            "switches": 2353,
+            "mean_us": 21.4513
+          },
+          "whole": {
+            "switches": 2352,
+            "mean_us": 854.4511
+          }
+        },
+        "switch_errors_delta": 0
+      },
+      "mixed_modem": {
+        "windows": 2,
+        "stages": {
+          "admission": {
+            "switches": 2386,
+            "mean_us": 248.2372
+          },
+          "frequency": {
+            "switches": 2386,
+            "mean_us": 130.6027
+          },
+          "guard_math": {
+            "switches": 2386,
+            "mean_us": 81.8881
+          },
+          "modulation": {
+            "switches": 2384,
+            "mean_us": 148.9568
+          },
+          "post_standby": {
+            "switches": 2386,
+            "mean_us": 8.0909
+          },
+          "preamble": {
+            "switches": 2384,
+            "mean_us": 6.6321
+          },
+          "protocol_and_cache": {
+            "switches": 2386,
+            "mean_us": 8.8759
+          },
+          "rx_resume": {
+            "switches": 2386,
+            "mean_us": 230.9975
+          },
+          "standby": {
+            "switches": 2386,
+            "mean_us": 98.078
+          },
+          "tail": {
+            "switches": 2386,
+            "mean_us": 21.5394
+          },
+          "whole": {
+            "switches": 2385,
+            "mean_us": 984.9061
+          }
+        },
+        "switch_errors_delta": 0
+      }
+    },
+    "fspi": {
+      "frequency_only": {
+        "windows": 2,
+        "stages": {
+          "admission": {
+            "switches": 2532,
+            "mean_us": 246.4005
+          },
+          "frequency": {
+            "switches": 2532,
+            "mean_us": 130.4388
+          },
+          "guard_math": {
+            "switches": 2533,
+            "mean_us": 82.0825
+          },
+          "modulation": {
+            "switches": 2533,
+            "mean_us": 52.7173
+          },
+          "post_standby": {
+            "switches": 2532,
+            "mean_us": 8.0746
+          },
+          "preamble": {
+            "switches": 2534,
+            "mean_us": 6.7277
+          },
+          "protocol_and_cache": {
+            "switches": 2532,
+            "mean_us": 8.7354
+          },
+          "rx_resume": {
+            "switches": 2532,
+            "mean_us": 196.9739
+          },
+          "standby": {
+            "switches": 2532,
+            "mean_us": 97.7583
+          },
+          "tail": {
+            "switches": 2532,
+            "mean_us": 21.4858
+          },
+          "whole": {
+            "switches": 2533,
+            "mean_us": 852.424
+          }
+        },
+        "switch_errors_delta": 0
+      },
+      "mixed_modem": {
+        "windows": 2,
+        "stages": {
+          "admission": {
+            "switches": 2583,
+            "mean_us": 244.9911
+          },
+          "frequency": {
+            "switches": 2583,
+            "mean_us": 130.4142
+          },
+          "guard_math": {
+            "switches": 2584,
+            "mean_us": 82.6591
+          },
+          "modulation": {
+            "switches": 2584,
+            "mean_us": 148.9946
+          },
+          "post_standby": {
+            "switches": 2582,
+            "mean_us": 8.0624
+          },
+          "preamble": {
+            "switches": 2584,
+            "mean_us": 6.6327
+          },
+          "protocol_and_cache": {
+            "switches": 2583,
+            "mean_us": 8.7863
+          },
+          "rx_resume": {
+            "switches": 2582,
+            "mean_us": 230.811
+          },
+          "standby": {
+            "switches": 2582,
+            "mean_us": 97.9156
+          },
+          "tail": {
+            "switches": 2583,
+            "mean_us": 21.6543
+          },
+          "whole": {
+            "switches": 2584,
+            "mean_us": 981.9373
+          }
+        },
+        "switch_errors_delta": 0
+      }
+    },
+    "wrapper_only": {
+      "frequency_only": {
+        "windows": 2,
+        "stages": {
+          "admission": {
+            "switches": 2448,
+            "mean_us": 219.7418
+          },
+          "frequency": {
+            "switches": 2450,
+            "mean_us": 126.2984
+          },
+          "guard_math": {
+            "switches": 2448,
+            "mean_us": 60.6311
+          },
+          "modulation": {
+            "switches": 2452,
+            "mean_us": 52.6448
+          },
+          "post_standby": {
+            "switches": 2448,
+            "mean_us": 6.6021
+          },
+          "preamble": {
+            "switches": 2449,
+            "mean_us": 6.7007
+          },
+          "protocol_and_cache": {
+            "switches": 2448,
+            "mean_us": 2.8382
+          },
+          "rx_resume": {
+            "switches": 2448,
+            "mean_us": 163.5825
+          },
+          "standby": {
+            "switches": 2448,
+            "mean_us": 91.6822
+          },
+          "tail": {
+            "switches": 2450,
+            "mean_us": 7.9918
+          },
+          "whole": {
+            "switches": 2452,
+            "mean_us": 739.6599
+          }
+        },
+        "switch_errors_delta": 0
+      },
+      "mixed_modem": {
+        "windows": 2,
+        "stages": {
+          "admission": {
+            "switches": 2424,
+            "mean_us": 220.3907
+          },
+          "frequency": {
+            "switches": 2425,
+            "mean_us": 125.5142
+          },
+          "guard_math": {
+            "switches": 2425,
+            "mean_us": 60.3509
+          },
+          "modulation": {
+            "switches": 2425,
+            "mean_us": 150.5505
+          },
+          "post_standby": {
+            "switches": 2425,
+            "mean_us": 6.4936
+          },
+          "preamble": {
+            "switches": 2426,
+            "mean_us": 6.6179
+          },
+          "protocol_and_cache": {
+            "switches": 2424,
+            "mean_us": 2.9773
+          },
+          "rx_resume": {
+            "switches": 2425,
+            "mean_us": 194.226
+          },
+          "standby": {
+            "switches": 2424,
+            "mean_us": 91.606
+          },
+          "tail": {
+            "switches": 2425,
+            "mean_us": 7.9744
+          },
+          "whole": {
+            "switches": 2425,
+            "mean_us": 867.7225
+          }
+        },
+        "switch_errors_delta": 0
+      }
+    },
+    "resident_path": {
+      "frequency_only": {
+        "windows": 2,
+        "stages": {
+          "admission": {
+            "switches": 2474,
+            "mean_us": 202.4551
+          },
+          "frequency": {
+            "switches": 2473,
+            "mean_us": 117.4727
+          },
+          "guard_math": {
+            "switches": 2474,
+            "mean_us": 38.3201
+          },
+          "modulation": {
+            "switches": 2474,
+            "mean_us": 9.983
+          },
+          "post_standby": {
+            "switches": 2474,
+            "mean_us": 5.2999
+          },
+          "preamble": {
+            "switches": 2474,
+            "mean_us": 5.2134
+          },
+          "protocol_and_cache": {
+            "switches": 2474,
+            "mean_us": 1.3003
+          },
+          "rx_resume": {
+            "switches": 2476,
+            "mean_us": 124.1296
+          },
+          "standby": {
+            "switches": 2475,
+            "mean_us": 71.4925
+          },
+          "tail": {
+            "switches": 2474,
+            "mean_us": 6.1831
+          },
+          "whole": {
+            "switches": 2473,
+            "mean_us": 582.8791
+          }
+        },
+        "switch_errors_delta": 0
+      },
+      "mixed_modem": {
+        "windows": 2,
+        "stages": {
+          "admission": {
+            "switches": 2428,
+            "mean_us": 204.6483
+          },
+          "frequency": {
+            "switches": 2428,
+            "mean_us": 118.2257
+          },
+          "guard_math": {
+            "switches": 2428,
+            "mean_us": 38.4357
+          },
+          "modulation": {
+            "switches": 2428,
+            "mean_us": 106.2982
+          },
+          "post_standby": {
+            "switches": 2428,
+            "mean_us": 5.3715
+          },
+          "preamble": {
+            "switches": 2428,
+            "mean_us": 4.9547
+          },
+          "protocol_and_cache": {
+            "switches": 2429,
+            "mean_us": 1.063
+          },
+          "rx_resume": {
+            "switches": 2431,
+            "mean_us": 154.9589
+          },
+          "standby": {
+            "switches": 2429,
+            "mean_us": 70.9494
+          },
+          "tail": {
+            "switches": 2428,
+            "mean_us": 6.2323
+          },
+          "whole": {
+            "switches": 2428,
+            "mean_us": 712.2315
+          }
+        },
+        "switch_errors_delta": 0
+      }
+    },
+    "cache_off": {
+      "frequency_only": {
+        "windows": 2,
+        "stages": {
+          "admission": {
+            "switches": 2422,
+            "mean_us": 255.4149
+          },
+          "frequency": {
+            "switches": 2425,
+            "mean_us": 130.2639
+          },
+          "guard_math": {
+            "switches": 2422,
+            "mean_us": 80.6569
+          },
+          "modulation": {
+            "switches": 2425,
+            "mean_us": 51.6173
+          },
+          "post_standby": {
+            "switches": 2424,
+            "mean_us": 6.7793
+          },
+          "preamble": {
+            "switches": 2423,
+            "mean_us": 6.4754
+          },
+          "protocol_and_cache": {
+            "switches": 2423,
+            "mean_us": 7.499
+          },
+          "rx_resume": {
+            "switches": 2424,
+            "mean_us": 190.2496
+          },
+          "standby": {
+            "switches": 2423,
+            "mean_us": 84.695
+          },
+          "tail": {
+            "switches": 2425,
+            "mean_us": 21.9769
+          },
+          "whole": {
+            "switches": 2426,
+            "mean_us": 836.6744
+          }
+        },
+        "switch_errors_delta": 0,
+        "cache": {
+          "switches": 2410,
+          "misses": 722764,
+          "mean_misses": 299.9021
+        }
+      },
+      "mixed_modem": {
+        "windows": 2,
+        "stages": {
+          "admission": {
+            "switches": 2376,
+            "mean_us": 255.0623
+          },
+          "frequency": {
+            "switches": 2376,
+            "mean_us": 130.1822
+          },
+          "guard_math": {
+            "switches": 2376,
+            "mean_us": 78.8123
+          },
+          "modulation": {
+            "switches": 2376,
+            "mean_us": 153.7302
+          },
+          "post_standby": {
+            "switches": 2376,
+            "mean_us": 6.7576
+          },
+          "preamble": {
+            "switches": 2376,
+            "mean_us": 6.5724
+          },
+          "protocol_and_cache": {
+            "switches": 2376,
+            "mean_us": 7.492
+          },
+          "rx_resume": {
+            "switches": 2376,
+            "mean_us": 222.0703
+          },
+          "standby": {
+            "switches": 2376,
+            "mean_us": 84.8161
+          },
+          "tail": {
+            "switches": 2376,
+            "mean_us": 21.915
+          },
+          "whole": {
+            "switches": 2376,
+            "mean_us": 968.3237
+          }
+        },
+        "switch_errors_delta": 0,
+        "cache": {
+          "switches": 2361,
+          "misses": 728995,
+          "mean_misses": 308.7654
+        }
+      }
+    },
+    "cache_on": {
+      "frequency_only": {
+        "windows": 2,
+        "stages": {
+          "admission": {
+            "switches": 2468,
+            "mean_us": 192.9595
+          },
+          "frequency": {
+            "switches": 2469,
+            "mean_us": 119.0401
+          },
+          "guard_math": {
+            "switches": 2468,
+            "mean_us": 39.9044
+          },
+          "modulation": {
+            "switches": 2470,
+            "mean_us": 9.0595
+          },
+          "post_standby": {
+            "switches": 2469,
+            "mean_us": 4.8842
+          },
+          "preamble": {
+            "switches": 2468,
+            "mean_us": 5.1511
+          },
+          "protocol_and_cache": {
+            "switches": 2468,
+            "mean_us": 1.2139
+          },
+          "rx_resume": {
+            "switches": 2470,
+            "mean_us": 127.8785
+          },
+          "standby": {
+            "switches": 2469,
+            "mean_us": 70.2831
+          },
+          "tail": {
+            "switches": 2469,
+            "mean_us": 5.5144
+          },
+          "whole": {
+            "switches": 2471,
+            "mean_us": 577.0312
+          }
+        },
+        "switch_errors_delta": 0,
+        "cache": {
+          "switches": 2455,
+          "misses": 426062,
+          "mean_misses": 173.5487
+        }
+      },
+      "mixed_modem": {
+        "windows": 2,
+        "stages": {
+          "admission": {
+            "switches": 2423,
+            "mean_us": 194.182
+          },
+          "frequency": {
+            "switches": 2422,
+            "mean_us": 118.7981
+          },
+          "guard_math": {
+            "switches": 2423,
+            "mean_us": 39.3306
+          },
+          "modulation": {
+            "switches": 2421,
+            "mean_us": 104.5593
+          },
+          "post_standby": {
+            "switches": 2422,
+            "mean_us": 4.7853
+          },
+          "preamble": {
+            "switches": 2422,
+            "mean_us": 4.9616
+          },
+          "protocol_and_cache": {
+            "switches": 2424,
+            "mean_us": 1.2269
+          },
+          "rx_resume": {
+            "switches": 2422,
+            "mean_us": 158.2164
+          },
+          "standby": {
+            "switches": 2423,
+            "mean_us": 69.3454
+          },
+          "tail": {
+            "switches": 2422,
+            "mean_us": 5.3997
+          },
+          "whole": {
+            "switches": 2422,
+            "mean_us": 701.8489
+          }
+        },
+        "switch_errors_delta": 0,
+        "cache": {
+          "switches": 2409,
+          "misses": 429828,
+          "mean_misses": 178.4259
+        }
+      }
+    },
+    "cpu80_spi8": {
+      "frequency_only": {
+        "windows": 1,
+        "stages": {
+          "admission": {
+            "switches": 1245,
+            "mean_us": 238.1084
+          },
+          "frequency": {
+            "switches": 1247,
+            "mean_us": 146.2719
+          },
+          "guard_math": {
+            "switches": 1246,
+            "mean_us": 46.5329
+          },
+          "modulation": {
+            "switches": 1247,
+            "mean_us": 14.8885
+          },
+          "post_standby": {
+            "switches": 1246,
+            "mean_us": 7.9342
+          },
+          "preamble": {
+            "switches": 1246,
+            "mean_us": 6.8202
+          },
+          "protocol_and_cache": {
+            "switches": 1246,
+            "mean_us": 2.8708
+          },
+          "rx_resume": {
+            "switches": 1247,
+            "mean_us": 200.9471
+          },
+          "standby": {
+            "switches": 1246,
+            "mean_us": 93.5778
+          },
+          "tail": {
+            "switches": 1247,
+            "mean_us": 10.5477
+          },
+          "whole": {
+            "switches": 1247,
+            "mean_us": 770.6953
+          }
+        },
+        "switch_errors_delta": 0,
+        "cache": {
+          "switches": 1238,
+          "misses": 216711,
+          "mean_misses": 175.0493
+        }
+      },
+      "mixed_modem": {
+        "windows": 1,
+        "stages": {
+          "admission": {
+            "switches": 1275,
+            "mean_us": 235.9255
+          },
+          "frequency": {
+            "switches": 1275,
+            "mean_us": 146.7027
+          },
+          "guard_math": {
+            "switches": 1276,
+            "mean_us": 45.9639
+          },
+          "modulation": {
+            "switches": 1275,
+            "mean_us": 136.36
+          },
+          "post_standby": {
+            "switches": 1274,
+            "mean_us": 7.781
+          },
+          "preamble": {
+            "switches": 1275,
+            "mean_us": 7.0894
+          },
+          "protocol_and_cache": {
+            "switches": 1275,
+            "mean_us": 2.8392
+          },
+          "rx_resume": {
+            "switches": 1275,
+            "mean_us": 261.5922
+          },
+          "standby": {
+            "switches": 1275,
+            "mean_us": 94.2816
+          },
+          "tail": {
+            "switches": 1275,
+            "mean_us": 10.6173
+          },
+          "whole": {
+            "switches": 1275,
+            "mean_us": 951.5663
+          }
+        },
+        "switch_errors_delta": 0,
+        "cache": {
+          "switches": 1267,
+          "misses": 226673,
+          "mean_misses": 178.9053
+        }
+      }
+    },
+    "cpu240_spi9": {
+      "frequency_only": {
+        "windows": 1,
+        "stages": {
+          "admission": {
+            "switches": 1056,
+            "mean_us": 187.5511
+          },
+          "frequency": {
+            "switches": 1056,
+            "mean_us": 118.9934
+          },
+          "guard_math": {
+            "switches": 1056,
+            "mean_us": 39.7765
+          },
+          "modulation": {
+            "switches": 1057,
+            "mean_us": 8.8666
+          },
+          "post_standby": {
+            "switches": 1056,
+            "mean_us": 4.8513
+          },
+          "preamble": {
+            "switches": 1056,
+            "mean_us": 5.0682
+          },
+          "protocol_and_cache": {
+            "switches": 1056,
+            "mean_us": 1.1364
+          },
+          "rx_resume": {
+            "switches": 1056,
+            "mean_us": 126.8864
+          },
+          "standby": {
+            "switches": 1056,
+            "mean_us": 69.8428
+          },
+          "tail": {
+            "switches": 1056,
+            "mean_us": 5.7377
+          },
+          "whole": {
+            "switches": 1056,
+            "mean_us": 569.9773
+          }
+        },
+        "switch_errors_delta": 0,
+        "cache": {
+          "switches": 1048,
+          "misses": 178796,
+          "mean_misses": 170.6069
+        }
+      },
+      "mixed_modem": {
+        "windows": 1,
+        "stages": {
+          "admission": {
+            "switches": 1208,
+            "mean_us": 190.9785
+          },
+          "frequency": {
+            "switches": 1208,
+            "mean_us": 118.4685
+          },
+          "guard_math": {
+            "switches": 1209,
+            "mean_us": 39.1935
+          },
+          "modulation": {
+            "switches": 1208,
+            "mean_us": 103.6498
+          },
+          "post_standby": {
+            "switches": 1208,
+            "mean_us": 4.7972
+          },
+          "preamble": {
+            "switches": 1209,
+            "mean_us": 5.0827
+          },
+          "protocol_and_cache": {
+            "switches": 1208,
+            "mean_us": 1.2434
+          },
+          "rx_resume": {
+            "switches": 1208,
+            "mean_us": 158.1805
+          },
+          "standby": {
+            "switches": 1208,
+            "mean_us": 69.0753
+          },
+          "tail": {
+            "switches": 1208,
+            "mean_us": 5.6325
+          },
+          "whole": {
+            "switches": 1208,
+            "mean_us": 697.3982
+          }
+        },
+        "switch_errors_delta": 0,
+        "cache": {
+          "switches": 1201,
+          "misses": 212764,
+          "mean_misses": 177.1557
+        }
+      }
+    }
+  },
+  "builds": {
+    "companion": {
+      "available_internal_bytes": 217232,
+      "required_heap_bytes": 200480,
+      "largest_internal_region_bytes": 184464,
+      "passed": true,
+      "image": "heltec_v4_2_v4_3_companion_radio_full_femon-v1.18.0.2-fast-iram-4fed5557.bin",
+      "sha256": "18e79e4569c268d52d6f392e1f4fcd7cbdbe462756b4be7fe3010c3d7db197da",
+      "image_bytes": 2584232
+    },
+    "repeater": {
+      "available_internal_bytes": 234632,
+      "required_heap_bytes": 201652,
+      "largest_internal_region_bytes": 201864,
+      "passed": true,
+      "image": "heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.2-fast-psram-4fed5557.bin",
+      "sha256": "98bcfe0bad5615e46171262a1c11463f199ae7328f6af1018526b1f156a34ac8",
+      "image_bytes": 2233160
+    },
+    "room": {
+      "available_internal_bytes": 211512,
+      "required_heap_bytes": 202528,
+      "largest_internal_region_bytes": 178744,
+      "passed": true,
+      "image": "heltec_v4_room_server-full-usb-wifi-ota-v1.18.0.2-fast-iram-f6a71d8f.bin",
+      "sha256": "3b784c301a57f748b6d35d51d56688f9a698bd2a6e905b359349adaabe7a4182",
+      "image_bytes": 2222680
+    },
+    "r8_tft_repeater_before_required_psram": {
+      "available_internal_bytes": 232888,
+      "required_heap_bytes": 232336,
+      "largest_internal_region_bytes": 200120,
+      "passed": true,
+      "image": "heltec_v4_r8_tft_repeater-full-usb-wifi-ota-v1.18.0.2-fast-iram-20365fce.bin",
+      "sha256": "3c159d25419f99e5406135bc20b500d74f42d814b025bc21d6a0d249e72b531d",
+      "image_bytes": 2234232
+    }
+  },
+  "limitations": [
+    "One physical V4 OLED; R8 TFT and infrastructure roles were build-checked, not physically qualified in this campaign.",
+    "Cache misses include both ESP32-S3 CPUs; they are not per-task attribution.",
+    "Timing captures are quiet application-loop windows, not an interrupt-latency or receiver-sensitivity test.",
+    "80 MHz and 8.889 MHz SPI comparisons each use one window per profile; small SPI differences may include run-to-run variation.",
+    "The October reference used a different firmware role. No first bad historical commit is claimed."
+  ],
+  "packet_test": {
+    "firmware": "v1.18.0.2-fast-iram-4fed5557",
+    "passed": true,
+    "automatic_rf_retries": 0,
+    "memory": "Heap free=130276 min=125164 max=118772 int=130276/118772 PSRAM=1918387/2094943 queue=3/512",
+    "windows": [
+      {
+        "corrupt": [],
+        "cpu_mhz": 80,
+        "duplicates": 0,
+        "frequency_mhz": 906.525,
+        "missing": [],
+        "profile": 0,
+        "profile_rx_delta": [
+          30,
+          0
+        ],
+        "radio2_after": "rx; RX=67,0 TX=0,0 switches=1702 errors=0 max=3593us preamble=32,32; test=4/4,4/4 pending budget=3953us; timing self-test pending; wait=83s",
+        "radio2_before": "rx; RX=37,0 TX=0,0 switches=345 errors=0 max=3593us preamble=32,32; test=4/4,4/4 pending budget=3953us; timing self-test pending; wait=116s",
+        "received": 30,
+        "requested": 30,
+        "sent": 30
+      },
+      {
+        "corrupt": [],
+        "cpu_mhz": 80,
+        "duplicates": 0,
+        "frequency_mhz": 907.525,
+        "missing": [],
+        "profile": 1,
+        "profile_rx_delta": [
+          0,
+          30
+        ],
+        "radio2_after": "rx; RX=67,30 TX=0,0 switches=3227 errors=0 max=3646us preamble=32,32; test=4/4,4/4 pending budget=4011us; timing self-test pending; wait=48s",
+        "radio2_before": "rx; RX=67,0 TX=0,0 switches=1900 errors=0 max=3611us preamble=32,32; test=4/4,4/4 pending budget=3973us; timing self-test pending; wait=80s",
+        "received": 30,
+        "requested": 30,
+        "sent": 30
+      },
+      {
+        "corrupt": [],
+        "cpu_mhz": 240,
+        "duplicates": 0,
+        "frequency_mhz": 906.525,
+        "missing": [],
+        "profile": 0,
+        "profile_rx_delta": [
+          30,
+          0
+        ],
+        "radio2_after": "rx; RX=97,30 TX=0,0 switches=4739 errors=0 max=3646us preamble=32,32; test=4/4,4/4 pending budget=3200us; timing self-test pending; wait=83s",
+        "radio2_before": "rx; RX=67,30 TX=0,0 switches=3499 errors=0 max=3646us preamble=32,32; test=4/4,4/4 pending budget=741us; timing self-test pending; wait=115s",
+        "received": 30,
+        "requested": 30,
+        "sent": 30
+      },
+      {
+        "corrupt": [],
+        "cpu_mhz": 240,
+        "duplicates": 0,
+        "frequency_mhz": 907.525,
+        "missing": [],
+        "profile": 1,
+        "profile_rx_delta": [
+          0,
+          30
+        ],
+        "radio2_after": "rx; RX=97,60 TX=0,0 switches=6181 errors=0 max=3646us preamble=32,32; test=4/4,4/4 pending budget=3200us; timing self-test pending; wait=48s",
+        "radio2_before": "rx; RX=97,30 TX=0,0 switches=4929 errors=0 max=3646us preamble=32,32; test=4/4,4/4 pending budget=3200us; timing self-test pending; wait=80s",
+        "received": 30,
+        "requested": 30,
+        "sent": 30
+      }
+    ],
+    "settings_restored": true
+  },
+  "memory_tradeoff": {
+    "additional_internal_bytes_controlled": 5136,
+    "full_repeater_external_table_reservation_bytes": 36828,
+    "full_repeater_internal_headroom_bytes": 32980,
+    "full_repeater_missing_psram": "Stops LoRa startup; retains USB recovery; does not silently reduce tables."
+  },
+  "host_tests": {
+    "focused_driver": 28,
+    "additional_driver": 54,
+    "psram_and_memory": 87,
+    "passed": true
+  },
+  "final_state": {
+    "normal_image": true,
+    "version": "v1.18.0.2-fast-iram-4fed5557 (Build: 09-Nov-2026)",
+    "saved_settings_restored": true,
+    "private_hil_commands_absent": true,
+    "reservations_released": true
+  }
+}

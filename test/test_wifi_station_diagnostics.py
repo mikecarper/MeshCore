@@ -98,7 +98,7 @@ WIRELESS_CONTROL = r'''
 inline bool blocked=false;
 namespace mesh {namespace wireless {
 enum {WiFi=1};
-struct Control {bool blocked(int)const{assert(lock_depth==0);return ::blocked;}};
+struct Control {bool blocked(int)const{assert(lock_depth==0);return ::blocked;} bool backgroundBlocked(int service)const {return blocked(service);}};
 inline Control& control(){static Control instance;return instance;}
 }}
 '''

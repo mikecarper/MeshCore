@@ -41,7 +41,12 @@ struct Queue {
     q.buffer.release(q.head);
     ++q.released;
   }
+  static OtaContext* acquireOfflineQueueForOta(void* owner) { return acquire(owner); }
+  static uint16_t drainOfflineQueueForOta(void* owner) { return drain(owner); }
+  static void releaseOfflineQueueFromOta(void* owner) { release(owner); }
+  void initializeOfflineQueue();
 };
+#include "queue_init_under_test.h"
 
 #define COMPANION_FEATURE_DIRECT_OTA_ADMIN 1
 struct MyMesh {
@@ -169,7 +174,7 @@ int main() {
   char reply[160] = {};
   assert(!ota_acquire_context(reply, sizeof reply));
   assert(strstr(reply, "not ready"));
-  ota_set_context_storage(&q, Queue::acquire, Queue::release, Queue::drain);
+  q.initializeOfflineQueue();
   uint8_t identity[4] = {1, 2, 3, 4};
   ota_begin_context(0, send, nullptr, "Heltec_t096", identity);
   assert(!ota_context_if_active() && q.buffer.capacity() == 256);
@@ -187,10 +192,24 @@ int main() {
   check_messages();
   companion._ota_direct_admin.enabled = false;
   uint16_t drained = 0;
+#if defined(OTA_PRESERVE_UNREAD_ON_BORROW) && OTA_PRESERVE_UNREAD_ON_BORROW
+  assert(!companion.scheduleTempRadio(910.525f, 62.5f, 7, 5, 60, reply, sizeof reply));
+  assert(strstr(reply, "sync unread messages"));
+  assert(q.head == 191 && q.count == 129 && q.buffer.capacity() == 256);
+  check_messages();
+  // Simulate the app consuming one message before retrying the command.
+  q.head = (q.head + 1) % q.buffer.capacity();
+  --q.count;
+  first_retained = 1;
+  check_messages();
+  assert(companion.scheduleTempRadio(910.525f, 62.5f, 7, 5, 60, reply, sizeof reply));
+  assert(!strstr(reply, "OTA cleared") && q.count == 128 && q.head == 0);
+#else
   assert(companion.scheduleTempRadio(910.525f, 62.5f, 7, 5, 60, reply, sizeof reply));
   assert(strstr(reply, "OTA cleared 1 oldest queued messages"));
   assert(q.count == 128 && q.head == 0);
   first_retained = 1;
+#endif
   check_messages();
   companion._ota_direct_admin.enabled = true;
   assert(companion.scheduleTempRadio(910.525f, 62.5f, 7, 5, 60, reply, sizeof reply));
@@ -313,12 +332,28 @@ int main() {
     frame.len = 176;
     memset(frame.buf, i, sizeof frame.buf);
   }
-  ota_set_context_storage(&full, Queue::acquire, Queue::release, Queue::drain);
+  full.initializeOfflineQueue();
   ota_begin_context(0, send, nullptr, "Heltec_t096", identity);
   assert(!ota_acquire_context(reply, sizeof reply));
   drained = 0;
+  #if defined(OTA_PRESERVE_UNREAD_ON_BORROW) && OTA_PRESERVE_UNREAD_ON_BORROW
+  assert(!ota_acquire_context(reply, sizeof reply, true, &drained));
+  assert(strstr(reply, "sync unread messages") && drained == 0);
+  assert(full.count == 256 && full.head == 191 && full.buffer.capacity() == 256);
+  for (int i = 0; i < full.count; ++i) {
+    const Frame& frame = full.buffer.at((full.head + i) % full.buffer.capacity());
+    assert(frame.len == 176);
+    for (auto byte : frame.buf) assert(byte == i);
+  }
+  // Only the app's explicit consumption makes room for a retry.
+  full.head = (full.head + 128) % full.buffer.capacity();
+  full.count = 128;
+  assert(ota_acquire_context(reply, sizeof reply, true, &drained));
+  assert(drained == 0 && full.count == 128 && full.head == 0);
+  #else
   assert(ota_acquire_context(reply, sizeof reply, true, &drained));
   assert(drained == 128 && full.count == 128 && full.head == 0);
+  #endif
   for (int i = 0; i < full.count; ++i) {
     const Frame& frame = full.buffer.at(i);
     assert(frame.len == 176);

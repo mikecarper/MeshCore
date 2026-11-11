@@ -237,7 +237,9 @@ available from a canonical image:
   persisted `set powersaving on|off` setting.
 - Companion `_femoff` names are replaced by the matching controllable-FEM
   image plus `radio.fem.rxgain on|off`. The old names remain explicit build
-  targets for compatibility.
+  targets for compatibility. All shipping images, including historical
+  `_femon` names, now default to RX gain off; explicitly saved choices remain
+  authoritative.
 - `Station_G2_logging_*` and `Station_G3_ESP32_logging_*` hardware names are
   replaced by their ordinary Station target. G2 boosted receive gain is the
   persisted `radio.rxgain on|off` setting; the G3 alias changed only the

@@ -24,11 +24,19 @@
 #endif
 
 #if defined(OTA_QSPI_BOOTLOADER_UPDATE)
+  #if (defined(OTA_QSPI_BOOT_WIO_L1) + defined(OTA_QSPI_BOOT_TECHO) + \
+       defined(OTA_QSPI_BOOT_TECHO_LITE) + defined(OTA_QSPI_BOOT_THINKNODE_M1) + \
+       defined(OTA_QSPI_BOOT_THINKNODE_M6) + defined(SENSECAP_SOLAR_P1)) > 1
+    #error "bootloader-update board profiles must be unambiguous"
+  #endif
   #if !defined(NRF52_PLATFORM) || !defined(OTA_QSPI_STORE)
     #error "OTA_QSPI_BOOTLOADER_UPDATE requires nRF52 raw-QSPI staging"
   #endif
-  #if !defined(XIAO_NRF52) && !defined(IKOKA_NRF52)
-    #error "OTA_QSPI_BOOTLOADER_UPDATE is restricted to XIAO nRF52840 module builds"
+  #if !defined(XIAO_NRF52) && !defined(IKOKA_NRF52) && !defined(SENSECAP_SOLAR_P1) && \
+      !defined(OTA_QSPI_BOOT_WIO_L1) && !defined(OTA_QSPI_BOOT_TECHO) && \
+      !defined(OTA_QSPI_BOOT_TECHO_LITE) && !defined(OTA_QSPI_BOOT_THINKNODE_M1) && \
+      !defined(OTA_QSPI_BOOT_THINKNODE_M6)
+    #error "OTA_QSPI_BOOTLOADER_UPDATE requires a qualified nRF52840 module build"
   #endif
   #if defined(QSPIFLASH) || defined(OTA_SD_STORE)
     #error "bootloader-update QSPI cannot share a filesystem or SD staging configuration"
@@ -95,8 +103,8 @@ inline bool ota_bootloader_image_geometry_valid(uint32_t image_size,
   return image_size == OTA_BOOT_IMAGE_SIZE && payload_size == OTA_BOOT_IMAGE_SIZE;
 }
 
-// External SD keeps the normal ED000 application linker, but OTAFIX needs the
-// XIAO-sized E0000..EA000 internal scratch range temporarily while replacing
+// External SD and QSPI updates need the E0000..EA000 internal scratch range
+// temporarily while replacing
 // itself. A hash-valid live EndF must prove the complete running image ends
 // before that scratch range; a linker maximum alone is not sufficient.
 inline bool ota_bootloader_scratch_headroom_valid(bool self_valid,
@@ -126,6 +134,15 @@ inline bool ota_bootloader_scratch_bank_geometry_valid(uint16_t bank_0,
          bank_0_size <= safe_span;
 }
 
+inline bool ota_bootloader_external_scratch_valid(bool self_valid, uint32_t app_base,
+                                                  uint32_t image_len, uint32_t scratch_start,
+                                                  uint16_t bank_0, uint16_t bank_0_crc,
+                                                  uint32_t bank_0_size) {
+  return ota_bootloader_scratch_headroom_valid(self_valid, app_base, image_len, scratch_start) &&
+         ota_bootloader_scratch_bank_geometry_valid(bank_0, bank_0_crc, bank_0_size,
+                                                   image_len, scratch_start - app_base);
+}
+
 #if defined(NRF52_PLATFORM)
 inline bool ota_bootloader_live_bank_preserves_scratch(uint32_t app_base,
                                                        uint32_t live_image_size,
@@ -137,9 +154,8 @@ inline bool ota_bootloader_live_bank_preserves_scratch(uint32_t app_base,
   const uint16_t bank_0_crc = (uint16_t)(raw[2] | ((uint16_t)raw[3] << 8));
   const uint32_t bank_0_size = (uint32_t)raw[8] | ((uint32_t)raw[9] << 8) |
       ((uint32_t)raw[10] << 16) | ((uint32_t)raw[11] << 24);
-  return ota_bootloader_scratch_bank_geometry_valid(
-      bank_0, bank_0_crc, bank_0_size, live_image_size,
-      scratch_start - app_base);
+  return ota_bootloader_external_scratch_valid(true, app_base, live_image_size,
+      scratch_start, bank_0, bank_0_crc, bank_0_size);
 }
 #endif
 
@@ -171,6 +187,40 @@ struct OtaBootloaderIdentity {
   uint16_t layout_abi = 0;
   uint16_t compat_flags = 0;
 };
+
+// A P1 and a XIAO share a board ID but have different bootloader hardware.
+inline bool ota_bootloader_identity_allowed_for_build(const OtaBootloaderIdentity& identity) {
+#if defined(SENSECAP_SOLAR_P1)
+  return identity.present && identity.crc_ok && identity.board_id == OTA_XIAO_BOARD_ID_BASE &&
+         memcmp(identity.device_name, OTA_SENSECAP_BOOT_DEVICE_NAME, OTA_BOOT_DEVICE_NAME_SIZE) == 0;
+#elif defined(OTA_QSPI_BOOT_WIO_L1) || defined(OTA_QSPI_BOOT_TECHO) || \
+      defined(OTA_QSPI_BOOT_TECHO_LITE) || defined(OTA_QSPI_BOOT_THINKNODE_M1) || \
+      defined(OTA_QSPI_BOOT_THINKNODE_M6)
+  // The full embedded name is as important as the board ID: several boards
+  // reuse a UF2 family ID while requiring different bootloader hardware.
+  #if defined(OTA_QSPI_BOOT_WIO_L1)
+    static const char expected[OTA_BOOT_DEVICE_NAME_SIZE] = "WTL1_DFU";
+    static const uint32_t board_id = 0x28861667UL;
+  #elif defined(OTA_QSPI_BOOT_TECHO)
+    static const char expected[OTA_BOOT_DEVICE_NAME_SIZE] = "LGTE_DFU";
+    static const uint32_t board_id = 0x239A0029UL;
+  #elif defined(OTA_QSPI_BOOT_TECHO_LITE)
+    static const char expected[OTA_BOOT_DEVICE_NAME_SIZE] = "LTEL_DFU";
+    static const uint32_t board_id = 0x239A00DAUL;
+  #elif defined(OTA_QSPI_BOOT_THINKNODE_M1)
+    static const char expected[OTA_BOOT_DEVICE_NAME_SIZE] = "TNM1_DFU";
+    static const uint32_t board_id = 0x239A00DAUL;
+  #else
+    static const char expected[OTA_BOOT_DEVICE_NAME_SIZE] = "TNM6_DFU";
+    static const uint32_t board_id = 0x239A00DAUL;
+  #endif
+  return identity.present && identity.crc_ok && identity.board_id == board_id &&
+         memcmp(identity.device_name, expected, OTA_BOOT_DEVICE_NAME_SIZE) == 0;
+#else
+  (void)identity;
+  return true;
+#endif
+}
 
 // Accumulate a stream of already CRC-validated candidates without silently
 // choosing between two privileged identities. Both the memory-mapped and QSPI
@@ -723,7 +773,7 @@ inline OtaBootloaderConfirmGate ota_bootloader_confirmation_gate(
       m.block_count != OTA_BOOT_IMAGE_SIZE / 1024u || !m.base_hash ||
       memcmp(m.base_hash, zero_base, sizeof(zero_base)) != 0)
     return OTA_BOOT_CONFIRM_GEOMETRY;
-  if (!installed.present || !installed.crc_ok ||
+  if (!installed.present || !installed.crc_ok || !ota_bootloader_identity_allowed_for_build(installed) ||
       !ota_bootloader_board_id_valid(installed.board_id) ||
       !ota_bootloader_device_name_valid(
           installed.board_id, reinterpret_cast<const uint8_t*>(installed.device_name)))

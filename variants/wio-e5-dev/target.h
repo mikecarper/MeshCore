@@ -1,5 +1,9 @@
 #pragma once
 
+#ifndef PIN_VBAT_READ
+#define PIN_VBAT_READ PIN_A3
+#endif
+
 #define RADIOLIB_STATIC_ONLY 1
 #include <RadioLib.h>
 #include <helpers/radiolib/RadioLibWrappers.h>

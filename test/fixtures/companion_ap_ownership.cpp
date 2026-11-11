@@ -32,7 +32,7 @@ namespace mesh{namespace wifi{
 }}
 namespace mesh{namespace wireless{
  constexpr int WiFi=1;
- struct Control{bool blocked(int){return false;}};
+ struct Control{bool blocked(int){return false;} bool backgroundBlocked(int service) {return blocked(service);}};
  Control& control(){static Control instance;return instance;}
 }}
 constexpr int WIFI_IF_STA=0;

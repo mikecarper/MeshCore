@@ -27,7 +27,7 @@ inline const char* recoveryOriginName(RecoveryOrigin origin) {
 }
 inline bool pack(const Profile& p, Packed& out) {
   // Initial HIL: same-band sub-GHz, explicitly limited preamble/timing range.
-  if (p.freq_hz < 150000000u || p.freq_hz > 1090000000u || p.sf < 7 || p.sf > 8 || p.cr < 5 || p.cr > 8 || p.preamble == 0) return false;
+  if (p.freq_hz < 150000000u || p.freq_hz > 1090000000u || p.sf < 7 || p.sf > 8 || p.cr < 4 || p.cr > 8 || p.preamble == 0) return false;
   uint8_t bw;
   switch (p.bw_hz) { case 62500: bw=3; break; case 125000: bw=4; break; case 250000: bw=5; break; default: return false; }
   const uint8_t peak = p.sf == 7 ? 60 : 64; // one-symbol CAD

@@ -62,6 +62,98 @@ class WiFiOtaStartTest(unittest.TestCase):
                         self.compile_and_run(fixture.replace("@METHODS@", methods),
                                              *flags, f"-DESP_ARDUINO_VERSION_MAJOR={major}")
 
+    def test_temporary_ota_cleans_up_saved_off_without_undoing_explicit_on(self):
+        source = (ROOT / "src/helpers/ESP32Board.cpp").read_text()
+        lightweight, elegant = source.split("#elif defined(ADMIN_PASSWORD) && !defined(DISABLE_WIFI_OTA)", 1)
+        checks = r"""
+struct SavedBackend : mesh::wireless::Backend {
+  ESP32Board* board;
+  bool saved=false;
+  unsigned off_calls=0, writes=0;
+  uint8_t active=0;
+  explicit SavedBackend(ESP32Board& b):board(&b){}
+  uint8_t available()const override{return mesh::wireless::WiFi;}
+  uint8_t enabled()const override{return active|(board->ota_server?mesh::wireless::WiFi:0);}
+  uint8_t clients()const override{return mesh::wireless::Independent;}
+  bool hasWiFiPreference()const override{return true;}
+  bool wifiPreference()const override{return saved;}
+  bool saveWiFiPreference(bool value)override{saved=value;++writes;return true;}
+  mesh::wireless::Result set(uint8_t,bool on)override{
+    if(on){active=mesh::wireless::WiFi;WiFi.radio=WiFi.connected=true;}
+    else{
+      if(board->ota_server){char reply[160];if(!board->stopOTAUpdate(reply))return mesh::wireless::Result::Failed;}
+      ++off_calls;active=0;WiFi.connected=false;WiFi.mode(WIFI_OFF);
+    }
+    return mesh::wireless::Result::Done;
+  }
+};
+int main(){
+  using mesh::wireless::Independent;
+  constrain_espnow_channel=false;
+  ESP32Board board;SavedBackend backend(board);auto& control=mesh::wireless::control();
+  control.begin(backend);assert(control.blocked(mesh::wireless::WiFi));
+  auto drain=[&](){control.service(millis());clock_ms+=250;control.service(millis());};
+  char reply[160]={};
+  // A failed AP start must not leave the saved-Off policy bypassed.
+  WiFi.fault=Fault::Ssid;
+  assert(!board.startOTAUpdate("fixture",reply,true));
+  assert(!board.ota_server&&!board.inhibit_sleep);
+  drain();assert(control.blocked(mesh::wireless::WiFi)&&backend.off_calls==1&&!backend.saved);
+  assert(!control.allowService(mesh::wireless::WiFi));
+  WiFi.fault=Fault::None;
+  // An HTTP listener failure is another post-network acquisition exit.
+#ifdef LIGHTWEIGHT_WIFI_OTA
+  lightweight_ota_server.allow=false;
+#else
+  async_bind_allowed=false;
+#endif
+  assert(!board.startOTAUpdate("fixture",reply,true));
+  drain();assert(control.blocked(mesh::wireless::WiFi)&&backend.off_calls==2&&!backend.saved);
+#ifdef LIGHTWEIGHT_WIFI_OTA
+  lightweight_ota_server.allow=true;
+#else
+  async_bind_allowed=true;
+#endif
+  assert(board.startOTAUpdate("fixture",reply,true));
+  assert(!control.blocked(mesh::wireless::WiFi));
+  drain();assert(backend.off_calls==2&&board.ota_server); // Live OTA retains its override.
+  // A rejected change to a still-running uploader must preserve that server.
+  mesh::wifi::setLongRangeOwner(mesh::wifi::kLongRangeBridgeOwner,true);
+  assert(!board.startOTAUpdate("fixture",reply,true));
+  drain();assert(backend.off_calls==2&&board.ota_server&&!control.blocked(mesh::wireless::WiFi));
+  mesh::wifi::setLongRangeOwner(mesh::wifi::kLongRangeBridgeOwner,false);
+  assert(board.stopOTAUpdate(reply));
+  drain();assert(control.blocked(mesh::wireless::WiFi)&&backend.off_calls==3&&!backend.saved);
+  assert(!control.allowService(mesh::wireless::WiFi));
+  assert(board.stopOTAUpdate(reply)); // Not-running cleanup remains idempotent.
+  drain();assert(backend.off_calls==3&&control.blocked(mesh::wireless::WiFi));
+  // A newer explicit saved On supersedes OTA's temporary ownership.
+  assert(board.startOTAUpdate("fixture",reply,true));
+  assert(control.handle("set wifi on",reply,sizeof(reply),millis(),Independent));
+  clock_ms+=250;control.service(millis());assert(backend.saved&&!control.pending());
+  const auto stopped=backend.off_calls;
+  assert(board.stopOTAUpdate(reply));drain();
+  assert(backend.off_calls==stopped&&!control.blocked(mesh::wireless::WiFi)&&backend.saved);
+  assert(control.allowService(mesh::wireless::WiFi));
+  assert(backend.writes==1); // Temporary starts/stops never rewrite the preference.
+}
+"""
+        for implementation, flags in (
+                (lightweight, ["-DLIGHTWEIGHT_WIFI_OTA=1"]),
+                (lightweight, ["-DLIGHTWEIGHT_WIFI_OTA=1", "-DCOMPANION_RADIO_FULL=1"]),
+                (elegant, [])):
+            methods="\n".join(extract_braced(implementation,signature) for signature in (
+                "bool ESP32Board::startOTAUpdate(","bool ESP32Board::stopOTAUpdate("))
+            fixture=self.ap_fixture().split("int main() {",1)[0].replace("@METHODS@",methods)+checks
+            for major in (2,3):
+                with self.subTest(flags=flags,arduino_major=major):
+                    self.compile_and_run(fixture,*flags,f"-DESP_ARDUINO_VERSION_MAJOR={major}")
+            if flags == ["-DLIGHTWEIGHT_WIFI_OTA=1"]:
+                old=fixture.replace("mesh::wireless::control().finishWiFiForOTA();", "(void)0;")
+                self.assertNotEqual(old,fixture)
+                with self.assertRaises(AssertionError):
+                    self.compile_and_run(old,*flags,"-DESP_ARDUINO_VERSION_MAJOR=2")
+
     def test_companion_setup_portal_uses_the_same_live_ap_contract(self):
         source = (ROOT / "src/helpers/WiFiSetupPortal.cpp").read_text()
         start = extract_braced(source, "bool WiFiSetupPortal::begin(")
@@ -334,6 +426,7 @@ int main() {
         fixture = r'''
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
 #include <helpers/esp32/ManagementPassword.h>
+#include <helpers/WirelessControl.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -379,6 +472,7 @@ int main() {
         fixture = r'''
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
 #include <helpers/esp32/ManagementPassword.h>
+#include <helpers/WirelessControl.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -506,6 +600,7 @@ int main() {
         fixture = r'''
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
 #include <helpers/esp32/ManagementPassword.h>
+#include <helpers/WirelessControl.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -631,6 +726,7 @@ int main() {
         fixture = r'''
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
 #include <helpers/esp32/ManagementPassword.h>
+#include <helpers/WirelessControl.h>
 #include <cassert>
 #include <cstdint>
 uint32_t now = 0;
@@ -698,6 +794,7 @@ int main() {
         fixture = r'''
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
 #include <helpers/esp32/ManagementPassword.h>
+#include <helpers/WirelessControl.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -755,6 +852,7 @@ int main() {
         fixture = r'''
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
 #include <helpers/esp32/ManagementPassword.h>
+#include <helpers/WirelessControl.h>
 #include <cassert>
 #include <cstdint>
 static unsigned delays = 0;

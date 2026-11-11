@@ -107,6 +107,21 @@ int main(int argc,char **argv) {
   auto old=parse(load(directory,"p1-old.bin"));
   const uint8_t p1_name[16]={'S','C','A','P','_','D','F','U'};
   const uint8_t xiao_name[16]={'X','I','A','O','_','D','F','U'};
+  // Both SD and QSPI use this preflight before approving a bootloader copy.
+  const uint32_t app=0x27000, scratch=OTA_BOOT_SCRATCH_START, span=scratch-app;
+  assert(ota_bootloader_external_scratch_valid(true,app,span,scratch,0xffff,0xffff,0xffffffff));
+  assert(ota_bootloader_external_scratch_valid(true,app,span,scratch,1,0,0));
+  assert(ota_bootloader_external_scratch_valid(true,app,span,scratch,1,1,span));
+  assert(!ota_bootloader_external_scratch_valid(false,app,span,scratch,0xffff,0,0));
+  assert(!ota_bootloader_external_scratch_valid(true,app,span+1,scratch,0xffff,0,0));
+  assert(!ota_bootloader_external_scratch_valid(true,app,span,scratch,1,1,span+1));
+  assert(!ota_bootloader_external_scratch_valid(true,app,span,scratch,1,1,span-1));
+  assert(!ota_bootloader_external_scratch_valid(true,app,span,scratch,2,1,span));
+#if defined(SENSECAP_SOLAR_P1)
+  assert(ota_bootloader_identity_allowed_for_build(p1));
+  assert(!ota_bootloader_identity_allowed_for_build(base));
+  assert(!ota_bootloader_identity_allowed_for_build(sense));
+#endif
   if (scenario=="canonical") {
     assert(p1.board_id==0x28860044 && p1.crc_ok && p1.continuity_present);
     assert(p1.softdevice_fwid==0x123 && p1.app_base==0x27000 && p1.boot_version==0x02040CFF);
@@ -169,23 +184,42 @@ int main(int argc,char **argv) {
     context.caps.codec_mask=OTA_BL_REQUIRED_APP_CODEC_MASK;
     context.caps.storage_flags=OTA_BL_PROFILE_QSPI_BOOT_UPDATE;
     char reply[160]={};
+#if defined(SENSECAP_SOLAR_P1)
+    const bool build_allows_xiao=false;
+    const auto local=p1;
+#else
+    const bool build_allows_xiao=true;
+    const auto local=sense;
+#endif
     for (const auto &installed:{base,sense}) {
       context.identity=installed;
       for (const auto &candidate:{base,sense}) {
-        assert(cli_list_fit(context,candidate.board_id,flags,CODEC_FULL));
-        assert(!cli_pull_rejected(context,candidate.board_id,flags,CODEC_FULL,reply));
+        assert(cli_list_fit(context,candidate.board_id,flags,CODEC_FULL)==build_allows_xiao);
+        assert(cli_pull_rejected(context,candidate.board_id,flags,CODEC_FULL,reply)!=build_allows_xiao);
       }
     }
     context.identity=p1;
     assert(!cli_list_fit(context,base.board_id,flags,CODEC_FULL));
     assert(cli_pull_rejected(context,base.board_id,flags,CODEC_FULL,reply));
     assert(std::strstr(reply,"does not match"));
-    context.identity=sense;
-    assert(!cli_list_fit(context,base.board_id,flags&~MFLAG_SIGNED,CODEC_FULL));
-    assert(cli_pull_rejected(context,base.board_id,flags&~MFLAG_SIGNED,CODEC_FULL,reply));
+    context.identity=local;
+    const uint32_t local_target=ota_bootloader_target_id(local);
+    assert(cli_list_fit(context,local_target,flags,CODEC_FULL));
+    assert(!cli_pull_rejected(context,local_target,flags,CODEC_FULL,reply));
+    assert(!cli_list_fit(context,local_target,flags&~MFLAG_SIGNED,CODEC_FULL));
+    assert(cli_pull_rejected(context,local_target,flags&~MFLAG_SIGNED,CODEC_FULL,reply));
+    cli_bank_safe=false;
+    assert(!cli_list_fit(context,local_target,flags,CODEC_FULL));
+    assert(cli_pull_rejected(context,local_target,flags,CODEC_FULL,reply));
+    assert(std::strstr(reply,"scratch"));
+    cli_bank_safe=true;
+    cli_image_size=OTA_BOOT_SCRATCH_START-0x27000u+1u;
+    assert(!cli_list_fit(context,local_target,flags,CODEC_FULL));
+    assert(cli_pull_rejected(context,local_target,flags,CODEC_FULL,reply));
+    cli_image_size=4096u;
     context.caps.present=false;
-    assert(!cli_list_fit(context,base.board_id,flags,CODEC_FULL));
-    assert(cli_pull_rejected(context,base.board_id,flags,CODEC_FULL,reply));
+    assert(!cli_list_fit(context,local_target,flags,CODEC_FULL));
+    assert(cli_pull_rejected(context,local_target,flags,CODEC_FULL,reply));
     assert(std::strstr(reply,"lacks safe"));
   } else if (scenario=="xiao-successor") {
     uint8_t hw[32],wrong_hw[32],digest[32],zero[8]={},mid[4]={1,2,3,4};
@@ -195,21 +229,28 @@ int main(int argc,char **argv) {
     manifest.codec_id=CODEC_FULL; manifest.image_size=manifest.payload_size=OTA_BOOT_IMAGE_SIZE;
     manifest.block_size_log2=10; manifest.block_count=40; manifest.base_hash=zero;
     manifest.merkle_root=mid; manifest.image_hash=digest; manifest.hw_id=hw;
+#if defined(SENSECAP_SOLAR_P1)
+    const auto expected_confirmation=OTA_BOOT_CONFIRM_LOCAL_IDENTITY;
+    const auto expected_bad_hw=OTA_BOOT_CONFIRM_LOCAL_IDENTITY;
+#else
+    const auto expected_confirmation=OTA_BOOT_CONFIRM_OK;
+    const auto expected_bad_hw=OTA_BOOT_CONFIRM_HW_ID;
+#endif
     for (const auto &installed:{base,sense}) {
       for (const auto &candidate:{base,sense}) {
         manifest.target_id=candidate.board_id;
         assert(ota_bootloader_hw_id(candidate,hw));
         assert(ota_bootloader_target_compatible(installed,manifest.target_id));
-        assert(ota_bootloader_confirmation_gate(manifest,installed,mid,mid,digest)==OTA_BOOT_CONFIRM_OK);
+        assert(ota_bootloader_confirmation_gate(manifest,installed,mid,mid,digest)==expected_confirmation);
         assert(ota_bootloader_update_identity_matches(installed,candidate,manifest));
         assert(ota_bootloader_identity_matches(installed,candidate)==(installed.board_id==candidate.board_id));
         manifest.target_id^=1;
         assert(ota_xiao_bootloader_hw_id(manifest.target_id,hw));
-        assert(ota_bootloader_confirmation_gate(manifest,installed,mid,mid,digest)==OTA_BOOT_CONFIRM_OK);
+        assert(ota_bootloader_confirmation_gate(manifest,installed,mid,mid,digest)==expected_confirmation);
         assert(!ota_bootloader_update_identity_matches(installed,candidate,manifest));
         assert(ota_bootloader_hw_id(candidate,wrong_hw));
         manifest.hw_id=wrong_hw;
-        assert(ota_bootloader_confirmation_gate(manifest,installed,mid,mid,digest)==OTA_BOOT_CONFIRM_HW_ID);
+        assert(ota_bootloader_confirmation_gate(manifest,installed,mid,mid,digest)==expected_bad_hw);
         manifest.hw_id=hw;
       }
     }
@@ -232,7 +273,11 @@ int main(int argc,char **argv) {
     manifest.target_id=ota_bootloader_target_id(p1); manifest.hw_id=hw;
     manifest.merkle_root=mid; manifest.image_hash=digest;
     assert(ota_bootloader_confirmation_gate(manifest,old,mid,mid,digest)==OTA_BOOT_CONFIRM_OK);
+#if defined(SENSECAP_SOLAR_P1)
+    assert(ota_bootloader_confirmation_gate(manifest,base,mid,mid,digest)==OTA_BOOT_CONFIRM_LOCAL_IDENTITY);
+#else
     assert(ota_bootloader_confirmation_gate(manifest,base,mid,mid,digest)==OTA_BOOT_CONFIRM_TARGET);
+#endif
     manifest.target_id=base.board_id;
     assert(ota_bootloader_confirmation_gate(manifest,old,mid,mid,digest)==OTA_BOOT_CONFIRM_TARGET);
     manifest.target_id=ota_bootloader_target_id(p1); manifest.hw_id=xhw;
@@ -254,6 +299,16 @@ static void sha256(uint8_t*,size_t,const uint8_t*,int,const uint8_t*,int);
 '''
 
 CLI_HELPERS = r'''
+struct SelfFwInfo { bool valid=false; uint32_t image_len=0; };
+static bool cli_bank_safe=true;
+static uint32_t cli_image_size=4096u;
+static bool ota_self_firmware(SelfFwInfo& info) {
+  info.valid=true; info.image_len=cli_image_size; return true;
+}
+static uint32_t cli_app_base() { return 0x27000u; }
+static bool cli_live_bank_preserves_scratch(uint32_t,uint32_t,uint32_t) { return cli_bank_safe; }
+#define mota_nrf52_app_base cli_app_base
+#define ota_bootloader_live_bank_preserves_scratch cli_live_bank_preserves_scratch
 struct CliContext {
   OtaBootloaderIdentity identity;
   OtaBlCaps caps;
@@ -269,22 +324,27 @@ static bool cli_pull_rejected(CliContext& c,uint32_t seltgt,uint8_t selflags,
 static bool cli_list_fit(CliContext& c,uint32_t target,uint8_t flags,uint8_t codec) {
   struct Row { uint32_t target_id; uint8_t flags,codec; } row{target,flags,codec};
   const Row* h=&row;
-  const OtaBootloaderIdentity& bid=c.bootloaderIdentity();
   const OtaBlCaps& list_bl_update=c.bootloaderUpdateCaps();
-  bool installable=false;
-  @LIST_ASSIGNMENT@
-  return installable;
+  SelfFwInfo list_sd_self;
+  @LIST_HEADROOM@
+  const char* fit=nullptr;
+  const bool boot_package=true;
+  @LIST_BOOT_BRANCH@
+  return fit && std::strcmp(fit,"yours")==0;
 }
+#undef ota_bootloader_live_bank_preserves_scratch
+#undef mota_nrf52_app_base
 '''
 
 
 def runtime_source():
     cli = (ROOT / 'src/helpers/ota/OtaCli.cpp').read_text()
-    assignment = re.search(r'installable = h->flags.*?;', cli, re.S)
-    if assignment is None:
-        raise AssertionError('production bootloader catalog fit assignment not found')
+    headroom = re.search(r'const bool list_sd_headroom =.*?;', cli, re.S)
+    if headroom is None:
+        raise AssertionError('production bootloader catalog headroom check not found')
     helpers = (CLI_HELPERS.replace('@PULL_BRANCH@', body(cli, 'if (selboot)'))
-               .replace('@LIST_ASSIGNMENT@', assignment.group()))
+               .replace('@LIST_HEADROOM@', headroom.group())
+               .replace('@LIST_BOOT_BRANCH@', body(cli, 'if (boot_package)')))
     return SOURCE.replace('@CLI_HELPERS@', helpers)
 
 
@@ -308,15 +368,18 @@ class SensecapBootloaderRuntimeTests(unittest.TestCase):
         assert _xiao_manifest_crc(duplicate, 0x400) == struct.unpack_from('<I', duplicate, 0x428)[0]
         (cls.path / 'duplicate.bin').write_bytes(duplicate)
         cls.binary = cls.compile(cls.path)
+        cls.p1_binary = cls.compile(cls.path, p1=True)
 
     @staticmethod
-    def compile(path, include=None):
+    def compile(path, include=None, p1=False):
         flags = [] if os.name == 'nt' else [
             '-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-fno-pie', '-no-pie']
-        binary = path / 'runtime'
+        binary = path / ('runtime-p1' if p1 else 'runtime')
         command = [os.environ.get('CXX', 'g++'), '-std=c++17', '-O1', '-Wall', '-Wextra', '-Werror', *flags]
         command += ['-DNRF52_PLATFORM=1', '-DOTA_QSPI_BOOTLOADER_UPDATE=1',
                     '-DOTA_QSPI_STORE=1', '-DXIAO_NRF52=1']
+        if p1:
+            command += ['-DSENSECAP_SOLAR_P1=1']
         if include:
             command += ['-I', str(include)]
         crypto_library = '-lbcrypt' if os.name == 'nt' else '-lcrypto'
@@ -327,6 +390,7 @@ class SensecapBootloaderRuntimeTests(unittest.TestCase):
 
     def scenario(self, name):
         subprocess.run([str(self.binary), str(self.path), name], check=True)
+        subprocess.run([str(self.p1_binary), str(self.path), name], check=True)
 
     def test_p1_canonical_signed_identity_uses_real_sha256(self):
         hw = b'NRF_BL_28860044_SCAP_DFU'.ljust(32, b'\0')

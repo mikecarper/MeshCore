@@ -325,7 +325,7 @@ All values little-endian.
 | Frequency | 4 bytes | Hz (e.g., 869618000)    |
 | Bandwidth | 4 bytes | Hz (e.g., 62500)        |
 | SF        | 1 byte  | Spreading factor (5-12) |
-| CR        | 1 byte  | Coding rate (5-8)       |
+| CR        | 1 byte  | Coding-rate denominator (4-8)       |
 
 ### Secondary Radio Parameters (SetRadio2 / Radio2 response)
 
@@ -339,7 +339,7 @@ All values are little-endian. The mode values are `0=off`, `1=rx`, and
 | Frequency | 4 bytes | Hz                                  |
 | Bandwidth | 4 bytes | Hz                                  |
 | SF        | 1 byte  | Spreading factor (5-12)             |
-| CR        | 1 byte  | Coding rate (5-8)                   |
+| CR        | 1 byte  | Coding-rate denominator (4-8)                   |
 | Mode      | 1 byte  | `off`, `rx`, or `rxtx` as above     |
 | Preamble  | 2 bytes | Symbols; `0` chooses automatic      |
 

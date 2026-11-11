@@ -51,8 +51,9 @@ static_assert(!std::is_copy_constructible<decltype(MyMesh::offline_queue)>::valu
 static_assert(!std::is_move_constructible<decltype(MyMesh::offline_queue)>::value,
               "Moving a queue lease would invalidate its owner");
 static_assert(sizeof(decltype(MyMesh::offline_queue)) ==
-    177 * (OFFLINE_QUEUE_SIZE - COMPANION_RTC_FAST_OFFLINE_FRAMES -
-           COMPANION_RTC_SLOW_OFFLINE_FRAMES) + 2 * sizeof(void*),
+    ((177 * (OFFLINE_QUEUE_SIZE - COMPANION_RTC_FAST_OFFLINE_FRAMES -
+              COMPANION_RTC_SLOW_OFFLINE_FRAMES) + 2 * sizeof(void*) +
+      alignof(void*) - 1) / alignof(void*)) * alignof(void*),
     "The complete remaining frames, and only bank pointers, occupy ordinary DRAM");
 #ifdef OTA_SHARED_COMPANION_QUEUE
 #error "This FIFO must retain its complete capacity while OTA is active"
@@ -157,13 +158,18 @@ int main(int argc, char** argv) {
   }
   expectAll(*mesh, expected);
   // Removal shifts complete personal-message frames across every bank boundary.
-  for (int channel : {main_count - 1, main_count, main_count + 31, OFFLINE_QUEUE_SIZE - 1}) {
+  for (int channel : {main_count - 1, main_count,
+                      main_count + (COMPANION_RTC_FAST_OFFLINE_FRAMES
+                          ? COMPANION_RTC_FAST_OFFLINE_FRAMES - 1
+                          : COMPANION_RTC_SLOW_OFFLINE_FRAMES - 1),
+                      OFFLINE_QUEUE_SIZE - 1}) {
     fill(*mesh, expected, channel);
-    for (int i = 0; i < 19; ++i) {
+    const int rotations = std::min(19, main_count - 1);
+    for (int i = 0; i < rotations; ++i) {
       mesh->popOfflineQueue(); expected.pop_front();
       Bytes value = frame(OFFLINE_QUEUE_SIZE + i); enqueue(*mesh, value); expected.push_back(value);
     }
-    enqueue(*mesh, extra); expected.erase(expected.begin() + channel - 19); expected.push_back(extra);
+    enqueue(*mesh, extra); expected.erase(expected.begin() + channel - rotations); expected.push_back(extra);
     expectAll(*mesh, expected);
   }
   fill(*mesh, expected); mesh->reset();
@@ -216,7 +222,7 @@ class CompanionRtcQueueTests(unittest.TestCase):
     def no_core_dump():
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
-    def check_fifo(self, count, slow, chip):
+    def check_fifo(self, count, slow, chip, fast=32, classic_meshadventurer=False, cardputer=False):
         source = self.work / 'test.cpp'; source.write_text(self.fixture(), encoding='ascii')
         binary = self.work / 'test'
         sources = [ROOT / 'src/helpers/ota' / name for name in (
@@ -226,8 +232,11 @@ class CompanionRtcQueueTests(unittest.TestCase):
             '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter', '-Wno-sign-compare',
             '-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-fno-pie', '-no-pie',
             '-DESP32_PLATFORM=1', '-DCOMPANION_RADIO_FULL=1', '-DENABLE_OTA=1',
+            *(['-DMESHADVENTURER=1', '-DMESH_NOTIFY_RTC_SETTINGS=1']
+              if classic_meshadventurer else []),
+            *(['-DM5STACK_CARDPUTER_ADV=1'] if cardputer else []),
             '-DCONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP=1', '-DCONFIG_IDF_TARGET_' + chip + '=1',
-            '-DOFFLINE_QUEUE_SIZE=' + str(count), '-DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32',
+            '-DOFFLINE_QUEUE_SIZE=' + str(count), '-DCOMPANION_RTC_FAST_OFFLINE_FRAMES=' + str(fast),
             '-DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=' + str(slow),
             '-I', str(self.work), '-I', str(ROOT / 'src'), '-I', str(ROOT / 'test/mocks'),
             '-I', str(ROOT / 'test/test_ota'),
@@ -243,8 +252,17 @@ class CompanionRtcQueueTests(unittest.TestCase):
     def test_generic_c3_retains_all_224_frames_during_real_ota(self):
         self.check_fifo(224, 0, 'ESP32C3')
 
-    def test_tracker_and_mke_s3_retain_all_256_frames_during_real_ota(self):
+    def test_v3_tracker_and_mke_s3_retain_all_256_frames_during_real_ota(self):
         self.check_fifo(256, 32, 'ESP32S3')
+
+    def test_s3_fast_bank_only_retains_all_256_frames_during_real_ota(self):
+        self.check_fifo(256, 0, 'ESP32S3')
+
+    def test_classic_meshadventurer_full_retains_all_16_frames_and_clears_rtc(self):
+        self.check_fifo(16, 4, 'ESP32', fast=0, classic_meshadventurer=True)
+
+    def test_cardputer_s3_36_slow_slots_without_reducing_queue_capacity(self):
+        self.check_fifo(256, 36, 'ESP32S3', cardputer=True)
 
     def test_concrete_banks_use_rtc_sections_and_reset_has_no_large_stack_temporary(self):
         objdump = shutil.which('objdump')
@@ -284,6 +302,21 @@ class CompanionRtcQueueTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), 'int main() {}')
 
+    def test_classic_slow_bank_is_scoped_to_universal_full_aliases(self):
+        config = (ROOT / 'variants/meshadventurer_universal/platformio.ini').read_text()
+        ble = config.split('[env:Meshadventurer_companion_radio_ble]', 1)[1].split('\n[', 1)[0]
+        usb = config.split('[env:Meshadventurer_companion_radio_usb]', 1)[1].split('\n[', 1)[0]
+        boosted = config.split('[env:Meshadventurer_m33s_companion_radio_ble]', 1)[1].split('\n[', 1)[0]
+        self.assertNotIn('COMPANION_RTC_SLOW_OFFLINE_FRAMES', ble)
+        self.assertIn('-D MESH_NOTIFY_RTC_SETTINGS=1', ble)
+        self.assertNotIn('COMPANION_RTC_SLOW_OFFLINE_FRAMES', usb)
+        self.assertIn('extends = env:Meshadventurer_companion_radio_ble', boosted)
+        script = (ROOT / 'build_legacy.sh').read_text()
+        full = script.split('    meshadventurer_m33s_companion_radio_full|\\\n', 1)[1].split('      ;;', 1)[0]
+        self.assertIn('meshadventurer_companion_radio_full', full)
+        self.assertIn('meshadventurer_m33s_companion_radio_full', full)
+        self.assertIn('COMPANION_RTC_SLOW_OFFLINE_FRAMES=4', full)
+
     def test_incompatible_chip_storage_and_retention_settings_fail_closed(self):
         source = self.work / 'policy.cpp'
         source.write_text('#include <helpers/CompanionRtcQueue.h>\n', encoding='ascii')
@@ -295,13 +328,39 @@ class CompanionRtcQueueTests(unittest.TestCase):
                  base + ['ONE_KEY_DM_SHARED_OFFLINE_QUEUE=1'],
                  base + ['COMPANION_RTC_SLOW_OFFLINE_FRAMES=32'],
                  [value for value in base if not value.startswith('COMPANION_RADIO_FULL')],
-                 [value for value in base if not value.startswith('CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP')])
+                 [value for value in base if not value.startswith('CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP')],
+                 ['ESP32_PLATFORM=1', 'CONFIG_IDF_TARGET_ESP32=1',
+                  'COMPANION_RTC_SLOW_OFFLINE_FRAMES=4'],
+                 ['ESP32_PLATFORM=1', 'CONFIG_IDF_TARGET_ESP32=1', 'MESHADVENTURER=1',
+                  'COMPANION_RTC_SLOW_OFFLINE_FRAMES=4'],
+                 ['ESP32_PLATFORM=1', 'CONFIG_IDF_TARGET_ESP32=1', 'MESHADVENTURER=1', 'COMPANION_RADIO_FULL=1',
+                  'MESH_NOTIFY_RTC_SETTINGS=1', 'COMPANION_RTC_SLOW_OFFLINE_FRAMES=5'],
+                 ['ESP32_PLATFORM=1', 'CONFIG_IDF_TARGET_ESP32=1', 'MESHADVENTURER=1', 'COMPANION_RADIO_FULL=1',
+                  'MESH_NOTIFY_RTC_SETTINGS=1', 'COMPANION_RTC_SLOW_OFFLINE_FRAMES=4',
+                  'COMPANION_RTC_FAST_OFFLINE_FRAMES=1'])
         for defines in cases:
             with self.subTest(defines=defines):
                 result = subprocess.run(self.compiler + ['-std=c++11', '-fsyntax-only',
                     *['-D' + value for value in defines], '-I', str(self.work), '-I', str(ROOT / 'src'), str(source)],
                     capture_output=True, text=True, timeout=15)
                 self.assertNotEqual(result.returncode, 0)
+
+    def test_cardputer_slow_bank_limit_is_bounded_and_board_scoped(self):
+        source = self.work / 'bank_limit.cpp'
+        source.write_text('#include <helpers/CompanionRtcQueue.h>\n'
+                          'struct Frame { unsigned char bytes[177]; };\n'
+                          'static_assert(sizeof(mesh::CompanionRtcQueue<Frame, 256>) > 0, "instantiate");\n',
+                          encoding='ascii')
+        base = ['-DESP32_PLATFORM=1', '-DCOMPANION_RADIO_FULL=1',
+                '-DCONFIG_IDF_TARGET_ESP32S3=1']
+        for slow, cardputer, succeeds in ((36, True, True), (37, True, False), (36, False, False)):
+            with self.subTest(slow=slow, cardputer=cardputer):
+                result = subprocess.run(self.compiler + ['-std=c++11', '-fsyntax-only', *base,
+                    '-DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=' + str(slow),
+                    *(['-DM5STACK_CARDPUTER_ADV=1'] if cardputer else []),
+                    '-I', str(self.work), '-I', str(ROOT / 'src'), str(source)],
+                    capture_output=True, text=True, timeout=15)
+                self.assertEqual(result.returncode == 0, succeeds, result.stderr)
 
     def test_only_named_full_policies_select_banks_without_capacity_reductions(self):
         source = (ROOT / 'build_legacy.sh').read_text()
@@ -314,13 +373,24 @@ class CompanionRtcQueueTests(unittest.TestCase):
         self.assertNotIn('COMPANION_RTC_SLOW_OFFLINE_FRAMES', prefix)
         for target, fast, slow, contacts, queue in (
                 ('Generic_ESPNOW_companion_radio_full', 32, 0, 100, 224),
+                ('Heltec_WSL3_companion_radio_full', 32, 32, 350, 256),
                 ('Xiao_C3_companion_radio_full', 32, 0, 100, 224),
-                ('Heltec_CT62_companion_radio_full', 0, 0, 100, 224),
+                ('Heltec_CT62_companion_radio_full', 32, 0, 100, 224),
+                ('Heltec_v3_companion_radio_full', 32, 32, 100, 256),
+                ('Heltec_v3_companion_radio_usb', 0, 0, 350, 256),
+                ('Heltec_v3_companion_radio_ble', 0, 0, 350, 256),
+                ('Heltec_v3_companion_radio_wifi', 0, 0, 350, 256),
                 ('Heltec_Wireless_Tracker_companion_radio_full', 32, 32, 150, 256),
                 ('MKE_s3_companion_radio_full', 32, 32, 350, 256),
-                ('ThinkNode_M2_companion_radio_full', 32, 32, 350, 256),
-                ('ThinkNode_M5_companion_radio_full', 32, 32, 350, 256),
-                ('M5Stack_Cardputer_Adv_companion_radio_full', 32, 32, 350, 256),
+                ('ThinkNode_M2_companion_radio_full', 0, 0, 350, 256),
+                ('ThinkNode_M5_companion_radio_full', 0, 0, 350, 256),
+                ('M5Stack_Cardputer_Adv_companion_radio_full', 32, 36, 350, 256),
+                ('Meshadventurer_companion_radio_full', 0, 4, 100, 16),
+                ('Meshadventurer_m33s_companion_radio_full', 0, 4, 100, 16),
+                ('Meshadventurer_sx1262_companion_radio_full', 0, 0, 100, 16),
+                ('Meshadventurer_sx1268_companion_radio_full', 0, 0, 100, 16),
+                ('Meshadventurer_companion_radio_usb', 0, 0, 350, 256),
+                ('Meshadventurer_companion_radio_ble', 0, 0, 350, 256),
                 ('SenseCapIndicator-ESPNow_companion_radio_full', 0, 0, 350, 256),
                 ('RAK_4631_companion_radio_full', 0, 0, 350, 256)):
             with self.subTest(target=target):
@@ -338,6 +408,8 @@ class CompanionRtcQueueTests(unittest.TestCase):
                 if target in ('Xiao_C3_companion_radio_full', 'Heltec_CT62_companion_radio_full'):
                     self.assertEqual(flags.get('OTA_SHARED_COMPANION_QUEUE'), '1')
                     self.assertEqual(flags.get('ONE_KEY_DM_COMPACT_HELD'), '1')
+                elif target == 'Heltec_Wireless_Tracker_companion_radio_full':
+                    self.assertEqual(flags.get('OTA_SHARED_COMPANION_QUEUE'), '1')
                 elif target == 'M5Stack_Cardputer_Adv_companion_radio_full':
                     self.assertEqual(flags.get('OTA_SHARED_COMPANION_QUEUE'), '1')
                     self.assertEqual(flags.get('COMPANION_EXCLUSIVE_WIFI_BLE'), '1')

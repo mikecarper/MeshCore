@@ -47,6 +47,10 @@
 #ifdef ETHERNET_ENABLED
   #define ETHERNET_CLI_BANNER "MeshCore Room Server CLI"
   #include <helpers/nrf52/EthernetCLI.h>
+#if defined(OTA_RAK15002_SD_STORE)
+  #include <helpers/nrf52/EthernetModeSettings.h>
+  static mesh::nrf52::EthernetModeSettings ethernet_mode_settings;
+#endif
 #endif
 
 #ifdef DISPLAY_CLASS
@@ -113,7 +117,9 @@ static char ethernet_command[MAX_POST_TEXT_LEN+1];
 unsigned long POWERSAVING_FIRSTSLEEP_SECS = 120; // The first sleep (if enabled) from boot
 
 void setup() {
+#ifdef MESH_INFRASTRUCTURE_WIRELESS_POLICY
   mesh::wireless::control().begin(infrastructure_wireless);
+#endif
   mesh::prepareUsbLoggingPort();
   Serial.begin(115200);
 #if MESH_USB_CONSOLE_COOPERATIVE
@@ -166,6 +172,16 @@ void setup() {
 #if defined(NRF52_PLATFORM)
   if (volatile_primary_fs) regulator_prefs_fs = nullptr;
 #endif
+#ifdef MESH_INFRASTRUCTURE_WIRELESS_POLICY
+  mesh::wireless::loadBootPolicy(regulator_prefs_fs,
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+      true
+#else
+      false
+#endif
+  );
+#endif
+
   mesh::leds::beginSettings(board, regulator_prefs_fs);
 #if defined(MESH_SOLARXIAO_POWER) && MESH_SOLARXIAO_POWER
   mesh::solar::beginSettings(board, regulator_prefs_fs, MESH_ENABLE_TELEMETRY_HISTORY);
@@ -329,11 +345,13 @@ void setup() {
 #ifdef ETHERNET_ENABLED
 #if defined(OTA_RAK15002_SD_STORE)
   EthernetCliHooks hooks;
+  ethernet_mode_settings.begin(volatile_primary_fs ? nullptr : fs);
+  hooks.save = [](void*, bool enabled) { return ethernet_mode_settings.setEnabled(enabled); };
   hooks.prepare = prepareSdEthernet;
   hooks.can_release = canReleaseSdEthernet;
   hooks.released = releaseSdEthernet;
   hooks.storage_conflict = [](void*) { return mesh::ota::ota_rak15002_sd_card_present(); };
-  ethernet_configure(hooks); // Shared IO slot defaults OFF on every restart.
+  ethernet_configure(hooks, ethernet_mode_settings.enabled());
 #endif
   ethernet_start_task();
 #endif
@@ -366,6 +384,10 @@ static bool usbLoggingRecoverySafe(void*) {
 }
 
 void loop() {
+#if MESH_WARM_RX_REFRESH
+  // Service the short radio lease before board, sensor, UI or transport work.
+  if (radio_driver.serviceAGCMaintenanceFastLane()) return;
+#endif
 #if defined(NRF52_PLATFORM)
   board.prepareSleepCycle();
 #endif
@@ -497,6 +519,10 @@ void loop() {
   }
 #endif
   the_mesh.loop();
+#if MESH_WARM_RX_REFRESH
+  // The Dispatcher may have admitted a new lease in this pass.
+  if (radio_driver.serviceAGCMaintenanceFastLane()) return;
+#endif
   const bool morse_timing = mesh::morseTimingActive(&radio_driver);
 #if defined(USE_LR2021)
   if (!morse_timing) mesh::lr2021::loopLR2021CalibrationSettings(radio_driver);

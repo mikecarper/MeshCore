@@ -1,4 +1,5 @@
 #include <helpers/esp32/SerialBLEInterface.h>
+#include <host/ble_store.h>
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -101,6 +102,34 @@ static void authenticate(SerialBLEInterface& interface, NimBLEConnInfo& info) {
   interface.checkRecvFrame(discarded);
 }
 
+static void test_live_pin_updates_without_losing_connection_or_bonds() {
+  reset(); SerialBLEInterface interface;
+  assert(interface.begin("MeshCore-", "pin", 123456));
+  interface.enable();
+  NimBLEConnInfo info;
+  authenticate(interface, info);
+  auto* server = NimBLEDevice::server.get();
+  const auto previous_deletions = bond_deletions;
+  const auto previous_disconnects = disconnects;
+  assert(server->displayPairingPasskey() == 123456);
+  assert(interface.setPin(246810));
+  assert(server->displayPairingPasskey() == 246810);
+  assert(pin == 123456);  // NimBLE sentinel remains callback-driven.
+  assert(interface.isConnected() && disconnects == previous_disconnects);
+  assert(bond_deletions == previous_deletions);
+  assert(!interface.setPin(1000000));
+  assert(server->displayPairingPasskey() == 246810);
+  server->connected = false;
+  server->callbacks->onDisconnect(server, info, 0);
+  interface.disable();
+  assert(interface.setPin(135790));
+  interface.enable();
+  server = NimBLEDevice::server.get();
+  assert(server && server->displayPairingPasskey() == 135790);
+  assert(bond_deletions == previous_deletions);
+  NimBLEDevice::deinit(true);
+}
+
 static void test_advertising_restart_retries_and_disable_cancels() {
   reset(); SerialBLEInterface interface;
   assert(interface.begin("MeshCore-", "retry", 123456));
@@ -139,9 +168,11 @@ static void test_authentication_and_bond_lifecycle() {
     if (missing == 0) info.encrypted = false;
     if (missing == 1) info.authenticated = false;
     if (missing == 2) info.bonded = false;
+    const auto deletions = bond_deletions;
     authenticate(interface, info);
     assert(!interface.isConnected() && !interface.takeSuccessfulConnection());
     assert(disconnects == 1);
+    assert(bond_deletions == deletions);
     assert(connection_updates.empty());
     NimBLEDevice::deinit(true);
   }
@@ -170,6 +201,27 @@ static void test_authentication_and_bond_lifecycle() {
   assert(server->advertising.scan_filter && server->advertising.connect_filter);
   assert(!server->advertising.scan_response && server->advertising.name.empty());
   assert(interface.isConnected());
+
+  // A transient failed exchange must not delete the existing bond or reopen
+  // general advertising. The saved peer must be able to authenticate again.
+  const auto deletions = bond_deletions;
+  server->connected = false;
+  server->callbacks->onDisconnect(server, info, 0);
+  NimBLEConnInfo failed = info;
+  failed.encrypted = false;
+  authenticate(interface, failed);
+  assert(!interface.isConnected() && bond_deletions == deletions);
+  assert(!interface.takeBondedOnlyRecovery());
+  server->connected = false;
+  server->callbacks->onDisconnect(server, failed, 0);
+  uint8_t discarded[MAX_FRAME_SIZE];
+  test_millis += 1000;
+  interface.checkRecvFrame(discarded);
+  assert(server->advertising.active && server->advertising.scan_filter
+         && server->advertising.connect_filter && server->advertising.name.empty());
+  authenticate(interface, info);
+  assert(interface.isConnected() && bond_deletions == deletions);
+  assert(!interface.takeBondedOnlyRecovery());
   NimBLEDevice::deinit(true);
 
   reset(); SerialBLEInterface rebooted;
@@ -519,7 +571,25 @@ static void test_128_contact_stream_under_queue_and_controller_pressure() {
   NimBLEDevice::deinit(true);
 }
 
+static void test_full_bond_store_never_evicts_existing_peer() {
+  reset(); SerialBLEInterface interface;
+  assert(interface.begin("MeshCore-", "test", 123456)); interface.enable();
+  auto* callbacks = device_callbacks; assert(callbacks);
+  ble_store_status_event event{}; event.event_code = BLE_STORE_EVENT_OVERFLOW;
+  const auto deletions = bond_deletions;
+  assert(callbacks->onStoreStatus(&event, nullptr) == BLE_HS_ESTORE_CAP);
+  assert(bond_deletions == deletions);
+  event.event_code = BLE_STORE_EVENT_FULL; event.full.obj_type = BLE_STORE_OBJ_TYPE_OUR_SEC;
+  stored_count = 14; assert(callbacks->onStoreStatus(&event, nullptr) == 0);
+  stored_count = 15; key_error = 0; assert(callbacks->onStoreStatus(&event, nullptr) == 0);
+  key_error = 5; assert(callbacks->onStoreStatus(&event, nullptr) == BLE_HS_ESTORE_CAP);
+  assert(bond_deletions == deletions);
+  NimBLEDevice::deinit(true);
+}
+
 int main() {
+  test_live_pin_updates_without_losing_connection_or_bonds();
+  test_full_bond_store_never_evicts_existing_peer();
   test_identity_modes();
   test_pairing_wake_for_random_and_saved_pins();
   test_startup_failures();

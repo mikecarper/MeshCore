@@ -8,6 +8,11 @@ protected:
   BaseSerialInterface() { }
 
 public:
+  // USB CMD_SEND_RAW_PACKET adds command/priority bytes to a full 186-byte
+  // direct OTA packet. Keep every normal frame and response at 176 bytes.
+  static constexpr size_t MAX_USB_RAW_FRAME_SIZE = 188;
+  virtual void setUsbRawPacketReceive(bool) {}
+  virtual size_t usbRawPacketReceiveCapacity() const { return MAX_FRAME_SIZE; }
   virtual void enable() = 0;
   virtual void disable() = 0;
   virtual bool isEnabled() const = 0;
@@ -45,4 +50,10 @@ public:
   virtual void unlockReplyRoute() {}
   virtual size_t writeFrame(const uint8_t src[], size_t len) = 0;
   virtual size_t checkRecvFrame(uint8_t dest[]) = 0;
+  // Existing backends keep their original frame size. Larger-capacity callers
+  // may opt into a narrowly supported USB receive extension without changing
+  // BLE/WiFi frames or allocating larger offline/response queues.
+  virtual size_t checkRecvFrame(uint8_t dest[], size_t capacity) {
+    return capacity >= MAX_FRAME_SIZE ? checkRecvFrame(dest) : 0;
+  }
 };

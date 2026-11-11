@@ -177,12 +177,13 @@ class RuntimeTests(unittest.TestCase):
             source.with_suffix(".h").write_text(header_for(version), encoding="ascii")
             binary = directory / "case"
             flags = ["-DRTTTL_NO_LOOPS=1"] if version == "1.3.0" else []
-            subprocess.run([
+            compiled = subprocess.run([
                 CXX, "-m32", "-std=c++17", "-Wall", "-Wextra", "-Werror", *flags,
                 "-fno-exceptions", "-fno-rtti", "-fno-stack-protector", "-nostdlib", "-no-pie",
                 "-I" + str(FIXTURES), "-I" + str(directory), "-I" + str(ROOT / "src"),
                 str(FIXTURES / fixture), str(source), "-o", str(binary),
-            ], check=True, capture_output=True, timeout=30)
+            ], capture_output=True, text=True, timeout=30)
+            self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
             self.assertEqual(binary.read_bytes()[:5], b"\x7fELF\x01")
             return subprocess.run([str(binary)], capture_output=True, timeout=10).returncode
 

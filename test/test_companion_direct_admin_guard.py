@@ -13,10 +13,10 @@ from test_replay_reset_integration import extract_braced
 ROOT = Path(__file__).resolve().parents[1]
 COMPANION_SEND_DIRECT = r'''
 bool sendDirect(Packet* p,const uint8_t* path,uint8_t length){
-  // Companion supplies a primary-only policy. Dispatcher binds the current
+  // Companion supplies an explicit selected policy. Dispatcher binds the current
   // profile on admission; the repeater client's pre-bound profile is separate.
   assert(p&&p==last_packet&&p==&packets.back());
-  assert(path==nullptr&&length==0&&p->tx_radio==RADIO_TX_PRIMARY);
+  assert(path==nullptr&&length==0&&(p->tx_radio==RADIO_TX_PRIMARY||p->tx_radio==RADIO_TX_SECONDARY));
   if(type==PAYLOAD_TYPE_PATH)sent.assign(p->payload,p->payload+p->payload_len);
   if(send_ok)admitted.push_back(p);
   pending=send_ok;return send_ok;
@@ -24,6 +24,9 @@ bool sendDirect(Packet* p,const uint8_t* path,uint8_t length){
 '''
 HARNESS = r'''
 #include <helpers/CompanionDirectAdminGuard.h>
+#define COMPANION_FEATURE_DIRECT_OTA_ADMIN FULL
+#define MAX_FRAME_SIZE 512
+#define PUSH_CODE_LOG_RX_DATA 0x88
 #define CMD_SEND_PATH_DISCOVERY_REQ 52
 #define ERR_CODE_NOT_FOUND 1
 #define ERR_CODE_BAD_STATE 2
@@ -33,7 +36,9 @@ HARNESS = r'''
 #define ADV_TYPE_NONE 0
 #define ADV_TYPE_REPEATER 2
 #define ADV_TYPE_ROOM 3
+#define ADV_TYPE_SENSOR 4
 #define TXT_TYPE_CLI_DATA 1
+#define TXT_TYPE_CLI_COMMAND 3
 struct ContactInfo {
   mesh::Identity id;
   uint8_t type=0, out_path_len=0, tx_radio=0, flags=0;
@@ -44,7 +49,12 @@ struct ContactInfo {
   const uint8_t* getSharedSecret(const mesh::LocalIdentity&) const {memset(secret,0x44,32);return secret;}
   bool setPath(const uint8_t*,uint8_t length){out_path_len=length;memset(out_path,0,sizeof(out_path));return true;}
 };
-struct BaseSerialInterface {BaseSerialInterface* route=this;BaseSerialInterface* captureReplyRoute(){return route;}};
+struct BaseSerialInterface {
+  BaseSerialInterface* route=this;BaseSerialInterface* captureReplyRoute(){return route;}
+  std::vector<std::vector<uint8_t>> frames;
+  bool isConnected()const{return true;}
+  void writeFrame(const uint8_t* data,size_t length){frames.emplace_back(data,data+length);}
+};
 struct Timer { uint32_t now=100;uint32_t getMillis()const{return now;} };
 struct BaseChatMesh:mesh::Mesh {
   ContactInfo contact,anonymous[MAX_ANON_CONTACTS];
@@ -77,10 +87,24 @@ struct MyMesh:BaseChatMesh {
   BaseSerialInterface* _ota_direct_usb_route=&wire;
   uint8_t cmd_frame[64]{};int response=-1;
   mesh::CompanionDirectAdminGuard _ota_direct_admin;
+  mesh::Radio* _radio=&profile_radio;
+  bool _ota_direct_radio_owned=false;uint8_t _ota_direct_radio_profile=0;uint32_t _ota_direct_radio_generation=0;
+  bool directOtaRadioEligible(uint8_t)const;
+  bool directOtaRadioCurrent()const;
+  bool _cli_rescue=false,_cli_line_overflow=false;char cli_command[32]{};
+  uint8_t out_frame[MAX_FRAME_SIZE]{};
+  void resetUsbHostSessionInput();
+  @SET_ROUTE@
+  void logRxRaw(float,float,const uint8_t*,int);
+  MyMesh(){profile_radio.expose_profiles=true;}
+  void releasePacket(mesh::Packet*){}
   ContactInfo _ota_direct_contact;
   ContactInfo* _ota_direct_transient=nullptr;
+  ContactInfo* routed=nullptr;
+  BaseSerialInterface* error_route=nullptr;
   void writeOKFrame(){response=0;}
   void writeErrFrame(int value){response=value;}
+  void writeErrFrame(int value,BaseSerialInterface* route){assert(route);response=value;error_route=route;}
   void dispatch(size_t len){
     response=-1;
 #if FULL
@@ -118,12 +142,36 @@ struct MyMesh:BaseChatMesh {
     (void)pkt;
 #endif
   }
+  void cliRoute(uint8_t txt_type,const uint8_t* pub_key_prefix){
+#if FULL
+    ContactInfo* recipient=&contact;
+    @CLI_ROUTE@
+    routed=recipient;
+#else
+    (void)txt_type;(void)pub_key_prefix;
+#endif
+  }
+  bool loginRoute(const uint8_t* pub_key,BaseSerialInterface* route=nullptr){
+#if FULL
+    if(!route)route=_serial->captureReplyRoute();
+    ContactInfo* recipient=&contact;
+    @LOGIN_ROUTE@
+    routed=recipient;
+    return true;
+#else
+    (void)pub_key;(void)route;return false;
+#endif
+  }
 };
 @CALLBACKS@
+@CURRENT@
+@RAW_LOG@
+@HOST_RESET@
 @BINARY@
 @SEND_LOGIN@
 static void repeaterPrefix(char*& command,char*& reply){@REPEATER_PREFIX@}
 static void roomPrefix(char*& command,char*& reply){@ROOM_PREFIX@}
+static void sensorPrefix(char*& command,char*& reply){@SENSOR_PREFIX@}
 [[maybe_unused]] static void body(uint8_t* data,uint32_t stamp,const char* prefix,const char* text){
   memset(data,0,184);memcpy(data,&stamp,4);data[4]=4;memcpy(data+5,prefix,3);memcpy(data+8,text,strlen(text));
 }
@@ -132,7 +180,7 @@ int main(){
   for(char a='!';a<='~';++a)for(char b='!';b<='~';++b){
     if(a=='|'||b=='|')continue;
     char input[]={a,b,'|','g','e','t',' ','p','u','b','l','i','c','.','k','e','y',0};
-    for(auto parser:{repeaterPrefix,roomPrefix}){
+    for(auto parser:{repeaterPrefix,roomPrefix,sensorPrefix}){
       char* command=input;char* output=reply;
       parser(command,output);
       assert(!strcmp(command,"get public.key")&&output==reply+3&&!memcmp(reply,input,3));
@@ -152,9 +200,13 @@ int main(){
   assert(m.contact.flags==31&&m.contact.sync_since==987&&m.contact.tx_radio==2);
   assert(!strcmp(m.contact.name,"Saved contact"));
   assert(m.getContactTxRadio(m.contact.id)==mesh::RADIO_TX_PRIMARY);
+  m.cliRoute(TXT_TYPE_CLI_DATA,m.contact.id.pub_key);assert(m.routed==&m._ota_direct_contact);
+  m.cliRoute(TXT_TYPE_CLI_COMMAND,m.contact.id.pub_key);assert(m.routed==&m._ota_direct_contact);
+  m.loginRoute(m.contact.id.pub_key);assert(m.routed==&m._ota_direct_contact);
   mesh::Identity another;assert(m.getContactTxRadio(another)==2);
   mesh::Packet ota;ota.payload_type=12;m.rawRoute(&ota);assert(ota.tx_radio==mesh::RADIO_TX_PRIMARY);
   assert(m.command("get ota.direct",0,reply)&&strstr(reply,"v=2 active=1 busy=0"));
+  assert(m.command("get ota.direct.capabilities",0,reply)&&strstr(reply,"guarded_cli=1"));
   for(char a='!';a<='~';++a)for(char b='!';b<='~';++b){
     if(a=='|'||b=='|')continue;
     const uint8_t prefix[]={uint8_t(a),uint8_t(b),'|'};
@@ -165,10 +217,17 @@ int main(){
   assert(!m.command("get ota.direct",1,reply));
   BaseSerialInterface foreign;m.wire.route=&foreign;
   m.mode(1);assert(m.response==ERR_CODE_BAD_STATE);
+  m.response=-1;m.routed=nullptr;m.cliRoute(TXT_TYPE_CLI_DATA,m.contact.id.pub_key);assert(m.response==ERR_CODE_BAD_STATE&&!m.routed);
+  m.response=-1;m.loginRoute(m.contact.id.pub_key);
+  assert(m.response==ERR_CODE_BAD_STATE&&!m.routed&&m.error_route==&foreign);
+  // A deferred request is checked against its captured reply route, not the
+  // currently selected route of another host.
+  m.response=-1;m.routed=nullptr;m.loginRoute(m.contact.id.pub_key,&m.wire);
+  assert(m.response==-1&&m.routed==&m._ota_direct_contact);
   assert(m.command("get ota.direct.reply 0",0,reply)&&strstr(reply,"physical USB"));
   m.wire.route=&m.wire;
 
-  uint8_t data[184]{};mesh::Packet packet;packet.direct=false;
+  uint8_t data[184]{};mesh::Packet packet;packet.radio_generation=m.profile_radio.config.generation[0];packet.direct=false;
   uint8_t secret[32],other[32];memset(secret,0x44,32);memset(other,0x77,32);
   m.onPeerDataRecv(&packet,PAYLOAD_TYPE_RESPONSE,0,secret,data,13);assert(m.login_calls==0);
   m._ota_direct_admin.beginLogin(m.contact.id,m.timer.now);
@@ -222,6 +281,13 @@ int main(){
   assert(!m.onPeerPathRecv(&packet,0,secret,data,0,0,data,0));assert(m.path_calls==0);
   assert(m.contact.out_path_len==2&&m.contact.out_path[0]==0xAA);
 
+  // A changed primary profile fences both new commands and OTA raw frames.
+  ++m.profile_radio.config.generation[0];m.mode(2);assert(m.response==ERR_CODE_BAD_STATE);
+  m.response=-1;m.routed=nullptr;m.cliRoute(TXT_TYPE_CLI_DATA,m.contact.id.pub_key);assert(m.response==ERR_CODE_BAD_STATE&&!m.routed);
+  m.response=-1;m.loginRoute(m.contact.id.pub_key);assert(m.response==ERR_CODE_BAD_STATE&&!m.routed);
+  m.response=-1;m.rawRoute(&ota);assert(m.response==ERR_CODE_BAD_STATE);
+  const int prior_login_calls=m.login_calls;
+  m.onPeerDataRecv(&packet,PAYLOAD_TYPE_RESPONSE,0,secret,data,13);assert(m.login_calls==prior_login_calls);
   m.mode(3);assert(m.response==0&&!m._ota_direct_admin.active(m.timer.now));
   assert(m.getContactTxRadio(m.contact.id)==2);
   m.mode(3);assert(m.response==0); // cleanup is idempotent
@@ -241,6 +307,8 @@ int main(){
   assert(m.contact.type==ADV_TYPE_ROOM&&m.contact.sync_since==987);
   assert(m.contact.out_path_len==2&&m.contact.out_path[0]==0xAA&&m.contact.tx_radio==2);
   m.mode(3);assert(m.response==0);
+  m.mode(1,nullptr,ADV_TYPE_SENSOR);assert(m.response==0&&m._ota_direct_contact.type==ADV_TYPE_SENSOR);
+  m.mode(3);assert(m.response==0);
   mesh::Identity fresh;memset(fresh.pub_key,0x22,32);m.mode(1,&fresh);
   assert(m.response==0&&m._ota_direct_transient);
   assert(m._ota_direct_contact.id.matches(fresh)&&m._ota_direct_contact.type==ADV_TYPE_REPEATER);
@@ -250,6 +318,87 @@ int main(){
   for(auto& slot:m.anonymous){memset(slot.id.pub_key,0x33,32);slot.type=ADV_TYPE_NONE;}
   m.mode(1,&fresh);assert(m.response==ERR_CODE_TABLE_FULL); // never evict occupied transient requests
   for(auto& slot:m.anonymous)assert(slot.id.pub_key[0]==0x33);
+
+  // Profile selection is a USB-owned RAM setting. Merely enabling radio2 is
+  // insufficient: it must be a live temporary MeshCore RXTX profile.
+  MyMesh secondary;
+  assert(secondary.command("get ota.direct.radio",0,reply));
+  assert(!strcmp(reply,"> ota.direct.radio v=1 profile=radio"));
+  assert(!secondary.command("set ota.direct.radio radio2",1,reply));
+  secondary.wire.route=&foreign;
+  assert(secondary.command("set ota.direct.radio radio2",0,reply)&&strstr(reply,"physical USB"));
+  assert(secondary._ota_direct_radio_profile==0);secondary.wire.route=&secondary.wire;
+  assert(secondary.command("set ota.direct.radio radio3",0,reply)&&strstr(reply,"ERR use"));
+  auto& profiles=secondary.profile_radio.config;
+  profiles.secondary.mode=mesh::RadioProfileMode::RxTx;
+  assert(secondary.command("set ota.direct.radio radio2",0,reply)&&strstr(reply,"ERR"));
+  profiles.secondary_temporary=true;profiles.secondary.mode=mesh::RadioProfileMode::Rx;
+  assert(secondary.command("set ota.direct.radio radio2",0,reply)&&strstr(reply,"ERR"));
+  profiles.secondary.mode=mesh::RadioProfileMode::RxTx;
+  profiles.secondary.params.protocol=mesh::RadioProfileProtocol::Meshtext;
+  assert(secondary.command("set ota.direct.radio radio2",0,reply)&&strstr(reply,"ERR"));
+  profiles.secondary.params.protocol=mesh::RadioProfileProtocol::MeshCore;
+  secondary.pending=true;
+  assert(secondary.command("set ota.direct.radio radio2",0,reply)&&strstr(reply,"idle"));
+  secondary.pending=false;
+  assert(secondary.command("set ota.direct.radio radio2",0,reply)&&!strcmp(reply,"OK - ota.direct.radio radio2"));
+  assert(secondary.command("get ota.direct.radio",0,reply)&&!strcmp(reply,"> ota.direct.radio v=1 profile=radio2"));
+  assert(secondary.command("get ota.direct.capabilities",0,reply)&&!strcmp(reply,"> ota.direct.cap guarded_cli=1 guarded_radio=1"));
+  secondary.mode(1);assert(secondary.response==0&&secondary.directOtaRadioCurrent());
+  assert(secondary._ota_direct_contact.tx_radio==mesh::RADIO_TX_SECONDARY);
+  assert(secondary.getContactTxRadio(secondary.contact.id)==mesh::RADIO_TX_SECONDARY);
+  assert(secondary.command("set ota.direct.radio radio",0,reply)&&strstr(reply,"idle"));
+  assert(secondary._ota_direct_radio_profile==1);
+  secondary.cliRoute(TXT_TYPE_CLI_DATA,secondary.contact.id.pub_key);assert(secondary.routed==&secondary._ota_direct_contact);
+  secondary.loginRoute(secondary.contact.id.pub_key);assert(secondary.routed==&secondary._ota_direct_contact);
+  const int before_invalid_policy=secondary.calls;
+  for(uint8_t invalid:{uint8_t(0),uint8_t(mesh::RADIO_TX_BOTH),uint8_t(255)})
+    assert(!secondary._ota_direct_admin.sendReturnPath(secondary,secondary.contact.id,secondary.timer.now,invalid));
+  assert(secondary.calls==before_invalid_policy&&!secondary.pending);
+  secondary.mode(2);assert(secondary.response==0&&secondary.last_packet->tx_radio==mesh::RADIO_TX_SECONDARY);
+  assert(secondary.last_packet->radio_profile==1&&secondary.last_packet->radio_origin==1);
+  secondary.pending=false;
+  mesh::Packet secondary_ota;secondary_ota.payload_type=12;
+  secondary.rawRoute(&secondary_ota);
+  assert(secondary_ota.tx_radio==mesh::RADIO_TX_SECONDARY&&secondary_ota.radio_profile==1&&secondary_ota.radio_origin==1);
+  // Changes to the normal channel do not substitute for the owned channel.
+  ++profiles.generation[0];assert(secondary.directOtaRadioCurrent());
+
+  mesh::Packet secondary_rx;secondary_rx.radio_profile=0;secondary_rx.radio_generation=profiles.generation[0];
+  secondary._ota_direct_admin.beginLogin(secondary.contact.id,secondary.timer.now);
+  memset(data,0,sizeof(data));login_stamp=2000;memcpy(data,&login_stamp,4);data[7]=3;
+  secondary.onPeerDataRecv(&secondary_rx,PAYLOAD_TYPE_RESPONSE,0,secret,data,13);
+  assert(secondary.login_calls==0);
+  assert(!secondary.onPeerPathRecv(&secondary_rx,0,secret,data,0,PAYLOAD_TYPE_RESPONSE,data,13));
+  assert(secondary.login_calls==0);
+  secondary_rx.radio_profile=1;secondary_rx.radio_generation=profiles.generation[1]+1;
+  secondary.onPeerDataRecv(&secondary_rx,PAYLOAD_TYPE_RESPONSE,0,secret,data,13);assert(secondary.login_calls==0);
+  secondary_rx.radio_generation=profiles.generation[1];
+  secondary.onPeerDataRecv(&secondary_rx,PAYLOAD_TYPE_RESPONSE,0,secret,data,13);assert(secondary.login_calls==1);
+
+  // Preserve the existing 0x88 envelope, but do not expose wrong-profile or
+  // stale-generation OTA requests to the selected USB seeder.
+  const uint8_t raw_ota[]={0x32,0,1},raw_other[]={0x0A,0,1};
+  secondary.profile_radio.rx_profile=1;secondary.profile_radio.rx_generation=profiles.generation[1];
+  secondary.logRxRaw(2,-90,raw_ota,3);assert(secondary.wire.frames.size()==1);
+  assert(secondary.wire.frames.back()==std::vector<uint8_t>({0x88,8,uint8_t(-90),0x32,0,1}));
+  secondary.profile_radio.rx_profile=0;
+  secondary.logRxRaw(2,-90,raw_ota,3);assert(secondary.wire.frames.size()==1);
+  secondary.logRxRaw(2,-90,raw_other,3);assert(secondary.wire.frames.size()==2);
+  secondary.profile_radio.rx_profile=1;++secondary.profile_radio.rx_generation;
+  secondary.logRxRaw(2,-90,raw_ota,3);assert(secondary.wire.frames.size()==2);
+
+  ++profiles.generation[1];secondary.response=-1;secondary_ota.tx_radio=0;
+  secondary.rawRoute(&secondary_ota);assert(secondary.response==ERR_CODE_BAD_STATE&&secondary_ota.tx_radio==0);
+  secondary.mode(3);assert(secondary.response==0&&secondary._ota_direct_radio_profile==1);
+  secondary.response=-1;secondary.rawRoute(&secondary_ota);
+  assert(secondary.response==ERR_CODE_BAD_STATE&&secondary_ota.tx_radio==0); // no legacy AUTO/primary fallback after close
+  profiles.secondary_temporary=false;secondary.mode(1);assert(secondary.response==ERR_CODE_BAD_STATE);
+  profiles.secondary_temporary=true;secondary.mode(1);assert(secondary.response==0);
+  secondary.resetUsbHostSessionInput();
+  assert(!secondary._ota_direct_radio_owned&&secondary._ota_direct_radio_profile==0);
+  assert(secondary.command("set ota.direct.radio radio2",0,reply)&&strstr(reply,"OK"));
+  secondary.setDirectAdminUsbRoute(nullptr);assert(secondary._ota_direct_radio_profile==0&&!secondary._ota_direct_usb_route);
 #else
   assert(m.response==-1&&m.calls==0);
   assert(!m.command("get ota.direct",0,reply));
@@ -266,18 +415,31 @@ class CompanionDirectAdminGuardTest(unittest.TestCase):
             self.skipTest("a host C++17 compiler is required")
         source = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
         binary = extract_braced(source, "bool MyMesh::handleDirectOtaFrame(")
+        current = extract_braced(source, "bool MyMesh::directOtaRadioCurrent(")
+        eligible = extract_braced(source, "bool MyMesh::directOtaRadioEligible(")
         getter = extract_braced(source, "bool MyMesh::handleDirectOtaCommand(")
         closer = extract_braced(source, "void MyMesh::closeDirectOtaAdmin(")
+        raw_log = extract_braced(source, "void MyMesh::logRxRaw(")
+        host_reset = extract_braced(source, "void MyMesh::resetUsbHostSessionInput(")
+        set_route = extract_braced((ROOT / "examples/companion_radio/MyMesh.h").read_text(), "void setDirectAdminUsbRoute(")
         base = (ROOT / "src/helpers/BaseChatMesh.cpp").read_text()
         send_login = extract_braced(base, "int BaseChatMesh::sendLogin(")
         callbacks = "\n".join(extract_braced(source, signature) for signature in (
             "uint8_t MyMesh::getContactTxRadio(", "void MyMesh::onPeerDataRecv(", "bool MyMesh::onPeerPathRecv("))
-        raw = extract_braced(source, "if (pkt->getPayloadType() == PAYLOAD_TYPE_OTA\n            && _ota_direct_admin.active")
+        raw = extract_braced(source, "if (pkt->getPayloadType() == PAYLOAD_TYPE_OTA\n            && (_ota_direct_radio_owned || _ota_direct_radio_profile != 0))")
+        cli_route = extract_braced(source, 'if ((txt_type == TXT_TYPE_CLI_DATA || txt_type == TXT_TYPE_CLI_COMMAND)')
+        login = extract_braced(source, 'bool MyMesh::trySendBinaryLogin(')
+        login_route = extract_braced(login, 'if (_ota_direct_radio_owned\n      && !memcmp(_ota_direct_contact.id.pub_key, pub_key, PUB_KEY_SIZE))')
+        self.assertIn('route != _ota_direct_usb_route', login_route)
+        self.assertIn('writeErrFrame(ERR_CODE_BAD_STATE, route)', login_route)
+        self.assertIn('!trySendBinaryLogin(pub_key, password, route)', source)
         self.assertIn("_ota_direct_admin.beginLogin(recipient->id", source)
         self.assertIn("if (handleDirectOtaCommand(command, sender_timestamp, reply, reply_capacity))", source)
         self.assertIn("closeDirectOtaAdmin();", extract_braced(source, "void MyMesh::resetUsbHostSessionInput("))
         self.assertIn("setDirectAdminUsbRoute(&usb_serial_interface)", (ROOT / "examples/companion_radio/main.cpp").read_text())
         self.assertIn("recipient = &_ota_direct_contact", source)
+        self.assertIn("(txt_type == TXT_TYPE_CLI_DATA || txt_type == TXT_TYPE_CLI_COMMAND)",source)
+        self.assertIn("|| !_ota_direct_admin.active(_ms->getMillis()) || !directOtaRadioCurrent()",source)
         self.assertIn("if (handleDirectOtaFrame(len)) return;", source)
         self.assertIn("&& (!COMPANION_FEATURE_DIRECT_OTA_ADMIN || cmd_frame[1] == 0))", source)
         mesh = (ROOT / "src/Mesh.cpp").read_text()
@@ -286,21 +448,40 @@ class CompanionDirectAdminGuardTest(unittest.TestCase):
         stub = STUB.replace("@PATH_BUILDER@", mesh[start:end])
         stub = stub.replace(extract_braced(stub, "bool sendDirect("), COMPANION_SEND_DIRECT)
         stub = stub.replace("#define PAYLOAD_TYPE_PATH 8", "#define PAYLOAD_TYPE_PATH 8\n#define PAYLOAD_TYPE_OTA 12")
+        stub = stub.replace("RadioProfiles config;bool expose_profiles=false;", """
+          RadioProfiles config;bool expose_profiles=false;
+          uint8_t rx_profile=0;uint32_t rx_generation=1;
+          uint8_t receiveProfile()const{return rx_profile;}
+          uint32_t receiveProfileGeneration()const{return rx_generation;}
+        """)
         stub = stub.replace("bool direct=true;", "uint8_t payload_type=0;uint8_t getPayloadType()const{return payload_type;}\n  bool direct=true;")
         prefix_blocks = []
         for board in ("simple_repeater", "simple_room_server"):
             server = (ROOT / "examples" / board / "MyMesh.cpp").read_text()
             prefix_blocks.append(extract_braced(server, "if (strlen(command) > 4 && command[2] == '|') {"))
+        sensor = (ROOT / 'examples/simple_sensor/SensorMesh.cpp').read_text()
+        sensor_prefix = extract_braced(sensor, "if (strlen(command) > 4 && command[2] == '|') {")
+        self.assertIn('RESP_SERVER_LOGIN_OK',extract_braced(sensor, 'uint8_t SensorMesh::handleLoginReq('))
+        self.assertIn('TXT_TYPE_CLI_DATA || flags == TXT_TYPE_CLI_COMMAND',extract_braced(sensor, 'void SensorMesh::onPeerDataRecv('))
+        self.assertIn('applyReceivedClientPath',extract_braced(sensor, 'bool SensorMesh::onPeerPathRecv('))
+        self.assertIn('mesh::ota::handle_ota_command', (ROOT / 'src/helpers/CommonCLI.cpp').read_text())
         with tempfile.TemporaryDirectory(prefix="meshcore-companion-direct-") as folder:
             folder = Path(folder)
             (folder / "Mesh.h").write_text(stub)
             for full in (0, 1):
                 code = HARNESS.replace("@BINARY@", (binary + "\n" + getter + "\n" + closer) if full else "")
+                code = code.replace("@CURRENT@", (eligible + "\n" + current) if full else "")
+                code = code.replace("@RAW_LOG@", raw_log if full else "")
+                code = code.replace("@HOST_RESET@", host_reset if full else "")
+                code = code.replace("@SET_ROUTE@", set_route)
                 code = code.replace("@RAW_ROUTE@", raw)
+                code = code.replace("@CLI_ROUTE@", cli_route)
+                code = code.replace("@LOGIN_ROUTE@", login_route)
                 code = code.replace("@CALLBACKS@", callbacks if full else "")
                 code = code.replace("@SEND_LOGIN@", send_login if full else "")
                 code = code.replace("@REPEATER_PREFIX@", prefix_blocks[0])
                 code = code.replace("@ROOM_PREFIX@", prefix_blocks[1])
+                code = code.replace("@SENSOR_PREFIX@", sensor_prefix)
                 (folder / "test.cpp").write_text(code)
                 executable = folder / "guard.exe"
                 sanitize = (["-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie"]

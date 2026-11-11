@@ -2,18 +2,23 @@
 #include "SX126xReceiveMode.h"
 
 #include "CustomLLCC68.h"
-#include "RadioLibWrappers.h"
+#include "SX126xPulseWrapper.h"
 #include "SX126xReset.h"
 #include "SX126xMorseRamp.h"
 #include "SX126xMorseReceiver.h"
 
-class CustomLLCC68Wrapper : public RadioLibWrapper {
+class CustomLLCC68Wrapper : public SX126xPulseWrapper<CustomLLCC68> {
 protected:
-  int8_t readReceiveMode() override { return sx126xReceiveMode((SX126x*)_radio); }
+  int8_t readReceiveMode() override {
+#if MESH_WARM_RX_REFRESH
+    if(_rxps_pulse.owns()) return -1;
+#endif
+    return sx126xReceiveMode((SX126x*)_radio);
+  }
 
 public:
   ~CustomLLCC68Wrapper() { unregisterInterruptAction(); }
-  CustomLLCC68Wrapper(CustomLLCC68& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
+  CustomLLCC68Wrapper(CustomLLCC68& radio, mesh::MainBoard& board) : SX126xPulseWrapper<CustomLLCC68>(radio, board) { }
   bool supportsMorseTx() const override { return true; }
   bool supportsMorseRx() const override { return MESH_ENABLE_MORSE_RX && supportsRadioDeepInit(); }
 #if MESH_ENABLE_MESHTEXT_WIRE

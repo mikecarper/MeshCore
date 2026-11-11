@@ -27,7 +27,8 @@ private:
   bool _passthroughMode;
   bool _controlSequenceReceived;
   bool _secondaryControlSequenceReceived;
-  bool _flow_ctl;
+  bool _flow_ctl : 1;
+  bool _usb_raw_packet_rx : 1;
   uint8_t _state;
   uint8_t _tx_queue_len;
   uint16_t _tx_offset;
@@ -50,7 +51,7 @@ private:
   ConnectedCheck _conn_check;
   ReceiveFrameCheck _receive_frame_check;
   IdleReceiveCheck _idle_receive_check;
-  uint8_t rx_buf[MAX_FRAME_SIZE];
+  uint8_t rx_buf[MAX_USB_RAW_FRAME_SIZE];
   TxFrame _tx_queue[TX_QUEUE_SIZE];
 
   void resetControlSequenceState();
@@ -67,7 +68,7 @@ public:
   ArduinoSerialInterface()
       : _isEnabled(false), _passthroughMode(false),
         _controlSequenceReceived(false), _secondaryControlSequenceReceived(false),
-        _flow_ctl(false), _state(0), _tx_queue_len(0), _tx_offset(0),
+        _flow_ctl(false), _usb_raw_packet_rx(false), _state(0), _tx_queue_len(0), _tx_offset(0),
         _controlSequenceCursor(nullptr), _secondaryControlSequenceCursor(nullptr),
         _frame_len(0), rx_len(0),
         _last_frame_ms(0), _completed_frame_count(0), _last_rx_byte_ms(0),
@@ -110,6 +111,10 @@ public:
   void setConnectedCheck(ConnectedCheck fn) { _conn_check = fn; }
   void setReceiveFrameCheck(ReceiveFrameCheck fn) { _receive_frame_check = fn; }
   void setIdleReceiveCheck(IdleReceiveCheck fn) { _idle_receive_check = fn; }
+  void setUsbRawPacketReceive(bool enabled) override { _usb_raw_packet_rx = enabled; }
+  size_t usbRawPacketReceiveCapacity() const override {
+    return _usb_raw_packet_rx ? MAX_USB_RAW_FRAME_SIZE : MAX_FRAME_SIZE;
+  }
   bool isReceivingFrame() const { return _state != 0; }
 
   // Clear all protocol state owned by one host session while retaining the
@@ -147,4 +152,5 @@ public:
   bool hasPendingIO() const override;
   size_t writeFrame(const uint8_t src[], size_t len) override;
   size_t checkRecvFrame(uint8_t dest[]) override;
+  size_t checkRecvFrame(uint8_t dest[], size_t capacity) override;
 };

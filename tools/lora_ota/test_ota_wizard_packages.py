@@ -39,6 +39,11 @@ def delta_blob(image, base, **changes):
 
 
 class PackageTests(unittest.TestCase):
+    def test_wizard_and_runner_use_the_same_motatool_revision(self):
+        # Both entry points may repair/install motatool independently; a split
+        # pin can make the wizard build a package that the runner cannot verify.
+        self.assertEqual(packages.MOTATOOL_REV, ota.MOTATOOL_REPAIR_REVISION)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

@@ -2,13 +2,15 @@
 
 #include "CustomLR1110.h"
 #include "RadioLibWrappers.h"
+#include "LRxxxxPulseWrapper.h"
 #include "LR11x0Reset.h"
 
 #ifndef USE_LR1110
 #define USE_LR1110
 #endif
 
-class CustomLR1110Wrapper : public RadioLibWrapper {
+class CustomLR1110Wrapper : public LRxxxxPulseWrapper<CustomLR1110> {
+  using PulseBase=LRxxxxPulseWrapper<CustomLR1110>;
   using DeepInitCallback = bool (*)();
   DeepInitCallback _deep_init;
 
@@ -29,7 +31,7 @@ public:
   }
   ~CustomLR1110Wrapper() { unregisterInterruptAction(); }
   CustomLR1110Wrapper(CustomLR1110& radio, mesh::MainBoard& board)
-      : RadioLibWrapper(radio, board), _deep_init(NULL) { }
+      : PulseBase(radio, board), _deep_init(NULL) { }
   bool supportsCarrierWave() const override { return true; }
   bool supportsMorseRx() const override { return MESH_ENABLE_MORSE_RX && supportsRadioDeepInit(); }
 #if MESH_ENABLE_MESHTEXT_WIRE

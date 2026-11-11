@@ -1,0 +1,860 @@
+{
+  "schema": 1,
+  "date_utc": "2026-11-09",
+  "board": "Heltec V3",
+  "role": "Full Companion",
+  "base_commit": "5ed23fdd6",
+  "implementation_commit": "9303dc510",
+  "spi_hz": 8000000,
+  "timings": {
+    "baseline": {
+      "240": {
+        "frequency_only": {
+          "windows": 2,
+          "stages": {
+            "admission": {
+              "switches": 2555,
+              "sum_us": 682124,
+              "mean_us": 266.9761
+            },
+            "frequency": {
+              "switches": 2557,
+              "sum_us": 333372,
+              "mean_us": 130.3762
+            },
+            "guard_math": {
+              "switches": 2557,
+              "sum_us": 214553,
+              "mean_us": 83.9081
+            },
+            "modulation": {
+              "switches": 2555,
+              "sum_us": 133196,
+              "mean_us": 52.1315
+            },
+            "post_standby": {
+              "switches": 2555,
+              "sum_us": 15867,
+              "mean_us": 6.2102
+            },
+            "preamble": {
+              "switches": 2557,
+              "sum_us": 12253,
+              "mean_us": 4.7919
+            },
+            "protocol_and_cache": {
+              "switches": 2556,
+              "sum_us": 24041,
+              "mean_us": 9.4057
+            },
+            "rx_resume": {
+              "switches": 2557,
+              "sum_us": 578861,
+              "mean_us": 226.3829
+            },
+            "standby": {
+              "switches": 2556,
+              "sum_us": 219668,
+              "mean_us": 85.9421
+            },
+            "tail": {
+              "switches": 2557,
+              "sum_us": 49887,
+              "mean_us": 19.51
+            },
+            "whole": {
+              "switches": 2558,
+              "sum_us": 2267852,
+              "mean_us": 886.5723
+            }
+          },
+          "switch_errors_delta": 0,
+          "cache": {
+            "switches": 2517,
+            "misses": 820147,
+            "mean_misses": 325.8431
+          }
+        },
+        "mixed_modem": {
+          "windows": 2,
+          "stages": {
+            "admission": {
+              "switches": 2540,
+              "sum_us": 679634,
+              "mean_us": 267.5724
+            },
+            "frequency": {
+              "switches": 2542,
+              "sum_us": 331144,
+              "mean_us": 130.2691
+            },
+            "guard_math": {
+              "switches": 2541,
+              "sum_us": 206543,
+              "mean_us": 81.2841
+            },
+            "modulation": {
+              "switches": 2540,
+              "sum_us": 399431,
+              "mean_us": 157.2563
+            },
+            "post_standby": {
+              "switches": 2539,
+              "sum_us": 15713,
+              "mean_us": 6.1887
+            },
+            "preamble": {
+              "switches": 2541,
+              "sum_us": 13626,
+              "mean_us": 5.3625
+            },
+            "protocol_and_cache": {
+              "switches": 2541,
+              "sum_us": 23782,
+              "mean_us": 9.3593
+            },
+            "rx_resume": {
+              "switches": 2541,
+              "sum_us": 657228,
+              "mean_us": 258.6494
+            },
+            "standby": {
+              "switches": 2540,
+              "sum_us": 217185,
+              "mean_us": 85.5059
+            },
+            "tail": {
+              "switches": 2540,
+              "sum_us": 51791,
+              "mean_us": 20.3902
+            },
+            "whole": {
+              "switches": 2543,
+              "sum_us": 2601265,
+              "mean_us": 1022.9119
+            }
+          },
+          "switch_errors_delta": 0,
+          "cache": {
+            "switches": 2503,
+            "misses": 843352,
+            "mean_misses": 336.9365
+          }
+        }
+      },
+      "80": {
+        "frequency_only": {
+          "windows": 2,
+          "stages": {
+            "admission": {
+              "switches": 2586,
+              "sum_us": 787841,
+              "mean_us": 304.6562
+            },
+            "frequency": {
+              "switches": 2587,
+              "sum_us": 407672,
+              "mean_us": 157.5848
+            },
+            "guard_math": {
+              "switches": 2587,
+              "sum_us": 230479,
+              "mean_us": 89.0912
+            },
+            "modulation": {
+              "switches": 2587,
+              "sum_us": 146960,
+              "mean_us": 56.8071
+            },
+            "post_standby": {
+              "switches": 2587,
+              "sum_us": 22672,
+              "mean_us": 8.7638
+            },
+            "preamble": {
+              "switches": 2587,
+              "sum_us": 15465,
+              "mean_us": 5.978
+            },
+            "protocol_and_cache": {
+              "switches": 2588,
+              "sum_us": 28043,
+              "mean_us": 10.8358
+            },
+            "rx_resume": {
+              "switches": 2587,
+              "sum_us": 771119,
+              "mean_us": 298.0746
+            },
+            "standby": {
+              "switches": 2587,
+              "sum_us": 284749,
+              "mean_us": 110.0692
+            },
+            "tail": {
+              "switches": 2589,
+              "sum_us": 62190,
+              "mean_us": 24.0209
+            },
+            "whole": {
+              "switches": 2587,
+              "sum_us": 2763251,
+              "mean_us": 1068.1295
+            }
+          },
+          "switch_errors_delta": 0,
+          "cache": {
+            "switches": 2543,
+            "misses": 825622,
+            "mean_misses": 324.6646
+          }
+        },
+        "mixed_modem": {
+          "windows": 2,
+          "stages": {
+            "admission": {
+              "switches": 2691,
+              "sum_us": 825187,
+              "mean_us": 306.647
+            },
+            "frequency": {
+              "switches": 2692,
+              "sum_us": 420507,
+              "mean_us": 156.2062
+            },
+            "guard_math": {
+              "switches": 2691,
+              "sum_us": 229088,
+              "mean_us": 85.1312
+            },
+            "modulation": {
+              "switches": 2691,
+              "sum_us": 512591,
+              "mean_us": 190.4835
+            },
+            "post_standby": {
+              "switches": 2691,
+              "sum_us": 22486,
+              "mean_us": 8.356
+            },
+            "preamble": {
+              "switches": 2693,
+              "sum_us": 16099,
+              "mean_us": 5.9781
+            },
+            "protocol_and_cache": {
+              "switches": 2693,
+              "sum_us": 30697,
+              "mean_us": 11.3988
+            },
+            "rx_resume": {
+              "switches": 2691,
+              "sum_us": 965411,
+              "mean_us": 358.7555
+            },
+            "standby": {
+              "switches": 2691,
+              "sum_us": 294323,
+              "mean_us": 109.3731
+            },
+            "tail": {
+              "switches": 2693,
+              "sum_us": 65486,
+              "mean_us": 24.3171
+            },
+            "whole": {
+              "switches": 2692,
+              "sum_us": 3388976,
+              "mean_us": 1258.9064
+            }
+          },
+          "switch_errors_delta": 0,
+          "cache": {
+            "switches": 2648,
+            "misses": 889422,
+            "mean_misses": 335.8844
+          }
+        }
+      }
+    },
+    "candidate": {
+      "240": {
+        "frequency_only": {
+          "windows": 2,
+          "stages": {
+            "admission": {
+              "switches": 2675,
+              "sum_us": 546546,
+              "mean_us": 204.3163
+            },
+            "frequency": {
+              "switches": 2677,
+              "sum_us": 319689,
+              "mean_us": 119.4206
+            },
+            "guard_math": {
+              "switches": 2677,
+              "sum_us": 104561,
+              "mean_us": 39.059
+            },
+            "modulation": {
+              "switches": 2676,
+              "sum_us": 18698,
+              "mean_us": 6.9873
+            },
+            "post_standby": {
+              "switches": 2675,
+              "sum_us": 9283,
+              "mean_us": 3.4703
+            },
+            "preamble": {
+              "switches": 2675,
+              "sum_us": 15349,
+              "mean_us": 5.7379
+            },
+            "protocol_and_cache": {
+              "switches": 2676,
+              "sum_us": 3106,
+              "mean_us": 1.1607
+            },
+            "rx_resume": {
+              "switches": 2677,
+              "sum_us": 344702,
+              "mean_us": 128.7643
+            },
+            "standby": {
+              "switches": 2676,
+              "sum_us": 191768,
+              "mean_us": 71.6622
+            },
+            "tail": {
+              "switches": 2677,
+              "sum_us": 15252,
+              "mean_us": 5.6974
+            },
+            "whole": {
+              "switches": 2677,
+              "sum_us": 1572408,
+              "mean_us": 587.3769
+            }
+          },
+          "switch_errors_delta": 0,
+          "cache": {
+            "switches": 2638,
+            "misses": 465699,
+            "mean_misses": 176.5349
+          }
+        },
+        "mixed_modem": {
+          "windows": 2,
+          "stages": {
+            "admission": {
+              "switches": 2609,
+              "sum_us": 530928,
+              "mean_us": 203.4987
+            },
+            "frequency": {
+              "switches": 2608,
+              "sum_us": 311224,
+              "mean_us": 119.3344
+            },
+            "guard_math": {
+              "switches": 2608,
+              "sum_us": 96815,
+              "mean_us": 37.1223
+            },
+            "modulation": {
+              "switches": 2609,
+              "sum_us": 265916,
+              "mean_us": 101.9226
+            },
+            "post_standby": {
+              "switches": 2608,
+              "sum_us": 9058,
+              "mean_us": 3.4732
+            },
+            "preamble": {
+              "switches": 2609,
+              "sum_us": 14481,
+              "mean_us": 5.5504
+            },
+            "protocol_and_cache": {
+              "switches": 2609,
+              "sum_us": 3126,
+              "mean_us": 1.1982
+            },
+            "rx_resume": {
+              "switches": 2608,
+              "sum_us": 421245,
+              "mean_us": 161.5203
+            },
+            "standby": {
+              "switches": 2608,
+              "sum_us": 187346,
+              "mean_us": 71.8351
+            },
+            "tail": {
+              "switches": 2609,
+              "sum_us": 14716,
+              "mean_us": 5.6405
+            },
+            "whole": {
+              "switches": 2609,
+              "sum_us": 1858028,
+              "mean_us": 712.161
+            }
+          },
+          "switch_errors_delta": 0,
+          "cache": {
+            "switches": 2569,
+            "misses": 466478,
+            "mean_misses": 181.5796
+          }
+        }
+      },
+      "80": {
+        "frequency_only": {
+          "windows": 2,
+          "stages": {
+            "admission": {
+              "switches": 2461,
+              "sum_us": 605628,
+              "mean_us": 246.0902
+            },
+            "frequency": {
+              "switches": 2459,
+              "sum_us": 358267,
+              "mean_us": 145.6962
+            },
+            "guard_math": {
+              "switches": 2462,
+              "sum_us": 112037,
+              "mean_us": 45.5065
+            },
+            "modulation": {
+              "switches": 2461,
+              "sum_us": 31417,
+              "mean_us": 12.7659
+            },
+            "post_standby": {
+              "switches": 2461,
+              "sum_us": 15719,
+              "mean_us": 6.3872
+            },
+            "preamble": {
+              "switches": 2459,
+              "sum_us": 18701,
+              "mean_us": 7.6051
+            },
+            "protocol_and_cache": {
+              "switches": 2459,
+              "sum_us": 8288,
+              "mean_us": 3.3705
+            },
+            "rx_resume": {
+              "switches": 2463,
+              "sum_us": 503490,
+              "mean_us": 204.4214
+            },
+            "standby": {
+              "switches": 2458,
+              "sum_us": 236673,
+              "mean_us": 96.2868
+            },
+            "tail": {
+              "switches": 2459,
+              "sum_us": 25754,
+              "mean_us": 10.4734
+            },
+            "whole": {
+              "switches": 2463,
+              "sum_us": 1923041,
+              "mean_us": 780.7718
+            }
+          },
+          "switch_errors_delta": 0,
+          "cache": {
+            "switches": 2417,
+            "misses": 427910,
+            "mean_misses": 177.0418
+          }
+        },
+        "mixed_modem": {
+          "windows": 2,
+          "stages": {
+            "admission": {
+              "switches": 2547,
+              "sum_us": 627418,
+              "mean_us": 246.3361
+            },
+            "frequency": {
+              "switches": 2549,
+              "sum_us": 371882,
+              "mean_us": 145.8933
+            },
+            "guard_math": {
+              "switches": 2547,
+              "sum_us": 117909,
+              "mean_us": 46.2933
+            },
+            "modulation": {
+              "switches": 2547,
+              "sum_us": 343537,
+              "mean_us": 134.8791
+            },
+            "post_standby": {
+              "switches": 2547,
+              "sum_us": 16159,
+              "mean_us": 6.3443
+            },
+            "preamble": {
+              "switches": 2550,
+              "sum_us": 19135,
+              "mean_us": 7.5039
+            },
+            "protocol_and_cache": {
+              "switches": 2550,
+              "sum_us": 7218,
+              "mean_us": 2.8306
+            },
+            "rx_resume": {
+              "switches": 2548,
+              "sum_us": 676092,
+              "mean_us": 265.3422
+            },
+            "standby": {
+              "switches": 2547,
+              "sum_us": 244286,
+              "mean_us": 95.9113
+            },
+            "tail": {
+              "switches": 2550,
+              "sum_us": 26650,
+              "mean_us": 10.451
+            },
+            "whole": {
+              "switches": 2549,
+              "sum_us": 2457230,
+              "mean_us": 963.9976
+            }
+          },
+          "switch_errors_delta": 0,
+          "cache": {
+            "switches": 2505,
+            "misses": 456525,
+            "mean_misses": 182.2455
+          }
+        }
+      }
+    }
+  },
+  "builds": {
+    "baseline": {
+      "passed": true,
+      "target": "Heltec_v3_companion_radio_full",
+      "available_internal_bytes": 188280,
+      "required_heap_bytes": 185632,
+      "largest_internal_region_bytes": 155512,
+      "headroom_bytes": 2648,
+      "image": "Heltec_v3_companion_radio_full-v1.18.0.2-v3-base-5ed23fdd.bin",
+      "image_bytes": 2132344,
+      "sha256": "f8d91c68a17e5e8a13cdd1c92edad6d4b52ac7969eb8985374ab2f5e2a922ba0",
+      "capabilities": [
+        "profile.full",
+        "companion.meshtext.channel_text",
+        "radio2.kiss.host",
+        "radio2.kiss.usb",
+        "radio2.kiss.tcp",
+        "companion.temp_radio",
+        "companion.ota_cli",
+        "companion.usb",
+        "companion.bluetooth",
+        "companion.usb_logging",
+        "companion.usb_mota_source",
+        "companion.mota_sender",
+        "companion.network_terminal",
+        "companion.wifi_ota_seeder",
+        "web.webconfig",
+        "web.unconfigured_setup_cutoff",
+        "companion.direct_mqtt",
+        "logging.usb.packets",
+        "logging.usb.control",
+        "companion.app_wifi.get_enabled",
+        "companion.app_wifi.set_enabled",
+        "companion.app_wifi.get_ssid",
+        "companion.app_wifi.set_ssid",
+        "companion.app_wifi.get_password",
+        "companion.app_wifi.set_password",
+        "companion.app_wifi.get_status",
+        "companion.app_wifi.get_ip",
+        "ota.update.wifi"
+      ]
+    },
+    "candidate": {
+      "passed": true,
+      "target": "Heltec_v3_companion_radio_full",
+      "available_internal_bytes": 188568,
+      "required_heap_bytes": 185632,
+      "largest_internal_region_bytes": 155800,
+      "headroom_bytes": 2936,
+      "image": "Heltec_v3_companion_radio_full-v1.18.0.2-v3-fast-5ed23fdd.bin",
+      "image_bytes": 2138584,
+      "sha256": "ccff9e1f2a2f9685cc216d5285f6b05baf30ce9181cad84c42badce06b934da8",
+      "capabilities": [
+        "profile.full",
+        "companion.meshtext.channel_text",
+        "radio2.kiss.host",
+        "radio2.kiss.usb",
+        "radio2.kiss.tcp",
+        "companion.temp_radio",
+        "companion.ota_cli",
+        "companion.usb",
+        "companion.bluetooth",
+        "companion.usb_logging",
+        "companion.usb_mota_source",
+        "companion.mota_sender",
+        "companion.network_terminal",
+        "companion.wifi_ota_seeder",
+        "web.webconfig",
+        "web.unconfigured_setup_cutoff",
+        "companion.direct_mqtt",
+        "logging.usb.packets",
+        "logging.usb.control",
+        "companion.app_wifi.get_enabled",
+        "companion.app_wifi.set_enabled",
+        "companion.app_wifi.get_ssid",
+        "companion.app_wifi.set_ssid",
+        "companion.app_wifi.get_password",
+        "companion.app_wifi.set_password",
+        "companion.app_wifi.get_status",
+        "companion.app_wifi.get_ip",
+        "ota.update.wifi"
+      ]
+    },
+    "normal": {
+      "passed": true,
+      "target": "Heltec_v3_companion_radio_full",
+      "available_internal_bytes": 190632,
+      "required_heap_bytes": 185632,
+      "largest_internal_region_bytes": 157864,
+      "headroom_bytes": 5000,
+      "image": "Heltec_v3_companion_radio_full-v1.18.0.2-v3-fast-9303dc51.bin",
+      "image_bytes": 2118824,
+      "sha256": "2d22cd9bd53337cb93285a60a0b231eee4e2c4f554d7f95ba25af0bd78415439",
+      "capabilities": [
+        "profile.full",
+        "companion.meshtext.channel_text",
+        "radio2.kiss.host",
+        "radio2.kiss.usb",
+        "radio2.kiss.tcp",
+        "companion.temp_radio",
+        "companion.ota_cli",
+        "companion.usb",
+        "companion.bluetooth",
+        "companion.usb_logging",
+        "companion.usb_mota_source",
+        "companion.mota_sender",
+        "companion.network_terminal",
+        "companion.wifi_ota_seeder",
+        "web.webconfig",
+        "web.unconfigured_setup_cutoff",
+        "companion.direct_mqtt",
+        "logging.usb.packets",
+        "logging.usb.control",
+        "companion.app_wifi.get_enabled",
+        "companion.app_wifi.set_enabled",
+        "companion.app_wifi.get_ssid",
+        "companion.app_wifi.set_ssid",
+        "companion.app_wifi.get_password",
+        "companion.app_wifi.set_password",
+        "companion.app_wifi.get_status",
+        "companion.app_wifi.get_ip",
+        "ota.update.wifi"
+      ]
+    },
+    "repeater-rtc": {
+      "passed": true,
+      "target": "Heltec_v3_repeater_observer_mqtt",
+      "available_internal_bytes": 213120,
+      "required_heap_bytes": 208820,
+      "largest_internal_region_bytes": 180352,
+      "headroom_bytes": 4300,
+      "image": "Heltec_v3_repeater_observer_mqtt-full-usb-wifi-ota-v1.18.0.2-v3-fast-5ed23fdd.bin",
+      "image_bytes": 2196072,
+      "sha256": "e20404827772db1c7828e2b3eed9600399957f6b9d1400b585cd8f0159d14bed",
+      "capabilities": [
+        "bridge.espnow",
+        "bridge.udp",
+        "profile.full",
+        "release.full.same_partition_successor",
+        "radio2.kiss.host",
+        "radio2.kiss.usb",
+        "radio2.kiss.tcp",
+        "bridge.rs232",
+        "ota.update.wifi",
+        "ota.update.lora",
+        "cli.retry_preset",
+        "telemetry.history",
+        "ota.cli",
+        "web.webconfig",
+        "logging.usb.packets",
+        "logging.usb.control",
+        "logging.usb.output",
+        "bridge.rs232.merged",
+        "bridge.udp.configuration"
+      ]
+    },
+    "room": {
+      "passed": true,
+      "target": "Heltec_v3_room_server_observer_mqtt",
+      "available_internal_bytes": 220064,
+      "required_heap_bytes": 202528,
+      "largest_internal_region_bytes": 187296,
+      "headroom_bytes": 17536,
+      "image": "Heltec_v3_room_server_observer_mqtt-full-usb-wifi-ota-v1.18.0.2-v3-fast-5ed23fdd.bin",
+      "image_bytes": 2166344,
+      "sha256": "7673bd0886189bec3b63702779518eb018b686b32fbe2351c3f5c6eff2ef5d37",
+      "capabilities": [
+        "bridge.espnow",
+        "profile.full",
+        "release.full.same_partition_successor",
+        "radio2.kiss.host",
+        "radio2.kiss.usb",
+        "radio2.kiss.tcp",
+        "ota.update.wifi",
+        "ota.update.lora",
+        "cli.retry_preset",
+        "telemetry.history",
+        "ota.cli",
+        "web.webconfig",
+        "room.flood_rule_engine",
+        "logging.usb.packets",
+        "logging.usb.control",
+        "logging.usb.output"
+      ]
+    }
+  },
+  "memory_tradeoff": {
+    "additional_iram_bytes": 5364,
+    "additional_companion_rtc_slow_bytes": 5664,
+    "companion_queue_capacity": 256,
+    "companion_contacts": 100,
+    "repeater_advert_capacity": 128,
+    "repeater_advert_rtc_fast_records": 16,
+    "repeater_advert_rtc_slow_records": 32,
+    "repeater_advert_relocated_bytes": 6720,
+    "psram_required": false
+  },
+  "limitations": [
+    "One physical V3 Full Companion; Repeater and Room are build-checked only.",
+    "Quiet-loop averages are not worst-case latency guarantees or sensitivity measurements.",
+    "The instruction-cache counter includes both ESP32-S3 CPUs.",
+    "Both baseline and candidate use colocated Xtensa literals. Candidate also relocates existing queue storage.",
+    "80 MHz is selected explicitly for comparison; battery current was not measured."
+  ],
+  "packet_test": {
+    "passed": true,
+    "firmware": "v1.18.0.2-v3-fast-9303dc51 (Build: 09-Nov-2026)",
+    "memory": "Heap free=96368 min=94148 max=90100 int=96368/90100 PSRAM=0/0 queue=0/256",
+    "windows": [
+      {
+        "corrupt": [],
+        "cpu_mhz": 80,
+        "duplicates": 0,
+        "frequency_mhz": 906.525,
+        "missing": [],
+        "profile": 0,
+        "profile_rx_delta": [
+          30,
+          0
+        ],
+        "radio2_after": "rx; RX=33,0 TX=0,0 switches=1610 errors=0 max=3602us preamble=32,32; test=4/4,4/4 pending budget=3963us; timing self-test pending; wait=83s",
+        "radio2_before": "rx; RX=3,0 TX=0,0 switches=339 errors=0 max=757us preamble=32,32; test=4/4,4/4 pending budget=833us; timing self-test pending; wait=115s",
+        "received": 30,
+        "requested": 30,
+        "sent": 30
+      },
+      {
+        "corrupt": [],
+        "cpu_mhz": 80,
+        "duplicates": 0,
+        "frequency_mhz": 907.525,
+        "missing": [],
+        "profile": 1,
+        "profile_rx_delta": [
+          0,
+          30
+        ],
+        "radio2_after": "rx; RX=33,30 TX=0,0 switches=3095 errors=0 max=3602us preamble=32,32; test=4/4,4/4 pending budget=3963us; timing self-test pending; wait=48s",
+        "radio2_before": "rx; RX=33,0 TX=0,0 switches=1805 errors=0 max=3602us preamble=32,32; test=4/4,4/4 pending budget=3963us; timing self-test pending; wait=80s",
+        "received": 30,
+        "requested": 30,
+        "sent": 30
+      },
+      {
+        "corrupt": [],
+        "cpu_mhz": 240,
+        "duplicates": 0,
+        "frequency_mhz": 906.525,
+        "missing": [],
+        "profile": 0,
+        "profile_rx_delta": [
+          30,
+          0
+        ],
+        "radio2_after": "rx; RX=63,30 TX=0,0 switches=4823 errors=0 max=3602us preamble=32,32; test=4/4,4/4 pending budget=3184us; timing self-test pending; wait=83s",
+        "radio2_before": "rx; RX=33,30 TX=0,0 switches=3433 errors=0 max=3602us preamble=32,32; test=4/4,4/4 pending budget=3165us; timing self-test pending; wait=115s",
+        "received": 30,
+        "requested": 30,
+        "sent": 30
+      },
+      {
+        "corrupt": [],
+        "cpu_mhz": 240,
+        "duplicates": 0,
+        "frequency_mhz": 907.525,
+        "missing": [],
+        "profile": 1,
+        "profile_rx_delta": [
+          0,
+          30
+        ],
+        "radio2_after": "rx; RX=63,60 TX=0,0 switches=6403 errors=0 max=3602us preamble=32,32; test=4/4,4/4 pending budget=3184us; timing self-test pending; wait=48s",
+        "radio2_before": "rx; RX=63,30 TX=0,0 switches=5030 errors=0 max=3602us preamble=32,32; test=4/4,4/4 pending budget=3184us; timing self-test pending; wait=80s",
+        "received": 30,
+        "requested": 30,
+        "sent": 30
+      }
+    ],
+    "automatic_rf_retries": 0,
+    "settings_restored": true,
+    "max_switch_us_observed": 3602
+  },
+  "flash_checks": {
+    "application_only": true,
+    "partitions_unchanged": true,
+    "all_three_application_readbacks_identical": true
+  },
+  "host_tests": {
+    "focused_tests": 40,
+    "build_profile_suite_passed": true,
+    "hosted_doc_links_passed": 7
+  },
+  "final_state": {
+    "passed": true,
+    "settings_restored": true,
+    "identity_preserved": true,
+    "private_diagnostics_absent": true,
+    "temporary_radio_inactive": true,
+    "version": "v1.18.0.2-v3-fast-9303dc51 (Build: 09-Nov-2026)",
+    "reservation_released": true
+  },
+  "maintenance_settings": {
+    "timing_baseline_and_candidate": {
+      "agc_seconds": 16,
+      "agc_old": "auto"
+    },
+    "original_and_final_agc_old": "0",
+    "restoration_note": "Current firmware defaults to auto when no saved override exists. Explicitly restored the older firmware effective value with set agc.old 0 after the tests."
+  }
+}

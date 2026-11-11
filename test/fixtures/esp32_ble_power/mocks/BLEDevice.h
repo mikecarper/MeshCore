@@ -28,9 +28,10 @@ constexpr int BLE_ADDR_TYPE_PUBLIC=0, BLE_ADDR_TYPE_RANDOM=1, BLE_WL_ADDR_TYPE_P
 constexpr int ESP_LE_KEY_PID=1, ESP_BLE_ADV_FLAG_BREDR_NOT_SPT=4;
 constexpr int ESP_GATT_PERM_READ_ENC_MITM=1, ESP_GATT_PERM_WRITE_ENC_MITM=2;
 constexpr int ESP_IO_CAP_OUT=0, ESP_LE_AUTH_REQ_SC_MITM_BOND=15;
+constexpr int ESP_BLE_SM_SET_STATIC_PASSKEY=20;
 struct esp_ble_auth_cmpl_t { bool success=true; int addr_type=0, fail_reason=0; uint8_t bd_addr[6]={1,2,3,4,5,6}; };
 struct esp_ble_gatts_cb_param_t {
-  struct { uint16_t conn_id=7; uint8_t remote_bda[6]={1,2,3,4,5,6}; } connect, mtu;
+  struct { uint16_t conn_id=7; uint8_t remote_bda[6]={1,2,3,4,5,6}; } connect, mtu, disconnect, write;
   struct { int status=0; esp_bt_uuid_t svc_uuid; uint8_t svc_inst_id=0; uint16_t num_handle=1; uint16_t* handles=nullptr; } add_attr_tab;
   struct { int status=0; uint16_t service_handle=0; } start, del;
 };
@@ -50,6 +51,7 @@ inline unsigned servers=0, services=0, characteristics=0, descriptors=0;
 inline unsigned bond_deletions=0, disconnects=0, stops=0, uuid_adds=0;
 inline uint8_t address[6]={};
 inline uint32_t pin=0;
+inline unsigned pin_updates=0;
 inline unsigned encryptions=0, cache_creates=0, cache_starts=0, cache_deletes=0;
 inline bool in_callback=false;
 inline const esp_gatts_attr_db_t* marker_attributes=nullptr;
@@ -78,6 +80,13 @@ inline int esp_bt_controller_deinit() {
   fake_bt::controller=ESP_BT_CONTROLLER_STATUS_IDLE; return ESP_OK;
 }
 inline int esp_ble_get_bond_device_num() { return fake_bt::persisted ? 1 : 0; }
+inline int esp_ble_gap_set_security_param(int type, void* value, uint8_t length) {
+  assert(type==ESP_BLE_SM_SET_STATIC_PASSKEY && length==sizeof(uint32_t));
+  ++fake_bt::pin_updates;
+  if (fake_bt::failure=="pin-update") return 1;
+  memcpy(&fake_bt::pin, value, sizeof(fake_bt::pin));
+  return ESP_OK;
+}
 inline int esp_ble_get_bond_device_list(int*, esp_ble_bond_dev_t* dest) { *dest=esp_ble_bond_dev_t{}; return ESP_OK; }
 inline int esp_ble_remove_bond_device(uint8_t*) { ++fake_bt::bond_deletions; return ESP_OK; }
 inline int esp_ble_gap_clear_whitelist() { return ESP_OK; }
@@ -121,6 +130,7 @@ public:
   virtual void onConnect(BLEServer*) {}
   virtual void onConnect(BLEServer*, esp_ble_gatts_cb_param_t*) {}
   virtual void onDisconnect(BLEServer*) {}
+  virtual void onDisconnect(BLEServer*, esp_ble_gatts_cb_param_t*) {}
   virtual void onMtuChanged(BLEServer*, esp_ble_gatts_cb_param_t*) {}
 };
 class BLECharacteristicCallbacks {
@@ -233,7 +243,8 @@ public:
   BLEAdvertising* getAdvertising() { if(!fake_advertising) fake_advertising=new BLEAdvertising; return fake_advertising; }
   void setCallbacks(BLEServerCallbacks* cb) { callbacks=cb; }
   unsigned getConnectedCount() const { return connected; }
-  void disconnect(uint16_t) { ++fake_bt::disconnects; }
+  std::vector<uint16_t> disconnect_ids;
+  void disconnect(uint16_t id) { ++fake_bt::disconnects; disconnect_ids.push_back(id); }
   uint16_t getConnId() { return 7; }
   uint16_t getPeerMTU(uint16_t) { return 179; }
 };

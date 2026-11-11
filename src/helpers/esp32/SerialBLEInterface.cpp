@@ -3,6 +3,26 @@
 #include "../CompanionFrameQueue.h"
 #include "esp_mac.h"
 #include "esp_bt.h"
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
+#if !defined(CONFIG_BLUEDROID_ENABLED) || defined(MESH_USE_NIMBLE_ARDUINO) || defined(CONFIG_NIMBLE_ENABLED)
+#error "Bluedroid bond protection requires the patched Bluedroid stack"
+#endif
+// SDK callbacks run on Bluetooth tasks; defer shutdown to the loop task.
+static std::atomic<bool> mesh_bl_narrow_failed{false};
+extern "C" void mesh_bl_narrow_failure(void) {
+  mesh_bl_narrow_failed.store(true, std::memory_order_release);
+}
+extern "C" int mesh_bl_narrow_pending(void) {
+  return mesh_bl_narrow_failed.load(std::memory_order_acquire);
+}
+extern "C" void mesh_bl_narrow_reset_staging(void);
+// An unresolved symbol is intentional if the matching SDK patch is absent.
+extern "C" void mesh_bl_narrow_sdk_guard(void);
+#endif
+#if defined(MESH_USE_NIMBLE_ARDUINO)
+#include "NimbleNonEvictingStore.h"
+static NimbleNonEvictingStore mesh_nimble_store_policy;
+#endif
 #include <stdlib.h>
 #include <new>
 #if defined(CONFIG_BLUEDROID_ENABLED) && !defined(MESH_USE_NIMBLE_ARDUINO)
@@ -34,6 +54,7 @@ extern "C" bool bleInUse(void) {
 #define BLE_BOND_PERSIST_TIMEOUT_MS 15000
 
 #define BLE_POWER_RETRY_MS 1000
+#define BLE_CACHE_HANDSHAKE_GRACE_MS 5000
 
 #if !MESH_BLE_USES_NIMBLE
 // Bluedroid's BLEService registers its std::map<BLECharacteristic*, ...> in
@@ -89,8 +110,8 @@ void SerialBLEInterface::retireCacheGattHandler() {
   _cacheMarker = CacheMarker::Absent;
   _cacheMarkerHandle = 0;
   _cacheStalled = false;
-  _cacheVerifiedPeerValid = false;
   _cacheAttemptConnection = _cacheEncryptedConnection = 0;
+  _cacheAuthenticatedConnection = _cacheAuthenticatedAt = 0;
   _cacheTriggeredConnection = _cacheOperationConnection = 0;
   _cacheFailures = 0;
 }
@@ -216,18 +237,19 @@ void SerialBLEInterface::serviceGattCacheRefresh(uint32_t now) {
     return;
   }
   if (!_cacheAuthenticated.load(std::memory_order_acquire)) return;
+  if (_cacheAuthenticatedConnection != connection) {
+    _cacheAuthenticatedConnection = connection;
+    _cacheAuthenticatedAt = now;
+  }
   if (_cacheNusVerifiedConnection.load(std::memory_order_acquire) == connection) {
-    memcpy(_cacheVerifiedPeer, remote, sizeof(remote));
-    _cacheVerifiedPeerValid = true;
+    _cacheTriggeredConnection = connection;
   }
   if (_cacheTriggeredConnection == connection) return;
-  // Actual use of both NUS handles, rather than local marker completion,
-  // permits skipping rediscovery for the same peer in this host session.
-  if (_cacheVerifiedPeerValid
-      && memcmp(remote, _cacheVerifiedPeer, sizeof(remote)) == 0) {
-    _cacheTriggeredConnection = connection;
-    return;
-  }
+  // A database change invalidates characteristics the client just discovered.
+  // Give the authenticated link time to prove its current NUS handles first;
+  // genuinely stale clients still get the bounded cache recovery below.
+  if (!mesh::bleElapsedAtLeast(now, _cacheAuthenticatedAt,
+                              BLE_CACHE_HANDSHAKE_GRACE_MS)) return;
   _cacheLastAttempt = _cacheOperationStarted = now;
   _cacheOperationConnection = connection;
   const CacheOperation operation = _cacheMarker == CacheMarker::Absent
@@ -604,6 +626,32 @@ bool SerialBLEInterface::advertisingAllowed() const {
       && !_bondedOnlyRecoveryPending.load(std::memory_order_acquire);
 }
 
+bool SerialBLEInterface::setPin(uint32_t pin_code) {
+  if (pin_code > 999999) return false;
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
+  if (mesh_bl_narrow_pending()) return false;
+#endif
+  if (_stackActive && !_shutdownPending) {
+#if defined(MESH_USE_NIMBLE_ARDUINO)
+    // The pairing callback reads _pin_code directly. Keep NimBLE's sentinel
+    // unchanged so the callback continues to provide the actual passkey.
+#elif defined(CONFIG_NIMBLE_ENABLED)
+    BLESecurity sec;
+    sec.setPassKey(true, pin_code);
+#elif defined(CONFIG_BLUEDROID_ENABLED)
+    // Unlike BLESecurity::setStaticPIN(), this does not change authentication
+    // mode or other security options, and lets us detect a controller error.
+    if (esp_ble_gap_set_security_param(ESP_BLE_SM_SET_STATIC_PASSKEY,
+                                      &pin_code, sizeof(pin_code)) != ESP_OK)
+      return false;
+#else
+    return false;
+#endif
+  }
+  _pin_code.store(pin_code, std::memory_order_release);
+  return true;
+}
+
 bool SerialBLEInterface::begin(const char* prefix, const char* name,
                                uint32_t pin_code,
                                const uint8_t* custom_address,
@@ -663,14 +711,21 @@ bool SerialBLEInterface::begin(const char* prefix, const char* name,
 }
 
 bool SerialBLEInterface::startBluetoothStack(bool clear_bonds) {
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
+  mesh_bl_narrow_sdk_guard();
+#endif
   const char* dev_name = _deviceName;
   const uint8_t* custom_address = _hasCustomAddress ? _customAddress : nullptr;
-  const uint32_t pin_code = _pin_code;
+  const uint32_t pin_code = _pin_code.load(std::memory_order_acquire);
   // A failed start can have partially initialized the controller. Keep the
   // shutdown gate closed until servicePowerState() has cleaned it up.
   _stackActive = true;
   _nativeHostStopped = false;
   _callbacksEnabled.store(false, std::memory_order_release);
+  // Reject bond-store overflow instead of evicting a saved peer.
+#if defined(MESH_USE_NIMBLE_ARDUINO)
+  BLEDevice::setDeviceCallbacks(&mesh_nimble_store_policy);
+#endif
   // Create the BLE Device
 #if MESH_BLE_USES_NIMBLE
   if (!BLEDevice::init(dev_name)) {
@@ -921,9 +976,8 @@ void SerialBLEInterface::onAuthenticationComplete(NimBLEConnInfo& info) {
       pServer->updateConnParams(info.getConnHandle(), 12, 24, 0, 400);
     }
   } else {
-    BLEDevice::deleteBond(info.getIdAddress());
+    // An unsuccessful exchange may be transient; retain the saved bond.
     deviceConnected = false;
-    if (_bonded_only) requestBondedOnlyRecovery("bond authentication failed");
     pServer->disconnect(info.getConnHandle());
     if (advertisingAllowed()) scheduleAdvertisingRestart((uint32_t)millis());
   }
@@ -969,20 +1023,8 @@ void SerialBLEInterface::onAuthenticationComplete(ble_gap_conn_desc* desc) {
   } else {
     BLE_DEBUG_PRINTLN(" - SecurityCallback - Authentication Failure");
 
-    if (desc != NULL) {
-      int remove_result = ble_store_util_delete_peer(&desc->peer_id_addr);
-      if (remove_result == 0) {
-        BLE_DEBUG_PRINTLN(" - SecurityCallback - Cleared failed peer bond");
-      } else {
-        BLE_DEBUG_PRINTLN(" - SecurityCallback - No peer bond cleared, err=%d",
-                          remove_result);
-      }
-    }
-
+    // Keep the saved key and advertising policy on a failed exchange.
     deviceConnected = false;
-    if (_bonded_only) {
-      requestBondedOnlyRecovery("bond authentication failed");
-    }
     if (desc != NULL) {
       pServer->disconnect(desc->conn_handle);
     }
@@ -994,6 +1036,15 @@ void SerialBLEInterface::onAuthenticationComplete(ble_gap_conn_desc* desc) {
 #else
 void SerialBLEInterface::onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl) {
   if (!_callbacksEnabled.load(std::memory_order_acquire)) return;
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
+  // The recovery host is single-session. Never associate an authentication
+  // event with an ambiguous or already closing GATT session.
+  if (mesh_bl_narrow_pending() || pServer == nullptr || pServer->getConnectedCount() != 1) {
+    deviceConnected = false;
+    mesh_bl_narrow_failure();
+    return;
+  }
+#endif
 #if MESH_BLE_AUTO_CACHE_REFRESH
   const uint32_t connection = _cacheConnection.load(std::memory_order_acquire);
   bool current_peer = _cacheConnected.load(std::memory_order_acquire);
@@ -1015,6 +1066,12 @@ void SerialBLEInterface::onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl) {
   } else {
     BLE_DEBUG_PRINTLN(" - SecurityCallback - Authentication Failure, reason=%u", (unsigned)cmpl.fail_reason);
 
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
+    // The patched host preserves saved keys; reload its live records after a
+    // failed exchange. Do not weaken the saved bonded-only policy.
+    mesh_bl_narrow_failure();
+    deviceConnected = false;
+#else
     // Firmware flashing normally preserves the Bluetooth bond database. If
     // either side has forgotten or replaced its key, retaining the local key
     // makes every reconnect fail until the device is fully erased. Remove only
@@ -1030,7 +1087,12 @@ void SerialBLEInterface::onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl) {
     if (_bonded_only) {
       requestBondedOnlyRecovery("bond authentication failed");
     }
+#endif
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
+    pServer->disconnect(last_conn_id);
+#else
     pServer->disconnect(pServer->getConnId());
+#endif
     if (advertisingAllowed()) {
       scheduleAdvertisingRestart((uint32_t)millis());
     }
@@ -1095,11 +1157,42 @@ void SerialBLEInterface::onMtuChanged(BLEServer* pServer,
 }
 #else
 void SerialBLEInterface::onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) {
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
+  // The patched host's pairing staging holds one peer. The callback happens
+  // before Bluedroid increments the server connection count.
+  // Track rejected connections too, so recovery can retry disconnecting them
+  // if their first disconnect request does not complete immediately.
+  bool tracked = false;
+  for (auto& connection : _bondLiveConnections) {
+    uint16_t empty = UINT16_MAX;
+    if (connection.compare_exchange_strong(empty, param->connect.conn_id,
+                                            std::memory_order_acq_rel)) {
+      tracked = true;
+      break;
+    }
+  }
+  if (!tracked) {
+    // Do not accept an untracked connection. The configured ACL limit should
+    // cover all controller links, but late events still require qualification.
+    mesh_bl_narrow_failure();
+    pServer->disconnect(param->connect.conn_id);
+    return;
+  }
+  if (!_callbacksEnabled.load(std::memory_order_acquire) || mesh_bl_narrow_pending()
+      || pServer->getConnectedCount() != 0) {
+    // Do not let security events from an additional peer share the current
+    // staging record. Drain every connection and rebuild the host instead.
+    mesh_bl_narrow_failure();
+    pServer->disconnect(param->connect.conn_id);
+    return;
+  }
+#else
   if (!_callbacksEnabled.load(std::memory_order_acquire)) {
     last_conn_id = param->connect.conn_id;
     pServer->disconnect(last_conn_id);
     return;
   }
+#endif
   BLE_DEBUG_PRINTLN("onConnect(), conn_id=%d, mtu=%d", param->connect.conn_id, pServer->getPeerMTU(param->connect.conn_id));
   last_conn_id = param->connect.conn_id;
   deviceConnected = false;  // becomes usable only after authentication completes
@@ -1128,6 +1221,22 @@ void SerialBLEInterface::onDisconnect(BLEServer* pServer, NimBLEConnInfo& info,
                                        int reason) {
   (void)info;
   (void)reason;
+#elif defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION && defined(CONFIG_BLUEDROID_ENABLED)
+void SerialBLEInterface::onDisconnect(BLEServer* pServer) {
+  (void)pServer;
+}
+void SerialBLEInterface::onDisconnect(BLEServer* pServer, esp_ble_gatts_cb_param_t* param) {
+  if (param == nullptr) return;
+  // Do this even during shutdown, when application callbacks are disabled.
+  for (auto& connection : _bondLiveConnections) {
+    uint16_t old = param->disconnect.conn_id;
+    if (connection.compare_exchange_strong(old, UINT16_MAX,
+                                            std::memory_order_acq_rel)) break;
+  }
+  if (param->disconnect.conn_id != last_conn_id) return;
+  // Retire the host session before accepting another connection. This drains
+  // deferred security events, even if the controller would reuse this ID.
+  mesh_bl_narrow_failure();
 #else
 void SerialBLEInterface::onDisconnect(BLEServer* pServer) {
 #endif
@@ -1159,9 +1268,16 @@ void SerialBLEInterface::onWrite(BLECharacteristic* pCharacteristic,
 #else
 void SerialBLEInterface::onWrite(BLECharacteristic* pCharacteristic,
                                  esp_ble_gatts_cb_param_t* param) {
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
+  if (param == nullptr || param->write.conn_id != last_conn_id || !deviceConnected) return;
+#else
   (void)param;
 #endif
+#endif
   if (!_callbacksEnabled.load(std::memory_order_acquire)) return;
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
+  if (mesh_bl_narrow_pending()) return;
+#endif
   if (_tx_disconnect_recovery.pending()) {
     BLE_DEBUG_PRINTLN("onWrite(): dropping frame while BLE reconnect is pending");
     return;
@@ -1384,6 +1500,9 @@ void SerialBLEInterface::enable() {
 
 void SerialBLEInterface::disable() {
   _isEnabled = _enableRequested = false;
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
+  _bondRecoveryRestart = false;
+#endif
   _adv_restart_pending = false;
   // The caller drains its command reply before this point. Only stop
   // advertising/disconnect here; the host is stopped in the loop task after
@@ -1393,6 +1512,17 @@ void SerialBLEInterface::disable() {
 
 void SerialBLEInterface::servicePowerState() {
   const uint32_t now = (uint32_t)millis();
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
+  if (mesh_bl_narrow_pending() && _stackActive && !_shutdownPending) {
+    _bondRecoveryRestart = _enableRequested;
+    _shutdownPending = true;
+    _powerAttempted = false;
+    _callbacksEnabled.store(false, std::memory_order_release);
+    _adv_restart_pending = false;
+    if (pServer != NULL) pServer->getAdvertising()->stop();
+    oldDeviceConnected = deviceConnected = false;
+  }
+#endif
   if (!_enableRequested && _stackActive && !_shutdownPending) {
     _shutdownPending = true;
     _powerAttempted = false;
@@ -1413,10 +1543,24 @@ void SerialBLEInterface::servicePowerState() {
   _powerAttempted = true;
   _lastPowerAttempt = now;
   if (pServer != NULL && pServer->getConnectedCount() != 0) {
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
+    for (auto& connection : _bondLiveConnections) {
+      const uint16_t id = connection.load(std::memory_order_acquire);
+      if (id != UINT16_MAX) pServer->disconnect(id);
+    }
+#else
     pServer->disconnect(last_conn_id);
+#endif
     return;
   }
   if (!stopBluetoothStack()) return;
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
+  // No Bluetooth task can access the staging state after host shutdown.
+  mesh_bl_narrow_reset_staging();
+  mesh_bl_narrow_failed.store(false, std::memory_order_release);
+  for (auto& connection : _bondLiveConnections)
+    connection.store(UINT16_MAX, std::memory_order_relaxed);
+#endif
   _stackActive = false;
   _shutdownPending = false;
   _powerAttempted = false;
@@ -1424,7 +1568,27 @@ void SerialBLEInterface::servicePowerState() {
   _pairingRequestPending.store(false, std::memory_order_release);
   _successfulConnectionPending.store(false, std::memory_order_release);
   _successfulConnectionStarted.store(0, std::memory_order_relaxed);
-  if (_enableRequested && startBluetoothStack(false)) startServiceAndAdvertising();
+  if (_enableRequested) {
+    if (startBluetoothStack(false)) {
+      startServiceAndAdvertising();
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
+      if (_isEnabled) {
+        _bondRecoveryRestart = false;
+      } else if (_bondRecoveryRestart) {
+        _enableRequested = true;
+        _powerAttempted = true;
+        _lastPowerAttempt = now;
+      }
+#endif
+    }
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
+    else if (_bondRecoveryRestart) {
+      _enableRequested = true;
+      _powerAttempted = true;
+      _lastPowerAttempt = now;
+    }
+#endif
+  }
 }
 
 size_t SerialBLEInterface::writeFrame(const uint8_t src[], size_t len) {
@@ -1485,6 +1649,9 @@ bool SerialBLEInterface::isWriteBusy() const {
 
 size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
   const uint32_t now = (uint32_t)millis();
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
+  if (mesh_bl_narrow_pending()) return 0;
+#endif
   if (!_isEnabled || !_stackActive || _shutdownPending) return 0;
   servicePendingTxReset();
   if (_tx_disconnect_recovery.pending()) {
@@ -1602,6 +1769,9 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
 }
 
 bool SerialBLEInterface::isConnected() const {
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
+  if (mesh_bl_narrow_pending()) return false;
+#endif
   return _isEnabled && _stackActive && !_shutdownPending
       && !_tx_disconnect_recovery.pending() && deviceConnected;
 }

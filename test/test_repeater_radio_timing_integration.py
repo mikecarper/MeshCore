@@ -141,6 +141,12 @@ public:
   mesh::RxInactivityWatchdog rx_inactivity_watchdog;
   mesh::RepeaterRadioTiming radio_timing;
   ScheduledRadioSetting scheduled_radio_settings[MAX_SCHEDULED_RADIO_SETTINGS]{};
+  bool schedule_save_ok = true, schedule_clock_ready = true;
+  unsigned schedule_writes = 0;
+  bool saveScheduledRadioSettings(int = -1, const ScheduledRadioSetting* = nullptr, const uint8_t* = nullptr) {
+    ++schedule_writes; return schedule_save_ok;
+  }
+  bool scheduledRadioClockReady() const { return schedule_clock_ready; }
   uint64_t uptime_millis = 1;
   uint32_t last_millis = 1;
   uint32_t next_local_advert = 0, next_flood_advert = 0;
@@ -671,9 +677,14 @@ struct RTC { uint32_t getCurrentTime() const { return 1789160000UL; } } rtc;
 RTC* getRTCClock() { return &rtc; }
 struct Callbacks {
   int calls = 0;
+  bool idle = true;
   uint32_t duration = 0;
   void applyTempRadioParams(float, float, uint8_t, uint8_t, int minutes, uint16_t) {
     ++calls; duration = (uint32_t)minutes * 60;
+  }
+  bool tryApplyIdleTempRadioParams(float f, float b, uint8_t s, uint8_t c, int m, uint16_t p) {
+    if (!idle) return false;
+    applyTempRadioParams(f,b,s,c,m,p); return true;
   }
   void appendTempRadioTimingNote(char* reply, size_t size, uint32_t seconds) {
     mesh::RepeaterRadioTiming::appendTempWatchdogNote(reply, size, seconds);
@@ -695,7 +706,7 @@ int main() {
   handle("tempradio 910,250,5,5,1440", reply.text);
   assert(!strcmp(reply.text, "OK - temp params for 1440 mins (1d0h0m); applying in 2s; rx.watchdog=12hours"));
   assert(!strncmp(reply.text, "OK - temp params for ", 21)); // exact reply-barrier marker
-  handle("tempradio 910,250,5,5,90", reply.text);
+  handle("tempradio 910,250,5,4,90", reply.text);
   assert(!strcmp(reply.text, "OK - temp params for 90 mins (0d1h30m); applying in 2s; rx.watchdog=off (temp<12hours)"));
   assert(callbacks.calls == 2 && callbacks.duration == 5400);
   for (const char* minutes : {"0", "-1", "12oops", "1.5", "4294967295", "4294967296"}) {
@@ -707,12 +718,23 @@ int main() {
   }
   for (const char* command : {"tempradio 910,250,261,5,30",
       "tempradio 910,250,7,261,30", "tempradio 910,250,0,5,30",
-      "tempradio 910,250,7,4,30", "tempradio 149,250,7,5,30",
+      "tempradio 910,250,7,3,30", "tempradio 149,250,7,5,30",
       "tempradio 910,123,7,5,30"}) {
     handle(command, reply.text);
     assert(!strcmp(reply.text, "Error, invalid params") && callbacks.calls == 2);
   }
   assert(reply.guard == '!');
+#if defined(NRF52_PLATFORM)
+  handle("tempradio.ifidle 910,250,5,5,30,32", reply.text);
+  assert(!strncmp(reply.text,"OK - temp params for ",21) && callbacks.calls == 3);
+  callbacks.idle = false;
+  handle("tempradio.ifidle 910,250,5,5,30", reply.text);
+  assert(!strcmp(reply.text,"Error: radio not idle") && callbacks.calls == 3);
+#else
+  strcpy(reply.text,"unhandled");
+  handle("tempradio.ifidle 910,250,5,5,30", reply.text);
+  assert(!strcmp(reply.text,"unhandled") && callbacks.calls == 2);
+#endif
   puts("production TempRadio replies and duration validation passed");
 }
 '''
@@ -854,17 +876,19 @@ int main() {
             "static bool parseUint32Strict(", "static bool bwMatches(",
             "static bool isValidLoRaBandwidth(",
         ])
-        start = source.index('    } else if (memcmp(command, "tempradio ", 10) == 0)')
+        start = source.index('    } else if (memcmp(command, "tempradio ", 10) == 0')
         end = source.index('    } else if (memcmp(command, "password ", 9) == 0)', start)
         utils = (ROOT / "src/Utils.cpp").read_text(encoding="utf-8")
         parts = method(utils, "int Utils::parseTextParts(")
-        self.compile_and_run(CLI_HARNESS.replace("@PARSERS@", parsers)
+        harness = (CLI_HARNESS.replace("@PARSERS@", parsers)
                              .replace("@ACCEPT_PRIMARY@", method(source,
                                       "bool CommonCLI::acceptsPrimaryRadioParams(")
                                       .replace("bool CommonCLI::acceptsPrimaryRadioParams",
                                                "auto acceptsPrimaryRadioParams = [&]") + ";")
                              .replace("@BRANCH@", source[start:end])
                              .replace("@PARTS@", parts))
+        self.compile_and_run('#define NRF52_PLATFORM 1\n' + harness)
+        self.compile_and_run(harness)
 
 
 if __name__ == "__main__":

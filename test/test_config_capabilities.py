@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 HARNESS = r'''
 #include <helpers/ConfigCapabilities.h>
 #include <helpers/RadioProfileCommandUtils.h>
+#include <helpers/BaseSerialInterface.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include <cassert>
 #include <cstring>
 #include <initializer_list>
@@ -47,6 +49,7 @@ struct Board {
 };
 struct Radio {
   bool rf_rx = false;
+  bool isAGCMaintenancePending() const { return false; }
   bool supportsRxPowerSavingRfRxDisable() const { return rf_rx; }
 };
 struct UI {
@@ -75,6 +78,8 @@ struct CommonCLI {
 struct MyMesh {
   Board board;
   Radio radio_driver;
+  Radio* _radio = &radio_driver;
+  BaseSerialInterface* _serial = nullptr;
   UI ui;
   UI* _ui = nullptr;
   Profiles _radio_profiles;
@@ -141,6 +146,10 @@ int main() {
   }
   CommonCLI common;
   MyMesh companion;
+  assert(companion.handleCommand("xy|get usb.raw.max", 0, reply));
+  assert(!strcmp(reply, "xy|> 176"));
+  assert(companion.handleCommand("xy|get usb.raw.max", 1, reply));
+  assert(!strncmp(reply, "xy|ERR", 6));
   char cap_command[] = "get config.cap";
   assert(companion.handleCommand("xy| \tget config.cap", 0, reply));
   assert(!strncmp(reply, "xy|config.cap v1 ", 17));
@@ -272,6 +281,7 @@ class ConfigCapabilitiesTests(unittest.TestCase):
             ["ESP32_PLATFORM", "MESH_USB_LOGGING_AVAILABLE=0", "HELTEC_V4_R8_TFT", "HELTEC_TFT_RUNTIME_ROTATION=0"],
         )
         with tempfile.TemporaryDirectory(prefix="meshcore-config-cap-") as directory:
+            (Path(directory)/"Arduino.h").write_text('#pragma once\n#include <cstddef>\n#include <cstdint>\n',encoding='ascii')
             path = Path(directory) / "config_cap.cpp"
             path.write_text(source, encoding="ascii")
             for language in ("c++11", "c++17"):
@@ -280,7 +290,7 @@ class ConfigCapabilitiesTests(unittest.TestCase):
                         binary = Path(directory) / ("config_cap_" + language + "_" + str(index) + ".exe")
                         built = subprocess.run([compiler, "-std=" + language, "-Wall", "-Wextra", "-Werror",
                             *([] if os.name == "nt" else ["-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"]),
-                            *["-D" + flag for flag in flags], "-I" + str(ROOT / "src"),
+                            *["-D" + flag for flag in flags], "-I" + directory, "-I" + str(ROOT / "src"),
                             str(path), "-o", str(binary)], capture_output=True, text=True, timeout=60)
                         self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
                         ran = subprocess.run([str(binary)], capture_output=True, text=True, timeout=15)

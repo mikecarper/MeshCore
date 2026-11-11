@@ -22,6 +22,50 @@ def compile_cpp(source):
 
 
 class LR2021RxpsCapabilityTest(unittest.TestCase):
+    def test_cr4_armed_airtime_uses_cached_tuple_without_spi(self):
+        source = (INCLUDE / 'helpers/radiolib/CustomLR2021Wrapper.h').read_text()
+        guard = source.index('_rx_ps_armed && _params_valid && _active_profile < 2')
+        start = source.rfind('  uint32_t getEstAirtimeFor(', 0, guard)
+        end = source.index('\n  }', guard) + len('\n  }')
+        method = source[start:end]
+        harness = r'''
+#include <cassert>
+#include <cstdint>
+#include <initializer_list>
+struct RadioLibWrapper {
+  unsigned driver_calls=0;
+  virtual uint32_t getEstAirtimeFor(int) { ++driver_calls; return 99; }
+};
+struct Wrapper : RadioLibWrapper {
+  bool _rx_ps_armed=true, _params_valid=true;
+  uint8_t _active_profile=0, _cur_cr=4;
+  unsigned profile_calls=0;
+  uint32_t getProfileAirtime(uint8_t p,int len,uint8_t cr) {
+    assert(p==0 && len==255 && cr==_cur_cr); ++profile_calls; return 1772;
+  }
+@METHOD@
+};
+int main() {
+  Wrapper w;
+  for (uint8_t cr : {4,5,6,7,8}) {
+    w._cur_cr=cr;
+    assert(w.getEstAirtimeFor(255)==1772 && w.driver_calls==0);
+  }
+  assert(w.profile_calls==5);
+  for (uint8_t cr : {0,3,9,255}) {
+    w._cur_cr=cr; assert(w.getEstAirtimeFor(255)==99);
+  }
+  w._cur_cr=4; w._params_valid=false;
+  assert(w.getEstAirtimeFor(255)==99);
+  w._params_valid=true; w._active_profile=2;
+  assert(w.getEstAirtimeFor(255)==99);
+  w._active_profile=0; w._rx_ps_armed=false;
+  assert(w.getEstAirtimeFor(255)==99 && w.profile_calls==5 && w.driver_calls==7);
+}
+'''.replace('@METHOD@', method)
+        result = compile_cpp(harness)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_board_opt_in_requires_qualified_transition(self):
         include = '#include <helpers/radiolib/LR2021RxpsCapability.h>\n'
         cases = [

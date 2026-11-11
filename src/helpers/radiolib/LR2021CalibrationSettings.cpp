@@ -4,6 +4,7 @@
 #include "LR2021CalibrationPolicy.h"
 #if defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
 #include "LR2021AutoTrim.h"
+#include "LR2021BootAutoTrim.h"
 #endif
 #include "CustomLR2021Wrapper.h"
 #include <helpers/RadioDirectionPolicy.h>
@@ -43,6 +44,73 @@ bool pending_correction_ready = false, pending_correction_attempted = false;
 bool manual_correction_restore = false;
 uint32_t manual_restore_started = 0;
 uint8_t auto_restore_attempts = 0;
+BootAutoTrim boot_auto;
+bool boot_autostart_enabled = true, boot_stable = false;
+uint32_t boot_stable_since = 0, boot_stable_generation = 0, boot_stable_frequency = 0;
+constexpr char auto_policy_path[] = "/radio_xtrim_auto";
+constexpr char auto_policy_backup[] = "/radio_xtrim_auto.bak";
+constexpr char auto_policy_temporary[] = "/radio_xtrim_auto.tmp";
+
+bool readAutoPolicy(const char* name, bool& enabled) {
+  uint8_t bytes[6];
+  if (!storage::readFixedSettingsFile(settings_fs,name,bytes,sizeof(bytes))
+      || memcmp(bytes,"XAP1",4) || bytes[4]>1) return false;
+  uint8_t sum=0; for (unsigned i=0;i<5;++i) sum^=bytes[i];
+  if (sum!=bytes[5]) return false;
+  enabled=bytes[4]; return true;
+}
+
+bool loadAutoPolicy() {
+  boot_autostart_enabled=true;
+  if (!settings_fs) return false;
+  if (settings_fs->exists(auto_policy_path)) return readAutoPolicy(auto_policy_path,boot_autostart_enabled);
+  if (settings_fs->exists(auto_policy_backup)) return readAutoPolicy(auto_policy_backup,boot_autostart_enabled);
+  return true;
+}
+
+bool saveAutoPolicy(bool enabled) {
+  if (!settings_fs) return false;
+  if (!settings_fs->exists(auto_policy_path) && settings_fs->exists(auto_policy_backup)) {
+    bool recovered=false;
+    if (!readAutoPolicy(auto_policy_backup,recovered)
+        || !settings_fs->rename(auto_policy_backup,auto_policy_path)
+        || !readAutoPolicy(auto_policy_path,recovered)) return false;
+  }
+  if (settings_fs->exists(auto_policy_temporary) && !settings_fs->remove(auto_policy_temporary)) return false;
+  uint8_t bytes[6]={'X','A','P','1',uint8_t(enabled),0};
+  for (unsigned i=0;i<5;++i) bytes[5]^=bytes[i];
+  File file=settings_fs->open(auto_policy_temporary,"w",true);
+  if (!file) return false;
+  const bool written=file.write(bytes,sizeof(bytes))==sizeof(bytes); file.close();
+  bool checked=false;
+  if (!written || !readAutoPolicy(auto_policy_temporary,checked) || checked!=enabled) return false;
+  if (settings_fs->exists(auto_policy_backup) && !settings_fs->remove(auto_policy_backup)) return false;
+  if (settings_fs->exists(auto_policy_path) && !settings_fs->rename(auto_policy_path,auto_policy_backup)) return false;
+  if (!settings_fs->rename(auto_policy_temporary,auto_policy_path)
+      || !readAutoPolicy(auto_policy_path,checked) || checked!=enabled) {
+    if (settings_fs->exists(auto_policy_path)) settings_fs->remove(auto_policy_path);
+    if (settings_fs->exists(auto_policy_backup)) settings_fs->rename(auto_policy_backup,auto_policy_path);
+    return false;
+  }
+  if (settings_fs->exists(auto_policy_backup)) settings_fs->remove(auto_policy_backup);
+  return true;
+}
+
+bool hasCalibration() { return saved_selection.enabled || saved_selection.correction_ppb!=0; }
+
+bool beginAutomaticTrial(CustomLR2021Wrapper& radio, uint32_t frequency, uint32_t now,
+                         bool fresh_boot = false) {
+  XoscTrimSelection current;
+  current.enabled=radio.getXoscTrim(current.a,current.b);
+  current.correction_ppb=radio.frequencyCorrectionPpb();
+  if (!auto_trim.begin(current,frequency,now,900000,120000,1500,2000,fresh_boot)) return false;
+  auto_started=now; auto_frequency=frequency; auto_generation=radio.profiles()->generation[0];
+  auto_saved=auto_restore_error=auto_storage_error=false;
+  auto_restore_attempts=0; auto_restore_timing=auto_physical_uncertain=false;
+  auto_previous_correction=current.correction_ppb; auto_target_correction=current.correction_ppb;
+  auto_correction_calculated=auto_correction_needs_restore=false;
+  return true;
+}
 bool autoStorageReady() {
   if (!settings_fs) return false;
   constexpr char probe[] = "/radio_xtrim.probe";
@@ -259,6 +327,12 @@ bool loadLR2021CalibrationSettings(FILESYSTEM* fs, CustomLR2021Wrapper& radio) {
   saved_selection = XoscTrimSelection{};
   previous_selection = XoscTrimSelection{};
   pending = failed = rollback_failed = false;
+#if defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+  auto_trim=AutoTrim{}; boot_stable=false;
+  auto_saved=auto_restore_error=auto_storage_error=auto_deferred_restore=false;
+  auto_correction_needs_restore=auto_physical_uncertain=manual_correction_restore=false;
+  boot_auto.reset(millis(),false,false,false);
+#endif
   radio.cancelXoscTrimApply();
   if (!radio.supportsXoscTrim()) { failed = true; return false; }
   bool loaded = false;
@@ -298,6 +372,12 @@ bool loadLR2021CalibrationSettings(FILESYSTEM* fs, CustomLR2021Wrapper& radio) {
     failed = true;
     return false;
   }
+#if defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+  const bool records_present=fs && (fs->exists(path) || fs->exists(backup)
+      || fs->exists(combined_path) || fs->exists(combined_backup));
+  const bool policy_ok=loadAutoPolicy();
+  boot_auto.reset(millis(),boot_autostart_enabled,hasCalibration(),policy_ok && (!records_present || loaded));
+#endif
   return loaded;
 }
 
@@ -307,6 +387,37 @@ bool LR2021CalibrationSettingsReady() {
 
 void loopLR2021CalibrationSettings(CustomLR2021Wrapper& radio) {
 #if defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+  const uint32_t boot_now=millis();
+  if (boot_auto.inProgress() && auto_trim.action()==AutoTrim::Action::Complete) {
+    boot_auto.finished(boot_now,auto_saved && hasCalibration(),
+        !auto_deferred_restore && !auto_storage_error && !auto_physical_uncertain);
+  }
+  if (boot_auto.inProgress() && boot_auto.expired(boot_now)) auto_trim.cancel();
+  const auto boot_state=boot_auto.state();
+  const bool boot_waiting=boot_state==BootAutoTrim::State::WaitingRadio
+      || boot_state==BootAutoTrim::State::Ready || boot_state==BootAutoTrim::State::Backoff;
+  if (boot_waiting && !boot_auto.nextDelay(boot_now)
+      && !pending && !manual_correction_restore && !auto_deferred_restore && !auto_storage_error
+      && (auto_trim.action()==AutoTrim::Action::Idle || auto_trim.action()==AutoTrim::Action::Complete)) {
+    uint32_t frequency=0, active_frequency=0;
+    const bool profile_ready=mesh::radioDirection::radioReceiveAllowed()
+        && LR2021CalibrationSettingsReady() && radio.backgroundAutoTrimProfile(frequency);
+    const uint32_t generation=radio.profiles() ? radio.profiles()->generation[0] : 0;
+    if (!profile_ready) boot_stable=false;
+    else if (!boot_stable || frequency!=boot_stable_frequency || generation!=boot_stable_generation) {
+      boot_stable=true; boot_stable_since=boot_now;
+      boot_stable_frequency=frequency; boot_stable_generation=generation;
+    }
+    const bool eligible=profile_ready && radio.backgroundAutoTrimEligible(active_frequency)
+        && active_frequency==frequency;
+    if (boot_auto.ready(boot_now,eligible && boot_stable && uint32_t(boot_now-boot_stable_since)>=5000)) {
+      boot_auto.started(boot_now);
+      boot_stable=false; // Any retry observes a fresh configuration-stability window.
+      if (auto_trim.action()==AutoTrim::Action::Complete) auto_trim.reset();
+      if (!autoStorageReady() || !beginAutomaticTrial(radio,frequency,boot_now,true))
+        boot_auto.finished(boot_now,false,false);
+    }
+  }
   if (manual_correction_restore) {
     if (!mesh::radioDirection::radioReceiveAllowed()
         || uint32_t(millis() - manual_restore_started) >= ApplyTimeoutMillis) {
@@ -447,9 +558,58 @@ void loopLR2021CalibrationSettings(CustomLR2021Wrapper& radio) {
 bool handleLR2021CalibrationCommand(const char* command, char* reply,
                                    size_t capacity, CustomLR2021Wrapper& radio) {
 #if defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+  if (!strcmp(command,"get radio.xtrim.autostart")) {
+    if (!radio.supportsXoscTrim()) snprintf(reply,capacity,"Error: auto trim needs a crystal LR2021");
+    else {
+      char retry[16]="none";
+      if (boot_auto.state()==BootAutoTrim::State::Backoff)
+        snprintf(retry,sizeof(retry),"%lu",(unsigned long)boot_auto.nextDelay(millis()));
+      const char* blocked=radio.profiles() && radio.profiles()->enabled()?"radio2":"stable-primary-or-owner";
+      snprintf(reply,capacity,"> %s; state=%s attempts=%u/2 next_retry_ms=%s blocked=%s",
+          boot_autostart_enabled?"on":"off",boot_auto.stateName(),unsigned(boot_auto.attempts()),retry,
+          boot_auto.state()==BootAutoTrim::State::WaitingRadio?blocked:"none");
+    }
+    return true;
+  }
+  constexpr char policy_command[]="set radio.xtrim.autostart ";
+  if (!strncmp(command,policy_command,sizeof(policy_command)-1)) {
+    const char* value=command+sizeof(policy_command)-1;
+    if (!radio.supportsXoscTrim()) snprintf(reply,capacity,"Error: auto trim needs a crystal LR2021");
+    else if (strcmp(value,"on") && strcmp(value,"off")) snprintf(reply,capacity,"Error: use set radio.xtrim.autostart on|off");
+    else if (!saveAutoPolicy(!strcmp(value,"on"))) snprintf(reply,capacity,"Error: auto trim policy save failed; unchanged");
+    else {
+      boot_autostart_enabled=!strcmp(value,"on");
+      const bool was_background=boot_auto.inProgress();
+      boot_auto.setEnabled(millis(),boot_autostart_enabled);
+      if (!boot_autostart_enabled && was_background) auto_trim.cancel();
+      snprintf(reply,capacity,"OK - auto trim startup %s",value);
+    }
+    return true;
+  }
   if (!strcmp(command, "get radio.xtrim.correction")) {
     snprintf(reply, capacity, "> %ld ppb (active); %ld ppb (saved)",
         long(radio.frequencyCorrectionPpb()), long(saved_selection.correction_ppb));
+    return true;
+  }
+  constexpr char peer_command[]="get radio.xtrim.auto.peer";
+  if (!strncmp(command,peer_command,sizeof(peer_command)-1)
+      && (!command[sizeof(peer_command)-1] || command[sizeof(peer_command)-1]==' ')) {
+    const char* value=command+sizeof(peer_command)-1;
+    if (value[0]!=' ' || value[1]<'0' || value[1]>'2' || value[2]) {
+      snprintf(reply,capacity,"Error: use get radio.xtrim.auto.peer 0|1|2");
+    } else {
+      const uint8_t index=uint8_t(value[1]-'0');
+      const uint8_t* key=nullptr; uint32_t signed_time=0; uint8_t samples=0;
+      if (!auto_trim.peerStatus(index,key,signed_time,samples)) snprintf(reply,capacity,"> none");
+      else {
+        constexpr char hex[]="0123456789abcdef";
+        char encoded[65];
+        for (unsigned i=0;i<32;++i) { encoded[2*i]=hex[key[i]>>4]; encoded[2*i+1]=hex[key[i]&15]; }
+        encoded[64]=0;
+        snprintf(reply,capacity,"> index=%u,key=%s,signed_time=%lu,samples=%u,locked=%u",
+            unsigned(index),encoded,(unsigned long)signed_time,unsigned(samples),auto_trim.cohortLocked()?1U:0U);
+      }
+    }
     return true;
   }
   if (!strcmp(command, "get radio.xtrim.auto")) {
@@ -457,12 +617,14 @@ bool handleLR2021CalibrationCommand(const char* command, char* reply,
     char trial[20];
     if (current.enabled) snprintf(trial, sizeof(trial), "%u,%u", current.a, current.b);
     else snprintf(trial, sizeof(trial), "default");
-    snprintf(reply, capacity, "> %s; trial=%s phase=%u samples=%u/%u baseline=%s",
+    snprintf(reply, capacity, "> %s; trial=%s phase=%u samples=%u/%u baseline=%s; startup=%s peers=%u/3 confidence=%s",
         autoState(), trial, unsigned(auto_trim.round()), unsigned(auto_trim.sampleCount()),
-        unsigned(AutoTrim::SampleCount * AutoTrim::PeerCount), auto_trim.baselineKnown() ? "known" : "unknown");
+        unsigned(auto_trim.requiredSampleCount()), auto_trim.baselineKnown() ? "known" : "unknown",boot_auto.stateName(),
+        unsigned(auto_trim.peerCount()),auto_trim.confidenceName());
     return true;
   }
   if (!strcmp(command, "set radio.xtrim auto cancel")) {
+    boot_auto.cancel();
     if (auto_trim.action() == AutoTrim::Action::Idle || auto_trim.action() == AutoTrim::Action::Complete) {
       snprintf(reply, capacity, "OK - auto trim not active");
       return true;
@@ -473,7 +635,11 @@ bool handleLR2021CalibrationCommand(const char* command, char* reply,
   }
   if (!strcmp(command, "set radio.xtrim auto")) {
     uint32_t frequency = 0;
-    if (auto_trim.action() == AutoTrim::Action::Complete) auto_trim.reset();
+    if (auto_trim.action() == AutoTrim::Action::Complete) {
+      if (boot_auto.inProgress()) boot_auto.finished(millis(),auto_saved && hasCalibration(),
+          !auto_deferred_restore && !auto_storage_error && !auto_physical_uncertain);
+      auto_trim.reset();
+    }
     if (!radio.supportsXoscTrim()) {
       snprintf(reply, capacity, "Error: auto trim needs a crystal LR2021");
     } else if (!mesh::radioDirection::radioReceiveAllowed() || auto_deferred_restore || auto_storage_error) {
@@ -486,18 +652,10 @@ bool handleLR2021CalibrationCommand(const char* command, char* reply,
     } else if (!autoStorageReady()) {
       snprintf(reply, capacity, "Error: auto trim storage unavailable; radio unchanged");
     } else {
-      XoscTrimSelection current;
-      current.enabled = radio.getXoscTrim(current.a, current.b);
-      current.correction_ppb = radio.frequencyCorrectionPpb();
       const uint32_t now = millis();
-      if (auto_trim.begin(current, frequency, now, 900000, 120000, 1500, 2000)) {
-        auto_started = now; auto_frequency = frequency;
-        auto_generation = radio.profiles()->generation[0];
-        auto_saved = auto_restore_error = auto_storage_error = false;
-        auto_restore_attempts = 0; auto_restore_timing = auto_physical_uncertain = false;
-        auto_previous_correction = current.correction_ppb; auto_target_correction = current.correction_ppb;
-        auto_correction_calculated = auto_correction_needs_restore = false;
-        snprintf(reply, capacity, "OK - auto trim listening for 3 nearby radios");
+      if (beginAutomaticTrial(radio,frequency,now)) {
+        boot_auto.cancel(); // Explicit one-shot owns this boot; no automatic restart.
+        snprintf(reply, capacity, "OK - auto trim listening; prefers 3 nearby radios");
       } else snprintf(reply, capacity, "Error: auto trim could not start");
     }
     return true;
@@ -539,6 +697,9 @@ bool handleLR2021CalibrationCommand(const char* command, char* reply,
     snprintf(reply, capacity, "Error: use set radio.xtrim <0-47>[,<0-47>] or default");
     return true;
   }
+#if defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
+  boot_auto.cancel(); // A valid manual request reserves this boot even if unchanged.
+#endif
   if (sameCalibration(candidate, saved_selection) && !failed
 #if defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
       && !auto_deferred_restore && !auto_storage_error

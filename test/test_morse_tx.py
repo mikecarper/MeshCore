@@ -17,6 +17,7 @@ def portable_radio_header():
     dispatcher = (ROOT / "src/Dispatcher.h").read_text(encoding="utf-8")
     return ("#pragma once\n#include <RadioProfiles.h>\n#include <helpers/RadioDirectionPolicy.h>\n#include <helpers/RadioSwitchTuning.h>\n#include <helpers/MorseTx.h>\n#include <helpers/MorseRx.h>\n#include <helpers/RegulatorMode.h>\n#include <helpers/TelemetryHistoryConfig.h>\nnamespace mesh {\n"
             + method(dispatcher, "enum class RadioParamApplyResult") + ";\n"
+            + method(dispatcher, "enum class AGCMaintenanceResult") + ";\n"
             + method(dispatcher, "class Radio {") + ";\n}\n"
             # This portable interface has no settings backend. Model its
             # ordinary default while retaining the real direction predicates.

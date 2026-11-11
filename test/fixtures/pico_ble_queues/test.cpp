@@ -96,7 +96,18 @@ int main(int argc, char** argv) {
     test_stall(scenario);
   } else {
     Fixture f;
-    if (scenario == "normal") {
+    if (scenario == "set-pin") {
+      assert(fake_pico::passkey == 123456 && fake_pico::passkey_updates == 1);
+      assert(f.node.setPin(42));
+      assert(fake_pico::passkey == 42 && fake_pico::passkey_updates == 2);
+      assert(f.node.isConnected() && fake_pico::disconnects == 0);
+      assert(!f.node.setPin(1000000));
+      assert(fake_pico::passkey == 42 && fake_pico::passkey_updates == 2);
+      assert(f.node.setPin(0) && fake_pico::passkey == 0);
+      assert(f.node.setPin(999999) && fake_pico::passkey == 999999);
+      assert(f.node.isConnected() && fake_pico::disconnects == 0);
+      assert(fake_pico::lock_depth == 0);
+    } else if (scenario == "normal") {
       Bytes maximum(MAX_FRAME_SIZE);
       for (unsigned i = 0; i < maximum.size(); ++i) maximum[i] = uint8_t(i);
       f.write(maximum); f.write(Bytes{0x09, 0x41});

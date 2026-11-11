@@ -17,7 +17,7 @@ struct AutoTrimSample {
   bool verified = false, packet_bound = false, direct_rf = false;
 };
 
-// At most five 3-peer batches plus an independent verification batch. The
+// At most five reference batches plus an independent verification batch. The
 // caller applies candidates only in RAM and must restore the original on every
 // failure, timeout, cancellation or reboot. Commit is an explicit final action.
 class AutoTrim {
@@ -25,9 +25,11 @@ class AutoTrim {
   enum class Action : uint8_t { Idle, Collect, Apply, Restore, Commit, Complete };
   static constexpr uint8_t SampleCount = 1;
   static constexpr uint8_t PeerCount = 3;
+  static constexpr uint32_t PreferredPeersWaitMs = 20000;
 
   bool begin(const XoscTrimSelection& original, uint32_t frequency_hz, uint32_t now_ms, uint32_t timeout_ms,
-             uint32_t window_ms, uint32_t max_spread_hz, uint32_t min_improvement_hz) {
+             uint32_t window_ms, uint32_t max_spread_hz, uint32_t min_improvement_hz,
+             bool fresh_boot = false) {
     if (action_ != Action::Idle || !validXoscTrim(original.a, original.b)
         || frequency_hz < 150000000UL || frequency_hz > 2500000000UL
         || timeout_ms < 1000 || timeout_ms >= 0x80000000UL
@@ -35,17 +37,22 @@ class AutoTrim {
         || max_spread_hz == 0 || max_spread_hz > 100000UL
         || min_improvement_hz == 0 || min_improvement_hz > 100000UL) return false;
     memset(peers_, 0, sizeof(peers_));
-    peer_count_ = 0;
+    peer_count_ = 0; cohort_locked_ = false; first_sample_at_ = 0;
     original_ = current_ = best_ = original;
     frequency_hz_ = frequency_hz; started_ = now_ms; timeout_ = timeout_ms;
     max_spread_ = max_spread_hz; min_improvement_ = min_improvement_hz;
     sample_started_ = current_now_ = now_ms; window_ = window_ms;
     baseline_known_ = digital_only_ = false;
+    fresh_boot_ = fresh_boot; fresh_candidate_ = 0;
     digital_verified_ = false;
     baseline_signed_ = best_signed_ = verified_offset_hz_ = 0;
     count_ = round_ = 0; baseline_abs_ = best_abs_ = UINT32_MAX;
     trial3_abs_ = trial8_abs_ = UINT32_MAX;
     action_ = Action::Collect;
+    // A virgin board may not decode at the native factory trim. Start with
+    // the commonly usable setting in RAM, retaining the true original solely
+    // for rollback. Never persist this choice without independent samples.
+    if (fresh_boot_) request(code(8));
     return true;
   }
 
@@ -53,6 +60,18 @@ class AutoTrim {
   const XoscTrimSelection& target() const { return target_; }
   const XoscTrimSelection& current() const { return current_; }
   uint8_t sampleCount() const { return count_; }
+  uint8_t peerCount() const { return peer_count_; }
+  uint8_t requiredSampleCount() const { return SampleCount * (cohort_locked_ ? peer_count_ : PeerCount); }
+  bool cohortLocked() const { return cohort_locked_; }
+  bool peerStatus(uint8_t index, const uint8_t*& key, uint32_t& signed_time, uint8_t& samples) const {
+    key=nullptr; signed_time=0; samples=0;
+    if (index>=peer_count_) return false;
+    key=peers_[index].key; signed_time=peers_[index].last_signed_time; samples=peers_[index].count;
+    return true;
+  }
+  const char* confidenceName() const {
+    return !cohort_locked_ ? "pending" : peer_count_ == 3 ? "three-peer" : peer_count_ == 2 ? "two-peer" : "single-peer";
+  }
   uint8_t round() const { return round_; }
   bool baselineKnown() const { return baseline_known_; }
   int32_t verifiedOffsetHz() const { return verified_offset_hz_; }
@@ -69,9 +88,26 @@ class AutoTrim {
     current_now_ = now_ms;
     if ((action_ == Action::Collect || action_ == Action::Apply || action_ == Action::Commit)
         && uint32_t(now_ms - started_) >= timeout_) { abort(); return; }
+    // Prefer three peers, but a usable local reference is better than no
+    // calibration. Bound that preference wait from the first valid sample,
+    // without shortening a completely silent collection window. Lock the
+    // same identities for every candidate and independent verification batch.
+    if (action_ == Action::Collect && !cohort_locked_ && count_
+        && (uint32_t(now_ms - first_sample_at_) >= PreferredPeersWaitMs
+            || uint32_t(now_ms - sample_started_) >= window_)) {
+      cohort_locked_ = true;
+      finishBatch();
+      return;
+    }
     if (action_ == Action::Collect && uint32_t(now_ms - sample_started_) >= window_) {
       // A silent or incomplete window is unknown, never a zero error.
-      if (round_ == 0) { round_ = 1; request(code(3)); }
+      if (fresh_boot_ && round_ <= 5) {
+        // Once a cohort is locked, a missing member is not permission to
+        // replace it or make a successful batch with fewer references.
+        if (count_ || (cohort_locked_ && round_ == 5)) abort();
+        else nextFreshCandidate();
+      }
+      else if (round_ == 0) { round_ = 1; request(code(3)); }
       else if (round_ == 1) { round_ = 2; request(code(8)); }
       else if (round_ == 2) searchNeighbours();
       else if (round_ == 3) { round_ = 4; request(code(upper_)); }
@@ -110,7 +146,7 @@ class AutoTrim {
   void reset() { if (action_ == Action::Complete) action_ = Action::Idle; }
 
   // Signed adverts must be fresh on a trustworthy UTC clock, strictly newer
-  // than prior accepted samples, from three distinct identities, and local RF.
+  // than prior accepted samples, from the locked identities, and local RF.
   // A zero-length route is unsigned and does not prove the transmitter was
   // physically direct. The sender/measurement binding is the caller's responsibility.
   bool observe(const AutoTrimSample& sample) {
@@ -128,7 +164,7 @@ class AutoTrim {
     while (peer < peer_count_ && memcmp(peers_[peer].key, sample.sender_key, 32)) ++peer;
     if (peer == peer_count_) {
       uint8_t any = 0; for (unsigned i = 0; i < 32; ++i) any |= sample.sender_key[i];
-      if (!any || peer_count_ == PeerCount) return false;
+      if (!any || cohort_locked_ || peer_count_ == PeerCount) return false;
       memcpy(peers_[peer].key, sample.sender_key, 32); ++peer_count_;
     }
     Peer& p = peers_[peer];
@@ -136,8 +172,9 @@ class AutoTrim {
     current_now_ = sample.now_ms;
     p.last_signed_time = sample.signed_time;
     p.samples[p.count++] = sample.offset_hz;
+    if (!count_) first_sample_at_ = sample.now_ms;
     ++count_;
-    if (count_ == SampleCount * PeerCount) finishBatch();
+    if (count_ == requiredSampleCount()) { cohort_locked_ = true; finishBatch(); }
     return true;
   }
 
@@ -160,6 +197,14 @@ class AutoTrim {
     lower_ = uint8_t(centre - 1); upper_ = uint8_t(centre + 1);
     round_ = 3; request(code(lower_));
   }
+  void nextFreshCandidate() {
+    if (fresh_candidate_ >= 4) { abort(); return; }
+    round_ = ++fresh_candidate_;
+    // Only silent or out-of-bounds candidates reach the next choice. Keep
+    // the search finite: 8, 3, native factory, then the neighbours of 8.
+    request(round_ == 1 ? code(3) : round_ == 2 ? original_
+        : code(round_ == 3 ? 7 : 9));
+  }
   void chooseBest() {
     if (baseline_known_ && (sameXoscTrim(best_, original_)
         || baseline_abs_ < best_abs_ || baseline_abs_ - best_abs_ < min_improvement_)) {
@@ -173,7 +218,7 @@ class AutoTrim {
   }
   void finishBatch() {
     int32_t medians[PeerCount];
-    for (unsigned peer = 0; peer < PeerCount; ++peer) {
+    for (unsigned peer = 0; peer < peer_count_; ++peer) {
       int32_t sorted[SampleCount]; memcpy(sorted, peers_[peer].samples, sizeof(sorted));
       for (unsigned i = 1; i < SampleCount; ++i) {
         const int32_t v = sorted[i]; unsigned j = i;
@@ -185,15 +230,15 @@ class AutoTrim {
       }
       medians[peer] = sorted[SampleCount / 2];
     }
-    for (unsigned i = 1; i < PeerCount; ++i) {
+    for (unsigned i = 1; i < peer_count_; ++i) {
       const int32_t v = medians[i]; unsigned j = i;
       while (j && medians[j - 1] > v) { medians[j] = medians[j - 1]; --j; }
       medians[j] = v;
     }
-    if (uint32_t(int64_t(medians[PeerCount - 1]) - medians[0]) > max_spread_) {
+    if (uint32_t(int64_t(medians[peer_count_ - 1]) - medians[0]) > max_spread_) {
       abort(); return;
     }
-    const int32_t median = medians[PeerCount / 2];
+    const int32_t median = medians[peer_count_ / 2];
     const uint32_t error = magnitude(median);
     if (round_ == 6) {
       // The requested correction removes 75% of the residual. Allow bounded
@@ -206,6 +251,14 @@ class AutoTrim {
         abort(); return;
       }
       digital_verified_ = true; action_ = Action::Commit; return;
+    }
+    if (fresh_boot_ && round_ <= 4) {
+      // Without a measured factory baseline, use the first stable candidate
+      // within the existing absolute bound, then verify it independently.
+      // Merely receiving an advert at an excessive offset is not calibration.
+      if (error > 2000U) { nextFreshCandidate(); return; }
+      best_ = current_; best_abs_ = error; best_signed_ = median;
+      round_ = 5; request(best_); return;
     }
     if (round_ == 1) trial3_abs_ = error;
     if (round_ == 2) trial8_abs_ = error;
@@ -230,10 +283,20 @@ class AutoTrim {
     // Verify the selected setting using another independent batch; reject a
     // changed or transient optimum and keep the original saved preference.
     const uint32_t verification_spread = max_spread_ < 1000U ? max_spread_ : 1000U;
+    if (fresh_boot_ && error > 2000U
+        && magnitude(median - best_signed_) <= verification_spread) {
+      nextFreshCandidate(); return;
+    }
     if ((!baseline_known_ && error > 2000U)
         || (baseline_known_ && !digital_only_ && (error >= baseline_abs_ || baseline_abs_ - error < min_improvement_))
         || (median > best_signed_ ? int64_t(median) - best_signed_ : int64_t(best_signed_) - median) > verification_spread) {
       abort(); return;
+    }
+    if (fresh_boot_ && sameXoscTrim(best_, original_) && error < 400U) {
+      // Factory trim already agrees within measurement precision. Preserve
+      // the existing default/zero-correction meaning rather than claiming a
+      // newly persisted calibration which would not survive as calibrated.
+      target_ = original_; action_ = Action::Complete; return;
     }
     target_ = best_;
     verified_offset_hz_ = median;
@@ -246,14 +309,15 @@ class AutoTrim {
   uint8_t peer_count_ = 0;
   XoscTrimSelection original_, current_, best_, target_;
   uint32_t frequency_hz_ = 0, started_ = 0, timeout_ = 0, sample_started_ = 0;
-  uint32_t window_ = 0, current_now_ = 0;
+  uint32_t window_ = 0, current_now_ = 0, first_sample_at_ = 0;
   uint32_t max_spread_ = 0, min_improvement_ = 0;
   uint32_t baseline_abs_ = 0, best_abs_ = 0;
   uint32_t trial3_abs_ = 0, trial8_abs_ = 0;
   int32_t baseline_signed_ = 0, best_signed_ = 0, verified_offset_hz_ = 0;
   uint8_t count_ = 0, round_ = 0, lower_ = 0, upper_ = 0;
+  uint8_t fresh_candidate_ = 0;
   bool baseline_known_ = false, digital_only_ = false;
-  bool digital_verified_ = false;
+  bool digital_verified_ = false, cohort_locked_ = false, fresh_boot_ = false;
   Action action_ = Action::Idle;
 };
 

@@ -513,7 +513,7 @@ public:
     }
 #endif
     char profile_reply[160];
-    if (_radio_profiles.handle(command, profile_reply, sizeof(profile_reply))) {
+    if (_radio_profiles.handle(command, profile_reply, sizeof(profile_reply), false, &_prefs.freq)) {
       Serial.println(profile_reply); return;
     }
     while (*command == ' ') command++;  // skip leading spaces

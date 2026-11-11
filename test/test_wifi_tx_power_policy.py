@@ -95,7 +95,7 @@ class WiFiTxPowerPolicyTest(unittest.TestCase):
         w12 = (ROOT / "variants/meshnology_w12/platformio.ini").read_text()
         base = w12.split("[meshnology_w12]", 1)[1].split("\n[", 1)[0]
         self.assertIn("-D WIFI_TX_POWER_DBM=13", base)
-        self.assertIn("-D WEBCONFIG_WIFI_DEFAULT_CONNECT_TIMEOUT_MS=30000", base)
+        self.assertIn("-D WEBCONFIG_WIFI_DEFAULT_CONNECT_TIMEOUT_MS=60000", base)
         for path in (ROOT / "variants").glob("*/platformio.ini"):
             if path.parent.name != "meshnology_w12":
                 self.assertNotIn("WIFI_TX_POWER_DBM", path.read_text(), str(path))

@@ -842,9 +842,17 @@ class Radio2SessionTests(unittest.IsolatedAsyncioTestCase):
                              for _, text in self.link.calls))
 
     async def test_application_reboot_is_proved_on_primary_before_secondary_release(self):
+        import itertools
+        from types import SimpleNamespace
+        from unittest import mock
         before = await self.session.inspect()
         package = wizard.full_package(application(), 2048)
-        after = await self.session.install(package, before)
+        # The 30 ms reboot budget is a test shortcut, not a real clock limit.
+        # Keep runner load and journal I/O from consuming it before the first
+        # post-reboot probe, while retaining a bounded monotonic deadline.
+        clock = SimpleNamespace(monotonic=itertools.count(0, .001).__next__, time=time.time)
+        with mock.patch.object(wizard, "time", clock):
+            after = await self.session.install(package, before)
         self.assertEqual(after.version, NEW)
         self.assertEqual(self.link.peer_radio, "radio")
         self.assertNotEqual(self.link.secondary, "off")

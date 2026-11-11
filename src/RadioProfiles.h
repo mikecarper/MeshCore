@@ -148,7 +148,7 @@ class RadioProfiles {
   }
   static bool valid(const RadioProfileParams& p, bool extended_bandwidths = true) {
     if (!(p.freq >= 137 && p.freq <= 2500)
-        || p.sf < 5 || p.sf > 12 || p.cr < 5 || p.cr > 8
+        || p.sf < 5 || p.sf > 12 || p.cr < 4 || p.cr > 8
         || (p.protocol != RadioProfileProtocol::MeshCore && p.protocol != RadioProfileProtocol::Meshtext
             && p.protocol != RadioProfileProtocol::Ethernet && p.protocol != RadioProfileProtocol::Kiss)
         || (p.preamble != 0 && (p.preamble < 8 || p.preamble > MaxPreamble))) return false;

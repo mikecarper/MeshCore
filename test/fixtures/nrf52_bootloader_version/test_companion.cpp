@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include <helpers/CompanionFrameLimits.h>
 #include <helpers/CompanionHardwareCommandCompat.h>
 #include "../usb_mode_console.h"
@@ -31,9 +32,18 @@ struct Board {
   }
 #endif
 };
-struct BaseSerialInterface { unsigned id; };
+struct BaseSerialInterface {
+  unsigned id;
+  explicit BaseSerialInterface(unsigned value) : id(value) {}
+  virtual size_t usbRawPacketReceiveCapacity() const { return MAX_FRAME_SIZE; }
+};
+struct UsbSerialInterface : BaseSerialInterface {
+  using BaseSerialInterface::BaseSerialInterface;
+  size_t usbRawPacketReceiveCapacity() const override { return 188; }
+};
 struct SerialTransport {
-  BaseSerialInterface usb{1}, ble{2};
+  UsbSerialInterface usb{1};
+  BaseSerialInterface ble{2};
   BaseSerialInterface* current = &usb;
   BaseSerialInterface* captured = nullptr;
   BaseSerialInterface* written = nullptr;
@@ -61,8 +71,14 @@ struct Output {
     text += bytes;
   }
 };
+struct Radio {
+  bool maintenance_pending = false;
+  bool isAGCMaintenancePending() const { return maintenance_pending; }
+};
 struct MyMesh {
   Board board;
+  Radio radio;
+  Radio* _radio = &radio;
   SerialTransport serial;
   SerialTransport* _serial = &serial;
   Output output;
@@ -144,6 +160,16 @@ static void dispatch(MyMesh& mesh, BaseSerialInterface* requester, bool nul) {
 int main() {
   MyMesh mesh;
   char usb_reply[160] = {};
+  assert(mesh.serial.usb.usbRawPacketReceiveCapacity() == 188);
+  assert(mesh.serial.ble.usbRawPacketReceiveCapacity() == MAX_FRAME_SIZE);
+  for (BaseSerialInterface* route : {static_cast<BaseSerialInterface*>(&mesh.serial.usb), &mesh.serial.ble}) {
+    mesh.serial.current = route;
+    assert(mesh.handleCommand("AB|get usb.raw.max", 0, usb_reply));
+    assert(std::string(usb_reply) == (route == &mesh.serial.usb ? "AB|> 188" : "AB|> 176"));
+    assert(mesh.handleCommand("get usb.raw.max", 1, usb_reply));
+    assert(std::string(usb_reply) == "ERR usb.raw.max requires a local transport");
+  }
+  mesh.serial.current = &mesh.serial.usb;
   assert(mesh.handleCommand("AB|get usb.mode", 0, usb_reply));
   assert(std::string(usb_reply) == std::string("AB|usb.mode ") + mesh::usbModeName<decltype(Serial)>());
   bounds(mesh);
@@ -156,6 +182,14 @@ int main() {
 #endif
   dispatch(mesh,&mesh.serial.usb,false);
   dispatch(mesh,&mesh.serial.ble,true);
+  // Read-only bootloader diagnostics remain available while radio work is pending.
+  mesh.radio.maintenance_pending = true;
+  char pending_reply[160] = {};
+  assert(mesh.handleCommand("get bootloader.ver", 0, pending_reply));
+  assert(pending_reply == wanted(mesh));
+  assert(mesh.handleCommand("set tx 7", 0, pending_reply));
+  assert(std::string(pending_reply).find("radio maintenance pending") != std::string::npos);
+  mesh.radio.maintenance_pending = false;
   mesh.output.text.clear();mesh.terminal("get bootloader.ver");
   assert(mesh.output.text == "  -> " + wanted(mesh) + "\r\n");
 #if defined(NRF52_PLATFORM)

@@ -25,8 +25,14 @@ switching until reboot. See
 for hardware limits and reliability considerations.
 
 For a saved MediaMesh second profile, use `set radio2 mediamesh`
-(911.150 MHz, 250 kHz, SF7, CR 4/5, `rxtx`, automatic preamble), or
-`set radio2 mediamesh-range` for 125 kHz. These leave the primary profile
+or the narrower `set radio2 mediamesh-range`. Settings are chosen from the
+saved primary frequency when selected: USA uses 911.150 MHz, EU868 869.525 MHz,
+the listed AU/NZ/Brazil/Thailand/Vietnam presets 922.500 MHz, and EU433
+434.250 MHz. USA and the other non-EU868 groups use 250/125 kHz, SF7, CR 4/5;
+EU868 uses 125/62.5 kHz, SF5, CR 4/7. Both use `rxtx` and automatic preamble.
+Unknown custom primary frequencies require an explicit radio2 tuple. Existing
+saved profiles do not retune when the primary changes or on upgrade; primary
+`tempradio` does not affect preset selection. These leave the primary profile
 and crossing policy unchanged. Both radio2 and `radio2.cross` default to `off`.
 On repeaters, room servers and sensors, either preset also saves an allowed
 `#mediamesh` forwarding region. `set radio2 off` or `set radio2 auto` disables
@@ -890,6 +896,9 @@ Room servers provide local history and its CLI reads, without batch transmission
 - `get telemetry.gps [page]`
 - `get telemetry.noise [page]`
 - `get telemetry.noise2 [page]`
+- `get telemetry.minmax`
+- `get telemetry.temp minmax`
+- `get telemetry.volt minmax`
 - `set telemetry.gps <days>`
 - `get telemetry.tx`
 - `set telemetry.tx <off|direct|path>`
@@ -923,11 +932,25 @@ Room servers provide local history and its CLI reads, without batch transmission
   normally LPP channels `2`, `3`, and `4`; always use the no-argument command
   as the authoritative list because earlier detected sensors shift the LPP
   numbers.
+- `get telemetry.minmax`: Return temperature and battery voltage together in
+  one reply. Each contains the same seven-day min/max and neighboring samples
+  described below.
+- `get telemetry.temp minmax` / `get telemetry.volt minmax`: Return the
+  minimum and maximum for each of the seven newest
+  rolling 24-hour windows, plus the samples immediately before and after each
+  extreme. Ties use the newest sample. Windows match the existing temperature
+  and voltage pages; they are not calendar days. Missing or unretained slots
+  remain missing, including after startup and at the ends of retained history.
+  Each reply covers one reading in one compact Base64
+  packet. Paste it into the [telemetry decoder](telemetry_decoder.md) to see
+  values and times. History is retained in RAM and starts fresh after a reboot.
 - `days`: Requested GPS retention from `1` through `30` days. Retention above
   three days uses heap memory. The allocator reduces the requested value as
   needed to leave at least 2048 bytes free and replies with the days and pages
   actually available. For example, a request can return
   `OK - telemetry.gps days=18 pages=36 requested=30`.
+  The requested capacity is saved and requested again after reboot; available
+  RAM can still reduce the actual capacity. Recorded samples remain RAM-only.
 - `direct`: Set the shared `data.tx` path to zero-hop and, in the legacy
   combined command, enable the telemetry schedule.
 - `path`: A comma-separated direct route using the same one-, two-, or
@@ -2167,7 +2190,8 @@ node after the save succeeds. See [regulator recovery and hardware checks](power
 - `freq`: Frequency in MHz
 - `bw`: Bandwidth in kHz. Most targets allow `7.8`, `10.4`, `15.6`, `20.8`, `31.25`, `41.7`, `62.5`, `125`, `250`, `500`. LR1110 targets allow `62.5`, `125`, `250`, `500`.
 - `sf`: Spreading factor (5-12)
-- `cr`: Coding rate (5-8)
+- `cr`: Coding-rate denominator (4-8). `4` selects 4/4 without payload FEC;
+  `8` selects 4/8. Header and CRC settings are unchanged.
 
 **Set by build flag:** `LORA_FREQ`, `LORA_BW`, `LORA_SF`, `LORA_CR`
 
@@ -2259,7 +2283,7 @@ and the revert behavior are the same, with one safety difference: if a stored
 `/presets` cannot be read later (corrupt, short or missing), preset commands
 reply `Error: presets unreadable` and nothing is written over the file; a
 pending remote load still reverts or commits from RAM. The RAK4631 Repeater built from
-`RAK_4631_repeater` (both its sensor + LoRa OTA images) uses `0` because its
+`RAK_4631_repeater` or `RAK_4631_repeater_unified_lora_ota` (both sensor + LoRa OTA images) uses `0` because its
 runtime-RAM headroom is too small for the resident table.
 
 ---
@@ -2309,7 +2333,7 @@ settings use a safe effective power without replacing the saved preference.
 - `freq`: Frequency in MHz (150-2500)
 - `bw`: Bandwidth in kHz (same allowed values as `set radio`)
 - `sf`: Spreading factor (5-12)
-- `cr`: Coding rate (5-8)
+- `cr`: Coding-rate denominator (4-8); `4` selects 4/4 without payload FEC.
 - `timeout_mins`: Duration in minutes (must be > 0)
 
 **Notes:**
@@ -2372,7 +2396,7 @@ intervals and the 24-hour watchdog policy. An explicitly saved normal-mode
 - `freq`: Frequency in MHz (150-2500)
 - `bw`: Bandwidth in kHz (same allowed values as `set radio`)
 - `sf`: Spreading factor (5-12)
-- `cr`: Coding rate (5-8)
+- `cr`: Coding-rate denominator (4-8); `4` selects 4/4 without payload FEC.
 - `start_time`: UTC Unix epoch seconds, or `+N` for N whole minutes from now
 - `end_time`: UTC Unix epoch seconds, or `+N` for N whole minutes from now
 - `n`: Scheduled entry number from `get radioat` or `get tempradioat`
@@ -2387,7 +2411,11 @@ intervals and the 24-hour watchdog policy. An explicitly saved normal-mode
 - `get radioat` and `get tempradioat` list all entries when `n` is omitted.
 - `del radioat` and `del tempradioat` delete all entries when `n` is omitted.
 - Each queue supports 3 entries. Scheduled entries are not saved across reboot.
-- `radioat` saves the new radio preferences when it fires. `tempradioat` applies temporarily, then reverts to the saved radio preferences.
+- `radioat` saves the pending schedule before acknowledging it, including
+  additions and deletions. Queued permanent changes survive reboot. They wait
+  for a valid UTC clock; an overdue entry runs once the clock is valid. The
+  resulting radio preferences are saved when the entry fires.
+  `tempradioat` applies temporarily, then reverts to the saved radio preferences.
 - `tempradioat` uses the repeater timing table above, with duration calculated
   from `end_time - start_time`. Its acceptance reply includes total minutes, `NdNhNm`,
   and the planned `rx.watchdog` setting. Queuing a future entry does not change
@@ -2475,6 +2503,50 @@ roles also clamp transmit power to the board's limit for that frequency. Like
 
 ---
 
+#### Full Companion 255-byte receive probe observer
+
+Full ESP32 and nRF52 Companion builds can provide a local-only, RAM-only lab
+observer. Boards may omit this diagnostic to meet their runtime RAM requirements;
+Cardputer-Adv Full Companion omits it. It starts disabled after every reboot
+on builds that include it. It sends no RF, writes no
+settings, and adds no streaming/push frames. Reduced builds, infrastructure
+roles and ESP-NOW-only images do not allocate its 552-byte state.
+
+```text
+set radio.probe <16 hexadecimal nonce characters>
+get radio.probe
+get radio.probe.page <0-15>
+set radio.probe off
+```
+
+Arming resets the counters and all 128 sequence slots. `off` stops collection
+and preserves the completed counters/pages until a new nonce or reboot.
+Only commands with a local sender timestamp of zero are accepted, including
+getters. Build-time `MESH_ENABLE_RADIO_PROBE_OBSERVER=0` removes the feature.
+
+Each accepted PHY packet has exactly 255 bytes: `3e 00`, ASCII `SPLIT1`, the
+8-byte nonce, ASCII `L`, a little-endian uint32 sequence from 0 through 127,
+and 234 padding bytes whose values are 0 through 233. The observer validates
+all bytes before crediting a unique sequence. A complete matching duplicate
+increments only `duplicates`; malformed packets with that nonce increment
+`invalid`. Other nonces are ignored. First-reception metadata is retained.
+
+`get radio.probe` reports version, active flag, nonce, length, slot count,
+`unique`, `duplicates`, `invalid`, and `scope=phy255,app=0`. These counts prove
+successful radio reads matching the complete probe; they do not claim ordinary
+application delivery. The unchanged application parser rejects its oversized
+253-byte application payload. No truncated `0x88` frame is produced.
+
+Each page returns `v=1,nonce=...,start=...,count=8,valid=XX,records=...`.
+Bit zero of the validity mask corresponds to `start`. The 64 hexadecimal
+record characters encode eight 4-byte entries: signed int16 little-endian RSSI
+in dBm, signed int8 SNR in quarter-dB, and receive profile 0/1 (255 unknown).
+Numeric metadata is truncated toward zero and saturated to those ranges;
+non-finite measurements are invalid. Invalid slots contain zeros. Replies fit
+the existing CLI/176-byte host frame; global frame and payload limits are unchanged.
+
+---
+
 #### LR2021 frequency measurement and crystal calibration
 
 Available on LR2021 builds, including Meshnology W12:
@@ -2497,7 +2569,7 @@ number sets both codes; two numbers set XTA and XTB separately. Lower codes
 generally raise frequency; each code is a capacitor step, not a fixed Hz offset.
 Use a known reference to choose values. TCXO boards reject this setting.
 
-The default leaves the chip's original trim unchanged; no shared calibration
+The `default` selection leaves the chip's original trim unchanged; no shared calibration
 value is imposed on boards. An explicit selection is saved first and waits two
 seconds so its acknowledgement can leave with the previous calibration. It then
 applies without a reboot when the radio is free, and is restored after resets
@@ -2514,18 +2586,69 @@ W12 Repeater, Room, Sensor, and Companion builds also provide:
 ```text
 set radio.xtrim auto
 get radio.xtrim.auto
+get radio.xtrim.auto.peer 0|1|2
 get radio.xtrim.correction
 set radio.xtrim auto cancel
+get radio.xtrim.autostart
+set radio.xtrim.autostart on|off
 ```
 
-Automatic trim is off until started. Turn radio2 off first and leave the radio
-profile unchanged. The node listens for signed, fresh adverts from three
-distinct nearby identities on the current frequency; each trial and its
-independent final verification need one new advert from each of the same three
-identities. They must agree within 1.5 kHz, and the trim verification median
+An uncalibrated W12 starts calibration in the background after its primary
+profile configuration stays unchanged for five seconds. Transient radio owners
+delay starting without restarting that timer. Startup does not wait for it.
+A saved manual trim or nonzero saved digital correction is retained across
+normal reboots, without another search. A full erase removes that calibration.
+An uncalibrated background attempt first applies `8,8` temporarily, so an
+unusable native factory trim cannot prevent it from hearing its references.
+If that listening window is silent, it tries `3,3`, then the native factory
+selection, then `7,7` and `9,9`, within the same session bound. A stable result
+outside the existing 2 kHz acceptance bound also advances to the next candidate.
+The first usable setting is checked with fresh references before saving; the
+temporary starting value is never imposed as a saved global default. In
+particular, a near-zero result measured at `8,8` saves verified `8,8`, rather
+than claiming the unmeasured factory selection was correct. A near-zero native
+factory result retains the existing uncalibrated `default`/zero meaning.
+
+`get radio.xtrim.autostart` reports the saved policy, waiting/running/retained
+state, attempts and next retry delay. Radio2, TX, AGC, packet, beacon and Morse
+ownership defer startup. The boot policy permits at most two attempts, each
+using the existing 15-minute session bound; a safely restored failed attempt
+waits 30 minutes before retrying. No references is an unknown result, not a
+zero frequency error. Recovery or storage uncertainty stops background retries.
+`get radio.xtrim.auto` reports the current trial, reference progress, peer count
+and confidence (`single-peer`, `two-peer`, or `three-peer`; `pending` before
+the reference group is selected).
+`get radio.xtrim.auto.peer 0|1|2` returns that reference's full public key,
+latest accepted signed timestamp, current batch sample count and whether the
+group is locked, or `none` for an unused slot.
+
+For controlled comparisons, `set radio.xtrim.autostart off` saves an opt-out and
+cancels an active background trial through its normal restoration path. The
+choice survives reboot. A missing policy record defaults to on; a malformed
+record blocks automatic startup and reports an error. Explicit cancel or a
+manual calibration request reserves the current boot for manual operation;
+toggling the policy does not clear that cancellation or reset its attempt
+budget. A new boot can resume if enabled and still uncalibrated. A saved
+`default` selection with zero correction remains uncalibrated; use the opt-out
+when factory trim must remain fixed for a test.
+
+`set radio.xtrim auto` still starts a manual one-shot even with autostart off.
+This explicit command keeps its original-baseline search, followed by `3,3`,
+`8,8` and nearby candidates; it does not replace a saved manual selection with
+the background starting order.
+Turn radio2 off first and leave the radio profile unchanged. The node prefers
+signed, fresh adverts from three distinct nearby identities on the current
+frequency. It waits up to 20 seconds after the first valid observation for the
+other references, within the existing collection deadline. If it hears only one
+or two, it uses those references with the reported lower confidence. Once
+selected, the same identities must each supply a new advert for every trial
+and independent final verification; later arrivals cannot replace a reference.
+Multiple references must agree within 1.5 kHz, and the trim verification median
 must be within 1 kHz of the winning trial. The node then applies a bounded
 digital adjustment equal to 75% of the remaining measured offset and checks
-fresh adverts from the same three peers before saving. It applies the adjustment
+fresh adverts from the same selected peers before saving. A single-peer result
+matches that peer's frequency; it does not establish absolute accuracy.
+It applies the adjustment
 proportionally on both radio profiles while reporting their nominal frequencies.
 Offsets smaller than 400 Hz do not cause a new digital adjustment. Each listening window can last two
 minutes and the whole session is limited to 15 minutes. Temporarily increase
@@ -2708,6 +2831,8 @@ Station G2/G3 targets default to `off`.
 
 **Notes:**
 - This controls the external LoRa FEM receive-path LNA where the board supports it.
+- The default is `off`. Use `set radio.fem.rxgain on` to enable and save it;
+  an explicitly saved gain choice is restored on reboot.
 - This is separate from `radio.rxgain`, which controls the radio chip receive gain mode.
 - On Station G3, transmit temporarily bypasses the LNA. A gain change made
   during transmission is applied when receive mode resumes; `get` reports the
@@ -2789,8 +2914,11 @@ the verified pin assignments, startup fixes, and saved amplifier settings.
 
 `get buzzer` and `set buzzer on|off` control the Companion's buzzer. Devices
 with a vibration motor also support `get vibration` and `set vibration on|off`.
-Changes take effect immediately, are saved across reboots, and produce no
-confirmation tone. Muting an output stops an alert already playing.
+Changes take effect immediately and are saved across reboots. `set buzzer on`
+plays a short confirmation tone through the selected built-in or custom buzzer.
+Repeat it to check sound even when already enabled; an unchanged setting does
+not rewrite flash. Failed saves do not play a success tone. Muting an output
+stops an alert already playing; vibration changes do not play a sound.
 
 Fresh settings default to **sound off** and **vibration on**. Existing saved
 choices are retained. The same preferences are used by the device buttons and
@@ -2837,9 +2965,14 @@ advertising and leave it off once connected, following
 get wifi
 set wifi off
 set wifi on
+get wifi.enabled
+set wifi.enabled 0
+set wifi.enabled 1
 get espnow
 set espnow off
 set espnow on
+get espnow.enabled
+set espnow.enabled off
 get 2.4ghz
 set 2.4ghz off
 set 2.4ghz on
@@ -2848,15 +2981,21 @@ set 2.4ghz on all
 
 | Control | Effect |
 | --- | --- |
-| `wifi` | Infrastructure WiFi, setup AP, TCP/WebUI, and WiFi MQTT services. ESP-NOW remains available. |
-| `espnow` | The ESP-NOW bridge or primary ESP-NOW mesh transport in this build. Infrastructure WiFi remains available. |
-| `2.4ghz off` | Stop WiFi, Bluetooth, and ESP-NOW; remember which were enabled. LoRa and wired transports remain available. |
-| `2.4ghz on` | Restore the states saved by the first `off`. Repeated `off` preserves that snapshot. With no previous `off`, keep the current states. |
-| `2.4ghz on all` | Enable every service available in this build and boot. `2.4ghz on force` is an alias. |
+| `wifi` / `wifi.enabled` | One saved WiFi setting for infrastructure WiFi, setup AP, TCP/WebUI, MQTT and UDP. Both setters accept `on`, `off`, `1`, `0` and survive reboot. ESP-NOW remains available. |
+| `espnow` / `espnow.enabled` | One saved setting for the ESP-NOW bridge or primary ESP-NOW mesh transport. Both setters accept `on`, `off`, `1`, `0`. Infrastructure WiFi remains available. |
+| `2.4ghz off` | Save a master pause for WiFi, Bluetooth, and ESP-NOW, together with their restore snapshot. The pause survives reboot and preserves individual preferences. LoRa and wired transports remain available. |
+| `2.4ghz on` | Clear the saved pause and restore the snapshot. Repeated `off` preserves the first snapshot. Any individual saved Off chosen since that snapshot takes precedence. |
+| `2.4ghz on all` | Enable and save every service usable in this build and boot, then clear the pause. `2.4ghz on force` is an alias. |
 
 These commands work in Companion, repeater, and room-server firmware where the
-services are available. Changes last until reboot; saved WiFi credentials,
-Bluetooth preferences, and bridge settings stay intact. `get 2.4ghz` lists each
+services are available. `wifi` and `wifi.enabled` save the same preference;
+`get wifi.enabled` returns the saved `0|1`, while `get wifi` reports live WiFi
+activity. Saved Off prevents background WebUI, MQTT and UDP startup after reboot.
+`set webui off` only changes the web interface's automatic-start preference.
+`get espnow.enabled` reports the saved `on|off` choice; `get espnow` reports live
+activity. The combined pause and its snapshot survive reboot. A normal `on`
+resumes the individual choices; `on all` explicitly saves those choices On.
+Saved WiFi credentials and individual bridge settings stay intact. `get 2.4ghz` lists each
 service as `on`, `off`, or `unavailable`. An nRF52 Companion controls its Bluetooth
 and reports WiFi/ESP-NOW as unavailable. Exclusive WiFi/Bluetooth builds retain
 their boot transport restriction; `on all` cannot reclaim a released Bluetooth stack.
@@ -2958,16 +3097,15 @@ Choose a six-digit code for a fixed Bluetooth pairing PIN. For example:
 
 ```text
 set pin 654321
-reboot
 ```
 
 The command saves the PIN across reboots and replies `> pin is now 654321`.
-Reboot to activate the new code; the current Bluetooth session keeps its
-existing PIN until then. A failed save reports an error and retains the
-previous saved setting.
+The new PIN applies to future pairings immediately. Existing bonded phones
+continue to use their saved keys; forget and re-pair a phone to require the new
+PIN. A failed save or Bluetooth update reports an error.
 
 `set pin 0` clears the saved override, rather than setting the pairing code to
-`000000` or disabling Bluetooth. After reboot, the build's default policy
+`000000` or disabling Bluetooth. The build's default policy immediately
 applies: normally `123456` without a display, or a generated PIN on eligible
 display-equipped builds.
 
@@ -3883,7 +4021,7 @@ ESP32 builds with button wake stay awake for at least 30 seconds after a press;
 the G3 retains its longer two-minute hold. Repeaters wait five minutes after
 startup before allowing sleep.
 
-Companion firmware defaults this setting to `on`. Full Companion accepts the command from its local USB terminal and exposes the same setting in WebConfig. On ESP32 with processor speed set to Auto, it normally selects 80 MHz, enables idle yielding, and enables the configured GPS duty cycle. While a second radio profile is active, Auto holds the highest supported CPU speed for faster switching; SenseCAP Indicator retains its existing policy. Explicit processor speeds remain selected. USB and each active wireless transport remain available; SenseCAP Indicator Full keeps only its selected BLE or infrastructure-WiFi secondary transport active. `set powersaving off` restores the board's normal CPU clock and disables the GPS duty cycle. This device setting is separate from LoRa RXPS (`radio.rxps`) and WiFi modem power save (`wifi.powersave`). Infrastructure uses the same commands; its hardware and active-service sleep guards determine when the node can sleep.
+Companion firmware defaults this setting to `on`. Full Companion accepts the command from its local USB terminal and exposes the same setting in WebConfig. On ESP32 with processor speed set to Auto, it normally selects 80 MHz, enables idle yielding, and enables the configured GPS duty cycle. While a second radio profile is active, Auto holds 80 MHz with power saving on, for every role; with power saving off, it holds the highest supported CPU speed for faster switching. SenseCAP Indicator LoRa holds 240 MHz in Auto, including the dynamic-scaling minimum, while retaining the other power-saving behavior. Explicit processor speeds remain selected when the SDK accepts them; a rejected change restores the previous setting. USB and each active wireless transport remain available; SenseCAP Indicator Full keeps only its selected BLE or infrastructure-WiFi secondary transport active. `set powersaving off` restores the board's normal CPU clock and disables the GPS duty cycle. This device setting is separate from LoRa RXPS (`radio.rxps`) and WiFi modem power save (`wifi.powersave`). Infrastructure uses the same commands; its hardware and active-service sleep guards determine when the node can sleep.
 
 #### Diagnose what prevents power saving
 
@@ -3987,6 +4125,36 @@ the X1 is not opted in without that hardware confirmation.
 
 ---
 
+#### Configure a rotary encoder or external alert outputs
+
+Full Companion on ESP32, nRF52 and RP2040 includes optional custom peripheral
+assignments. Other Companion profiles require an explicit custom build.
+Rotary navigation also requires a supported display UI.
+
+- `get rotary` and `get rotary.pins.available`
+- `set rotary.pins <CLK>,<DT>[,<SW>]` (Arduino pins; omit SW or use `-1`)
+- `set rotary on|off`
+- `set rotary.steps <1..255>` (default `4`)
+- `set rotary.reverse on|off`
+- `set rotary.pullup on|off`
+- `get peripherals`
+- `get peripheral.pins.available`
+- `get peripheral.buzzer` / `set peripheral.buzzer <pin|off>`
+- `get peripheral.led.notify` / `set peripheral.led.notify <pin|off>`
+- `get peripheral.led.gps` / `set peripheral.led.gps <pin|off>`
+- `get peripheral.led.ble` / `set peripheral.led.ble <pin|off>`
+
+Rotary pins, steps, reverse and pull-up settings also have individual getters.
+Assignments are saved and applied immediately. Protected pins and conflicting
+physical-pad assignments are rejected across GPIO timers, notifications,
+rotary inputs and custom outputs. LEDs are active high; the Bluetooth LED
+indicates the enabled transport, including advertising. See the
+[wiring and board guide](rotary_input.md), including the Heltec V4 display/touch
+pin limits. RTTTL melodies and alert patterns use the existing
+[notification commands](notifications.md).
+
+---
+
 #### Control an exposed GPIO
 
 **Availability:** ESP32 Repeater, Room Server, Bridge, and Sensor firmware. Companion firmware does not expose these commands. On nRF52, the commands are enabled only for Sensor builds on the Heltec T096, ProMicro, RAK3401, and RAK4631. GPIO expanders are not supported.
@@ -4070,6 +4238,27 @@ The pin number is the Arduino pin number used by that target (the normal GPIO nu
 `repeat off` disables relay forwarding, not locally generated traffic or
 configuration replies. Repeaters can separately opt in to the routed-trace
 exception below.
+
+#### Control flood forwarding by radio (repeater only)
+
+```text
+get radio.flood
+set radio.flood off
+get radio2.flood
+set radio2.flood on
+```
+
+Both profiles default to `on`. These settings control forwarding of flood
+packets received or transmitted on each profile; they also prevent crossed
+flood copies from being forwarded on a disabled profile. Direct-route
+forwarding, locally addressed DMs and the node's own replies are unaffected.
+`set repeat off` remains the master switch for all forwarding. To forward
+floods only on radio2, keep `repeat on` and set `radio.flood off`. These
+settings persist across restart. Turning global repeat off blocks new forwarding;
+ordinary forwarded packets already queued may still drain. The per-radio flood
+settings are also checked when a queued packet is transmitted. The Wio E5 Mini
+Repeater reports per-radio flood controls as unsupported; its existing global
+`repeat` setting remains available.
 
 #### Allow routed traces while repeating is disabled (repeater only)
 
@@ -4282,20 +4471,199 @@ hardware busy-result count.
 
 ---
 
+#### CLI access during a periodic radio refresh
+
+`stats-radio`, `stats-radio-diag`, `stats-packets`, `neighbors`, version and
+reviewed cached configuration/AGC getters remain available during a refresh.
+These commands use retained radio state; they do not probe or restart the radio.
+`stats-core` samples the board battery and is not part of this cached set.
+Hardware-accessing getters, mutations and unclassified commands return
+`Error: radio maintenance pending; retry shortly`. The command has not been
+applied or queued. Retry after the refresh; the device never waits in the CLI
+handler, so the normal radio loop can finish the operation. Request IDs are
+preserved on Companion replies.
+
 #### View or change the AGC Reset Interval
+
+For a side-by-side explanation of the legacy calibration sequence and the new
+sleep/wake method, see [Old AGC reset and new receive refresh](radio_agc.md).
+The command name is retained for compatibility; a completed receive refresh
+does not prove an internal AGC reset or improved sensitivity.
+
 **Usage:**
 - `get agc.reset.interval`
 - `set agc.reset.interval <value>`
+- `get agc` / `set agc <value>` (aliases)
 
 **Parameters:**
 - `value`: Interval in seconds, 0-1020, rounded down to a multiple of 4 (17 becomes 16). 0 to disable.
 
-**Default:** `0.0`
+Companion's existing primary text parser retains its 0-255-second input range;
+the short alias uses that same parser and saved setting.
+
+**Default:** `16` seconds for new configurations on every board and role.
+Existing saved values, including `0` (disabled), are retained.
+
+With the saved default `agc.old auto`, receive-refresh primary intervals
+**below 240 seconds** use only
+the new sleep/wake method. At **240 seconds or longer**, a successfully witnessed
+refresh is followed by the old full receiver reset when that implementation is
+available. For example, `set agc 236` uses only the new method and `set agc 240`
+uses both on Heltec V4. The cutoff uses the configured interval, not delays
+caused by busy traffic or packet ownership.
+
+The old half waits for an idle primary visit without repeating the completed
+pulse. Changing or disabling the interval discards the outstanding completion.
+The scheduler advances after both halves complete; legacy completion still
+means admission, not checked success of every calibration command. Failed or
+unconfirmed pulses do not trigger this automatic full reset. Builds with
+`MESH_ENABLE_OLD_AGC=0` retain only the new method; other drivers without
+receive-refresh support retain their existing behavior.
+
+Active duty-cycle RXPS automatically suspends the primary AGC timer on every
+board. Continuous RX fallback still runs the configured maintenance because
+that mode does not sleep/wake the frontend. The saved RXPS preference and AGC
+interval remain unchanged; successful duty-cycle recovery suspends maintenance
+again, and returning to continuous RX starts a fresh interval.
+An explicitly configured positive `agc.old` interval remains independent of RXPS.
+
+On builds using the `CustomSX1262`, `CustomSX1268`, `CustomLLCC68`,
+`CustomSTM32WLx`, `CustomLR1110`, `CustomLR1121` or `CustomLR2021` driver,
+this saved interval schedules a same-channel RXPS pulse. `CustomSX1276` uses
+a separate, checked host-timed sleep/wake sequence. This includes the supported
+backends of startup-detected radio builds. The existing
+value, four-second rounding and adaptive
+scheduling are retained. The pulse itself does not retune, calibrate, change gain
+or reset the noise-floor cache. The automatic old half at intervals of 240 seconds
+or longer also performs the driver's legacy reset and requests fresh samples.
+Completing the hardware sleep/wake sequence is not proof
+of an analog AGC reset or a sensitivity improvement. The build setting
+`MESH_WARM_RX_REFRESH=0` explicitly retains the previous primary method.
+Other transceiver drivers retain their own maintenance implementation; storing
+an interval does not imply that their hardware supports these sleep/wake paths.
+
+The SX126x primary path performs one asynchronous RXPS pulse. It requires
+continuous primary LoRa RX, with `radio.rxps` off. During dual-profile scanning,
+it leases one stable primary visit and resumes the overdue secondary visit
+afterward. It does
+not require radio2 warm, FS or packet-cache shortcuts. An admitted pulse stages
+ordinary LoRa duty-cycle RX, observes a post-arm BUSY low/high/natural-low
+sequence, checks RC standby and RTC cleanup, and checks continuous RX reentry.
+The saved interval is retained. While a pulse
+owns the radio, application loops service one maintenance step before slow
+board, sensor or UI work. Packet FIFO/IRQ ownership returns to the ordinary
+Dispatcher. Shared recovery watchdogs still use their existing full-reset path. A packet, TX, BUSY or another
+radio owner defers admission; an unadmitted deferral normally retries after
+250 ms. Fresh pulse attempts are limited to four seconds after the scheduled
+time. An unconfirmed slot is then quietly skipped until the next interval,
+without success credit or adaptive promotion. An already-admitted pulse or
+packet keeps its normal ownership and completion checks even after that window;
+the deadline does not force an interruption. A real command failure retains
+its diagnostics and normal interval, without adaptive promotion.
+
+LR11xx and LR2021 use their native duty-cycle commands and 32.768 kHz timer
+encoding, with the runtime TCXO/transition allowance plus one timer tick and
+at least 500 us of additional sleep. LR2021 encodes the total RX-plus-sleep
+cycle in its second command field; LR11xx encodes sleep alone. On W12, an
+active PRAM scanner transfers ownership through its checked warm pause, keeps
+the loaded image, and must restore its hooks before a pulse receives success
+credit. A failed or stale restoration remains visible in the diagnostics.
+
+SX1276 has no corresponding autonomous duty-cycle/BUSY interface. It checks
+activity, enters standby, and rechecks completed-packet ownership before Sleep,
+which clears its LoRa FIFO. Its default host sleep holds 1501 us, including the
+SDK's 1 ms entry reserve and 501 us margin, followed by a separate nonblocking
+1 ms wake allowance and checked RX reentry. `get agc.status` identifies this
+method as `hostsleep`; it does not increment BUSY-edge or RTC-cleanup counters.
+These software checks establish command/timer behavior, not measured analog
+gain or equal receive sensitivity across radio families.
+
+LR2021 supports the same saved old-reset policy using its native calibration
+commands. It retains PRAM and oscillator settings, safely pauses/restarts an
+active scanner and restores the current RX profile. Failed commands/restoration
+are reported through `get radio.apply`, receive no success credit, and wait the
+normal old-reset interval; busy admission retries after 250 ms. See the
+[LR2021 sequence and qualification limits](radio_agc.md#automatic-selection).
+
+An independent full-reset timer remains available through the Repeater, Room
+Server, Sensor and Companion text parsers:
+
+- `get agc.old`: returns `auto` or the saved interval in seconds (`0` means off).
+- `set agc.old auto`: default; include the old half after primary refresh at
+  intervals of 240 seconds or longer, without an independent old timer.
+- `set agc.old off` / `set agc.old 0`: disable both the independent timer and
+  the automatic old half, even past 240 seconds.
+- `set agc.old <seconds>`: `1-86400` enables an independent old timer instead
+  of the automatic old half. For example, `600` means every ten minutes.
+- `set agc 0` followed by `set agc.old 4`: old reset only, every four seconds.
+
+All these settings persist across reboot. The old policy has a separate checked
+settings record, leaving existing preference layouts unchanged. A missing record
+uses `auto`; a corrupt or unreadable record disables old resets for that boot.
+Save errors are reported instead of claiming persistence. Recovery watchdogs
+remain separate; these settings control periodic maintenance.
+The independent old timer is available on boards with a full-reset implementation.
+On compact Wio-E5/STM32WL profiles it is omitted by default to preserve flash
+headroom; `get agc.old` and `set agc.old` return `Error: unsupported` there.
+Their primary pulse and cached `agc.status`, `agc.pulse` and `agc.scan` proof
+pages remain available. The verbose `agc.timing`, `agc.recovery`, `agc.sleep`
+and `agc.checks` pages return `Error: unsupported` on compact STM32 builds.
+Ordinary RXPS policy can remain unsupported independently of this periodic pulse.
+On primary-pulse builds, set `MESH_ENABLE_OLD_AGC=1` to opt in when the image fits.
+Other profiles
+enable this capability by default; `MESH_ENABLE_OLD_AGC=0` omits it. This choice
+does not change the primary AGC interval or its hardware-specific method. Enabling it
+does not change the saved primary interval. Its first deadline starts when it
+is enabled; it does not use adaptive escalation or TX postponement. If both
+timers are due, the old reset runs first and the primary pulse is deferred.
+
+`get agc.status`, `get agc.timing`, `get agc.recovery`, `get agc.pulse`,
+`get agc.sleep`, `get agc.checks` and `get agc.scan` are cached diagnostics. Successful completion
+requires an observed cycle plus checked RTC cleanup, SetRx and RX-mode status.
+The total timing includes the initial listening window. The sleep timing is a
+sampled BUSY-high span, not an independently measured RF outage. Long or missing
+observations quietly discard the unconfirmed attempt without success credit or
+an error message. The first BUSY-high check allows for the measured arm-command
+return time and the host clock resolution (up to 1 ms on nRF52), in addition to
+the existing 2 ms observation allowance. It still requires a preceding low and
+at least half the programmed RX window; an arm call consuming more than half
+that window cannot qualify a cycle. Actual command or receive-recovery errors
+remain available in the cached diagnostics. The default adds 500 us above the
+radio's one-tick minimum, rounded up to whole timer ticks. It uses the driver's resolved
+oscillator delay rather than a fixed board duration. On the V4 with a 1600 us
+TCXO delay, the compensated request is 3116 us (33 RTC ticks after transition
+compensation). This does not establish improved sensitivity or reception.
+
+With radio2 enabled, supported pulse firmware admits a pulse only during an idle,
+unchanged primary-profile visit. The scanner pauses until checked RX reentry or
+completed-packet handoff finishes, then resumes the original scan deadline.
+This periodically extends the secondary profile's absence; it is a best-effort
+tradeoff, including with short automatic preambles. The full initial primary
+listening window is retained. For example, an approximately 54 ms lease can
+include approximately 46 ms of primary RX plus sleep and command overhead; the
+lease duration is not an RF outage measurement. Other profiles' packets may be
+missed during that absence. Ordinary RXPS and existing packet/TX owners still
+defer admission. The scanner's pair generations are checked before crediting a
+completion. `get agc.scan` reports current dual/lease flags, dual admissions,
+wrong-profile deferrals, stale-context cancellations, completed lease count and
+last/maximum lease spans. Its values are cumulative and separate from pulse
+success/error counters. With MCU power saving off, a wrong-profile wait retries
+at 1 ms to follow the next primary visit; other busy waits retain 250 ms retries.
+Adaptive power saving retains its existing retry and sleep policy.
+
+Explicit bench builds with `MESH_RXPS_PULSE_LAB=1` also expose local
+`get agc.test.sleep_us` and `set agc.test.sleep_us 6554|4000|3116|3000|2616`. The selector is
+RAM-only, changes no saved interval, and cannot change an active pulse. Set the
+primary interval to zero and wait for `pending=0` before changing it. Normal
+builds expose no sleep-duration setter. The legacy `get agc.old.status`,
+`.timing` and `.errors` pages, including their `agc.reset.*` compatibility names,
+require `MESH_AGC_TIMING_DIAGNOSTICS=1`. Separate getter pages are non-atomic.
+See [RXPS receive pulse](../lab/rxps_pulse/README.md) for witness and timing limits.
 
 With device `powersaving` on and a nonzero AGC interval, Companion, Repeater,
 Room Server, and Sensor firmware use adaptive reset scheduling. The saved
-interval is the starting/minimum interval. After every two admitted maintenance
-attempts without an observed radio recovery, the interval doubles, capped at
+interval is the starting/minimum interval. After every two successfully completed
+maintenance attempts without an observed radio recovery, the interval doubles, capped at
 60 seconds (or the saved interval if it is already longer). For example,
 8 -> 16 -> 32 -> 60 seconds, with two attempts at each step. An observed radio
 recovery returns the schedule to the saved interval. Changing the interval or
@@ -4306,7 +4674,8 @@ current adaptive interval. `0` disables periodic AGC maintenance even with
 power saving on. With power saving off, fixed-interval behavior is retained.
 This follows device `powersaving`, independently of LoRa `radio.rxps`.
 
-Adaptive scheduling does not treat a quiet mesh, strong packets, a stable
+For the existing reset method on other builds, adaptive scheduling does not
+treat a quiet mesh, strong packets, a stable
 noise floor, or a successful transmission as proof of full receiver sensitivity.
 TX cannot continually postpone adaptive maintenance. Pending RX/TX, a BUSY
 chip outside known RX duty cycling, carrier/Morse ownership, and an active
@@ -7569,8 +7938,8 @@ Ethernet module. Use the `_ethernet` firmware variants (for example,
 
 `RAK_4631_companion_radio_full` is a distinct combined profile: it can compile
 both physical RAK13800 Ethernet and an optional RAK15002 SD mOTA archive. They
-share CS26, so they are mutually exclusive. In that Full profile Ethernet is
-off at boot and is deliberately controlled only for the current boot:
+share CS26, so they are mutually exclusive. Ethernet defaults off on a fresh
+install. `set eth on/off` saves the choice across reboot in the shared profiles:
 
 ```text
 get eth
@@ -7595,8 +7964,8 @@ supported hot-swap flow. This combined hardware path is not yet qualified.
 
 The SD-capable Ethernet-room receiver,
 `RAK_4631_room_server_ethernet_lora_ota_no_external_sensors`, uses the same
-shared CS26 safety rule but has its own cooperative Ethernet control. It starts
-off on every reboot and is never persisted. From USB or an already established
+shared CS26 safety rule but has its own cooperative Ethernet control. Its
+`eth on/off` aliases also save the choice. From USB or an already established
 Telnet session, use either spelling:
 
 ```text
@@ -7626,8 +7995,8 @@ is active.
   `_ethernet` Companion image does not expose a CLI; the combined RAK4631 Full
   profile above instead exposes `get eth` / `set eth on|off`.
 - The normal `_ethernet` variants obtain an IP address via DHCP automatically
-  on boot. The combined RAK4631 Full profile does not: Ethernet starts off
-  until `set eth on` succeeds.
+  on boot. The combined RAK4631 Full profile starts off on a fresh install and
+  restores a saved `set eth on` through the same SD/OTA ownership checks.
 - A TCP server listens on port 23 (default) for CLI connections.
 - Connect with any TCP client (e.g. `nc`, PuTTY) to access the same CLI available over serial.
 

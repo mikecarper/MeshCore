@@ -6,7 +6,8 @@ namespace mesh {
 
 // Bounded reset cadence, not an AGC-health detector. Only an accepted reset
 // sequence advances the adaptive stage; quiet traffic is not proof of failure.
-class AGCResetScheduler {
+class AGCResetSchedulerCore {
+protected:
   static constexpr uint32_t ADAPTIVE = 0x80000000UL;
   static constexpr uint32_t BASE_MASK = 0xfffffUL;
   static constexpr uint32_t STAGE = 0x100000UL;
@@ -23,13 +24,15 @@ public:
     _next = _recovery_count = _state = 0;
   }
 
-  void configure(uint32_t now, uint32_t base_ms, bool adaptive,
+  // Explicitly report a configuration change: a wrapped deadline of zero is
+  // valid and cannot serve as an initialization/change sentinel.
+  bool configure(uint32_t now, uint32_t base_ms, bool adaptive,
                  uint32_t recovery_count) {
     // All supported preference intervals fit in the signed millis half-range.
     // Invalid external input must not turn into an immediately due reset loop.
     if (base_ms == 0 || base_ms > INT32_MAX) {
       reset();
-      return;
+      return true;
     }
     // Larger external intervals retain their exact fixed cadence. Every
     // supported preference fits the adaptive representation without rounding.
@@ -41,11 +44,13 @@ public:
       _state = config;
       _next = now + base_ms;
       _recovery_count = recovery_count;
+      return true;
     }
+    return false;
   }
 
   void noteTransmit(uint32_t now) {
-    if (_state && !(_state & ADAPTIVE)) _next = now + _state;
+    if (_state && !(_state & ADAPTIVE)) noteSkipped(now);
   }
 
   bool due(uint32_t now) const {
@@ -57,6 +62,12 @@ public:
   void noteDeferred(uint32_t now, uint32_t retry_delay_ms = 50) {
     if (retry_delay_ms == 0 || retry_delay_ms > INT32_MAX) retry_delay_ms = 50;
     if (_state) _next = now + retry_delay_ms;
+  }
+
+  // Discard an unconfirmed/failed slot without success or adaptive credit.
+  void noteSkipped(uint32_t now) {
+    if (!_state) return;
+    _next = now + interval();
   }
 
   // Call only after an actual accepted reset sequence, not a busy/deferred one.
@@ -90,6 +101,60 @@ public:
     if (!_state) return false;
     delay_ms = due(now) ? 0 : _next - now;
     return true;
+  }
+};
+
+// Only primary maintenance owns a bounded retry window. The independent old
+// timer uses the 12-byte core and retains its original cadence/retry policy.
+class AGCResetScheduler : public AGCResetSchedulerCore {
+  uint32_t _retry_deadline = 0;
+
+public:
+  static constexpr uint32_t RETRY_WINDOW_MS = 4000;
+
+  void reset() {
+    AGCResetSchedulerCore::reset();
+    _retry_deadline = 0;
+  }
+
+  bool configure(uint32_t now, uint32_t base_ms, bool adaptive,
+                 uint32_t recovery_count) {
+    const bool changed = AGCResetSchedulerCore::configure(now, base_ms, adaptive, recovery_count);
+    if (changed) _retry_deadline = _state ? _next + RETRY_WINDOW_MS : 0;
+    return changed;
+  }
+
+  void noteTransmit(uint32_t now) {
+    if (_state && !(_state & ADAPTIVE)) noteSkipped(now);
+  }
+
+  void noteSkipped(uint32_t now) {
+    AGCResetSchedulerCore::noteSkipped(now);
+    if (_state) _retry_deadline = _next + RETRY_WINDOW_MS;
+  }
+
+  void noteAttempt(uint32_t now) {
+    AGCResetSchedulerCore::noteAttempt(now);
+    if (_state) _retry_deadline = _next + RETRY_WINDOW_MS;
+  }
+
+  bool retryExpired(uint32_t now) const {
+    // Check nominal due as well: a valid INT32_MAX external interval can put
+    // its later retry deadline outside the signed half-range at configure().
+    return _state
+        && static_cast<int32_t>(now - (_retry_deadline - RETRY_WINDOW_MS)) >= 0
+        && static_cast<int32_t>(now - _retry_deadline) >= 0;
+  }
+
+  // Warm-pulse retries share the original due time's four-second window.
+  // An admitted pulse may outlive it: keep servicing that owner without
+  // cancelling a packet, forcing a wake, or opening another admission window.
+  void noteDeferredWithinWindow(uint32_t now, uint32_t retry_delay_ms) {
+    noteDeferred(now, retry_delay_ms);
+    if (_state && !retryExpired(now)
+        && static_cast<int32_t>(_next - _retry_deadline) > 0) {
+      _next = _retry_deadline;
+    }
   }
 };
 

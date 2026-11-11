@@ -1,4 +1,4 @@
-"""Execute saved PIN queries independently of the active pairing session."""
+"""Exercise PIN persistence, immediate application, and device-info queries."""
 from pathlib import Path
 import os
 import re
@@ -17,6 +17,7 @@ SANITIZERS = (["-fsanitize=address,undefined", "-fno-sanitize-recover=all",
 
 HARNESS = r'''
 #include <helpers/TxtDataHelpers.h>
+#include <helpers/BleCommonPinWarning.h>
 @CONSTANTS@
 #define MAX_CONTACTS 350
 #define MAX_GROUP_CHANNELS 40
@@ -25,6 +26,15 @@ HARNESS = r'''
 struct { const char* getManufacturerName() const { return "Companion"; } } board;
 using Bytes=std::vector<uint8_t>;
 uint32_t random_pin=345678;
+uint32_t applied_pin=0;
+unsigned apply_calls=0;
+unsigned fail_apply_call=0;
+bool reject_apply=false;
+bool companionApplyBluetoothPin(uint32_t pin) {
+ ++apply_calls;
+ if(reject_apply||apply_calls==fail_apply_call)return false;
+ applied_pin=pin;return true;
+}
 struct StdRNG {
  uint32_t nextInt(uint32_t low,uint32_t high) {
    assert(low==100000&&high==999999);return random_pin;
@@ -33,6 +43,7 @@ struct StdRNG {
 struct BaseSerialInterface {};
 struct Capture : BaseSerialInterface {
  std::vector<Bytes> frames;
+ BaseSerialInterface* captureReplyRoute() {return this;}
  size_t writeFrame(const uint8_t* data,size_t size) {
    frames.emplace_back(data,data+size);return size;
  }
@@ -40,6 +51,7 @@ struct Capture : BaseSerialInterface {
    return writeFrame(data,size);
  }
 };
+struct FakeMillis { uint32_t now=0; uint32_t getMillis() const {return now;} };
 struct MyMesh {
  CompanionNodePrefs _prefs;
  DataStore* _store;
@@ -47,16 +59,30 @@ struct MyMesh {
  Capture* _serial=&wire;
  uint8_t app_target_ver=0,cmd_frame[180]={},out_frame[180]={};
  uint32_t _active_ble_pin=0;
+ FakeMillis millis; FakeMillis* _ms=&millis;
+ bool _ble_random_default=false,_using_common_ble_pin=false;
+ bool _ble_pin_apply_failed=false;
+ bool _ble_pin_restore_pending=false;
+ uint32_t _ble_pin_restore=0,_ble_pin_restore_last_retry=0;
+ bool _common_ble_pin_warning_pending=false,_common_ble_pin_warning_in_flight=false;
+ BaseSerialInterface* _common_ble_pin_warning_route=nullptr;
  unsigned saves=0;
+ unsigned warning_schedules=0;
+ void scheduleCommonBlePinWarning(BaseSerialInterface* route) {
+   assert(route==_serial);if(_using_common_ble_pin)++warning_schedules;
+ }
  explicit MyMesh(DataStore& store):_store(&store) {}
  bool savePrefs() {++saves;return _store->savePrefs(_prefs,47.1,-122.2);}
  @SAVE_PREFERENCE@
  uint32_t getBLEPin();
+ bool applyAndSaveBLEPin(uint32_t pin);
+ void servicePendingBLEPinRestore();
  void writeOKFrame(BaseSerialInterface* route=nullptr);
  void writeErrFrame(uint8_t,BaseSerialInterface* route=nullptr);
  void boot(bool has_display) {
    double lat=0,lon=0;assert(_store->loadPrefs(_prefs,lat,lon));
    assert(lat==47.1&&lon==-122.2);
+   _ble_random_default=has_display && BLE_PIN_CODE==123456;
    @BOOT_PIN@
  }
  Bytes command(const Bytes& bytes) {
@@ -92,12 +118,14 @@ static void seed(DataStore& store,uint32_t pin) {
 int main() {
  // A random/default preference is the wire sentinel, never this boot's PIN.
  for(uint32_t pin:{0u,100000u,654321u,999999u}) {
-   DataStore store;seed(store,0);random_pin=345678;
+   DataStore store;seed(store,0);random_pin=345678;apply_calls=0;fail_apply_call=0;reject_apply=false;
    MyMesh live(store);live.boot(true);assert(live.getBLEPin()==345678);
+   applied_pin=live.getBLEPin();
    const auto before=query(live,0);
    assert(live.command(setPin(pin))==Bytes{RESP_CODE_OK});
    assert(live.saves==1&&live._prefs.ble_pin==pin);
-   assert(live.getBLEPin()==345678); // Existing pairing remains valid until reboot.
+   assert(live.getBLEPin()==(pin?pin:345678));
+   assert(applied_pin==live.getBLEPin());
    const auto after=query(live,pin);
    for(size_t i=0;i<before.size();++i)if(i<4||i>=8)assert(before[i]==after[i]);
    random_pin=709811;
@@ -113,13 +141,15 @@ int main() {
    assert(live.saves==0&&live._prefs.ble_pin==654321&&live.getBLEPin()==654321);
    assert(store.fs.files["/new_prefs"]==disk);query(live,654321);
  }
- // Actual atomic preference writes roll back both RAM and disk on every fault.
+ // Apply first; if saving fails, restore the old live pairing PIN and leave
+ // the old durable preference intact, even across unrelated later saves.
  for(unsigned fault:{0u,1u,2u
 #if defined(ESP32_PLATFORM)
      ,3u
 #endif
      }) {
    DataStore store;seed(store,654321);MyMesh live(store);live.boot(true);
+   apply_calls=0;reject_apply=false;applied_pin=live.getBLEPin();
    const auto disk=store.fs.files["/new_prefs"];
    if(fault==0)store.fs.fail_write=true;
    if(fault==1)store.fs.fail_write_after=17;
@@ -127,6 +157,7 @@ int main() {
    if(fault==3)store.fs.fail_rename=2;
    assert(live.command(setPin(876543))==(Bytes{RESP_CODE_ERR,ERR_CODE_FILE_IO_ERROR}));
    assert(live.saves==1&&live._prefs.ble_pin==654321&&live.getBLEPin()==654321);
+   assert(apply_calls==2&&applied_pin==654321);
    assert(store.fs.files["/new_prefs"]==disk);query(live,654321);
    store.fs.fail_write=false;store.fs.fail_write_after=-1;store.fs.fail_rename=0;
    strcpy(live._prefs.node_name,"later save");assert(live.savePrefs());
@@ -134,13 +165,51 @@ int main() {
    assert(reboot.getBLEPin()==654321&&!strcmp(reboot._prefs.node_name,"later save"));
    query(reboot,654321); // An unrelated successful save cannot resurrect the failed PIN.
  }
- // Turning custom PIN off reports zero immediately, but security changes at boot.
+ // Turning a custom PIN off selects the current display-mode random PIN now.
  DataStore store;seed(store,654321);MyMesh live(store);live.boot(true);
+ random_pin=709811;applied_pin=live.getBLEPin();reject_apply=false;
  assert(live.command(setPin(0))==Bytes{RESP_CODE_OK});
- query(live,0);assert(live.getBLEPin()==654321);
+ query(live,0);assert(live.getBLEPin()==709811&&applied_pin==709811);
  MyMesh headless(store);headless.boot(false);
  assert(headless.getBLEPin()==BLE_PIN_CODE);query(headless,0);
- std::puts("PASS: saved PIN queries, atomic faults, and active pairing until reboot");
+ // Failure to apply the new pairing PIN must not be reported as success or
+ // leave a different saved PIN that would become active after reboot.
+ DataStore reject_store;seed(reject_store,654321);MyMesh rejected(reject_store);
+ rejected.boot(true);applied_pin=654321;apply_calls=0;reject_apply=true;
+ const auto reply=rejected.command(setPin(876543));
+ assert((reply==Bytes{RESP_CODE_ERR,ERR_CODE_BAD_STATE}));
+ assert(apply_calls==1&&rejected.saves==0&&applied_pin==654321&&rejected.getBLEPin()==654321);
+ assert(rejected._prefs.ble_pin==654321);query(rejected,654321);
+ reject_apply=false;MyMesh restarted(reject_store);restarted.boot(true);
+ assert(restarted.getBLEPin()==654321);query(restarted,654321);
+ // If the old PIN cannot immediately be restored after a disk fault, report
+ // failure and keep retrying the restore without persisting the new PIN.
+ DataStore retry_store;seed(retry_store,654321);MyMesh retry(retry_store);
+ retry.boot(true);applied_pin=654321;apply_calls=0;fail_apply_call=2;
+ retry_store.fs.fail_write=true;
+ const auto retry_reply=retry.command(setPin(876543));
+ assert(retry_reply.size()==2&&retry_reply[0]==RESP_CODE_ERR);
+ assert(retry._prefs.ble_pin==654321&&retry._ble_pin_restore_pending);
+ assert(retry.getBLEPin()==876543&&applied_pin==876543);
+ query(retry,654321);
+ retry.millis.now=1000;retry.servicePendingBLEPinRestore();
+ assert(!retry._ble_pin_restore_pending&&retry.getBLEPin()==654321&&applied_pin==654321);
+ retry_store.fs.fail_write=false;fail_apply_call=0;
+ MyMesh retry_restart(retry_store);retry_restart.boot(true);
+ assert(retry_restart.getBLEPin()==654321);query(retry_restart,654321);
+ // Warning state follows the active pairing PIN, not stale boot settings.
+ DataStore warning_store;seed(warning_store,654321);MyMesh warning(warning_store);
+ warning.boot(false);assert(!warning._using_common_ble_pin);
+ assert(warning.command(setPin(111111))==Bytes{RESP_CODE_OK});
+ assert(warning._using_common_ble_pin&&warning.getBLEPin()==111111&&warning.warning_schedules==1);
+ warning._common_ble_pin_warning_pending=true;
+ warning._common_ble_pin_warning_in_flight=true;
+ warning._common_ble_pin_warning_route=&warning.wire;
+ assert(warning.command(setPin(876543))==Bytes{RESP_CODE_OK});
+ assert(!warning._using_common_ble_pin&&!warning._common_ble_pin_warning_pending);
+ assert(!warning._common_ble_pin_warning_in_flight&&!warning._common_ble_pin_warning_route);
+ assert(warning.warning_schedules==1);
+ std::puts("PASS: saved PIN queries, atomic faults, and immediate pairing PIN changes");
 }
 '''
 
@@ -155,7 +224,8 @@ def production_harness():
     pin_begin = mesh.index("#ifdef BLE_PIN_CODE // 123456 by default")
     pin_end = mesh.index("\n  resetContacts();", pin_begin)
     names = ("CMD_DEVICE_QUERY", "CMD_SET_DEVICE_PIN", "RESP_CODE_DEVICE_INFO",
-             "RESP_CODE_OK", "RESP_CODE_ERR", "ERR_CODE_FILE_IO_ERROR", "ERR_CODE_ILLEGAL_ARG")
+             "RESP_CODE_OK", "RESP_CODE_ERR", "ERR_CODE_FILE_IO_ERROR", "ERR_CODE_ILLEGAL_ARG",
+             "ERR_CODE_BAD_STATE")
     constants = []
     for name, source in [(name, mesh) for name in names] + [("FIRMWARE_VER_CODE", header)]:
         constants.append(re.search(r"^#define\s+" + name + r"\s+\d+", source, re.M).group())
@@ -165,7 +235,9 @@ def production_harness():
     harness = harness.replace("@QUERY@", method(mesh, "if (cmd_frame[0] == CMD_DEVICE_QUERY && len >= 2)"))
     harness = harness.replace("@SET_PIN@", method(mesh, "if (cmd_frame[0] == CMD_SET_DEVICE_PIN && len >= 5)"))
     harness = harness.replace("@METHODS@", "\n".join(method(mesh, signature) for signature in (
-        "uint32_t MyMesh::getBLEPin(", "void MyMesh::writeOKFrame(", "void MyMesh::writeErrFrame(")))
+        "uint32_t MyMesh::getBLEPin(", "bool MyMesh::applyAndSaveBLEPin(",
+        "void MyMesh::servicePendingBLEPinRestore(",
+        "void MyMesh::writeOKFrame(", "void MyMesh::writeErrFrame(")))
     return prefix + harness
 
 
@@ -210,7 +282,7 @@ inline char* utoa(unsigned int value,char* output,int base){
             self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
             return subprocess.run([str(binary)], capture_output=True, text=True, timeout=20)
 
-    def test_actual_commands_persistence_and_pairing_until_reboot(self):
+    def test_actual_commands_persistence_and_immediate_pairing(self):
         for platform in ("ESP32_PLATFORM", "NRF52_PLATFORM"):
             with self.subTest(platform=platform):
                 ran = self.build_and_run(platform)

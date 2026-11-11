@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the UDP origin marker through real packet, pool and radio paths."""
 from pathlib import Path
+from itertools import product
 import os
 import shutil
 import subprocess
@@ -68,28 +69,38 @@ int main() {
             work = Path(temporary)
             source = work / "main.cpp"
             source.write_text(support + checks, encoding="ascii")
-            sizes = []
-            for enabled in (False, True):
-                with self.subTest(udp=enabled):
-                    binary = work / ("udp" if enabled else "ordinary")
-                    built = subprocess.run([
-                        compiler, "-std=c++17", "-Wall", "-Wextra",
-                        "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
-                        "-fno-pie", "-no-pie", *(["-DWITH_UDP_BRIDGE=1"] if enabled else []),
-                        "-I" + str(ROOT / "test/mocks"), "-I" + str(ROOT / "src"),
-                        str(ROOT / "src/Dispatcher.cpp"), str(ROOT / "src/Packet.cpp"),
-                        str(ROOT / "src/helpers/StaticPoolPacketManager.cpp"),
-                        str(source), "-o", str(binary),
-                    ], capture_output=True, text=True, timeout=60)
-                    self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
-                    environment = os.environ.copy()
-                    # Firmware packet pools live for the entire boot.
-                    environment["ASAN_OPTIONS"] = environment.get("ASAN_OPTIONS", "") + ":detect_leaks=0"
-                    checked = subprocess.run([str(binary)], capture_output=True, text=True,
-                                             env=environment, timeout=10)
-                    self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
-                    sizes.append(int(checked.stdout.strip()))
-            self.assertEqual(sizes[0], sizes[1], "UDP metadata must fit existing packet padding")
+            for pram, seq_tx, auto_trim in product((False, True), repeat=3):
+                with self.subTest(pram=pram, seq_tx=seq_tx, auto_trim=auto_trim):
+                    feature_flags = [
+                        f"-DMESH_W12_PRAM_EXPERIMENT={int(pram)}",
+                        f"-DMESH_W12_PRAM_SEQ_TX_LAB={int(seq_tx)}",
+                        f"-DMESH_ENABLE_LR2021_AUTO_XTRIM={int(auto_trim)}",
+                    ]
+                    sizes = []
+                    for enabled in (False, True):
+                        with self.subTest(udp=enabled):
+                            binary = work / ("udp" if enabled else "ordinary")
+                            built = subprocess.run([
+                                compiler, "-std=c++17", "-Wall", "-Wextra",
+                                "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
+                                "-fno-pie", "-no-pie", *feature_flags,
+                                *(["-DWITH_UDP_BRIDGE=1"] if enabled else []),
+                                "-I" + str(ROOT / "test/mocks"), "-I" + str(ROOT / "src"),
+                                str(ROOT / "src/Dispatcher.cpp"), str(ROOT / "src/Packet.cpp"),
+                                str(ROOT / "src/helpers/StaticPoolPacketManager.cpp"),
+                                str(source), "-o", str(binary),
+                            ], capture_output=True, text=True, timeout=60)
+                            self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
+                            environment = os.environ.copy()
+                            # Firmware packet pools live for the entire boot.
+                            environment["ASAN_OPTIONS"] = environment.get("ASAN_OPTIONS", "") + ":detect_leaks=0"
+                            checked = subprocess.run([str(binary)], capture_output=True, text=True,
+                                                     env=environment, timeout=10)
+                            self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+                            sizes.append(int(checked.stdout.strip()))
+                    if len(sizes) == 2:
+                        self.assertEqual(sizes[0], sizes[1],
+                                         "UDP metadata must fit existing packet padding")
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ struct ApplyStatus {
     Idle, Admitted, Applied, Interrupt, Transmitting, Busy, Receiving,
     BeaconOwned, CarrierOwned, MorseOwned,
     Standby, FrequencyRail, Frequency, Power, SpreadingFactor, Bandwidth,
-    CodingRate, Preamble, SideDetectors, Protocol, Receive, Gain, Trim, Restore
+    CodingRate, Preamble, SideDetectors, Protocol, Receive, Gain, Trim, Restore, Calibration
   };
 
   Stage stage = Stage::Idle;
@@ -57,6 +57,7 @@ struct ApplyStatus {
       case Stage::Gain: return "rx-gain";
       case Stage::Trim: return "crystal-trim";
       case Stage::Restore: return "restore";
+      case Stage::Calibration: return "calibration";
     }
     return "unknown";
   }

@@ -3,6 +3,12 @@
 #include <Mesh.h>
 #include <helpers/SensorManager.h>
 #include <helpers/sensors/LocationProvider.h>
+#ifndef MESH_SENSOR_DESCRIPTOR_INDEX
+#define MESH_SENSOR_DESCRIPTOR_INDEX 0
+#endif
+#if MESH_SENSOR_DESCRIPTOR_INDEX != 0 && MESH_SENSOR_DESCRIPTOR_INDEX != 1
+#error "MESH_SENSOR_DESCRIPTOR_INDEX must be 0 or 1"
+#endif
 #if defined(RAK_BOARD) && !defined(RAK_WISMESH_TAG)
 #include "WisBlockSharedPowerPolicy.h"
 #endif
@@ -11,13 +17,22 @@ class EnvironmentSensorManager : public SensorManager {
 protected:
   static const int MAX_ACTIVE_SENSORS = 16;
 
-  // Query function pointer + sub-channel index (for multi-channel sensors like INA3221).
+  // Initialized driver reference + sub-channel index (for sensors like INA3221).
   // Sub-channel is 0 for all single-output sensors.
   struct ActiveSensor {
+#if MESH_SENSOR_DESCRIPTOR_INDEX
+    // The immutable descriptor table already owns both callback pointers.
+    // Retain its index rather than duplicating the pointers in every slot.
+    uint8_t   descriptor_index;
+#else
     void    (*query)(uint8_t channel, uint8_t sub_channel, CayenneLPP& telemetry);
     bool    (*query_voltage)(uint8_t sub_channel, float& voltage);
+#endif
     uint8_t   sub_channel;
   };
+#if MESH_SENSOR_DESCRIPTOR_INDEX
+  static_assert(sizeof(ActiveSensor) == 2, "Descriptor references must retain all 16 sensor slots in 32 bytes");
+#endif
 
   ActiveSensor _active_sensors[MAX_ACTIVE_SENSORS];
   int          _active_sensor_count = 0;

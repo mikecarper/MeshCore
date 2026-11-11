@@ -67,7 +67,12 @@ int main() {
   // Every board capacity retains every unique row with no alignment padding.
   for (const size_t capacity : {size_t(64), size_t(256), size_t(512), size_t(2048)}) {
     Info* storage = new Info[capacity];
+    // RTC SLOW can retain bytes across a warm/deep reset. The production
+    // constructor must clear every row before any lookup can use them.
+    std::memset(storage, 0xa5, capacity * sizeof(Info));
     SimpleMeshTables full(storage, capacity);
+    for (size_t i = 0; i < capacity * sizeof(Info); ++i)
+      assert(reinterpret_cast<const uint8_t*>(storage)[i] == 0);
     for (size_t i = 0; i < capacity; ++i) {
       const uint8_t prefix[] = {0x80, uint8_t(i >> 8), uint8_t(i)};
       g_mock_millis = 0xff000001u + uint32_t(i);

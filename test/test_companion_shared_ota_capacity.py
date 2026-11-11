@@ -36,13 +36,15 @@ class SharedCompanionOtaCapacityTest(unittest.TestCase):
                        "-I", str(ROOT / "src"), "-I", temp, "-x", "c++", "-",
                        "-o", str(binary)]
             if rtc:
-                s3 = rtc == "ESP32S3"
+                s3 = rtc in ("ESP32S3", "ESP32S3_36")
+                slow_slots = 36 if rtc == "ESP32S3_36" else (32 if s3 else 0)
                 command[1:1] = ["-DNDEBUG", "-DESP32_PLATFORM=1", "-DCOMPANION_RADIO_FULL=1",
                     "-DOTA_SHARED_COMPANION_QUEUE=1", f"-DOFFLINE_QUEUE_SIZE={256 if s3 else 224}",
                     f"-DCONFIG_IDF_TARGET_{'ESP32S3' if s3 else 'ESP32C3'}=1",
+                    *(["-DM5STACK_CARDPUTER_ADV=1"] if rtc == "ESP32S3_36" else []),
                     "-DCONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP=1",
                     "-DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32",
-                    f"-DCOMPANION_RTC_SLOW_OFFLINE_FRAMES={32 if s3 else 0}"]
+                    f"-DCOMPANION_RTC_SLOW_OFFLINE_FRAMES={slow_slots}"]
             if run:
                 command[1:1] = ["-fsanitize=address,undefined", "-g"]
             result = subprocess.run(command, input=text, text=True,
@@ -59,7 +61,7 @@ class SharedCompanionOtaCapacityTest(unittest.TestCase):
                     if s3:
                         match = re.search(r'\.rtc\.force_slow\.test\s+([0-9a-fA-F]+)', sections)
                         self.assertIsNotNone(match, sections)
-                        self.assertEqual(int(match[1], 16), 32 * 177, sections)
+                        self.assertEqual(int(match[1], 16), slow_slots * 177, sections)
                 def no_core_dump():
                     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
                 result = subprocess.run([str(binary), *args], text=True,
@@ -207,6 +209,10 @@ int main() {
     def test_s3_256_and_128_fifo_all_heads_use_both_banks_and_actual_mesh_callbacks(self):
         self.compile(self.queue_fixture(rtc=True, capacity=256),
                      run=True, rtc="ESP32S3")
+
+    def test_cardputer_36_slow_slots_preserve_full_and_active_ota_capacity(self):
+        self.compile(self.queue_fixture(rtc=True, capacity=256),
+                     run=True, rtc="ESP32S3_36")
 
     def test_rtc_owner_reset_geometry_and_release_build_safeguards(self):
         harness = self.queue_fixture(rtc=True).split('int main() {', 1)[0] + r'''

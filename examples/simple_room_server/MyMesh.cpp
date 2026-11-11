@@ -27,6 +27,9 @@
 #include <helpers/ota/OtaContext.h>
 #endif
 #include <helpers/FileRead.h>
+#if MESH_ENABLE_TELEMETRY_HISTORY
+#include <helpers/TelemetryDailyExtremaCLI.h>
+#endif
 #if MESH_ENABLE_FLEET_CONTROL
 #include <helpers/FleetLocation.h>
 #endif
@@ -2574,7 +2577,7 @@ void MyMesh::onRadioProfileCopyQueued(mesh::Packet* packet,
 #define CTL_TYPE_NODE_DISCOVER_REQ   0x80
 #define CTL_TYPE_NODE_DISCOVER_RESP  0x90
 
-void MyMesh::putNeighbour(const mesh::Identity &id, uint32_t timestamp, float snr,
+void MyMesh::putNeighbour(const mesh::Identity &id, uint32_t /*timestamp*/, float snr,
                           int16_t rssi) {
   // find existing neighbour, else use least recently updated
   uint32_t oldest_timestamp = 0xFFFFFFFF;
@@ -2597,7 +2600,6 @@ void MyMesh::putNeighbour(const mesh::Identity &id, uint32_t timestamp, float sn
   // A slot taken over by another identity forgets the old one's radio2.
   if (!id.matches(neighbour->id)) neighbour->radio2 = Radio2DiscoverTrailer::unknown();
   neighbour->id = id;
-  neighbour->advert_timestamp = timestamp;
   neighbour->heard_timestamp = getRTCClock()->getCurrentTime();
   neighbour->snr = (int8_t)(snr * 4);
   neighbour->rssi = rssi;
@@ -2750,7 +2752,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.flood_channel_data_enabled = 1;
   _prefs.flood_retry_group_max_path = FLOOD_RETRY_GROUP_MAX_PATH_DEFAULT;
   _prefs.interference_threshold = 0; // disabled
-  _prefs.radio_fem_rxgain = 1;       // LoRa FEM RX gain on by default (FEM boards)
+  _prefs.radio_fem_rxgain = 0;       // LoRa FEM RX gain off by default (FEM boards)
   _prefs.cad_enabled = DEFAULT_CAD_ENABLED;
   _prefs.powersaving_enabled = DEFAULT_POWERSAVING_ENABLED ? 1 : 0;
   _prefs.rx_powersaving_enabled = DEFAULT_RXPS_ENABLED ? 1 : 0;
@@ -2775,7 +2777,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
     || defined(RX_BOOSTED_GAIN)
   _prefs.rx_boosted_gain = mesh::radio::configuredRxBoostedGainDefault();
 #endif
-  _prefs.radio_fem_rxgain = 1;
+  _prefs.radio_fem_rxgain = 0;
   _prefs.radio_fem_txgain = 0;
   // Observer defaults (alert.*, etc.) moved to applyMQTTDefaults() - they live
   // in /mqtt_prefs now, not NodePrefs.
@@ -2900,7 +2902,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   mesh::endEsp32BootFileInventory();
 #endif
 #ifdef WITH_MQTT_BRIDGE
-  if (_prefs.bridge_enabled) {
+  if (_prefs.bridge_enabled && !mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) {
     // Defer construction to avoid static init crashes on ESP32 classic
     MQTTNodeInfo node_info;
     node_info.node_name = _prefs.node_name;
@@ -2964,7 +2966,8 @@ void MyMesh::begin(FILESYSTEM *fs) {
   start_webui = _prefs.bridge_enabled
       && !WebConfigServer::hasConfiguredWiFi(_cli.getObserverPrefs());
 #endif
-  start_webui = WebConfigServer::loadEnabled(start_webui);
+  start_webui = WebConfigServer::loadEnabled(start_webui)
+      && !mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi);
 #ifdef WITH_MQTT_BRIDGE
   if (start_webui && !WebConfigServer::hasConfiguredWiFi(_cli.getObserverPrefs())) {
 #if defined(WITH_ESPNOW_BRIDGE)
@@ -3551,7 +3554,7 @@ bool MyMesh::startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup
     getWebUIStatus(reply);
     return true;
   }
-  if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) {
+  if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) {
     strcpy(reply, "Error: WiFi disabled; use set wifi on or set 2.4ghz on");
     return true;
   }
@@ -3625,7 +3628,10 @@ bool MyMesh::setWebUIEnabled(bool enabled, char* reply) {
     return true;
   }
   if (enabled) {
-    if (_webconfig && _webconfig->isRunning()) {
+    if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)
+        || mesh::wireless::control().pendingDisable(mesh::wireless::WiFi)) {
+      strcpy(reply, "OK - webui on saved; WiFi is off");
+    } else if (_webconfig && _webconfig->isRunning()) {
       strcpy(reply, "OK - webui on (already active)");
     } else {
       startWebConfig(false, reply);
@@ -3936,6 +3942,8 @@ void MyMesh::onUserGpioTimerCompleted(uint8_t pin, uint8_t state,
 #if MESH_ENABLE_TELEMETRY_HISTORY
 bool MyMesh::handleTelemetryHistoryCommand(const char* command, char* reply,
                                           size_t reply_capacity, bool include_prompt) {
+  if (mesh::telemetry_daily_cli::handle(command, telemetry_history, reply, reply_capacity,
+          include_prompt, true)) return true;
   const char* noise_commands[] = {"get telemetry.noise", "get telemetry.noise2"};
   for (uint8_t profile = 0; profile < 2; ++profile) {
     const size_t length = strlen(noise_commands[profile]);
@@ -4286,6 +4294,9 @@ bool MyMesh::saveFilter(ClientInfo* client) {
 }
 
 void MyMesh::loop() {
+#if MESH_WARM_RX_REFRESH
+  if (_radio && _radio->serviceAGCMaintenanceFastLane()) return;
+#endif
 #if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)
   _local_cli_output.service();
 #endif
@@ -4295,6 +4306,9 @@ void MyMesh::loop() {
   // Check radio FIRST to ensure we don't miss incoming packets
   // MQTT processing can take time, so we prioritize radio reception
   mesh::Mesh::loop();
+#if MESH_WARM_RX_REFRESH
+  if (_radio && _radio->isAGCMaintenanceActive()) return;
+#endif
 #if defined(MESHCORE_HAS_COLOR_DISPLAY)
   if (!mesh::morseTimingActive(_radio)) {
     mesh::ui::refreshDisplayNightLocation(sensors, getRTCClock()->getCurrentTime(), millis());

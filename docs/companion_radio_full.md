@@ -24,6 +24,9 @@ For practical on/off commands and update directions, see
 Shared hardware commands include [power and watchdog diagnostics](companion_power_diagnostics.md),
 [radio recovery and RXEN diagnostics](companion_radio_diagnostics.md), and
 [SD card management on supported builds](test-results/companion_cli_parity_2026-10-23.md#shared-sd-commands).
+Optional [rotary controls, passive buzzers and status LEDs](rotary_input.md)
+have saved custom pin assignments with shared GPIO protection. The guide
+includes a native-USB Heltec V4 encoder example and its remaining pin limits.
 
 `companion_radio_full` combines every qualified Companion transport for its
 platform into one artifact and acts as a host-backed LoRa mOTA source for
@@ -364,6 +367,11 @@ set radio.fem.txgain on
 commands control the external receive and transmit paths. The selected states
 are applied immediately and retained after reboot. FEM TX gain is reported as
 unsupported on boards without software-selectable PA gain.
+
+External FEM RX gain defaults to **off**. Enable it with
+`set radio.fem.rxgain on` when wanted; an explicitly saved choice survives
+reboot. Historical `_femon` build names remain compatible update targets and
+also ship with the RX gain default off.
 
 SSD1306 display builds also persist a runtime orientation. This replaces the
 separate rotated Full Companion release image:
@@ -721,10 +729,28 @@ transmission; live entries are never evicted to accept a newer request. A full
 history or a quarantined identifier returns `ERR_BAD_STATE`, so clients must
 back off. Retired reflected tags and trace tag/auth tuples are suppressed for
 at least ten seconds and through the original radio deadline plus ten seconds
-when longer. Login retries to the same peer have at least a thirty-second
-quarantine. Positively matched newer status/telemetry/binary replies still work
-after login, but otherwise unsolicited responses from that login peer can be
-suppressed during the quarantine.
+when longer. Cancelled, timed-out, or failed logins to the same peer have at
+least a thirty-second quarantine. After the Companion admits a successful
+binary login result to the original app connection, that connection can
+log in again to the same peer with the same effective password
+(the protocol sends at most fifteen bytes). This sends a fresh login request;
+it does not return a cached success. Known old reply timestamps remain blocked.
+Binary login transmissions are spaced at least three seconds apart. One
+login can wait for up to three seconds for this timer or a busy request slot,
+without blocking radio reception. Identical repeated clicks keep the same
+queued operation and deadline. A small bounded service grace covers a loop
+that crosses the timer boundary; an overdue login is discarded. Its `SENT`
+estimate starts when it is dispatched. Disconnect, session cancellation, or
+logout from the original connection clears the queued login. If it still
+cannot proceed at the deadline, only that connection receives the error.
+
+The completed-login context stays only in RAM during its history window and
+is cleared when the connection ends, its session is cancelled, or that history
+expires. A different connection or changed password must wait for quarantine
+expiry. Reopening still needs a free history slot; completed logins do not
+evict recent replies. Positively matched newer status/telemetry/binary replies
+still work after login, but otherwise unsolicited responses from that login
+peer can be suppressed during the quarantine.
 
 These guards are finite and clear at reboot. Login replies carry a server
 timestamp, not an echoed request nonce; sufficiently late replies or a
@@ -740,13 +766,13 @@ until Bluetooth connects or the two-minute pairing window expires. USB, WiFi,
 Ethernet, and hardware-serial connections do not suppress this screen. With no
 saved BLE PIN, display builds generate a new PIN at boot; builds without a
 physical display use `123456`. Use `set pin 654321` in the Companion CLI to save
-a fixed pairing PIN, then `reboot` to activate it. `set pin 0` restores the
-default/generated PIN policy. A PIN saved through the Companion protocol also
-takes effect after reboot. See the [PIN command reference](cli_commands.md#set-the-bluetooth-pairing-pin-companion).
+a fixed pairing PIN. `set pin 0` restores the default/generated PIN policy.
+PIN changes made through the CLI or Companion protocol apply to future pairings
+immediately. Existing bonded phones continue to use their saved keys; forget
+and re-pair a phone to require the new PIN. See the [PIN command reference](cli_commands.md#set-the-bluetooth-pairing-pin-companion).
 
 The app's Bluetooth settings show the saved custom PIN or Random choice as
-soon as it is saved. The pairing screen continues showing the active PIN
-until reboot, when the saved choice takes effect.
+soon as it is saved. Some app versions may still say to reboot.
 
 On T1000-E, a USB data host automatically pauses Bluetooth, including an
 existing phone connection. Unplug USB to resume Bluetooth after 500 ms; a
@@ -781,6 +807,13 @@ Rotating MAC policies still rotate and reopen first pairing when they do;
 stealth remains enabled. Repeating `on` keeps an existing bond. Toggle `off`,
 then `on`, then reboot to reset first pairing. All flag changes need reboot.
 The node still sends directed or allowlisted BLE packets; it is not radio silent.
+
+On nRF52 and NimBLE Companions, an authentication failure does not by itself
+delete a saved bond. A phone that still has its keys can retry after a weak
+connection. Stealth remains enabled after a failure; if a reset phone can no
+longer be recognized, use an authorized local connection to turn stealth off
+before pairing again. Re-pairing and interrupted bond storage are handled by
+the platform Bluetooth stack and are not guaranteed to preserve the old key.
 
 ESP32 TCP ports 5000, 5001, and 5002 remain trusted-network services. The HTTP
 admin login protects WebConfig and runtime browser OTA, and does not protect

@@ -21,6 +21,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 V6 = "boards/nrf52840_s140_v6.ld"
 V7 = "boards/nrf52840_s140_v7.ld"
+V6_BOOT = "boards/nrf52840_s140_v6_qspi_bootloader_ota.ld"
 XIAO = "boards/nrf52840_s140_v7_xiao_bootloader_ota.ld"
 XIAO_BOARD = "seeed-xiao-afruitnrf52-nrf52840"
 PENDING = "OTA_QSPI_HARDWARE_QUALIFICATION_PENDING"
@@ -28,6 +29,8 @@ INTERNAL_ONLY = ("OTA_HYBRID_RAM_STORE", "OTA_INTERNAL_BOOTLOADER_UPDATE")
 STORAGE_CHANGES = {
     "ENABLE_OTA", "DISABLE_LORA_OTA", "QSPIFLASH", "OTA_FLASH_STORE",
     "OTA_QSPI_STORE", "OTA_FOLDER_SERIAL", "OTA_QSPI_BOOTLOADER_UPDATE", PENDING,
+    "OTA_QSPI_BOOT_WIO_L1", "OTA_QSPI_BOOT_TECHO", "OTA_QSPI_BOOT_TECHO_LITE",
+    "OTA_QSPI_BOOT_THINKNODE_M1", "OTA_QSPI_BOOT_THINKNODE_M6",
 }
 
 
@@ -52,15 +55,19 @@ SUPPORTED = (
               "ikoka_nano_nrf", XIAO, 757760) for power in (22, 30, 33)),
     *(Profile(f"ikoka_stick_nrf_{power}dbm_room_server", XIAO_BOARD,
               "ikoka_stick_nrf", XIAO, 757760) for power in (22, 30, 33)),
-    Profile("LilyGo_T-Echo_room_server", "t-echo", "lilygo_techo"),
-    Profile("ThinkNode_M1_room_server", "thinknode_m1", "thinknode_m1"),
-    Profile("ThinkNode_M6_room_server", "thinknode_m6", "thinknode_m6"),
+    Profile("LilyGo_T-Echo_room_server", "t-echo", "lilygo_techo", V6_BOOT, 761856),
+    Profile("ThinkNode_M1_room_server", "thinknode_m1", "thinknode_m1", V6_BOOT, 761856),
+    Profile("ThinkNode_M6_room_server", "thinknode_m6", "thinknode_m6", V6_BOOT, 761856),
     Profile("WioTrackerL1_room_server", "seeed-wio-tracker-l1",
-            "wio-tracker-l1", V7, 811008),
+            "wio-tracker-l1", XIAO, 757760),
+    Profile("WioTrackerL1-1W_repeater", "seeed-wio-tracker-l1",
+            "wio-tracker-l1-1w", XIAO, 757760),
+    Profile("WioTrackerL1-1W_room_server", "seeed-wio-tracker-l1",
+            "wio-tracker-l1-1w", XIAO, 757760),
     Profile("SenseCap_Solar_room_server", "seeed_sensecap_solar",
-            "sensecap_solar", V7, 811008),
-    Profile("LilyGo_T-Echo-Lite_repeater", "t-echo", "lilygo_techo_lite"),
-    Profile("LilyGo_T-Echo-Lite_room_server", "t-echo", "lilygo_techo_lite"),
+            "sensecap_solar", XIAO, 757760),
+    Profile("LilyGo_T-Echo-Lite_repeater", "t-echo", "lilygo_techo_lite", V6_BOOT, 761856),
+    Profile("LilyGo_T-Echo-Lite_room_server", "t-echo", "lilygo_techo_lite", V6_BOOT, 761856),
 )
 PREEXISTING_SOLAR_ROOMS = (
     Profile("solarxiao_30S_room_server", XIAO_BOARD, "xiao_nrf52", XIAO, 757760),
@@ -200,7 +207,7 @@ class OnboardQspiProfilesTest(unittest.TestCase):
             self.assertEqual(defines.get(name), "1", name)
         for name in ("QSPIFLASH", "DISABLE_LORA_OTA", "OTA_SD_STORE", *INTERNAL_ONLY):
             self.assertNotIn(name, defines)
-        if profile.linker == XIAO:
+        if profile.linker in (XIAO, V6_BOOT):
             self.assertEqual(defines.get("OTA_QSPI_BOOTLOADER_UPDATE"), "1")
         else:
             self.assertNotIn("OTA_QSPI_BOOTLOADER_UPDATE", defines)
@@ -215,7 +222,7 @@ class OnboardQspiProfilesTest(unittest.TestCase):
         self.assertTrue(source_selected(options, "../examples/" + role + "/main.cpp"))
 
     def test_supported_external_profiles_keep_exact_legacy_hardware(self):
-        self.assertEqual(len(SUPPORTED), 15)
+        self.assertEqual(len(SUPPORTED), 17)
         for profile in (*SUPPORTED, *PREEXISTING_SOLAR_ROOMS):
             with self.subTest(target=profile.target):
                 self.assert_external_contract(profile)
@@ -226,7 +233,8 @@ class OnboardQspiProfilesTest(unittest.TestCase):
                 options = self.options(profile.parent)
                 defines = effective_defines(options)
                 self.assertEqual(options.get("board"), profile.board)
-                self.assertEqual(options.get("board_build.ldscript"), V7 if profile.linker == XIAO else profile.linker)
+                original_linker = V7 if profile.linker == XIAO else V6 if profile.linker == V6_BOOT else profile.linker
+                self.assertEqual(options.get("board_build.ldscript"), original_linker)
                 for name in ("OTA_QSPI_STORE", "OTA_QSPI_BOOTLOADER_UPDATE", PENDING, *INTERNAL_ONLY):
                     self.assertNotIn(name, defines)
                 self.assertNotEqual(profile.target, profile.parent)

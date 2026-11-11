@@ -79,7 +79,7 @@ class SerialBLEInterface : public BaseSerialInterface {
   unsigned long _last_retry_attempt;
   ble_gap_addr_t _peer_address = {};
   bool _peer_address_valid;
-  bool _bond_removed_for_connection;
+  uint16_t _peer_connection_handle;
   ble_gap_addr_t _successful_peer_address = {};
   bool _stealth_pair_once;
   bool _bonded_only;
@@ -130,7 +130,6 @@ class SerialBLEInterface : public BaseSerialInterface {
                         uint16_t expected_handle = BLE_CONN_HANDLE_INVALID,
                         uint32_t expected_generation = 0);
   void serviceTxRecovery(uint32_t now);
-  bool removeStoredBondForPeer(const char* cause);
   void noteSuccessfulConnection(const ble_gap_addr_t& peer_address);
   bool resolveSuccessfulPeer(
       mesh::companion::BluetoothPeerIdentity& peer) const;
@@ -166,7 +165,7 @@ public:
     _last_health_check = 0;
     _last_retry_attempt = 0;
     _peer_address_valid = false;
-    _bond_removed_for_connection = false;
+    _peer_connection_handle = BLE_CONN_HANDLE_INVALID;
     _stealth_pair_once = false;
     _bonded_only = false;
     _bonded_only_configure_pending = false;
@@ -188,6 +187,9 @@ public:
              bool clear_bonds = false, bool stealth_pair_once = false,
              const mesh::companion::BluetoothPeerIdentity*
                  bonded_only_peer = nullptr);
+  // Apply the passkey for future pairings without restarting Bluetooth or
+  // changing existing bonds. False leaves the previous passkey in use.
+  bool setPin(uint32_t pin_code);
   // Refresh the GAP and scan-response name after a saved node/Bluetooth name
   // changes. A connected phone is left alone; the next idle pass applies it.
   bool refreshName(const char* prefix, const char* name);

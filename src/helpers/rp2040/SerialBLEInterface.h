@@ -68,6 +68,9 @@ public:
              const uint8_t* custom_address = nullptr, bool clear_bonds = false,
              bool stealth_pair_once = false,
              const mesh::companion::BluetoothPeerIdentity* bonded_only_peer = nullptr);
+  // Update the passkey used for future pairings without dropping connections
+  // or deleting existing bonds.
+  bool setPin(uint32_t pin_code);
   // Pico W currently supports normal authenticated pairing, not the optional
   // ESP32/nRF52 identity-rotation and bonded-only advertising policies.
   bool takeSuccessfulConnection(mesh::companion::BluetoothPeerIdentity* = nullptr) { return false; }

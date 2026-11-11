@@ -29,6 +29,9 @@ struct Clock : mesh::MillisecondClock {
 struct Radio : mesh::Radio {
   mesh::RadioProfiles p;
   unsigned rx=0,tx=0,calibrations=0,recoveries=0,loops=0;
+  unsigned primary_resets=0;
+  bool rxps_enabled=false,continuous_fallback=false,retry_recovers=false;
+  uint32_t configured_cadence=0;
   uint8_t prepared=0;
   bool cad=false;
   unsigned busy_mask=0;
@@ -42,7 +45,18 @@ struct Radio : mesh::Radio {
   bool isSendComplete() override { return true; }
   void onSendFinished() override {}
   bool isInRecvMode() const override { return mesh::radioDirection::radioReceiveAllowed(); }
-  void loop() override { ++loops; }
+  void loop() override {
+    ++loops;
+    if(retry_recovers) {continuous_fallback=false;retry_recovers=false;}
+  }
+#if MESH_WARM_RX_REFRESH && !MESH_COMPACT_STM32_RADIO
+  // Compact radios omit RXPS; generic consumers need no warm-AGC overrides.
+  bool isRxPowerSavingEnabled() const override {return rxps_enabled;}
+  bool isRxPowerSavingContinuousFallback() const override {return rxps_enabled&&continuous_fallback;}
+  void configureAGCMaintenance(uint32_t ms) override {configured_cadence=ms;}
+  void resetAGC() override {++primary_resets;}
+  bool tryResetAGC() override {resetAGC();return true;}
+#endif
   void setCADEnabled(bool value) override { cad=value; }
   bool isReceiving() override { return busy_mask & (1U << prepared); }
   void triggerNoiseFloorCalibrate(int) override { ++calibrations; }
@@ -53,6 +67,8 @@ struct Radio : mesh::Radio {
 };
 struct Dispatcher : mesh::Dispatcher {
   unsigned inbound=0;
+  int agc_ms=0;
+  bool adaptive_agc=false;
   Dispatcher(Radio&r,Clock&c,StaticPoolPacketManager&m):mesh::Dispatcher(r,c,m){}
   mesh::DispatcherAction onRecvPacket(mesh::Packet*) override {
     ++inbound; return ACTION_RETRANSMIT_DELAYED(0,0);
@@ -60,6 +76,8 @@ struct Dispatcher : mesh::Dispatcher {
   using mesh::Dispatcher::getTransmitProfileMask;
   using mesh::Dispatcher::getNextQueueWakeDelay;
   bool getCADEnabled() const override { return true; }
+  int getAGCResetInterval() const override {return agc_ms;}
+  bool useAdaptiveAGC() const override {return adaptive_agc;}
 };
 struct Bridge : AbstractBridge {
   StaticPoolPacketManager& m;
@@ -71,6 +89,36 @@ struct Bridge : AbstractBridge {
 };
 int main() {
   using namespace mesh::radioDirection;
+#if MESH_WARM_RX_REFRESH && !MESH_COMPACT_STM32_RADIO
+  for(bool adaptive:{false,true}) {
+    // Saved RXPS intent alone cannot prove that the frontend already cycles.
+    // Execute actual Dispatcher scheduling in fixed and device-sleep modes.
+    current=Mode::Both;
+    Radio fallback;Clock clock;StaticPoolPacketManager packets(4);
+    Dispatcher node(fallback,clock,packets);
+    node.agc_ms=16000;node.adaptive_agc=adaptive;fallback.rxps_enabled=true;
+    node.begin();node.loop();clock.now+=50000;node.loop();
+    assert(!fallback.primary_resets&&fallback.configured_cadence==0);
+    uint32_t wait=0;assert(!node.getNextQueueWakeDelay(wait));
+    fallback.continuous_fallback=true;++clock.now;node.loop();
+    assert(fallback.configured_cadence==16000&&!fallback.primary_resets);
+    if(adaptive)assert(node.getNextQueueWakeDelay(wait)&&wait==16000);
+    clock.now+=15999;node.loop();assert(!fallback.primary_resets);
+    clock.now+=2;node.loop();assert(fallback.primary_resets==1);
+    assert(fallback.rxps_enabled&&fallback.continuous_fallback);
+    // A retry can regain duty-cycle RX inside Radio::loop at the due time.
+    // The later eligibility check must see that change before requesting AGC.
+    fallback.retry_recovers=true;clock.now+=16001;node.loop();
+    assert(!fallback.continuous_fallback&&fallback.primary_resets==1);
+    assert(!node.getNextQueueWakeDelay(wait));
+    ++clock.now;node.loop();assert(fallback.configured_cadence==0);
+    clock.now+=60000;node.loop();assert(fallback.primary_resets==1&&fallback.rxps_enabled);
+    fallback.continuous_fallback=true;current=Mode::Tx;++clock.now;node.loop();
+    clock.now+=20000;node.loop();
+    assert(fallback.configured_cadence==0&&fallback.primary_resets==1);
+    assert(!node.getNextQueueWakeDelay(wait));
+  }
+#endif
   Radio r; Clock c; StaticPoolPacketManager pool(12); Dispatcher d(r,c,pool);
   r.p.secondary.mode=mesh::RadioProfileMode::RxTx;
   r.p.cross=mesh::RadioCrossMode::On;
@@ -131,7 +179,8 @@ class RadioDirectionDispatcherTests(unittest.TestCase):
                 source.write_text(SOURCE)
                 (work/'Mesh.h').write_text('#pragma once\n#include <Dispatcher.h>\n')
                 executable = work / 'test'
-                flags = ['-DMESH_ENABLE_RADIO_DIRECTION=1', '-DMESH_ENABLE_BRIDGE_INGRESS=1']
+                flags = ['-DMESH_ENABLE_RADIO_DIRECTION=1', '-DMESH_ENABLE_BRIDGE_INGRESS=1',
+                         '-DMESH_WARM_RX_REFRESH=1']
                 if soft:
                     flags += ['-DRADIO_LIVENESS_SOFT_ONLY=1']
                 built = subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-O1',

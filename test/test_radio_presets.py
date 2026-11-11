@@ -891,7 +891,7 @@ class CompanionPresetContractTest(unittest.TestCase):
         anchors = ('_radio_profiles.begin(_store->getPrimaryFS()',
                    '_store->loadPrefs(_prefs,',
                    'applyHilStartupFrequency(_prefs.freq)',
-                   '_prefs.cr = constrain(_prefs.cr, 5, 8);')
+                   '_prefs.cr = constrain(_prefs.cr, 4, 8);')
         for anchor in anchors:
             pos = begin.find(anchor)
             self.assertGreaterEqual(pos, 0, anchor + ' missing from MyMesh::begin')

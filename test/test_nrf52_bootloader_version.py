@@ -5,11 +5,13 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import struct
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 import zipfile
 
@@ -20,7 +22,91 @@ STOCK = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(STOCK)
 
 
+def workflow_step_script(workflow, name):
+    """Extract the named step's literal shell block, ending at YAML indentation.
+
+    This test deliberately executes the production workflow script. Avoid a
+    YAML dependency in the lightweight bootloader job, and do not infer where
+    the next step or job starts from the job's name.
+    """
+    lines = workflow.splitlines(keepends=True)
+    header = re.compile(r"^(?P<indent> *)- name: " + re.escape(name) + r"\s*$")
+    matches = [(i, m) for i, line in enumerate(lines)
+               if (m := header.match(line.rstrip("\r\n")))]
+    if len(matches) != 1:
+        raise ValueError("Expected exactly one named workflow step")
+    start, match = matches[0]
+    step_indent = len(match.group("indent"))
+    end = start + 1
+    while end < len(lines):
+        line = lines[end]
+        if line.strip() and len(line) - len(line.lstrip(" ")) <= step_indent:
+            break
+        end += 1
+
+    run_indent = step_indent + 2
+    run_header = re.compile(r"^ {" + str(run_indent) + r"}run: \|[+-]?\s*$")
+    run_lines = [i for i in range(start + 1, end)
+                 if run_header.match(lines[i].rstrip("\r\n"))]
+    if len(run_lines) != 1:
+        raise ValueError("Expected one literal run block in workflow step")
+    body = []
+    for line in lines[run_lines[0] + 1:end]:
+        if line.strip() and len(line) - len(line.lstrip(" ")) <= run_indent:
+            break
+        body.append(line)
+    if not any(line.strip() for line in body):
+        raise ValueError("Workflow run block is empty")
+    return textwrap.dedent("".join(body))
+
+
 class BootloaderVersionTest(unittest.TestCase):
+    def test_otafix_release_download_falls_back_without_skipping_verification(self):
+        workflow = (ROOT / '.github/workflows/run-unit-tests.yml').read_text(encoding='utf-8')
+        body = workflow_step_script(workflow, 'Verify all signed OTAFIX 2.4.6 release images')
+        self.assertIn('releases/assets/546337954', body)
+        self.assertIn('Accept: application/octet-stream', body)
+        prelude = r'''
+curl() {
+  case "$*" in
+    *api.github.com*) echo api >> "$CAPTURE"; [ "$MODE" != both_fail ] ;;
+    *) echo direct >> "$CAPTURE"; [ "$MODE" = direct_ok ] ;;
+  esac
+}
+python3() { echo verify:"$*" >> "$CAPTURE"; }
+'''
+        for mode, expected, success in (
+                ('direct_ok', ['direct', 'verify:-B test/test_nrf52_bootloader_version.py -v'], True),
+                ('fallback_ok', ['direct', 'api', 'verify:-B test/test_nrf52_bootloader_version.py -v'], True),
+                ('both_fail', ['direct', 'api'], False)):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temp:
+                log = Path(temp) / 'calls'
+                env = dict(os.environ, CAPTURE=str(log), MODE=mode,
+                           MESHCORE_BOOTLOADER_MOTA_ZIP=str(Path(temp) / 'asset.zip'))
+                result = subprocess.run(['bash', '-e', '-c', prelude + body],
+                                        cwd=ROOT, env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
+                self.assertEqual(log.read_text(encoding='utf-8').splitlines(), expected)
+
+    def test_workflow_step_script_stops_at_the_next_step_or_job(self):
+        prefix = ('  bootloader-version:\n    steps:\n'
+                  '      - name: Pin release\n        env:\n          X: y\n'
+                  '        run: |\n          echo "test-core:"\n'
+                  '          if true; then\n            echo verified\n          fi\n')
+        expected = 'echo "test-core:"\nif true; then\n  echo verified\nfi\n'
+        for suffix in ('', '\n  test-core:\n    steps: []\n',
+                       '\n      - name: Another step\n        run: false\n',
+                       '\n      - uses: actions/checkout@v6\n'):
+            with self.subTest(suffix=suffix):
+                self.assertEqual(workflow_step_script(prefix + suffix, 'Pin release').strip(),
+                                 expected.strip())
+        with self.assertRaises(ValueError):
+            workflow_step_script(prefix, 'Absent')
+        with self.assertRaises(ValueError):
+            workflow_step_script(prefix + prefix, 'Pin release')
+        with self.assertRaises(ValueError):
+            workflow_step_script('      - name: Pin release\n        run: false\n', 'Pin release')
+
     def test_stock_artifact_manifest(self):
         records = json.loads((FIXTURES / "stock_images.json").read_text())["artifacts"]
         self.assertEqual(len(records), 26)

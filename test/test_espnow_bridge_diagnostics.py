@@ -95,8 +95,11 @@ bool nonce(const char* text, uint32_t& value) {
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         nm = shutil.which("nm")
         self.assertIsNotNone(nm, "nm is required for dependency inspection")
+        # Hosted runners can briefly stall while loading binutils/plugins.
+        # Give inspection the same bounded startup allowance as compilation;
+        # the undefined-symbol dependency check below remains mandatory.
         symbols = subprocess.run([nm, "-u", str(binary)], capture_output=True,
-                                 text=True, timeout=10, check=True).stdout
+                                 text=True, timeout=60, check=True).stdout
         self.assertNotRegex(symbols, r"(?i)malloc|calloc|realloc|free|_Zn[aw]|esp_|Serial|printf|millis|micros|atomic|mutex")
 
 

@@ -74,6 +74,19 @@ struct Logger {
   void println(const char*) {}
 } logger;
 Logger& usbLoggingPort() { return logger; }
+namespace wireless {
+enum Service : uint8_t { Bluetooth = 2 };
+// Durable group policy is exercised by the real Control/store suites. Mock
+// its boundary here while executing the actual Companion boot guard.
+struct Control {
+  bool bluetooth_blocked=false;
+  bool blocked(Service service) const {
+    assert(service==Bluetooth);
+    return bluetooth_blocked;
+  }
+};
+Control& control() { static Control value; return value; }
+}
 }
 bool prepareCompanionBluetoothIdentity(CompanionNodePrefs*) {
   ++identity_calls; return identity_ok;
@@ -167,6 +180,7 @@ void resetBootCounters() {
   identity_calls=address_calls=begin_calls=enable_calls=register_calls=manager_enable_calls=0;
   interface_manager.enabled=true;
   the_mesh.preference=true;
+  mesh::wireless::control().bluetooth_blocked=false;
   companion_bluetooth_initialized=false;
   companion_bluetooth_start_at=0;
 }
@@ -325,6 +339,11 @@ int main() {
   startCompanionBluetooth();
   assert(companion_bluetooth_initialized && begin_calls==1);
   assert(!manager_enable_calls && !enable_calls && !the_mesh.preference);
+  resetBootCounters(); mesh::wireless::control().bluetooth_blocked=true;
+  startCompanionBluetooth();
+  assert(companion_bluetooth_initialized && begin_calls==1);
+  assert(!manager_enable_calls && !enable_calls);
+  assert(interface_manager.enabled && the_mesh.preference);
 }
 '''
 

@@ -26,6 +26,8 @@ namespace fake_pico {
 using Bytes = std::vector<uint8_t>;
 inline unsigned lock_depth = 0, callback_depth = 0, max_callback_depth = 0;
 inline unsigned registrations = 0, notification_attempts = 0, disconnects = 0;
+inline uint32_t passkey = 0;
+inline unsigned passkey_updates = 0;
 inline uint32_t callback_advance_ms = 0;
 inline bool synchronous = true, callbacks_enabled = true, connection_live = false;
 inline bool duplicate_registration = false, synchronous_disconnect = false;
@@ -91,4 +93,10 @@ inline void gap_local_bd_addr(uint8_t address[6]) { memset(address, 1, 6); }
 inline void gap_scan_response_set_data(uint8_t, const uint8_t*) {}
 inline void sm_set_io_capabilities(uint8_t) {}
 inline void sm_set_authentication_requirements(uint8_t) {}
-inline void sm_use_fixed_passkey_in_display_role(uint32_t) {}
+inline void sm_use_fixed_passkey_in_display_role(uint32_t pin) {
+  // Initialization runs before BLE becomes concurrent. Later changes must
+  // hold the Bluetooth lock while updating BTstack's shared security state.
+  if (fake_pico::passkey_updates) fake_pico::require_context();
+  fake_pico::passkey = pin;
+  ++fake_pico::passkey_updates;
+}

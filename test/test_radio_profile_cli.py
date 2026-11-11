@@ -1,6 +1,7 @@
 """Run the production shared profile command parser and persistence with a memory FS."""
 from pathlib import Path
 import itertools
+import re
 import shutil
 import subprocess
 import tempfile
@@ -9,6 +10,45 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 class RadioProfileCLITest(unittest.TestCase):
+    def test_stm32_compact_errors_keep_other_platform_replies(self):
+        compiler = shutil.which('g++') or shutil.which('clang++')
+        self.assertIsNotNone(compiler)
+        source = (ROOT/'src/helpers/RadioProfileCLI.cpp').read_text()
+        blocks = re.findall(r'#if defined\(STM32_PLATFORM\) && MESH_CLI_COMPACT_REPLIES\n.*?#endif', source, re.S)
+        self.assertEqual(len(blocks), 6)
+        verbose = [
+            'use get/set tx.reply auto|radio|radio2|both|off [force for radio2/both]',
+            'use get/set radio2.cross [auto|on|off]', 'invalid radio2 command',
+            'no regional MediaMesh preset; use tuple', 'MediaMesh region unavailable or full',
+            'future UTC start/end required, within 24 days']
+        concise = [
+            'tx.reply auto|radio|radio2|both|off [force for radio2/both]',
+            'radio2.cross [auto|on|off]', 'bad radio2 command',
+            'no preset; use tuple', 'MediaMesh region unavailable/full',
+            'future UTC start/end within 24 days']
+        stm32 = ['tx.reply MODE [force:radio2/both]', 'auto|on|off', 'bad command',
+                 'use tuple', 'scope unavailable/full', 'future UTC, <=24 days']
+        harness = '#include <helpers/CLICommandUtils.h>\nnamespace mesh {\n'
+        harness += '\n'.join('bool error%d(char* reply,size_t capacity){\n%s\nreturn true;}' % (i, block)
+                             for i, block in enumerate(blocks))
+        harness += '\n}\nint main(){char reply[160];\n'
+        harness += '\n'.join('mesh::error%d(reply,sizeof(reply));puts(reply);' % i for i in range(len(blocks)))
+        harness += '\n}\n'
+        with tempfile.TemporaryDirectory(prefix='profile-stm32-replies-') as work:
+            cpp, binary = Path(work)/'test.cpp', Path(work)/'test'
+            cpp.write_text(harness)
+            for flags, expected in (([], verbose), (['-DMESH_CLI_COMPACT_REPLIES=1'], concise),
+                    (['-DSTM32_PLATFORM=1', '-DMESH_CLI_COMPACT_REPLIES=1'], stm32),
+                    (['-DSTM32_PLATFORM=1', '-DMESH_CLI_COMPACT_REPLIES=0'], verbose)):
+                with self.subTest(flags=flags):
+                    compiled = subprocess.run([compiler, '-std=c++17', '-Os', '-Wall', '-Wextra',
+                        *flags, '-I', str(ROOT/'src'), str(cpp), '-o', str(binary)],
+                        capture_output=True, text=True, timeout=60)
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    ran = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+                    self.assertEqual(ran.returncode, 0, ran.stderr)
+                    self.assertEqual(ran.stdout.splitlines(), ['Error: '+text for text in expected])
+
     def test_repeater_retains_radio2_presets_schedules_and_transactions(self):
         compiler = shutil.which('g++') or shutil.which('clang++')
         self.assertIsNotNone(compiler)
@@ -26,7 +66,7 @@ class RadioProfileCLITest(unittest.TestCase):
             self.assertEqual(compiled.returncode, 0, compiled.stderr)
             for scenario in (None, 'permanent_order', 'temporary_boundary', 'lease_creation',
                              'save_failure', 'schedule_permutations', 'storage_isolation',
-                             'relative_schedule', 'spectrum_overlap', 'mediamesh', 'media_scope'):
+                             'relative_schedule', 'spectrum_overlap', 'mediamesh', 'regional_mediamesh', 'media_scope'):
                 with self.subTest(scenario=scenario):
                     ran = subprocess.run([str(binary)] + ([scenario] if scenario else []),
                                          capture_output=True, text=True, timeout=10)
@@ -60,6 +100,8 @@ class RadioProfileCLITest(unittest.TestCase):
 #undef main
 int main() {
   Fixture f;
+  const float saved_primary_frequency = 910.525f;
+  f.saved_primary_frequency = &saved_primary_frequency;
   MediaScope scope;
   f.cli.setMediaMeshScopeHandler(MediaScope::update, &scope);
   f.cmd("set radio2 mediamesh");
@@ -122,7 +164,7 @@ int main() {
                     '-o', str(exe)], check=True, capture_output=True, text=True)
                 for scenario in (None, 'permanent_order', 'temporary_boundary', 'lease_creation',
                                  'save_failure', 'schedule_permutations', 'storage_isolation',
-                                 'relative_schedule', 'spectrum_overlap', 'mediamesh', 'channel_preset',
+                                 'relative_schedule', 'spectrum_overlap', 'mediamesh', 'regional_mediamesh', 'channel_preset',
                                  'media_scope'):
                     with self.subTest(fleet=fleet_enabled, carrier=carrier_enabled,
                                       scenario=scenario or 'commands_persistence_and_timers'):

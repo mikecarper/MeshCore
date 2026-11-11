@@ -30,6 +30,13 @@ budget. On chips other than classic ESP32, the late-reclaimed ROM stack region
 is excluded because its silicon-specific reservations are only known at boot.
 Classic ESP32 additionally retains its existing 8 KiB **static DRAM** check.
 
+The Generic ESP-NOW Full Companion starts its browser terminal scrollback at
+2 KiB; it can grow to 32 KiB when sufficient internal heap is available. The
+Heltec Wireless Stick Lite V3 Full Companion places 32 existing offline frames
+in each RTC bank, retaining its 350 contacts and 256-frame queue. These
+board-specific layouts retain the normal runtime RAM qualification and do not
+count RTC memory as internal heap.
+
 The policy adds allowances for task stacks, radio packet pools, screen objects
 and pixel buffers, filesystem/sensor allocations, enabled wireless stacks,
 MQTT connections, OTA scratch and transient allocations. ESP32 images with
@@ -944,3 +951,20 @@ and larger custom leaf limits retain the existing policy.
 The clean V3 package and constrained RAK regressions pass; physical V3 testing
 still awaits USB attachment. See the [V3 qualification report](../test-results/heltec_v3_full_memory_2026-10-19.md)
 for artifact hashes, tests, upgrade behavior and hardware limits.
+
+## Constrained ESP32 release recipes
+
+The exact T190 Full Repeater target, including its trailing-underscore alias,
+requires its onboard PSRAM for the full table allocations. Wireless Tracker
+and Tracker V2 Full Repeaters use the existing 256-color RGB332 canvas with
+RGB565 panel scanout. This retains the 160x80 geometry, screen controls, and
+the driver's eight named UI colors while reducing framebuffer allocation;
+intermediate image colors have lower precision. Other firmware roles keep
+their existing display-buffer choice.
+
+Those two trackers and WSL3 Full Repeaters also use the scoped, validated LTO
+link policy. The enabled services, table capacities, and runtime RAM reserves
+remain unchanged. Sensirion Core's integer-width enum is renamed only in a
+private build overlay to avoid its global type-name collision with SNMP's
+BER class under LTO; installed library sources are not modified.
+

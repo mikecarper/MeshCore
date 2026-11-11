@@ -23,6 +23,11 @@ class RadioProfileCLI {
   };
  private:
   FILESYSTEM* fs_ = nullptr;
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION && MESH_ENABLE_FLOOD_PROFILE_POLICY
+  bool repeater_flood_policy_ = false, flood_policy_hold_ = false;
+  uint8_t flood_profile_mask_ = 3;
+  bool saveFloodPolicy(uint8_t mask);
+#endif
   Radio* radio_ = nullptr;
   RTCClock* rtc_ = nullptr;
   RadioProfileConfig saved_;
@@ -133,6 +138,16 @@ class RadioProfileCLI {
                     const Schedule* schedule = nullptr) const;
   void appendSecondaryWarnings(char* reply, size_t capacity, const RadioProfiles& preview) const;
  public:
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION && MESH_ENABLE_FLOOD_PROFILE_POLICY
+  // Repeater-only forwarding policy; local and direct messages are unaffected.
+  void beginRepeaterFloodPolicy();
+  bool floodProfileAllowed(uint8_t profile) const {
+    return !repeater_flood_policy_ || (profile < 2 && (flood_profile_mask_ & (1U << profile)));
+  }
+#else
+  void beginRepeaterFloodPolicy() {}
+  bool floodProfileAllowed(uint8_t) const { return true; }
+#endif
   // Call after the settings filesystem mounts and before radio_init().
 #if MESH_RADIO_SWITCH_TUNING
   static void configureBootTuning(FILESYSTEM* fs, Radio& radio);
@@ -158,7 +173,10 @@ class RadioProfileCLI {
 #endif
   }
   void loop();
-  bool handle(const char* command, char* reply, size_t capacity = 160, bool remote_origin = false);
+  // Read saved primary settings at command admission, before temporary tuning.
+  // The optional pointer is consumed synchronously and is never retained.
+  bool handle(const char* command, char* reply, size_t capacity = 160,
+              bool remote_origin = false, const float* primary_frequency = nullptr);
   // Remote infrastructure commands must keep both RX-origin generations alive
   // until their exact response packets finish, not merely wait a fixed delay.
   void beginReplyCommand() { remote_command_ = true; }
@@ -169,7 +187,7 @@ class RadioProfileCLI {
   // A channel join can stage a named preset before its channel save. Commit
   // synchronously only after that save succeeds; cancellation leaves saved
   // RF intent and the running modem unchanged.
-  bool stageChannelPreset(const char* name);
+  bool stageChannelPreset(const char* name, const float* primary_frequency = nullptr);
   bool finishChannelPreset(bool commit);
   // Passive RF borrowing is RAM-only and never replaces explicit saved
   // settings (including Off). Repeated identical requests do not retune.

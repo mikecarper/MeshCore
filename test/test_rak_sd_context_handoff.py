@@ -149,12 +149,16 @@ class RakSdContextHandoffTests(unittest.TestCase):
 #include <cstdio>
 #include <cstring>
 struct Board {} board;
+struct EthernetModeSettings {
+  bool saved=false;
+  bool enabled() const { return saved; }
+} ethernet_mode_settings;
 struct Ethernet {
   bool active = false, allowed = true;
   const char* state = "off";
   unsigned enables = 0, disables = 0;
-  bool tryEnable() { ++enables; if (!allowed) return false; active = true; state = "starting"; return true; }
-  bool tryDisable() { ++disables; if (!allowed) return false; state = "stopping"; return true; }
+  bool tryEnable(bool persist) { assert(persist); ++enables; if (!allowed) return false; ethernet_mode_settings.saved = true; active = true; state = "starting"; return true; }
+  bool tryDisable(bool persist) { assert(persist); ++disables; if (!allowed) return false; ethernet_mode_settings.saved = false; state = "stopping"; return true; }
   bool hardwareActive() const { return active; }
   const char* status() const { return state; }
   const char* last_error() const { return "storage busy"; }
@@ -187,14 +191,17 @@ int main() {
   ethernet_interface.allowed = false;
   assert(handleRak4631PeripheralCommand("set eth on", reply, sizeof reply));
   assert(strstr(reply, "storage busy") && !ethernet_interface.active);
+  assert(!ethernet_mode_settings.enabled());
   ethernet_interface.allowed = true;
   assert(handleRak4631PeripheralCommand("set eth on", reply, sizeof reply));
   assert(strstr(reply, "eth=starting") && ethernet_interface.active);
+  assert(ethernet_mode_settings.enabled() && strstr(reply, "saved=on"));
   ethernet_interface.state = "online";
   assert(handleRak4631PeripheralCommand("get eth", reply, sizeof reply));
   assert(strstr(reply, "eth=online"));
   assert(handleRak4631PeripheralCommand("set eth off", reply, sizeof reply));
   assert(strstr(reply, "eth=stopping") && ethernet_interface.active);
+  assert(!ethernet_mode_settings.enabled() && strstr(reply, "saved=off"));
   ethernet_interface.active = false; ethernet_interface.state = "off";
   assert(handleRak4631PeripheralCommand("get eth", reply, sizeof reply));
   assert(strstr(reply, "eth=off"));

@@ -1,5 +1,10 @@
 #pragma once
 
+#define MESH_WIO_E5_MINI 1
+#ifndef PIN_VBAT_READ
+#define PIN_VBAT_READ PIN_A3
+#endif
+
 #define RADIOLIB_STATIC_ONLY 1
 #include <RadioLib.h>
 #include <helpers/radiolib/RadioLibWrappers.h>

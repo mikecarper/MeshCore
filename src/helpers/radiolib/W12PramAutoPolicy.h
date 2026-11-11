@@ -33,6 +33,37 @@ class AutoPolicy {
   Reason reason_=Reason::None;
   bool enabled_=true, seen_=false;
 };
+
+// Only the guarded stop/standby race may request automatic recovery. A
+// bounded number of delayed re-entries prevents a transient RF arrival from
+// disabling scanning for the rest of the boot without turning a persistent
+// hardware failure into an endless reset loop.
+class HandoffRetry {
+ public:
+  void observe(uint32_t primary, uint32_t secondary) {
+    if (!seen_ || primary != primary_ || secondary != secondary_) {
+      seen_=true; primary_=primary; secondary_=secondary; attempts_=0; pending_=false;
+    }
+  }
+  void schedule(uint32_t now) {
+    if (attempts_ >= 3) return;
+    ++attempts_;
+    due_=now + 60000u * attempts_;
+    pending_=true;
+  }
+  void cancel() { pending_=false; }
+  bool pending() const { return pending_; }
+  bool due(uint32_t now) const { return pending_ && int32_t(now - due_) >= 0; }
+  bool take(uint32_t now) {
+    if (!due(now)) return false;
+    pending_=false;
+    return true;
+  }
+ private:
+  uint32_t primary_=0, secondary_=0, due_=0;
+  uint8_t attempts_=0;
+  bool seen_=false, pending_=false;
+};
 inline const char* autoReasonName(AutoPolicy::Reason reason) {
   switch (reason) {
     case AutoPolicy::Reason::Off: return "off";

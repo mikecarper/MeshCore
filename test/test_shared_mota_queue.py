@@ -23,7 +23,10 @@ class SharedMotaQueueTest(unittest.TestCase):
     def test_s3_both_rtc_banks_preserve_real_ota_and_wifi_transfers(self):
         self.run_transfer_test("ESP32_PLATFORM", rtc="ESP32S3")
 
-    def run_transfer_test(self, platform, rtc=None):
+    def test_preserve_policy_refuses_full_queue_until_app_sync(self):
+        self.run_transfer_test("ESP32_PLATFORM", preserve_unread=True)
+
+    def run_transfer_test(self, platform, rtc=None, preserve_unread=False):
         with tempfile.TemporaryDirectory(prefix="meshcore-mota-queue-") as temp:
             binary = Path(temp) / "transfer"
             tinf = Path(temp) / "tinf.o"
@@ -33,6 +36,10 @@ class SharedMotaQueueTest(unittest.TestCase):
             (Path(temp) / "temp_radio_under_test.h").write_text(method(
                 (ROOT / "examples/companion_radio/MyMesh.cpp").read_text(),
                 "bool MyMesh::scheduleTempRadio("))
+            queue_init = method((ROOT / "examples/companion_radio/MyMesh.cpp").read_text(),
+                                "void MyMesh::initializeOfflineQueue()")
+            (Path(temp) / "queue_init_under_test.h").write_text(
+                queue_init.replace("MyMesh::initializeOfflineQueue", "Queue::initializeOfflineQueue"))
             subprocess.run([
                 "cc", "-DENABLE_OTA=1", "-fsanitize=address,undefined", "-g",
                 "-c", str(ROOT / "src/helpers/ota/OtaTinf.c"), "-o", str(tinf),
@@ -45,6 +52,8 @@ class SharedMotaQueueTest(unittest.TestCase):
                 "src/Utils.cpp",
             ]
             flags = ["-D" + platform + "=1"]
+            if preserve_unread:
+                flags.append("-DOTA_PRESERVE_UNREAD_ON_BORROW=1")
             if platform == "ESP32_PLATFORM":
                 flags += ["-DHELTEC_WIRELESS_PAPER=1", "-DWIFI_OTA_SEEDER=1"]
                 sources += ["src/helpers/esp32/WiFiOtaSeeder.cpp",

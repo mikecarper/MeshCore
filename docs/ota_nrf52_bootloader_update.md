@@ -40,13 +40,50 @@ image; select it from the separate `OTAFIX-2.4.12-R_recovery.zip` and follow the
 release's recovery instructions. Recovery images are migration tools, not the
 normal download.
 
+## SenseCAP Solar P1 (experimental)
+
+The P1 Repeater and LoRa-OTA Room builds support the signed QSPI bootloader
+workflow below, but an end-to-end bootloader update and recovery have **not yet
+been tested on P1 hardware**. Do not rely on this for an inaccessible device.
+The installed bootloader must report board `28860044`, name `SCAP_DFU` and
+self-update capability; a XIAO bootloader has a different identity even when
+the board ID matches. The running application must preserve the scratch area
+and its boot settings must not describe a CRC-bound bank overlapping it.
+
+Install the matching application first and check `ota bootloader status`. The
+official OTAFIX 2.4.12 bootloader signing key is built in for bootloader
+packages, so it does not need to be added with `ota key add`. Stage the exact
+signed P1 bootloader package and use `ota bootloader install <MID8> <HASH16>`
+to explicitly authorize it. Application OTA and bootloader OTA are separate.
+This path stages the package in onboard QSPI and uses application-flash scratch;
+it does not unlock protected bootloader pages or enable bootloader updates on
+an unsupported installed bootloader.
+
+The built-in key is used only for signed bootloader packages; it does not add a
+trusted application-firmware signer or change the saved user key list. Other
+bootloader signers still need to be added explicitly. Installation requires
+the separate administrator confirmation and all board and flash checks.
+
 ## Storage layouts
 
 | Layout | Application limit | Staged boot package | Work area | Handoff / capability |
 | --- | ---: | ---: | ---: | --- |
-| XIAO-module raw QSPI | below `0xE0000` | external QSPI offset 0 | dedicated internal `0xE0000..0xEA000` scratch | source `0x51`, flags `0x0E` |
+| Qualified onboard raw QSPI | below `0xE0000` | external QSPI offset 0 | dedicated internal `0xE0000..0xEA000` scratch | source `0x51`, flags `0x0E` |
 | Qualified internal-flash target | normal `0xED000` flash limit; top 64 KiB SRAM reserved for application-delta staging | shared internal slot, exact start `0xE2000` | the same eleven-page slot; no second flash reservation | source `0xED`, flags `0x0A` |
 | MeshTower V2 microSD | normal `0xED000` limit | contiguous `/meshcore-ota.mota` | dynamic internal `0xE0000..0xEA000` scratch; live image must end by `0xE0000` | source `0x53`, flags `0x09` |
+
+The onboard QSPI receiver builds include the existing XIAO/Ikoka and SenseCAP
+P1 targets, plus the OTA Repeater and Room builds for Wio Tracker L1 and L1 1W,
+T-Echo, T-Echo Lite, ThinkNode M1, and ThinkNode M6. These additions need the exact
+board-matched QSPI OTAFIX bootloader with `0x0E` capability; shared board
+IDs never authorize a different bootloader name. They are build- and
+host-tested but have not yet been qualified by bootloader replacement on
+each board. The unchanged compatibility Room/Repeater targets without QSPI
+OTA, and Companion builds using QSPI as a filesystem, do not gain this path.
+Starting an OTA download on a raw-QSPI receiver replaces flash contents. If
+that chip previously held a Companion filesystem or other data, save it first.
+The L1 1W's existing plain Repeater and Room builds keep their previous storage
+behavior; select the separate `_lora_ota` builds to use QSPI OTA.
 
 The exact SD target is
 `Heltec_tower_v2_sdcard_repeater_lora_ota_no_external_sensors`. Its normal
@@ -130,20 +167,20 @@ use the picker for current application names and downloads.
 | Build target(s) | Installed OTAFIX identity | Boot target ID |
 | --- | --- | ---: |
 | Historical internal-only MeshTower V2 layout; current releases use the combined SD target | `239A0071 / TOWER_V2_OTA` | `1150F50E` |
-| T096 lean repeater and RS232 bridge | `239A0071 / T096_DFU` | `42354C85` |
-| `Heltec_t1_repeater_lora_ota_no_external_sensors` | `239A0071 / T1_DFU` | `FC556FFC` |
-| T114 display and without-display lean repeaters | `239A0071 / T114_DFU` | `0C3F2902` |
-| `Mesh_pocket_repeater_lora_ota_no_external_sensors` | `239A0071 / MESH_POCKET_OTA` | `059277F4` |
-| `KeepteenLT1_repeater_lora_ota_no_external_sensors` | `239A00B3 / KeepteenLT1_OTA` | `DB2E7B51` |
-| `Minewsemi_me25ls01_repeater_lora_ota_no_external_sensors` | `239A0029 / MX25_DFU` | `026AA982` |
-| `ProMicro_repeater_lora_ota_no_external_sensors` | `239A00B3 / PROM_DFU` | `AF79E8CC` |
-| `t1000e_repeater_lora_ota_no_external_sensors` | `28860057 / T1KE_DFU` | `E6F5F03F` |
-| `ThinkNode_M3_repeater_lora_ota_no_external_sensors` | `239A00DA / TNM3_DFU` | `0CA41DB2` |
-| RAK3401 reduced repeater and unified repeater | `239A0029 / 3401_DFU` | `23818A80` |
+| T096 lean repeater, room, sensor and RS232 bridge | `239A0071 / T096_DFU` | `42354C85` |
+| T1 lean repeater and room | `239A0071 / T1_DFU` | `FC556FFC` |
+| T114 display and without-display lean repeaters and rooms, plus sensor | `239A0071 / T114_DFU` | `0C3F2902` |
+| Mesh Pocket lean repeater and room | `239A0071 / MESH_POCKET_OTA` | `059277F4` |
+| Keepteen LT1 lean repeater and room | `239A00B3 / KeepteenLT1_OTA` | `DB2E7B51` |
+| Minewsemi ME25LS01 lean repeater and room | `239A0029 / MX25_DFU` | `026AA982` |
+| ProMicro radio variants: lean repeater, room and sensor | `239A00B3 / PROM_DFU` | `AF79E8CC` |
+| T1000-E lean repeater, room and sensor | `28860057 / T1KE_DFU` | `E6F5F03F` |
+| ThinkNode M3 lean repeater and room | `239A00DA / TNM3_DFU` | `0CA41DB2` |
+| RAK3401 reduced repeater, room, sensor and unified repeater | `239A0029 / 3401_DFU` | `23818A80` |
 | RAK4631 reduced/unified repeater, both reduced RS232 bridges, and listed reduced Room/Sensor roles | `239A0029 / 4631_DFU` | `2D0DF000` |
-| GAT562 30S/Tracker Pro/EVB Pro lean targets | `239A0029 / GAT562_DFU` | `D50D2D44` |
-| `R1Neo_repeater_lora_ota_no_external_sensors` | `239A0029 / 4631_DFU` | `2D0DF000` |
-| `RAK_WisMesh_Tag_repeater_lora_ota_no_external_sensors` | `239A0029 / RTAG_DFU` | `C72E9C9C` |
+| GAT562 30S/Tracker Pro/EVB Pro lean repeaters and rooms | `239A0029 / GAT562_DFU` | `D50D2D44` |
+| R1 Neo lean repeater, room and sensor | `239A0029 / 4631_DFU` | `2D0DF000` |
+| RAK WisMesh Tag lean repeater, room and sensor | `239A0029 / RTAG_DFU` | `C72E9C9C` |
 
 Board IDs are not globally unique. For generic targets, the signed hardware ID
 is the exact NUL-padded 32-byte value
@@ -211,7 +248,7 @@ does not make incompatible storage layouts interchangeable.
 
 Boards with onboard external flash are not silently redirected to internal
 staging. Mesh Solar, Nano G2 Ultra, T-Impulse Plus, ThinkNode M8, T-Echo
-Lite/Card, MeshTracker X1, and Wio WM1110 have board-specific QSPI hardware and
+Card, MeshTracker X1, and Wio WM1110 have board-specific QSPI hardware and
 need a separately matched QSPI path where available. Full Companions, other
 SD/QSPI/ExtraFS roles, source-only roles, and unlisted full-sensor roles are
 excluded from the internal-flash inventory. The explicitly allowlisted RAK4631

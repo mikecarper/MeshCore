@@ -30,6 +30,8 @@ private:
   bool _lab_sleeping = false;
   bool _lab_session_ldo = false;
   bool _lab_uncertain = false; // unread/ambiguous IRQ preserved for controlled recovery
+  bool _lab_handoff_retry_eligible = false;
+  mesh::w12pram::HandoffRetry _lab_handoff_retry;
   uint32_t _lab_uncertain_at=0, _lab_ambiguous_recoveries=0, _lab_cold_starts=0;
   bool _lab_transition_waiting=false;
   uint32_t _lab_transition_at=0;
@@ -79,6 +81,30 @@ private:
 #endif
   uint8_t _lab_rx_preamble[2] = {}; // 0 uses normal profile auto/fixed choice
   mesh::w12pram::Status _lab_status = {};
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  mesh::w12pram::HandoffDiagnostics _lab_handoff;
+  // Called only after the guarded decision. Raw reads are nonclearing and
+  // permitted only with confirmed chip-hook ownership relinquished.
+  void labCaptureHandoffFailure(uint8_t reason,uint8_t detail,bool unhooked) {
+    if(_lab_handoff.current.reason) return; // one failed attempt, one snapshot
+    auto& d=_lab_handoff.current;
+    d.software=hasPendingSoftwareRadioInterrupt();
+    d.dio=digitalRead(P_LORA_DIO_1)==HIGH;
+    if(unhooked && !isChipBusy()) {
+      auto* r=static_cast<CustomLR2021*>(_radio);
+      d.raw_irq=r->getIrqStatus(); // RadioLib exposes no error result for this read.
+      d.fifo_rc=r->getRxFifoLevel(&d.fifo);
+      d.raw=true;
+      if(reason==2 && d.restart_stage==6) {
+        // DCCM only: never inspect PRAM 0x101000 when activation may be lost.
+        d.dccm_rc[0]=r->readRegMem32(0x8007F0,d.dccm,2);
+        d.dccm_rc[1]=r->readRegMem32(0x800FF8,d.dccm+2,2);
+        d.dccm_rc[2]=r->readRegMem32(0x806034,d.dccm+4,1);
+      }
+    }
+    _lab_handoff.fail(reason,detail);
+  }
+#endif
 
   int16_t labScannerCommand(uint8_t op, const uint8_t* extra, size_t n, mesh::w12pram::Status& out) {
     if (n > 4) return RADIOLIB_ERR_UNKNOWN;
@@ -90,6 +116,7 @@ private:
     return rc;
   }
   bool labReinitialize(bool resume_rx=true) {
+    _lab_pram_loaded=false; // the hard reinitialization invalidates resident code
     _lab_scan_active=false;
     static_cast<CustomLR2021*>(_radio)->labSetPramScan(false);
     const auto& p=_profiles.params(0);
@@ -116,7 +143,7 @@ private:
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
     _lab_seq_tx_lease=false;
 #endif
-    if (!_lab_uncertain) _lab_uncertain_at=millis();
+    if (!_lab_uncertain) { _lab_uncertain_at=millis(); _lab_handoff_retry_eligible=false; }
     _lab_uncertain=true; _lab_resume_pending=false;
     _profile_repair_required=true; _lab_error=RADIOLIB_ERR_UNKNOWN;
   }
@@ -125,8 +152,32 @@ private:
   bool labWarmRestore(uint8_t target=0) {
     if (target>1 || (target==1 && !_profiles.enabled())) return false;
     auto* r=static_cast<CustomLR2021*>(_radio);
-    if (r->standby()!=RADIOLIB_ERR_NONE) return false;
-    if (hasPendingRadioInterrupt() || isPacketPendingOrReceiving() || hasPendingRadioInterrupt()) {
+    const int16_t standby_rc=r->standby();
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    _lab_handoff.current.standby_rc=standby_rc;
+#endif
+    if (standby_rc!=RADIOLIB_ERR_NONE) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      labCaptureHandoffFailure(1,1,true);
+#endif
+      return false;
+    }
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    // Preserve the original A || B || A call order and short-circuit behavior.
+    auto& guards=_lab_handoff.current.guards;
+    guards[0]=hasPendingRadioInterrupt();
+    if(!guards[0]) {
+      guards[1]=isPacketPendingOrReceiving();
+      if(!guards[1])guards[2]=hasPendingRadioInterrupt();
+    }
+    const bool blocked=guards[0]>0 || guards[1]>0 || guards[2]>0;
+#else
+    const bool blocked=hasPendingRadioInterrupt() || isPacketPendingOrReceiving() || hasPendingRadioInterrupt();
+#endif
+    if (blocked) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      labCaptureHandoffFailure(1,2,true);
+#endif
       // Do not reset/clear an IRQ or FIFO that raced the handoff. Ownership
       // is ambiguous after unhooking; stop all automatic actions for review.
       labMarkUncertain(); _lab_scan_active=false; state=0;
@@ -136,9 +187,19 @@ private:
     const auto& p=_profiles.params(target);
     _physical_preamble=profilePreamble(target);
     invalidateScanTuple();
-    if (!applyParams(p.freq,p.bw,p.sf,p.cr)) return false;
+    if (!applyParams(p.freq,p.bw,p.sf,p.cr)) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      labCaptureHandoffFailure(1,3,true);
+#endif
+      return false;
+    }
 #if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE || MESH_ENABLE_HOST_KISS
-    if (!applyProtocol(p.protocol)) return false;
+    if (!applyProtocol(p.protocol)) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      labCaptureHandoffFailure(1,4,true);
+#endif
+      return false;
+    }
     _physical_protocol=p.protocol;
 #endif
     cacheParams(p.freq,p.bw,p.sf,p.cr);
@@ -148,9 +209,15 @@ private:
 #if MESH_ENABLE_RADIO_DIRECTION
     if (!mesh::radioDirection::radioReceiveAllowed()) return true;
 #endif
-    startRecv(); return isInRecvMode();
+    startRecv();
+    const bool receiving=isInRecvMode();
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    if(!receiving)labCaptureHandoffFailure(1,5,true);
+#endif
+    return receiving;
   }
-  void labRecover(int16_t err, mesh::w12pram::RecoveryOrigin origin=mesh::w12pram::RecoveryOrigin::Other) {
+  bool labRecover(int16_t err, mesh::w12pram::RecoveryOrigin origin=mesh::w12pram::RecoveryOrigin::Other) {
+    _lab_handoff_retry.cancel(); // never let an old retry mask a later fault
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
     _lab_seq_tx_lease=false;
 #endif
@@ -160,7 +227,8 @@ private:
     _lab_auto.observe(_profiles.generation[0],_profiles.generation[1]);
     _lab_auto.block(mesh::w12pram::AutoPolicy::Reason::Failed);
     // A chip reset tears down even a stuck PRAM hook and all custom code.
-    if (!labReinitialize()) _profile_repair_required=true;
+    if (!labReinitialize()) { _profile_repair_required=true; return false; }
+    return true;
   }
 
 public:
@@ -184,7 +252,7 @@ public:
     // armed that NSS pulse can wake/stop the autonomous duty-cycle loop.
     // The active profile is LoRa, so use the cached tuple instead. Supplying
     // the coding rate also avoids getProfileAirtime's single-radio fallback.
-    if (_rx_ps_armed && _params_valid && _active_profile < 2 && _cur_cr >= 5 && _cur_cr <= 8)
+    if (_rx_ps_armed && _params_valid && _active_profile < 2 && _cur_cr >= 4 && _cur_cr <= 8)
       return getProfileAirtime(_active_profile,len,_cur_cr);
     return RadioLibWrapper::getEstAirtimeFor(len);
   }
@@ -218,7 +286,13 @@ public:
   // A deferred attempt is not a successful reset. Retry on the health-poll
   // cadence; once scanner ownership ends the same deadline remains due.
   uint32_t labAGCMaintenanceRetryMs() const override {
+#if MESH_WARM_RX_REFRESH
+    // A real pulse obtains a checked warm pause and restores the resident
+    // scanner afterwards. Only ambiguous recovery retains the retry hold.
+    return _lab_uncertain ? 1000U : 0U;
+#else
     return (_lab_scan_active || _lab_uncertain) ? 1000U : 0U;
+#endif
   }
 #if defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
   void labRxpsBusyStatus(char* out, size_t capacity) const {
@@ -275,6 +349,13 @@ public:
       mesh::w12pram::timeoutObservationName(_lab_recovery_timer),
       mesh::w12pram::timeoutObservationName(mesh::w12pram::timeoutObservation(_lab_status)));
   }
+  void labScannerHandoffDiag(char* out,size_t cap) const {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    _lab_handoff.format(out,cap);
+#else
+    snprintf(out,cap,"PRAM handoff diagnostics not built");
+#endif
+  }
   bool labScannerSetRxPreamble(unsigned profile, unsigned preamble) {
     if (_lab_scan_active || _lab_resume_pending || _lab_uncertain || profile<1 || profile>2 || (preamble && (preamble<8 || preamble>255))) return false;
     _lab_rx_preamble[profile-1]=uint8_t(preamble); return true;
@@ -299,23 +380,52 @@ public:
       _lab_last_profile+1,(double)_lab_last_logical_mhz,(unsigned long)_lab_last.freq_hz,
       (unsigned long)_lab_last.bw_hz,_lab_last.sf,_lab_last.cr,_lab_last.preamble,(unsigned long)_lab_last.generation);
   }
-  mesh::RadioParamApplyResult labPauseScanner(bool for_tx=false, uint8_t target=0) {
+  mesh::RadioParamApplyResult labPauseScanner(bool for_tx=false, uint8_t target=0
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      ,const char* origin="host"
+#endif
+      ) {
     using Result=mesh::RadioParamApplyResult;
     if (!_lab_scan_active) return Result::APPLIED;
     const uint32_t started=micros();
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    _lab_handoff.begin(origin,millis());
+#endif
     if (hasPendingRadioInterrupt() || isChipBusy()) return Result::BUSY;
     mesh::w12pram::Status reply={};
     const int16_t rc=labScannerCommand(6,nullptr,0,reply);
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    _lab_handoff.current.op_rc=rc;
+    if(rc==RADIOLIB_ERR_NONE) {
+      _lab_handoff.current.state=reply.state;_lab_handoff.current.current=reply.current;
+      _lab_handoff.current.op_irq=reply.irq;
+    }
+#endif
     // A failed SPI transaction may still have stopped the chip; preserve the
     // ambiguous state until bounded recovery rather than resetting it here.
-    if (rc!=RADIOLIB_ERR_NONE) { labMarkUncertain(); return Result::FAILED; }
+    if (rc!=RADIOLIB_ERR_NONE) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      labCaptureHandoffFailure(3,0,false);
+#endif
+      labMarkUncertain(); return Result::FAILED;
+    }
     const auto decision=mesh::w12pram::pauseResult(reply);
     if (decision==mesh::w12pram::PauseResult::Busy) return Result::BUSY;
-    if (decision!=mesh::w12pram::PauseResult::Stopped) { labMarkUncertain(); return Result::FAILED; }
+    if (decision!=mesh::w12pram::PauseResult::Stopped) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      labCaptureHandoffFailure(4,0,false);
+#endif
+      labMarkUncertain(); return Result::FAILED;
+    }
     // The guarded stop ends ROM ownership, but CAD hardware may still run.
     // Checked standby and full tuple restore precede channel check and TX.
     if (!labWarmRestore(target)) {
-      if (_lab_uncertain) return Result::BUSY; // preserve ambiguous FIFO, no reset
+      if (_lab_uncertain) {
+        // A successful guarded stop was followed by a raced IRQ. Only this
+        // specific handoff permits delayed re-entry after a successful reset.
+        _lab_handoff_retry_eligible=true;
+        return Result::BUSY; // preserve ambiguous FIFO, no reset
+      }
       labMarkUncertain(); return Result::FAILED;
     }
     if (for_tx) {
@@ -332,6 +442,48 @@ public:
     }
     return true;
   }
+#if MESH_WARM_RX_REFRESH
+  bool labMaintenanceColdLeaseCurrent() const {
+    return _agc_pram_cold_restore_owned && _agc_pram_restore_owned && _agc_pram_paused
+        && _rxps_pulse.pending && _agc_pram_arm_issued
+        && _rxps_pulse.phase==RxpsPulse::Phase::Rearm && _lab_resume_pending
+        && !_lab_uncertain && !_lab_sleeping && !_lab_scan_active && _profiles.enabled()
+        && _profiles.generation[0]==_agc_pram_generations[0]
+        && _profiles.generation[1]==_agc_pram_generations[1];
+  }
+  bool labQuiesceMaintenanceColdReset() {
+    if(!labMaintenanceColdLeaseCurrent() || _agc_pram_cold_tried || !_lab_pram_loaded || !_lab_session_ldo
+        || _profile_repair_required || _profile_retry_at || state==3 || _cw_active || labExclusivePending()) return false;
+#if MESH_ENABLE_RADIO_DIRECTION
+    if(!mesh::radioDirection::radioReceiveAllowed()) return false;
+#endif
+#if MESH_ENABLE_TX_BEACONS
+    if(isBeaconRadioOwned()) return false;
+#endif
+#if MESH_ENABLE_CARRIER_TOOLS
+    if(_morse_owned) return false;
+#endif
+#if MESH_ENABLE_MORSE_RX
+    if(_morse_rx_owned) return false;
+#endif
+    auto* r=static_cast<CustomLR2021*>(_radio);
+    const auto quiet=[&](bool standby) {
+      if(isChipBusy() || hasPendingRadioInterrupt() || digitalRead(P_LORA_DIO_1)==HIGH) return false;
+      uint32_t irq=0;uint8_t mode=0;uint16_t fifo=0;
+      if(r->agcPulseStatus(irq,mode)!=RADIOLIB_ERR_NONE || mode==5 || (standby && mode!=1)) return false;
+      // Error flags may be the reason for recovery; they are never cleared to
+      // admit it. Every RX, other IRQ and FIFO byte still blocks the reset.
+      if(irq & ~(RADIOLIB_LR2021_IRQ_ERROR | RADIOLIB_LR2021_IRQ_CMD_ERROR)) return false;
+      if(r->getRxFifoLevel(&fifo)!=RADIOLIB_ERR_NONE || fifo) return false;
+      return !hasPendingRadioInterrupt() && digitalRead(P_LORA_DIO_1)!=HIGH && !isChipBusy();
+    };
+    if(!quiet(false) || r->standby()!=RADIOLIB_ERR_NONE || !quiet(true)) return false;
+    if(!labMaintenanceColdLeaseCurrent()) return false;
+    // Only an admitted actual reset consumes the one retry in this lease.
+    _agc_pram_cold_tried=true;
+    return true;
+  }
+#endif
   bool labScannerStop() {
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
     _lab_seq_tx_lease=false;
@@ -436,10 +588,21 @@ public:
       _lab_resume_pending=false;
     } else if (!labScannerSetAutomatic(enabled)) return false;
     _lab_user_auto_off=!enabled;
+    // A deliberate user action supersedes an outstanding automatic retry.
+    _lab_handoff_retry.cancel();
     if (!enabled) _lab_exclusive_restore_auto=false;
     return true;
   }
   bool labScannerStart(bool automatic=false) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    // Retain the first failing warm-restart phase before labMarkUncertain can
+    // trigger recovery; a later host reset must not erase SCN3 identity evidence.
+    auto& restart=_lab_handoff.current;
+    restart.restart_stage=1;restart.restart_rc=-32768;
+    restart.major=restart.minor=0;
+    for(uint8_t& byte:restart.ident)byte=0;
+    restart.restart_hook=255;
+#endif
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
     // A restart attempt relinquishes any paused-TX lease even if restart fails.
     _lab_seq_tx_lease=false; _lab_seq_tx_prepared=false;
@@ -449,7 +612,7 @@ public:
 #if MESH_ENABLE_RADIO_DIRECTION
     if (!mesh::radioDirection::radioReceiveAllowed()) return false;
 #endif
-    if (_lab_uncertain || _lab_sleeping || _lab_scan_active || !_profiles.enabled() || !_params_valid || _rx_ps_enabled || _cw_active
+    if (_lab_uncertain || _lab_sleeping || _lab_scan_active || (automatic && !_lab_pram_loaded) || !_profiles.enabled() || !_params_valid || _rx_ps_enabled || _cw_active
         || state == 3 || isChipBusy() || hasPendingRadioInterrupt() || isPacketPendingOrReceiving()) return false;
 #if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
@@ -493,12 +656,31 @@ public:
     int16_t rc=RADIOLIB_ERR_NONE;
     if (automatic) {
       // Includes pre- and post-standby RxDone checks; never reset a late FIFO.
+#if MESH_WARM_RX_REFRESH
+      if(_agc_pram_restore_owned) {
+        // The pulse already owns this RX lease. Reacquire PRAM without the
+        // ordinary external-mutation gate, retaining both late-FIFO checks.
+        if(isChipBusy() || hasPendingRadioInterrupt() || isReceivingPacket()) return false;
+        if(r->standby()!=RADIOLIB_ERR_NONE) return false;
+        if(hasPendingRadioInterrupt() || isReceivingPacket()) return false;
+      } else
+#endif
+      {
       const uint8_t admitted=beginReconfigure();
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      restart.restart_stage=2;restart.restart_rc=admitted;
+#endif
       if (admitted>1) return false;
+      }
     } else {
       // Quiesce RX before the hard reset; a completion racing standby keeps
       // ownership of its FIFO. A late physical IRQ after admission is
       // ambiguous, so retain it for bounded recovery rather than clearing it.
+#if MESH_WARM_RX_REFRESH
+      if(_agc_pram_cold_restore_owned) {
+        if(!labQuiesceMaintenanceColdReset()) return false;
+      } else
+#endif
       if (!labQuiesceForReset()) return false;
       ++_lab_cold_starts;
       // Stay in standby after reinitialization: briefly entering RX here
@@ -507,11 +689,35 @@ public:
     }
     if (rc==RADIOLIB_ERR_NONE) {
       rc=r->setRegulatorLDO(); // scanner bypasses DCDC workaround
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      restart.restart_stage=3;restart.restart_rc=rc;
+#endif
       if (rc==RADIOLIB_ERR_NONE) _lab_session_ldo=true;
     }
     uint8_t major=0,minor=0;
-    if (rc==RADIOLIB_ERR_NONE) rc=r->getVersion(&major,&minor);
+    if (rc==RADIOLIB_ERR_NONE) {
+      rc=r->getVersion(&major,&minor);
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      restart.restart_stage=4;restart.restart_rc=rc;restart.major=major;restart.minor=minor;
+#endif
+    }
     if (rc==RADIOLIB_ERR_NONE && (major!=1 || minor!=0x18)) rc=RADIOLIB_ERR_UNKNOWN;
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    if(restart.restart_stage==4)restart.restart_rc=rc;
+#endif
+#if MESH_WARM_RX_REFRESH
+    if(rc==RADIOLIB_ERR_NONE && !automatic && _agc_pram_cold_restore_owned) {
+      if(!labMaintenanceColdLeaseCurrent()) rc=RADIOLIB_ERR_UNKNOWN;
+      else {
+        const float frequencies[2]={_lab_snap[0].freq_hz/1000000.0f,_lab_snap[1].freq_hz/1000000.0f};
+        rc=recordApply(mesh::lr2021::ApplyStatus::Stage::Calibration,
+            r->resetReceiverCalibration(frequencies,2,false));
+      }
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      restart.restart_stage=12;restart.restart_rc=rc;
+#endif
+    }
+#endif
     if (!automatic) {
       const size_t words=sizeof(w12_pram_scan_blob)/sizeof(w12_pram_scan_blob[0]);
       for (size_t at=0;rc==RADIOLIB_ERR_NONE && at<words;) {
@@ -519,16 +725,43 @@ public:
         rc=r->writeRegMem32(0x801000u+uint32_t(at*4),w12_pram_scan_blob+at,count);
         at+=count;
       }
-      if (rc==RADIOLIB_ERR_NONE) rc=r->activatePram();
-      if (rc==RADIOLIB_ERR_NONE) _lab_pram_loaded=true;
+      if(rc==RADIOLIB_ERR_NONE)rc=r->activatePram();
+      if(rc==RADIOLIB_ERR_NONE)_lab_pram_loaded=true;
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      if(restart.restart_rc==RADIOLIB_ERR_NONE) {restart.restart_stage=5;restart.restart_rc=rc;}
+#endif
     }
     uint8_t req=2,ident[4]={};
-    if (rc==RADIOLIB_ERR_NONE) rc=r->labSpiCommand(0x012D,false,ident,4,&req,1);
+    if (rc==RADIOLIB_ERR_NONE) {
+      rc=r->labSpiCommand(0x012D,false,ident,4,&req,1);
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      restart.restart_stage=6;restart.restart_rc=rc;
+      for(uint8_t i=0;i<4;++i)restart.ident[i]=ident[i];
+#endif
+    }
     if (rc==RADIOLIB_ERR_NONE && (ident[0]!='S'||ident[1]!='C'||ident[2]!='N'||ident[3]!='3')) rc=RADIOLIB_ERR_UNKNOWN;
-    if (rc==RADIOLIB_ERR_NONE) rc=r->setRxTxFallbackMode(3); // FS
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    if(restart.restart_stage==6)restart.restart_rc=rc;
+#endif
+    if (rc==RADIOLIB_ERR_NONE) {
+      rc=r->setRxTxFallbackMode(3); // FS
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      restart.restart_stage=7;restart.restart_rc=rc;
+#endif
+    }
     uint8_t enable=1;
-    if (rc==RADIOLIB_ERR_NONE) rc=r->labSpiCommand(0x0209,true,&enable,1);
-    if (rc==RADIOLIB_ERR_NONE) rc=r->setDioIrqConfig(LR2021_IRQ_DIO,1u<<18); // RxDone only
+    if (rc==RADIOLIB_ERR_NONE) {
+      rc=r->labSpiCommand(0x0209,true,&enable,1);
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      restart.restart_stage=8;restart.restart_rc=rc;
+#endif
+    }
+    if (rc==RADIOLIB_ERR_NONE) {
+      rc=r->setDioIrqConfig(LR2021_IRQ_DIO,1u<<18); // RxDone only
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      restart.restart_stage=9;restart.restart_rc=rc;
+#endif
+    }
     uint32_t table[4]={packed[0].frequency,packed[0].modem,packed[1].frequency,packed[1].modem};
     if (rc==RADIOLIB_ERR_NONE) {
 #if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
@@ -536,6 +769,9 @@ public:
       else
 #endif
       rc=r->writeRegMem32(0x807800,table,4);
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      restart.restart_stage=10;restart.restart_rc=rc;
+#endif
     }
     uint8_t args[]={2,1,8,0x10}; // normal two-profile scanner
 #if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
@@ -543,9 +779,27 @@ public:
       args[0]=_lab_seq_plan.count; args[1]=MESH_W12_PRAM_SEQ_SYMBOLS; args[3]=MESH_W12_PRAM_SEQ_FLAGS;
     }
 #endif
-    if (rc==RADIOLIB_ERR_NONE) rc=labScannerCommand(1,args,sizeof(args),_lab_status);
+    if (rc==RADIOLIB_ERR_NONE) {
+      rc=labScannerCommand(1,args,sizeof(args),_lab_status);
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      restart.restart_stage=11;restart.restart_rc=rc;restart.restart_hook=_lab_status.hooked;
+#endif
+    }
     if (rc==RADIOLIB_ERR_NONE && !_lab_status.hooked) rc=RADIOLIB_ERR_UNKNOWN;
-    if (rc!=RADIOLIB_ERR_NONE) { labMarkUncertain(); return false; }
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    if(restart.restart_stage==11)restart.restart_rc=rc;
+#endif
+    if (rc!=RADIOLIB_ERR_NONE) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      // SCN3 ownership may now be ambiguous; take no extra SPI snapshots.
+      if(automatic
+#if MESH_WARM_RX_REFRESH
+          || _agc_pram_cold_restore_owned
+#endif
+          )labCaptureHandoffFailure(2,0,restart.restart_stage<11 && !_lab_scan_active);
+#endif
+      labMarkUncertain(); return false;
+    }
     _lab_error=0;
     if (!automatic) {
       _lab_last_profile=-1; _lab_good=_lab_bad=0; _lab_good_profile[0]=_lab_good_profile[1]=0; _lab_tx_pauses=_lab_tx_resumes=0;
@@ -803,6 +1057,7 @@ public:
   uint32_t _multi_retry_at=0, _multi_gen0=UINT32_MAX, _multi_gen1=UINT32_MAX;
   uint8_t _multi_key_first=0, _multi_key_last=0, _multi_key_profile=0, _multi_key_flags=0;
   bool _multi_key_extra=false;
+  bool _multi_key_enabled=false;
   bool _multi_failed=false;
   void serviceMultiSf(bool rx_allowed, bool radio_owned) {
     const auto& cfg=mesh::lr2021::multiSfSettings();
@@ -811,11 +1066,28 @@ public:
     if (_multi_gen0!=_profiles.generation[0] || _multi_gen1!=_profiles.generation[1]
         || _multi_key_first!=cfg.first || _multi_key_last!=cfg.last
         || _multi_key_profile!=cfg.profile || _multi_key_flags!=flags
-        || _multi_key_extra!=(_numSideDet!=0)) {
+        || _multi_key_extra!=(_numSideDet!=0) || _multi_key_enabled!=cfg.enabled) {
+      // An explicit range/profile change supersedes recovery for the old
+      // plan. Do not cancel merely because temporary RX permission changed.
+      if (_multi_gen0!=UINT32_MAX && (_multi_gen0!=_profiles.generation[0]
+          || _multi_gen1!=_profiles.generation[1] || _multi_key_first!=cfg.first
+          || _multi_key_last!=cfg.last || _multi_key_profile!=cfg.profile
+          || _multi_key_extra!=(_numSideDet!=0) || _multi_key_enabled!=cfg.enabled)) {
+        const bool transient=_lab_handoff_retry.pending();
+        _lab_handoff_retry.cancel();
+        // This failure was recovered successfully and its retry is now
+        // superseded by an explicit new plan. Release only that failure's
+        // block; normal safe-mode, ownership, RX and user-off gates still
+        // govern whether the new plan may start.
+        if (transient && !_lab_user_auto_off && !_lab_uncertain && !_profile_repair_required
+            && _lab_auto.enabled() && _lab_auto.reason()==mesh::w12pram::AutoPolicy::Reason::Failed)
+          _lab_auto.setEnabled(true);
+      }
       _multi_gen0=_profiles.generation[0]; _multi_gen1=_profiles.generation[1];
       _multi_key_first=cfg.first; _multi_key_last=cfg.last;
       _multi_key_profile=cfg.profile; _multi_key_flags=flags;
       _multi_key_extra=_numSideDet!=0;
+      _multi_key_enabled=cfg.enabled;
       _multi_retry_at=0; _multi_failed=false;
     }
     if (_multi_retry_at && int32_t(millis()-_multi_retry_at)<0) return;
@@ -895,7 +1167,9 @@ public:
     // Effective automatic preambles can change without a profile generation
     // change. Clear only this eligibility result; never clear a failed reset.
     _lab_auto.clearUnsupported();
-    if (!_lab_auto.enabled() || _lab_auto.blocked()) return;
+    // A retained scanner lease must also resume when started manually. An
+    // explicit stop already clears _lab_resume_pending.
+    if ((!_lab_auto.enabled() && !_lab_resume_pending) || _lab_auto.blocked()) return;
     if (mesh::w12pram::mayResume(_lab_resume_pending,_lab_sleeping,rx_allowed,state==3,radio_owned,
             _profile_repair_required,(int32_t)(millis()-_lab_resume_at)>=0)) {
       const uint32_t recoveries=_lab_recoveries;
@@ -928,7 +1202,36 @@ public:
     if (elapsed<1000 || (isChipBusy() && elapsed<5000)) return;
     _lab_uncertain=false;
     ++_lab_ambiguous_recoveries; ++n_recv_errors;
-    labRecover(RADIOLIB_ERR_UNKNOWN, mesh::w12pram::RecoveryOrigin::Handoff);
+    const bool eligible=_lab_handoff_retry_eligible && _lab_auto.enabled();
+    _lab_handoff_retry_eligible=false;
+    if (labRecover(RADIOLIB_ERR_UNKNOWN, mesh::w12pram::RecoveryOrigin::Handoff) && eligible) {
+      _lab_handoff_retry.observe(_profiles.generation[0],_profiles.generation[1]);
+      _lab_handoff_retry.schedule(millis());
+    }
+  }
+  void labServiceHandoffRetry(bool rx_allowed, bool radio_owned) {
+    _lab_handoff_retry.observe(_profiles.generation[0],_profiles.generation[1]);
+    const uint32_t now=millis();
+    if (rx_allowed && !radio_owned && state!=3 && !_lab_sleeping && !_lab_user_auto_off
+        && !mesh::lr2021::safeMode() && !_profile_repair_required
+        && _lab_auto.enabled() && _lab_auto.reason()==mesh::w12pram::AutoPolicy::Reason::Failed
+        && _lab_handoff_retry.due(now) && !isChipBusy() && !hasPendingRadioInterrupt()
+        && !isPacketPendingOrReceiving() && !hasPendingRadioInterrupt()
+        && _lab_handoff_retry.take(now)) {
+      _lab_auto.setEnabled(true);
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT && \
+    defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+      _multi_failed=false;
+      // Reconfigure the requested multi-SF plan before the automatic
+      // scanner service can start the ordinary two-profile plan.
+      _multi_retry_at=0;
+#endif
+    }
+  }
+  bool labMayRestoreExclusive() const {
+    // Ending another radio owner's lease must not bypass recovery backoff or
+    // clear an unrelated scanner failure.
+    return !_lab_auto.blocked() && !_lab_handoff_retry.pending();
   }
   void labStopForProfileTransition() {
     if (labScannerStop()) { _lab_transition_waiting=false; return; }
@@ -976,9 +1279,11 @@ public:
 #if MESH_ENABLE_RADIO_DIRECTION
       rx_allowed=mesh::radioDirection::radioReceiveAllowed();
 #endif
-      if (!radio_owned && _lab_exclusive_restore_auto && !_lab_user_auto_off && !mesh::lr2021::safeMode()) {
+      if (!radio_owned && _lab_exclusive_restore_auto && !_lab_user_auto_off
+          && !mesh::lr2021::safeMode() && labMayRestoreExclusive()) {
         if (labScannerSetAutomatic(true)) _lab_exclusive_restore_auto=false;
       }
+      labServiceHandoffRetry(rx_allowed,radio_owned);
 #if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT && \
     defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
       serviceMultiSf(rx_allowed, radio_owned);
@@ -1080,7 +1385,7 @@ public:
     if (_lab_seq_requested) {
       uint8_t raw_cr=0;
       if (r->getLoRaPacketStatus(&raw_cr,&received_crc)==RADIOLIB_ERR_NONE
-          && raw_cr>=1 && raw_cr<=4) {
+          && raw_cr<=4) {
         received_cr=raw_cr+4; received_params_valid=true;
       }
     }

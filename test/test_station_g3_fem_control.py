@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from test_replay_reset_integration import extract_braced
+from test_station_g3_cli_dispatch import full_fem_branches
 import test_esp32_gpio_hold as gpio_fixture
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +40,7 @@ struct Radio {
   unsigned calibrations = 0;
   bool isMorseTxActive() const { return false; }
   bool isMorseRxActive() const { return false; }
+  bool isAGCMaintenancePending() const { return false; }
   void recalibrateNoiseFloor() { ++calibrations; }
 };
 struct Prefs {
@@ -106,8 +108,10 @@ int main() {
     };
     assert(physical(lna) == HIGH && physical(inactive) == HIGH);
     const unsigned inactive_writes = g3_gpio_writes[inactive];
+    assert(!board.isLoRaFemLnaEnabled());
     board.loRaFEMControl.setRxModeEnable();
-    assert(physical(lna) == LOW && physical(inactive) == HIGH);
+    assert(physical(lna) == HIGH && physical(inactive) == HIGH); // Fresh default is bypass.
+    set_rx(true); assert(physical(lna) == LOW); // Explicit saved/user ON remains available.
     set_rx(false); assert(physical(lna) == HIGH);
     set_rx(true); assert(physical(lna) == LOW);
     // The actual board callbacks establish packet TX bypass until retirement.
@@ -181,9 +185,12 @@ class StationG3FemControlTest(unittest.TestCase):
         self.assertLess(common.index(dispatch), common.index("_board->handleCommand("))
         values = {
             "@COMMON_DISPATCH@": extract_braced(common, dispatch),
-            "@COMMON_BRANCHES@": "\nelse ".join(extract_braced(common, signature) for signature in (
+            # The shared extractor retains the production Mini/Full condition
+            # and omits the final C++ brace for its caller's unknown-command
+            # tail. This fixture closes the extracted FEM chain directly.
+            "@COMMON_BRANCHES@": full_fem_branches(common, (
                 'if (memcmp(config, "radio.fem.rxgain ", 17) == 0)',
-                'if (memcmp(config, "radio.fem.txgain ", 17) == 0)')),
+                'if (memcmp(config, "radio.fem.txgain ", 17) == 0)')) + "\n}",
             "@COMPANION_METHODS@": "\n".join(extract_braced(companion, signature) for signature in (
                 "bool MyMesh::applyAndSaveFemRxGain(", "bool MyMesh::applyAndSaveFemTxGain(")),
             "@BOARD_CALLBACKS@": "\n".join(extract_braced(board_header, signature) for signature in (
@@ -198,7 +205,7 @@ class StationG3FemControlTest(unittest.TestCase):
             code = code.replace(token, value)
         return code
 
-    def compile_run(self, *, old_setter=False):
+    def compile_run(self, *, old_setter=False, compact=False):
         with tempfile.TemporaryDirectory(prefix="g3-fem-control-") as directory:
             work = Path(directory)
             (work / "driver").mkdir()
@@ -220,14 +227,19 @@ class StationG3FemControlTest(unittest.TestCase):
             sanitizer = (["-fsanitize=address,undefined", "-fno-sanitize-recover=all",
                           "-fno-pie", "-no-pie"] if sys.platform.startswith("linux") else [])
             for macro_lna in (10, 42):
-                with self.subTest(compiled_lna=macro_lna, old_setter=old_setter):
+                with self.subTest(compiled_lna=macro_lna, old_setter=old_setter, compact=compact):
                     result = subprocess.run([
                         os.environ.get("CXX", "g++"), "-std=c++17", "-Wall", "-Wextra", "-Werror", *sanitizer,
+                        *(["-DWIO_E5_MINI_COMPACT_UNSUPPORTED_AGC=1"] if compact else []),
                         "-DCHIP_S3=1", "-DSOC_RTCIO_INPUT_OUTPUT_SUPPORTED=1", "-DHIGH=1", "-DLOW=0",
                         "-DP_PA1_EN=9", "-DP_PA1_EN_ACTIVE=1", f"-DP_PRIMARY_LNA_EN={macro_lna}",
                         "-DP_PRIMARY_LNA_EN_ACTIVE=0", "-I" + str(work), "-I" + str(ROOT / "src"),
                         str(work / "test.cpp"), str(work / "fem.cpp"), "-o", str(work / "test"),
                     ], capture_output=True, text=True, timeout=60)
+                    if compact:
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn("G3 dispatch fixture requires the Full FEM branch", result.stderr)
+                        continue
                     self.assertEqual(result.returncode, 0, result.stderr)
                     result = subprocess.run([str(work / "test")], capture_output=True, text=True, timeout=15)
                     if old_setter:
@@ -241,6 +253,9 @@ class StationG3FemControlTest(unittest.TestCase):
 
     def test_old_immediate_rx_setter_fails_real_gpio_regression(self):
         self.compile_run(old_setter=True)
+
+    def test_compact_guard_cannot_silently_select_the_full_fem_fixture(self):
+        self.compile_run(compact=True)
 
 
 if __name__ == "__main__":

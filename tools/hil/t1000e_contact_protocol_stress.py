@@ -74,11 +74,12 @@ RESP_CODE_END_OF_CONTACTS = 4
 
 CONTACT_UPDATE_MIN_LEN = 136
 CONTACT_UPDATE_GPS_LEN = 144
+CONTACT_UPDATE_LEGACY_PADDED_LEN = 147
 CONTACT_UPDATE_LASTMOD_LEN = 148
 FORBIDDEN_CONTACT_UPDATE_LENGTHS = (
     135,
     *range(137, 144),
-    *range(145, 148),
+    *range(145, 147),
 )
 INVALID_CONTACT_TYPES = (0, 5, 255)
 # 0x7f and 0xbf encode paths larger than the 64-byte path buffer.  0xc0
@@ -413,6 +414,14 @@ def malformed_cases(contact: Dict[str, Any]) -> List[MalformedCase]:
         MalformedCase(f"forbidden_length_{length}", canonical[:length])
         for length in FORBIDDEN_CONTACT_UPDATE_LENGTHS
     ]
+    # Older clients append three reserved zero bytes to the GPS-only form.
+    # That exact form is accepted; a nonzero byte is still a truncated lastmod.
+    # Do not truncate the canonical frame here: its lastmod may itself be zero.
+    gps_only = encode_contact_update(contact, include_lastmod=False)
+    for offset in range(CONTACT_UPDATE_GPS_LEN, CONTACT_UPDATE_LEGACY_PADDED_LEN):
+        frame = bytearray(gps_only + b"\0" * 3)
+        frame[offset] = 1
+        cases.append(MalformedCase(f"nonzero_legacy_padding_{offset}", bytes(frame)))
     for invalid_type in INVALID_CONTACT_TYPES:
         frame = bytearray(canonical)
         frame[33] = invalid_type

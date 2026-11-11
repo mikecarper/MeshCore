@@ -122,7 +122,7 @@ over the normal binary USB, BLE, or TCP connection:
 | [`get/set radio.fem.rxgain`](cli_commands.md#view-or-change-the-lora-fem-receive-path-gain-state-on-supported-boards) | Companion on a board with controllable LoRa FEM LNA |
 | [`get/set wifi.powersave`](cli_commands.md#browser-configuration-portal-esp32-repeater-and-room-server) | ESP32 WiFi Companion; active transport constraints still apply |
 | [`get/set bluetooth.name`](cli_commands.md#view-or-change-the-independent-bluetooth-name-companion) | Companion firmware |
-| [`set pin <0-999999>`](cli_commands.md#set-the-bluetooth-pairing-pin-companion) | Companion text terminal, command `0x42`, and authorized LoRa CLI; saved, reboot to apply; affects Bluetooth-capable builds |
+| [`set pin <0-999999>`](cli_commands.md#set-the-bluetooth-pairing-pin-companion) | Companion text terminal, command `0x42`, and authorized LoRa CLI; saved and applied immediately on Bluetooth-capable builds |
 | [`get/set bluetooth.mac`](cli_commands.md#view-or-change-the-bluetooth-address-ble-companion) | Every Companion build with Bluetooth |
 | [`get/set display.touch`](cli_commands.md#show-touchscreen-touch-areas) | Touchscreen Companions using the shared UI; text terminal and framed CLI; off after reboot |
 | [`get/set display.inbox`](cli_commands.md#set-companion-inbox-behavior) | Shared Companion UI; `history` (default), `pending`, or `unread`; saved across reboot |

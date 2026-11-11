@@ -4,30 +4,59 @@
 
 # Telemetry decoder
 
-The decoder runs on the documentation website. GitHub's Markdown preview shows
-the instructions but cannot run the decoder's buttons or JavaScript.
+Paste a Base64 CLI reply or raw packet hex to view telemetry and download CSV.
+Decoding runs in your browser; pasted data is not uploaded.
+[Jump to CLI commands](#cli-history-pages).
 
-Paste raw hexadecimal packet data copied from the
-[Let's Mesh packet analyzer](https://analyzer.letsmesh.net/packets) to decode a
-repeater's temperature, battery-voltage, external I2C-voltage, or radio noise-floor
-snapshot. The decoder also accepts the payload hex without its MeshCore packet
-header and the Base64 pages returned by repeater or room-server CLI commands.
-Decoding happens entirely in this browser; pasted data is not uploaded or sent
-anywhere.
+## Decode a packet
 
-The **Source ID** in a raw-packet result is the first eight bytes of the sending
-repeater's public key. Match that 16-character hex value against the public-key
-prefix recorded for your repeaters. It comes from the telemetry payload itself,
-so it is available even when only the payload was copied.
+<div class="telemetry-tool" data-telemetry-decoder>
+  <p>Enable JavaScript on the documentation website to use the decoder.</p>
+</div>
+
+<p class="meshcore-hosted-doc-link">GitHub's Markdown preview cannot run the decoder.
+<a href="https://mikecarper.github.io/MeshCore/telemetry_decoder/#decode-a-packet">Open the working decoder on MeshCore Docs</a>.</p>
+
+## CLI history pages
+
+Run a command in the repeater or room-server administrator CLI, then paste the
+reply (including the optional `>` prefix) or just the Base64 into the decoder.
+
+| Data | Newest page | Older-page example | Samples per page |
+|---|---|---|---|
+| MCU temperature | `get telemetry.temp` | `get telemetry.temp 2` | 48 (24 hours) |
+| Battery voltage | `get telemetry.volt` | `get telemetry.volt 3` | 48 (24 hours) |
+| I2C voltage | `get telemetry.volt.i2c 2` | `get telemetry.volt.i2c 2 4` | 48 (24 hours) |
+| GPS position | `get telemetry.gps` | `get telemetry.gps 2` | 24 (12 hours) |
+| Main-radio noise floor | `get telemetry.noise` | `get telemetry.noise 2` | Up to 176 (44 hours) |
+| Radio2 noise floor | `get telemetry.noise2` | `get telemetry.noise2 2` | Up to 176 (44 hours) |
+
+Run `get telemetry.volt.i2c` without a channel to list connected channels.
+
+For a compact seven-day view, request the daily minimum and maximum instead:
+
+```text
+get telemetry.temp minmax
+get telemetry.volt minmax
+get telemetry.minmax
+```
+
+Paste one reply into the decoder. It shows each rolling day's minimum and
+maximum, their timestamps, and the samples immediately before and after each
+extreme. Day 1 is the most recent 24 hours; Day 7 is the oldest. Samples are
+30 minutes apart. A neighbor can fall in an adjacent day; missing or unretained
+samples display as Missing. Temperature and battery history are held in RAM
+and start fresh after a reboot.
+`get telemetry.minmax` combines temperature and battery voltage for all seven
+days in one response; the table and CSV identify each measurement separately.
+
+Each individual reply fits one CLI response packet. Decode each min/max reply
+separately and use Download CSV to save its table.
 
 ## Send raw telemetry packets
 
-These transmission commands and packet-type selections are repeater-only.
-Room servers provide local history and CLI reads without transmission batches.
-
-From an administrator CLI session, first configure a direct route to the MQTT
-observer that will receive and upload the raw packets. Use `direct` when the
-observer is a zero-hop neighbor:
+On a repeater, set the route to the MQTT observer, then send a batch. Use
+`direct` for a zero-hop observer:
 
 ```text
 set data.tx path direct
@@ -40,6 +69,14 @@ For a routed observer, provide its comma-separated hop hashes instead:
 set data.tx path A1B2,C3D4
 send telemetry.tx now
 ```
+
+Run `get telemetry.tx` to check the route and last completed send. Manual sends
+work even with the automatic schedule off.
+
+## Transmission reference
+
+Transmission and packet-type settings are repeater-only. Room servers provide
+local history and CLI reads without transmission batches.
 
 Telemetry with a non-empty hop path uses the existing direct-message echo
 retries, following `direct.retry`, `direct.retry.count`, `direct.retry.heard`,
@@ -131,6 +168,10 @@ can be changed; the firmware does not overwrite an unmigrated legacy file.
 
 ## Find telemetry packets
 
+Copy raw packet hex from the [Let's Mesh packet analyzer](https://analyzer.letsmesh.net/packets)
+or the filtered view below. The decoder accepts both a full MeshCore packet and
+payload hex without the MeshCore packet header.
+
 [Open the two-day telemetry view in CascadiaMesh Analyzer](https://analyzer.cascadiamesh.org/#/packets?timeWindow=2880&filter=type%20%3D%3D%20RAW_CUSTOM%20%26%26%20age%20%3C%202d%20%26%26%20%28payload.raw%20starts_with%20%2254544231%22%20%7C%7C%20payload.raw%20starts_with%20%2254564231%22%20%7C%7C%20payload.raw%20starts_with%20%2249564231%22%20%7C%7C%20payload.raw%20starts_with%20%224E314231%22%20%7C%7C%20payload.raw%20starts_with%20%224E324231%22%29).
 The link selects RAW_CUSTOM packets whose data starts with
 any of the five telemetry prefixes below. To use the filter box directly, paste
@@ -157,16 +198,6 @@ time dropdown only offers fixed windows up to 24 hours. Packet retention and
 loading limits still apply: the current server returns at most 10,000 packets,
 and mobile clients load at most 1,000, so a busy network may show less than
 two days.
-
-## Decode a packet
-
-If you are reading this on GitHub, [open the working decoder on the documentation
-website](https://mikecarper.github.io/MeshCore/telemetry_decoder/#decode-a-packet)
-to paste a packet, load an example, or download CSV.
-
-<div class="telemetry-tool" data-telemetry-decoder>
-  <p>Enable JavaScript on the documentation website to use the decoder.</p>
-</div>
 
 ## Analyzer hex examples
 
@@ -201,31 +232,18 @@ finds and validates the payload automatically.
 
 All four examples identify the source as `1122334455667788`.
 
-## CLI history pages
+## CLI history reference
 
-The same page continues to decode the padded Base64 returned by these
-administrator commands:
-
-| Data | Newest page | Older-page example | Samples per page |
-|---|---|---|---|
-| MCU temperature | `get telemetry.temp` | `get telemetry.temp 2` | 48 (24 hours) |
-| Battery voltage | `get telemetry.volt` | `get telemetry.volt 3` | 48 (24 hours) |
-| I2C voltage | `get telemetry.volt.i2c 2` | `get telemetry.volt.i2c 2 4` | 48 (24 hours) |
-| GPS position | `get telemetry.gps` | `get telemetry.gps 2` | 24 (12 hours) |
-| Main-radio noise floor | `get telemetry.noise` | `get telemetry.noise 2` | Up to 176 (44 hours) |
-| Radio2 noise floor | `get telemetry.noise2` | `get telemetry.noise2 2` | Up to 176 (44 hours) |
-
-Paste either the complete reply beginning with `> ` or Base64 alone. For
-noise replies, the optional two-character CLI correlation prefix is accepted
-too (`01|Base64` or `01|> Base64`). For example:
+The decoder accepts the complete reply or Base64 alone. Noise replies also
+accept the optional two-character CLI correlation prefix (`01|Base64` or
+`01|> Base64`). Example battery-voltage reply:
 
 ```text
 get telemetry.volt 1
 > EkDUcWoeMAAB5+bl5eTj4uLh4ODf3t7d3Nvb2tnZ2NfX1tXU1NPS0tHQ0M/Ozc3My8vKycnI/w==
 ```
 
-Run `get telemetry.volt.i2c` without a channel first to list connected
-channels. For each channel, collect pages `1` through `4`. Paste all four reply
+For each I2C channel, collect pages `1` through `4`. Paste all four reply
 lines into the decoder at once; it merges their timestamps into one 192-point,
 four-day table and downloads them as one CSV. The same merging works for the
 three `IVB1` analyzer packets from a full channel. Inputs must have the same
@@ -246,6 +264,9 @@ IDs reported by `get telemetry.volt.i2c` rather than assuming them.
 
 ## Reading the table
 
+- The **Source ID** is the first eight bytes of the sending repeater's public
+  key. Match those 16 hex characters against the repeater's public-key prefix.
+  The ID comes from the payload, so it is present even without the packet header.
 - Timestamps default to UTC. Select **Show browser-local time** to convert
   them for display and CSV export.
 - `TTB1` means a raw temperature snapshot, `TVB1` a raw battery-voltage

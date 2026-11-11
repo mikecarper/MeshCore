@@ -166,6 +166,16 @@ int main() {
   assert(committed[871]==0 && committed[872]==0);
   assert(cli._radio_profiles.saved==96 && cli.prefs.tx_power_dbm==22);
   assert(cli.prefs.rx_ps_rx_us==900 && cli.prefs.rx_ps_sleep_us==1200);
+  // CR4 is saved at the same legacy byte offset, with the same atomic rollback.
+  assert(cli.savePrimaryRadioParams(920,125,9,4,96));
+  assert(cli.fs.files["/com_prefs"].size()==committed.size());
+  assert(cli.fs.files["/com_prefs"][113]==4 && cli.prefs.cr==4);
+  for(uint8_t cr:{uint8_t(3),uint8_t(9)}) {
+    const auto image=cli.fs.files["/com_prefs"];
+    assert(!cli.savePrimaryRadioParams(920,125,9,cr,96));
+    assert(cli.prefs.cr==4 && cli.fs.files["/com_prefs"]==image);
+  }
+  committed=cli.fs.files["/com_prefs"];
   // Old and torn tails preserve the imported legacy preamble; valid tails win.
   assert(cli.loadTail({0})==96);
   assert(cli.loadTail({0,32})==96);

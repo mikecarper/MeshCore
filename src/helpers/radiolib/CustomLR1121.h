@@ -22,6 +22,10 @@ class CustomLR1121 : public LR1121 {
   bool _txPowerSet = false;
 
   public:
+#define MC_LR_AGC_2021 0
+#include "LRxxxxAGCChip.inc"
+#undef MC_LR_AGC_2021
+
     CustomLR1121(Module *mod) : LR1121(mod) { }
 
     uint8_t regulatorModes() const { return _regulator.modes(); }

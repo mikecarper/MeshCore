@@ -13,6 +13,9 @@
 #include "CarrierTools.h"
 #include "PacketFileLoggingConfig.h"
 #include "CommonCLI.h"
+#include "AGCMaintenanceCLI.h"
+#include "AGCSettings.h"
+#include "RadioMaintenanceCLI.h"
 #ifdef WRAPPER_CLASS
 #include "target.h"
 #endif
@@ -565,6 +568,22 @@ static bool configKeyEquals(const char* config, const char* key) {
       == mesh::cli::NoArgCommandMatch::Exact;
 }
 
+#if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC && !MESH_WARM_RX_REFRESH
+#if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
+#error "Mini compact unsupported FEM handling requires Morse ownership to be absent"
+#endif
+// An explicitly opted-out compact image retains the unsupported replies
+// without retaining dispatch into pulse diagnostics that are not compiled.
+static bool miniUnsupportedWarmAgcGet(const char* config) {
+  if (!config || strncmp(config, "agc.", 4) != 0) return false;
+  config += 4;
+  return configKeyEquals(config, "status")
+      || configKeyEquals(config, "timing") || configKeyEquals(config, "recovery")
+      || configKeyEquals(config, "pulse") || configKeyEquals(config, "sleep")
+      || configKeyEquals(config, "checks") || configKeyEquals(config, "scan");
+}
+#endif
+
 static bool isAdvancedRetryConfig(const char* config) {
   return configKeyMatches(config, "direct.retry.heard")
       || configKeyMatches(config, "direct.retry.margin")
@@ -1103,6 +1122,9 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
 #if MESH_ENABLE_EMERGENCY_POWER
   loadEmergencyPower(fs);
 #endif
+  if (!mesh::beginAGCSettings(_callbacks->getProfileRadio(), fs)) {
+    MESH_DEBUG_PRINTLN("AGC settings unavailable; old reset disabled");
+  }
   mesh::hilStartupTrace("prefs_profiles_begin");
   _radio_profiles.begin(fs, _callbacks->getProfileRadio(), _rtc, true);
 #if MESH_ENABLE_CARRIER_TOOLS || MESH_ENABLE_MORSE_RX
@@ -1603,7 +1625,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     // the upgrade (the file is rewritten in the new layout by loadPrefs afterwards).
     // Defaults for the trailing fields that older/shorter files may not contain.
     // Build-profile defaults - overwritten below when the saved field is present.
-    _prefs->radio_fem_rxgain = 1;
+    _prefs->radio_fem_rxgain = 0;
     _prefs->radio_fem_txgain = 0;
     _prefs->cad_enabled = DEFAULT_CAD_ENABLED;
     memset(_prefs->extra_sf, 0, sizeof(_prefs->extra_sf));
@@ -2010,7 +2032,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->freq = constrain(_prefs->freq, 150.0f, 2500.0f);
     _prefs->bw = isValidLoRaBandwidth(_prefs->bw) ? _prefs->bw : defaultLoRaBandwidth();
     _prefs->sf = constrain(_prefs->sf, 5, 12);
-    _prefs->cr = constrain(_prefs->cr, 5, 8);
+    _prefs->cr = constrain(_prefs->cr, 4, 8);
     uint8_t extra_sf_count = 0;
     if (!mesh::lr2021::storedSideDetectorCount(_prefs->extra_sf, extra_sf_count)
         || !mesh::lr2021::validateSideDetectorSFs(
@@ -3463,7 +3485,7 @@ bool CommonCLI::acceptsPrimaryRadioParams(float freq, float bw, uint8_t sf,
                                           uint8_t cr, uint16_t preamble) {
   // The positive range and bandwidth whitelist also reject NaN and infinities.
   return freq >= 150.0f && freq <= 2500.0f
-      && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8 && isValidLoRaBandwidth(bw)
+      && sf >= 5 && sf <= 12 && cr >= 4 && cr <= 8 && isValidLoRaBandwidth(bw)
       && _radio_profiles.acceptsPrimary(freq, bw, sf, cr, preamble);
 }
 
@@ -3751,9 +3773,22 @@ bool CommonCLI::handleUDPBridgeCommand(uint32_t sender_timestamp,
 void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
     PrefsSaveReplyGuard save_reply(_prefs_save_failures, reply);
     mesh::cli::normalizeCommandVerb(command);
+    // Classify before any handler can access the radio or board. The shared
+    // allowlist includes cached statistics, not every command named "get".
+#if !defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) || !WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC || MESH_WARM_RX_REFRESH
+    const auto* maintenance_radio=_callbacks->getProfileRadio();
+    if (mesh::cli::deferForRadioMaintenance(maintenance_radio
+            && maintenance_radio->isAGCMaintenancePending(), command, reply, 160)) return;
+#endif
+#if MESH_RXPS_PULSE_LAB
+    if(sender_timestamp==0 && mesh::handleRxpsPulseLabCommand(_callbacks->getProfileRadio(),command,reply,157)) return;
+#endif
+#if MESH_WARM_RX_LAB_TIMER
+    if(mesh::handleWarmRxLabTimerCommand(_callbacks->getProfileRadio(),command,reply,157)) return;
+#endif
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
     if (radio_driver.labScannerUncertain() && strcmp(command,"get pramscan") && strcmp(command,"get pramscan.last")
-        && strcmp(command,"get pramscan.timing") && strcmp(command,"get pramscan.bench") && strcmp(command,"get pramscan.diag") && strcmp(command,"get pramscan.sleep") && strcmp(command,"get pramscan.recovery")
+        && strcmp(command,"get pramscan.timing") && strcmp(command,"get pramscan.bench") && strcmp(command,"get pramscan.diag") && strcmp(command,"get pramscan.sleep") && strcmp(command,"get pramscan.recovery") && strcmp(command,"get pramscan.handoff")
         && strcmp(command,"set pramscan recover") && strcmp(command,"get radio.safe") && strcmp(command,"set radio.safe on") && strcmp(command,"ver") && strcmp(command,"reboot")) {
       snprintf(reply,160,"ERR - ambiguous RX FIFO retained; use get pramscan or set pramscan recover"); return;
     }
@@ -3851,7 +3886,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       return;
     }
 #endif
-    if (_radio_profiles.handle(command, reply, 160, sender_timestamp != 0)) return;
+    if (_radio_profiles.handle(command, reply, 160, sender_timestamp != 0, &_prefs->freq)) return;
 #if defined(ENABLE_OTA)
     const auto* ota_context = mesh::ota::ota_context_if_active();
     const float adaptive_ota_pace = ota_context
@@ -3906,6 +3941,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     if (mesh::lr2021::handleSafeModeCommand(command, reply, 160)) return;
     if (strcmp(command,"get pramscan") == 0) { radio_driver.labScannerStatus(reply,160); return; }
     if (strcmp(command,"get pramscan.recovery") == 0) { radio_driver.labScannerRecoveryDiag(reply,160); return; }
+    if (strcmp(command,"get pramscan.handoff") == 0) { radio_driver.labScannerHandoffDiag(reply,160); return; }
 #if defined(ESP32_PLATFORM)
     if (strcmp(command,"get pramscan.sleep") == 0) { mesh::w12pram::sleepDiag().format(reply,160); return; }
 #endif
@@ -4190,9 +4226,19 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       } else {
         mesh::cli::formatError(reply, 160, "unsupported");
       }
-    } else if (memcmp(command, "tempradio ", 10) == 0) {
+    } else if (memcmp(command, "tempradio ", 10) == 0
+#if defined(NRF52_PLATFORM)
+               || strncmp(command, "tempradio.ifidle ", 17) == 0
+#endif
+    ) {
+#if defined(NRF52_PLATFORM)
+      const bool idle_only = command[9] == '.';
+      const char* args = command + (idle_only ? 17 : 10);
+#else
+      const char* args = command + 10;
+#endif
       uint16_t preamble = 0;
-      if (!mesh::RadioProfileCLI::parseSuffix(command + 10, 5, tmp, sizeof(tmp), preamble)) {
+      if (!mesh::RadioProfileCLI::parseSuffix(args, 5, tmp, sizeof(tmp), preamble)) {
         strcpy(reply, MESH_CLI_REPLY_TEXT("Error, use: tempradio f,bw,sf,cr,minutes[,preamble]", "Error, tempradio f,bw,sf,cr,minutes[,preamble]")); return;
       }
       const char *parts[5];
@@ -4211,7 +4257,18 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
           && mesh::cli::parseDecimalStrict(parts[1], bw)
           && sf <= 12 && cr <= 8
           && acceptsPrimaryRadioParams(freq, bw, sf, cr, preamble)) {
+#if defined(NRF52_PLATFORM)
+        if (idle_only) {
+          if (!_callbacks->tryApplyIdleTempRadioParams(freq, bw, sf, cr, temp_timeout_mins, preamble)) {
+            strcpy(reply, "Error: radio not idle");
+            return;
+          }
+        } else {
+          _callbacks->applyTempRadioParams(freq, bw, sf, cr, temp_timeout_mins, preamble);
+        }
+#else
         _callbacks->applyTempRadioParams(freq, bw, sf, cr, temp_timeout_mins, preamble);
+#endif
         char duration[64];
         const uint32_t seconds = (uint32_t)temp_timeout_mins * 60UL;
         mesh::RepeaterRadioTiming::formatDuration(duration, sizeof(duration), seconds);
@@ -5035,23 +5092,14 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
   if (handleObserverSetCmd(sender_timestamp, config, reply)) return;
 #if defined(WITH_ESPNOW_BRIDGE)
   if (memcmp(config, "espnow.enabled ", 15) == 0) {
-    const char* value = config + 15;
-    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+    char command[48];
+    if (strlen(config) > sizeof(command) - 5) {
       mesh::cli::formatError(reply, 160, "use set espnow.enabled on|off");
-    } else {
-      const bool enable = strcmp(value, "on") == 0;
-#if defined(WITH_MQTT_BRIDGE) || defined(WITH_RS232_BRIDGE) \
-    || defined(ESPNOW_BRIDGE_MERGED)
-      _prefs->espnow_bridge_enabled = enable;
-#endif
-#if !defined(WITH_MQTT_BRIDGE) && !defined(WITH_RS232_BRIDGE)
-      _prefs->bridge_enabled = enable;
-#endif
-      const bool applied = _callbacks->setEspNowBridgeState(enable);
-      savePrefs();
-      strcpy(reply, applied ? "OK"
-                            : "Error: ESP-NOW runtime change failed; setting saved");
+      return;
     }
+    snprintf(command, sizeof(command), "set %.*s", int(sizeof(command) - 5), config);
+    mesh::wireless::control().handle(command, reply, 160, millis(),
+        _callbacks->wirelessCommandSource(sender_timestamp));
     return;
   }
 #endif
@@ -5148,9 +5196,12 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       savePrefs();
       strcpy(reply, "OK");
     }
-  } else if (memcmp(config, "agc.reset.interval ", 19) == 0) {
+  } else if (memcmp(config, "agc.old ", 8) == 0) {
+    mesh::setStoredOldAGCInterval(_callbacks->getProfileRadio(), skipSpacesConst(config+8), reply, 160);
+  } else if (memcmp(config, "agc.reset.interval ", 19) == 0 || memcmp(config,"agc ",4)==0) {
     uint32_t seconds;
-    if (!mesh::cli::parseUnsignedIntegerStrict(&config[19], seconds) || seconds > 1020) {
+    const char* value=memcmp(config,"agc ",4)==0 ? config+4 : config+19;
+    if (!mesh::cli::parseUnsignedIntegerStrict(value, seconds) || seconds > 1020) {
       mesh::cli::formatError(reply, 160, MESH_CLI_REPLY_TEXT("AGC interval must be 0-1020 seconds", "AGC interval 0-1020 seconds"));
     } else {
       _prefs->agc_reset_interval = seconds / 4;
@@ -5293,6 +5344,11 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       _prefs->rx_boosted_gain = previous;
       restoreRxSetting(RxGain, result, previous_pending, previous_retry_at);
     }
+#if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC
+  } else if (memcmp(config, "radio.fem.rxgain ", 17) == 0
+          || memcmp(config, "radio.fem.txgain ", 17) == 0) {
+    mesh::cli::formatError(reply, 160, "unsupported");
+#else
   } else if (memcmp(config, "radio.fem.rxgain ", 17) == 0) {
     const auto* radio = _callbacks->getProfileRadio();
     if (radio && (radio->isMorseTxActive() || radio->isMorseRxActive())) {
@@ -5351,6 +5407,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     } else {
       mesh::cli::formatError(reply, 160, "state must be on or off");
     }
+#endif
   } else if (strncmp(config, "radio.rxps.rfrx_disabled ", 25) == 0) {
     const char* value = &config[25];
     bool disabled;
@@ -5990,19 +6047,11 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     if (!parseOnOffStrict(&config[15], enable)) {
       mesh::cli::formatError(reply, 160, "usage set bridge.enabled on|off");
     } else {
-#if defined(WITH_ESPNOW_BRIDGE) \
-    && (defined(WITH_MQTT_BRIDGE) \
-        || (defined(ESPNOW_BRIDGE_MERGED) && !defined(WITH_RS232_BRIDGE)))
-      // bridge.enabled retains its ESP-NOW meaning; mqtt.enabled is the
-      // independent MQTT switch when the profile also has that transport.
-      _prefs->espnow_bridge_enabled = enable;
-#if !defined(WITH_MQTT_BRIDGE)
-      _prefs->bridge_enabled = enable;
-#endif
-      const bool applied = _callbacks->setEspNowBridgeState(enable);
-      savePrefs();
-      strcpy(reply, applied ? "OK"
-                            : "Error: ESP-NOW runtime change failed; setting saved");
+#if defined(WITH_ESPNOW_BRIDGE) && (defined(WITH_MQTT_BRIDGE) || !defined(WITH_RS232_BRIDGE))
+      // Both names select the same persisted ESP-NOW service and share the
+      // management fallback and reply-drain path.
+      mesh::wireless::control().handle(enable ? "set espnow on" : "set espnow off",
+          reply, 160, millis(), _callbacks->wirelessCommandSource(sender_timestamp));
 #else
 #if defined(WITH_RS232_BRIDGE) && !defined(WITH_MQTT_BRIDGE)
       if (enable
@@ -6560,7 +6609,38 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     snprintf(reply, 160, "> %s%s. # channel busy: %u",
              (_prefs->cad_enabled || required) ? "on" : "off",
              required ? " (required by radio.mode tx)" : "", _board->n_cad_busy);
-  } else if (configKeyEquals(config, "agc.reset.interval")) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  } else if (configKeyEquals(config, "agc.reset.status") || configKeyEquals(config,"agc.old.status")
+      || configKeyEquals(config, "agc.reset.timing")
+      || configKeyEquals(config,"agc.old.timing") || configKeyEquals(config,"agc.old.errors")
+      || configKeyEquals(config, "agc.reset.errors")) {
+    const uint8_t page = (configKeyEquals(config, "agc.reset.timing") || configKeyEquals(config,"agc.old.timing")) ? 1
+        : (configKeyEquals(config, "agc.reset.errors") || configKeyEquals(config,"agc.old.errors")) ? 2 : 0;
+    const auto* radio = _callbacks->getProfileRadio();
+    if (!radio || !radio->formatAGCTimingDiagnostics(page, reply, 157)) {
+      mesh::cli::formatError(reply, 160, "unsupported");
+    }
+#endif
+  } else if(configKeyEquals(config,"agc.old")) {
+    // The key was already checked here; avoid a second command-parser call.
+    const auto* radio=_callbacks->getProfileRadio();
+    if(!radio || !radio->supportsOldAGC()) mesh::cli::formatError(reply,160,"unsupported");
+    else if(radio->getOldAGCInterval()==mesh::AGC_OLD_AUTO) strcpy(reply,"> auto");
+    else sprintf(reply,"> %lu",(unsigned long)radio->getOldAGCInterval());
+#if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC && !MESH_WARM_RX_REFRESH
+  } else if(miniUnsupportedWarmAgcGet(config)) {
+    mesh::cli::formatError(reply,160,"unsupported");
+#else
+  } else if(configKeyEquals(config,"agc.status") || configKeyEquals(config,"agc.timing") || configKeyEquals(config,"agc.recovery")
+      || configKeyEquals(config,"agc.pulse") || configKeyEquals(config,"agc.sleep") || configKeyEquals(config,"agc.checks")
+      || configKeyEquals(config,"agc.scan")) {
+    const auto* radio=_callbacks->getProfileRadio();
+    const uint8_t page=configKeyEquals(config,"agc.timing")?1:configKeyEquals(config,"agc.recovery")?2:
+        configKeyEquals(config,"agc.pulse")?3:configKeyEquals(config,"agc.sleep")?4:configKeyEquals(config,"agc.checks")?5:
+        configKeyEquals(config,"agc.scan")?6:0;
+    if(!radio || !radio->formatWarmRxRefresh(page,((uint32_t)_prefs->agc_reset_interval)*4,reply,157)) mesh::cli::formatError(reply,160,"unsupported");
+#endif
+  } else if (configKeyEquals(config, "agc.reset.interval") || configKeyEquals(config,"agc")) {
     sprintf(reply, "> %d", ((uint32_t) _prefs->agc_reset_interval) * 4);
   } else if (configKeyEquals(config, "multi.acks")) {
     sprintf(reply, "> %d", (uint32_t) _prefs->multi_acks);
@@ -6595,6 +6675,10 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     sprintf(reply, "> %s", StrHelper::ftoa(_prefs->node_lon));
   } else if (configKeyEquals(config, "radio.rxgain")) {
     sprintf(reply, "> %s", _prefs->rx_boosted_gain ? "on" : "off");
+#if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC
+  } else if (configKeyEquals(config, "radio.fem.rxgain") || configKeyEquals(config, "radio.fem.txgain")) {
+    mesh::cli::formatError(reply, 160, "unsupported");
+#else
   } else if (configKeyEquals(config, "radio.fem.rxgain")) {
     if (!_board->canControlLoRaFemLna()) {
       mesh::cli::formatError(reply, 160, "unsupported");
@@ -6607,6 +6691,7 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     } else {
       sprintf(reply, "> %s", _board->isLoRaFemPaGainEnabled() ? "on" : "off");
     }
+#endif
   } else if (memcmp(config, "tempradioat", 11) == 0 && (config[11] == 0 || config[11] == ' ')) {
     _callbacks->formatScheduledRadioParams(true, skipSpacesConst(&config[11]), reply);
   } else if (memcmp(config, "radioat", 7) == 0 && (config[7] == 0 || config[7] == ' ')) {

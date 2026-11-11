@@ -100,7 +100,7 @@ static void grammar() {
       char name[64]; snprintf(name, sizeof(name), "%s%s", prefix, tail);
       const auto alias = parseCompanionChannelAlias(name);
       const char* expected = alias.kind == CompanionChannelKind::Radio2
-          && mesh::cli::radio2PresetTuple(alias.tail) ? alias.tail : nullptr;
+          && mesh::cli::isRadio2Preset(alias.tail) ? alias.tail : nullptr;
       assert(companionChannelRadio2Preset(name) == expected);
     }
   }
@@ -416,11 +416,12 @@ struct Serial {
 COMMAND_MEMBERS = r'''
   void handleSetChannelFrame(const uint8_t*);
   Serial serial; Serial* _serial = &serial;
+  struct { float freq = 910.525f; } _prefs;
   struct ProfileSetup {
     bool stage_ok = true, commit_ok = true, pending = false;
     unsigned stages = 0, commits = 0, cancels = 0;
     char requested[32] = {};
-    bool stageChannelPreset(const char* name) {
+    bool stageChannelPreset(const char* name, const float* = nullptr) {
       ++stages;
       if (!stage_ok) return false;
       strcpy(requested, name); pending = true; return true;

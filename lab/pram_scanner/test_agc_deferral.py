@@ -24,6 +24,7 @@ struct Radio {
   uint32_t receive_delay=0; unsigned fixed=0, attempts=0;
 @SCANNER_METHOD@
   bool isCalibratingNoiseFloor() const { return calibration; }
+  uint32_t agcMaintenanceRetryMs() const { return 50; }
   bool tryResetAGC() { ++attempts; return accepted; }
   void resetAGC() { ++fixed; }
   bool getReceiveRetryDelay(uint32_t, uint32_t& delay) const {

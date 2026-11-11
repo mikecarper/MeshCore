@@ -30,6 +30,9 @@ int main() {
   assert(pack(a,x) && pack(b,y));
   assert(x.frequency==910525000 && x.modem==0x203C1073);
   assert(y.frequency==911150000 && y.modem==0x203C1075);
+  a.cr=4; assert(pack(a,x) && x.modem==0x203C0073); // Wire CR zero is 4/4.
+  a.cr=3; assert(!pack(a,x));
+  a.cr=9; assert(!pack(a,x));
   b.sf=8;b.cr=7;assert(pack(b,y) && y.modem==0x20403085);
   b.bw_hz=100000;assert(!pack(b,y));
   b.bw_hz=250000;b.sf=9;assert(!pack(b,y));

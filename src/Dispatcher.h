@@ -1,4 +1,5 @@
 #pragma once
+#include <helpers/OldAGCPolicy.h>
 
 #include <MeshCore.h>
 #include <Identity.h>
@@ -19,6 +20,31 @@
 #endif
 #include <string.h>
 
+// Explicit lab builds only; never changes the persisted interval format.
+#ifndef MESH_RXPS_PULSE_LAB
+  #define MESH_RXPS_PULSE_LAB 0
+#endif
+#ifndef MESH_WARM_RX_LAB_TIMER
+  #define MESH_WARM_RX_LAB_TIMER 0
+#endif
+
+// Fixed compact STM32WL profiles retain unsupported radio APIs without new virtual slots.
+#if (defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) || \
+    (defined(STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC) && STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC)
+  #define MESH_COMPACT_STM32_RADIO 1
+#else
+  #define MESH_COMPACT_STM32_RADIO 0
+#endif
+
+// Optional independent legacy timer. Tiny builds can opt in if flash permits.
+#ifndef MESH_ENABLE_OLD_AGC
+  #if MESH_COMPACT_STM32_RADIO
+    #define MESH_ENABLE_OLD_AGC 0
+  #else
+    #define MESH_ENABLE_OLD_AGC 1
+  #endif
+#endif
+
 #ifndef MESH_OTA_PACKET_PACING
   #define MESH_OTA_PACKET_PACING 1
 #endif
@@ -37,6 +63,7 @@ enum class RadioParamApplyResult : uint8_t {
   BUSY,
   FAILED
 };
+enum class AGCMaintenanceResult : uint8_t { Deferred, Failed, Applied };
 
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
 // A block reported here is provably before calling the radio's transmit API.
@@ -349,7 +376,91 @@ public:
   // True means the maintenance sequence was admitted, not that receiver
   // sensitivity has been measured. Busy implementations may defer it.
   virtual bool tryResetAGC() { resetAGC(); return true; }
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  virtual bool formatAGCTimingDiagnostics(uint8_t, char*, size_t) const { return false; }
+#endif
   virtual uint32_t getRecoveryCount() const { return 0; }
+  // The primary RXPS pulse reuses the existing saved AGC interval.
+  // Its optional old full-reset timer is independent and RAM-only.
+#if ((defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) || \
+    (defined(STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC) && STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC)) && !MESH_WARM_RX_REFRESH
+#if MESH_WARM_RX_LAB_TIMER || MESH_RXPS_PULSE_LAB
+#error "STM32WL compact unsupported-AGC handling cannot enable warm-maintenance features"
+#endif
+  // An explicitly opted-out compact image can omit the pulse virtual API.
+  // Actual STM32WL pulse builds use the checked virtual API below while their
+  // independent legacy timer stays omitted by default.
+  bool supportsWarmRxRefresh() const { return false; }
+  bool isAGCMaintenanceActive() const { return false; }
+  bool isAGCMaintenancePending() const { return false; }
+  bool hasAGCMaintenanceWork() const { return false; }
+  bool serviceAGCMaintenanceFastLane() { return false; }
+  void configureAGCMaintenance(uint32_t) { }
+  void cancelAGCMaintenance() { }
+  bool setAGCPulseSleep(uint32_t) { return false; }
+  uint32_t getAGCPulseSleep() const { return 0; }
+#if MESH_ENABLE_OLD_AGC
+private:
+  uint32_t _compact_old_agc_seconds = AGC_OLD_AUTO;
+public:
+  bool supportsOldAGC() const { return true; }
+  bool setOldAGCInterval(uint32_t seconds) {
+    if(!validOldAGCInterval(seconds)) return false;
+    _compact_old_agc_seconds=seconds; return true;
+  }
+  uint32_t getOldAGCInterval() const { return _compact_old_agc_seconds; }
+#else
+  bool supportsOldAGC() const { return false; }
+  bool setOldAGCInterval(uint32_t) { return false; }
+  uint32_t getOldAGCInterval() const { return 0; }
+#endif
+  bool formatWarmRxRefresh(uint8_t, uint32_t, char*, size_t) const { return false; }
+  AGCMaintenanceResult periodicAGCMaintenance(bool adaptive) {
+    if(adaptive) return !isCalibratingNoiseFloor() && tryResetAGC()
+        ? AGCMaintenanceResult::Applied : AGCMaintenanceResult::Deferred;
+    resetAGC(); return AGCMaintenanceResult::Applied;
+  }
+  uint32_t agcMaintenanceRetryMs() const { return 50; }
+  AGCMaintenanceResult periodicOldAGCMaintenance() {
+#if MESH_ENABLE_OLD_AGC
+    return !isCalibratingNoiseFloor() && tryResetAGC()
+        ? AGCMaintenanceResult::Applied : AGCMaintenanceResult::Deferred;
+#else
+    return AGCMaintenanceResult::Deferred;
+#endif
+  }
+#else
+  virtual bool supportsWarmRxRefresh() const { return false; }
+  // An asynchronous primary pulse owns the physical radio between loop ticks.
+  virtual bool isAGCMaintenanceActive() const { return false; }
+  virtual bool isAGCMaintenancePending() const { return false; }
+  // Includes a finished result without extending physical ownership or CLI guards.
+  virtual bool hasAGCMaintenanceWork() const { return isAGCMaintenancePending(); }
+  // Service an existing physical-radio lease before slow application work.
+  virtual bool serviceAGCMaintenanceFastLane() { return false; }
+  virtual void configureAGCMaintenance(uint32_t) { }
+  virtual void cancelAGCMaintenance() { }
+  virtual bool setAGCPulseSleep(uint32_t) { return false; }
+  virtual uint32_t getAGCPulseSleep() const { return 0; }
+#if MESH_WARM_RX_LAB_TIMER
+  virtual bool setWarmRxLabInterval(bool, uint32_t) { return false; }
+  virtual bool getWarmRxLabInterval(uint32_t&) const { return false; }
+  virtual uint32_t warmRxLabTimerRevision() const { return 0; }
+#endif
+  virtual bool supportsOldAGC() const { return false; }
+  virtual bool setOldAGCInterval(uint32_t) { return false; }
+  virtual uint32_t getOldAGCInterval() const { return 0; }
+  virtual bool formatWarmRxRefresh(uint8_t, uint32_t, char*, size_t) const { return false; }
+  virtual AGCMaintenanceResult periodicAGCMaintenance(bool adaptive) {
+    if(adaptive) return !isCalibratingNoiseFloor() && tryResetAGC()
+        ? AGCMaintenanceResult::Applied : AGCMaintenanceResult::Deferred;
+    resetAGC(); return AGCMaintenanceResult::Applied;
+  }
+  virtual uint32_t agcMaintenanceRetryMs() const { return 50; }
+  virtual AGCMaintenanceResult periodicOldAGCMaintenance() {
+    return AGCMaintenanceResult::Deferred;
+  }
+#endif
 
   virtual uint8_t getRadioState() const { return 0; }
   virtual unsigned long getLastRecvMillis() const { return 0; }
@@ -357,8 +468,22 @@ public:
 
   virtual bool isInRecvMode() const = 0;
 
+  // Cached requested RXPS policy, including continuous fallback; never probes SPI.
+#if MESH_COMPACT_STM32_RADIO
+  // This fixed wrapper has no RXPS implementation; its capability contract is
+  // enforced by CustomSTM32WLxWrapper rather than adding a virtual slot here.
+  bool isRxPowerSavingEnabled() const { return false; }
+#else
+  virtual bool isRxPowerSavingEnabled() const { return false; }
+#endif
+#if MESH_COMPACT_STM32_RADIO
+  bool supportsRxPowerSaving() const { return false; }
+  bool isRxPowerSavingContinuousFallback() const { return false; }
+  bool supportsRxPowerSavingRfRxDisable() const { return false; }
+  bool setRxPowerSavingRfRxDisabled(bool) { return false; }
+  bool isRxPowerSavingRfRxDisabled() const { return false; }
+#else
   virtual bool supportsRxPowerSaving() const { return false; }
-  virtual bool setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) { return !enabled; }
   virtual bool isRxPowerSavingContinuousFallback() const { return false; }
   virtual bool supportsRxPowerSavingRfRxDisable() const { return false; }
   virtual bool setRxPowerSavingRfRxDisabled(bool disabled) {
@@ -366,6 +491,8 @@ public:
     return false;
   }
   virtual bool isRxPowerSavingRfRxDisabled() const { return false; }
+#endif
+  virtual bool setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) { return !enabled; }
 
   /**
    * \brief Attempts to change the radio modulation parameters without waiting.
@@ -694,6 +821,9 @@ protected:
   bool hasForeignRadioFrame() const { return foreign_radio_length != 0; }
 #endif
   virtual void onRadioProfileCopyQueued(Packet* packet, const Packet* original, uint8_t priority) { }
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
+  virtual void onForwardPacketQueued(Packet*, uint8_t) {}
+#endif
   // Policy gate for the other profile only; same-profile TX remains eligible.
   // Called before admitting copies (including bound retry packets) to a queue.
   virtual bool allowRadioProfileCross(const Packet* packet) { return true; }
@@ -875,6 +1005,12 @@ private:
   bool queueTransmitCandidate(Packet* packet, uint8_t priority, uint32_t scheduled_for);
   // Keep the frequently accessed core fields at compact ARM load offsets.
   AGCResetScheduler agc_reset;
+#if MESH_WARM_RX_LAB_TIMER
+  uint32_t _agc_lab_timer_revision = 0;
+#endif
+#if MESH_ENABLE_OLD_AGC
+  AGCResetSchedulerCore old_agc_reset;
+#endif
   uint32_t receive_context_generation = 0;
   uint32_t profile_cad_busy[2] = {};
   uint8_t receive_context_profile = 0;

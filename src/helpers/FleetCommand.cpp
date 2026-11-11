@@ -632,7 +632,7 @@ bool FleetCommand::commandAllowed(const char* command) {
   }
   if (kind == CommandKind::Radio) {
     return get ? !*arguments : set && ((key_length == 6
-        && cli::radio2PresetTuple(arguments)) || radioTuple(arguments, key_length == 10));
+        && cli::isRadio2Preset(arguments)) || radioTuple(arguments, key_length == 10));
   }
   if (kind == CommandKind::RadioStatus) return get && !*arguments;
   if (kind == CommandKind::Cross) {

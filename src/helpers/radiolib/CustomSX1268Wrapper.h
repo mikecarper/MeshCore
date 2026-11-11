@@ -2,7 +2,7 @@
 #include "SX126xReceiveMode.h"
 
 #include "CustomSX1268.h"
-#include "RadioLibWrappers.h"
+#include "SX126xPulseWrapper.h"
 #include "SX126xReset.h"
 #include "SX126xMorseRamp.h"
 #include "SX126xMorseReceiver.h"
@@ -11,13 +11,18 @@
 #define USE_SX1268
 #endif
 
-class CustomSX1268Wrapper : public RadioLibWrapper {
+class CustomSX1268Wrapper : public SX126xPulseWrapper<CustomSX1268> {
 protected:
-  int8_t readReceiveMode() override { return sx126xReceiveMode((SX126x*)_radio); }
+  int8_t readReceiveMode() override {
+#if MESH_WARM_RX_REFRESH
+    if(_rxps_pulse.owns()) return -1;
+#endif
+    return sx126xReceiveMode((SX126x*)_radio);
+  }
 
 public:
   ~CustomSX1268Wrapper() { unregisterInterruptAction(); }
-  CustomSX1268Wrapper(CustomSX1268& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
+  CustomSX1268Wrapper(CustomSX1268& radio, mesh::MainBoard& board) : SX126xPulseWrapper<CustomSX1268>(radio, board) { }
   bool supportsMorseTx() const override { return true; }
   bool supportsMorseRx() const override { return MESH_ENABLE_MORSE_RX && supportsRadioDeepInit(); }
 #if MESH_ENABLE_MESHTEXT_WIRE

@@ -68,6 +68,35 @@ BOOTLOADER_HARDWARE = {
     "solarxiao_400M33S": "Xiao_nrf52",
 }
 
+# Independently reviewed against the pinned 2.4.12 release images. USB IDs
+# and DFU names are reused, so neither value alone identifies a bootloader.
+# New release profiles must be reviewed and added here before embedding.
+PROFILE_IDENTITIES = {
+    "gat562": (0x239A0029, "GAT562_DFU"),
+    "heltec_mesh_pocket": (0x239A0071, "MESH_POCKET_OTA"),
+    "heltec_mesh_tower_v2_sdcard": (0x239A0071, "TOWER_V2_OTA"),
+    "heltec_t096": (0x239A0071, "T096_DFU"),
+    "heltec_t1": (0x239A0071, "T1_DFU"),
+    "heltec_t114": (0x239A0071, "T114_DFU"),
+    "keepteen_lt1": (0x239A00B3, "KeepteenLT1_OTA"),
+    "lilygo_techo": (0x239A0029, "LGTE_DFU"),
+    "lilygo_techo_lite": (0x239A00DA, "LTEL_DFU"),
+    "minewsemi_mx25le01": (0x239A0029, "MX25_DFU"),
+    "pca10056": (0x239A00DA, "N056_DFU"),
+    "promicro_nrf52840": (0x239A00B3, "PROM_DFU"),
+    "sensecap_solar_p1": (0x28860044, "SCAP_DFU"),
+    "t1000_e": (0x28860057, "T1KE_DFU"),
+    "thinknode_m1": (0x239A00DA, "TNM1_DFU"),
+    "thinknode_m3": (0x239A00DA, "TNM3_DFU"),
+    "thinknode_m6": (0x239A00DA, "TNM6_DFU"),
+    "wio_tracker_l1": (0x28861667, "WTL1_DFU"),
+    "wiscore_rak3401_auto": (0x239A0029, "3401_DFU"),
+    "wiscore_rak4631_auto": (0x239A0029, "4631_DFU"),
+    "wismesh_tag": (0x239A0029, "RTAG_DFU"),
+    "xiao_nrf52840_ble": (0x28860044, "XIAO_DFU"),
+    "xiao_nrf52840_ble_sense": (0x28860045, "XIAO_DFU"),
+}
+
 
 def select_profile(manifest, target):
     from generate_mesh_america_release import target_profiles
@@ -190,6 +219,9 @@ def validate_candidate_zip(data, profile, project=ROOT):
             or identity.layout_abi != 1 or identity.compat_flags != 0
             or identity.device_name != profile["deviceName"]):
         raise ValueError("candidate bootloader identity/version/vector/CRC mismatch")
+    expected_identity = PROFILE_IDENTITIES.get(profile.get("id"))
+    if expected_identity is None or (identity.board_id, identity.device_name) != expected_identity:
+        raise ValueError("candidate bootloader board/name does not match the reviewed profile")
     platforms = {"6.1.1": (0xB6, 0x26000), "7.3.0": (0x123, 0x27000)}
     match = re.search(r"_s140_([0-9.]+)\.zip$", asset["name"])
     expected = platforms.get(match[1]) if match else None
@@ -248,6 +280,25 @@ def emit_resource(project, target, output, *, flags=(), cppdefines=(), src_filte
         raise ValueError("embedded bootloader requires an nRF52 OTA receiver")
     manifest = load_manifest(project)
     profile, parsed = select_profile(manifest, target)
+    # Sensor-reduced release overlays compile the underlying PlatformIO
+    # environment while retaining the synthetic overlay's on-air identity.
+    # Permit only the mapping constructed by build_legacy.sh, and independently
+    # require the same exact hardware, role and reviewed bootloader profile.
+    # In particular, sharing an MCU or a DFU name never permits a different
+    # board (such as a XIAO Sense) to select this resource.
+    alias = definitions.get("OTA_VARIANT")
+    if alias is not None:
+        logical = str(alias).strip("\"'")
+        if (not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", logical)
+                or (logical != target and logical != target.removesuffix("_")
+                    + "_lora_ota_no_external_sensors")):
+            raise ValueError("embedded bootloader target does not match its build environment")
+        logical_profile, logical_parsed = select_profile(manifest, logical)
+        if (logical_profile["id"] != profile["id"]
+                or logical_parsed["sourceHardware"] != parsed["sourceHardware"]
+                or logical_parsed["role"] != parsed["role"]):
+            raise ValueError("embedded bootloader target changes the build hardware or role")
+        target, profile, parsed = logical, logical_profile, logical_parsed
     role_sources = {"repeater": "../examples/simple_repeater/main.cpp",
                     "room": "../examples/simple_room_server/main.cpp"}
     if (not source_selected(src_filter, role_sources[parsed["role"]])

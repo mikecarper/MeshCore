@@ -119,7 +119,7 @@ class PackagedApplicationTests(unittest.TestCase):
         self.candidate = (struct.pack("<II", 0x20030000, 0xF4101)
                           + bytes(range(256)) * (qualifier.BOOT_SIZE // 256))[0:qualifier.BOOT_SIZE]
         self.identity = SimpleNamespace(app_base=0x26000, softdevice_fwid=0xB6)
-        self.parsed = {"sourceHardware": "RAK_4631", "role": "repeater"}
+        self.parsed = {"sourceHardware": "R1Neo", "role": "repeater"}
         self.profile = {"id": "wiscore_rak4631_auto", "storage": "adaptive",
                         "files": {"zip": {"sha256": "b" * 64}}}
         self.stock = qualifier.legacy_bootloaders_for(

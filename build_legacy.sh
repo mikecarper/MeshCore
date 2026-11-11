@@ -57,6 +57,7 @@ PROFILE_BUILD_WORKERS=1
 PIO_BUILD_JOBS_OVERRIDE=""
 PIO_BUILD_DIR_OVERRIDE=""
 RESOLVED_BUILD_TARGETS=()
+RELEASE_SHARD_ALL_TARGETS=()
 RESUME_BUILD_OUTPUT="${RESUME_BUILD_OUTPUT:-0}"
 REQUIRE_OTA_UPDATES="${REQUIRE_OTA_UPDATES:-}"
 OTA_EXCLUDED_TARGETS=()
@@ -3079,11 +3080,61 @@ prepare_esp32_arduino3_framework() {
   echo "Ensuring Arduino-ESP32 3.3.11 dependencies for ${env_name}..."
   if ! grep -Eq '"version"[[:space:]]*:[[:space:]]*"3\.3\.11"' "$arduino_manifest" 2>/dev/null; then
     pio pkg uninstall --global --tool framework-arduinoespressif32 --no-save || true
-    pio pkg install --global --tool "$arduino3_core_url"
+    run_pio_with_size_detection pkg install --global --tool "$arduino3_core_url" || return $?
   fi
-  pio pkg install --global --tool "$arduino3_libs_url"
-  pio pkg install -e "$pio_env_name"
+  if run_pio_with_size_detection pkg install --global --tool "$arduino3_libs_url"; then
+    :
+  else
+    local install_status=$?
+    # Only the pinned 3.3.11 libraries have a separately verified API asset.
+    # Permanent package, checksum and local installation failures still fail.
+    if [ "${MESHCORE_PIO_ESP32_3311_LIBS_EXHAUSTED:-0}" != 1 ]; then
+      return "$install_status"
+    fi
+    install_esp32_arduino3_pinned_libs_fallback || return $?
+  fi
+  run_pio_with_size_detection pkg install -e "$pio_env_name"
 }
+
+install_esp32_arduino3_pinned_libs_fallback() (
+  local checkout_dir fallback_dir archive
+  checkout_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P) || return 1
+  umask 077
+  fallback_dir=$(mktemp -d "${TMPDIR:-/tmp}/meshcore-esp32-libs-XXXXXX") || return 1
+  trap 'rm -rf -- "$fallback_dir"' EXIT
+  fallback_dir=$(cd -- "$fallback_dir" && pwd -P) || return 1
+  archive="${fallback_dir}/esp32-core-3.3.11-libs.tar.xz"
+  echo "Downloading the verified Arduino-ESP32 3.3.11 libraries from the GitHub release API..." >&2
+  python3 "${checkout_dir}/scripts/fetch_pinned_esp32_core.py" fetch "$archive" || return $?
+  run_pio_with_size_detection pkg install --global --tool "file://${archive}" || return $?
+  python3 "${checkout_dir}/scripts/fetch_pinned_esp32_core.py" bind "$archive"
+)
+
+# Recover only reviewed release assets. The archive is checked before install
+# and again before its PIO source metadata is bound.
+install_pinned_pio_fallback() (
+  local kind=$1 checkout_dir fallback_dir archive package_type extension
+  case "$kind" in
+    platform) package_type=--platform; extension=zip ;;
+    libs|iot_core|core313) package_type=--tool; extension=zip ;;
+    core3311) package_type=--tool; extension=tar.xz ;;
+    picotool|pioasm) package_type=--tool; extension=tar.gz ;;
+    *) return 1 ;;
+  esac
+  checkout_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P) || return 1
+  umask 077
+  fallback_dir=$(mktemp -d "${TMPDIR:-/tmp}/meshcore-pio-asset-XXXXXX") || return 1
+  trap 'rm -rf -- "$fallback_dir"' EXIT
+  fallback_dir=$(cd -- "$fallback_dir" && pwd -P) || return 1
+  archive="${fallback_dir}/${kind}.${extension}"
+  echo "Downloading pinned PlatformIO ${kind} asset from the GitHub release API..." >&2
+  python3 "${checkout_dir}/scripts/fetch_pinned_esp32_c6.py" fetch "$kind" "$archive" || return $?
+  pio pkg install --global --skip-dependencies "$package_type" "file://${archive}" || return $?
+  python3 "${checkout_dir}/scripts/fetch_pinned_esp32_c6.py" bind "$kind" "$archive"
+)
+
+# Preserve the historical helper for scripts and tests that call it directly.
+install_esp32_c6_pinned_fallback() { install_pinned_pio_fallback "$@"; }
 
 requires_esp32_companion_full_ota_fallback() {
   # Some non-PSRAM ESP32 companions cannot hold their configured high-capacity contact,
@@ -3569,6 +3620,8 @@ declare_build_capability_contract() {
       "logging.file omitted; live USB/MQTT packet logging retained"
     record_build_reduction \
       "battery.forwarding omitted; battery alerts and readings retained"
+    record_build_reduction \
+      "radio.flood per-profile controls omitted; global repeat retained"
   fi
   pio_env_name=$(get_pio_build_env "$env_name")
   if is_qspi_hardware_qualification_target "$env_name"; then
@@ -3759,8 +3812,10 @@ declare_build_capability_contract() {
       # WiFi/WebConfig alone does not prove the official app can configure it.
       # Require every read/save operation in the uploadable application, so a
       # Full build fails qualification if its app command handler is omitted.
-      record_application_expectation "companion.app_wifi.get_enabled" "get wifi.enabled"
-      record_application_expectation "companion.app_wifi.set_enabled" "set wifi.enabled "
+      # The shared parser composes get/set with the alias key; the save-path
+      # error proves the persistent setter is linked, not just WiFi status.
+      record_application_expectation "companion.app_wifi.get_enabled" "wifi.enabled"
+      record_application_expectation "companion.app_wifi.set_enabled" "Error: WiFi setting could not be saved"
       record_application_expectation "companion.app_wifi.get_ssid" "> (not set)"
       record_application_expectation "companion.app_wifi.set_ssid" "OK - WiFi SSID saved"
       record_application_expectation "companion.app_wifi.get_password" "get wifi.pwd"
@@ -3925,10 +3980,81 @@ apply_esp32_full_size_profile() {
   fi
 
   case "${env_name,,}" in
-    meshnology_w12_repeater|meshnology_w12_repeater_bridge_espnow|meshnology_w12_repeater_observer_mqtt)
-      # The W12 has onboard PSRAM. Keep complete repeater tables in verified
-      # external memory and preserve internal headroom in the Full image.
+    ebyte_eora-s3_repeater|ebyte_eora-s3_repeater_observer_mqtt|\
+    ebyte_eora-s3_room_server_observer_mqtt)
+      # Keep Full observer images inside the existing dual-OTA slots. The
+      # plain repeater uses the same observer compile base but keeps its own
+      # OTA identity. Apply the same S3 LTO codegen to both direct observers.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -flto -flto-partition=one -DMESH_UNIVERSAL_LTO=1 -ffunction-sections -fdata-sections -mtext-section-literals -mlongcalls"
+      append_platformio_extra_script "post:scripts/esp32_universal_radio_lto.py"
+      ;;
+    heltec_wireless_tracker_repeater|heltec_wireless_tracker_repeater_observer_mqtt)
+      # Retain all flood rules and neighbor records. Browser scrollback grows
+      # dynamically beyond this initial size when sufficient heap is free.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048"
+      record_build_reduction "web.terminal initial scrollback 2048 bytes; grows up to 32768 bytes when memory permits"
+      ;;
+    lilygo_tlora_v2_1_1_6_repeater_observer_mqtt_)
+      # Keep the full recent-repeater history in byte-accessible RTC SLOW;
+      # the browser terminal grows its smaller initial buffer on demand.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_RECENT_REPEATERS_RTC_SLOW=1 -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048"
+      record_build_reduction "web.terminal initial scrollback 2048 bytes; grows up to 32768 bytes when memory permits"
+      ;;
+    lilygo_tlora_v2_1_1_6_room_server|lilygo_tlora_v2_1_1_6_room_server_|\
+    lilygo_tlora_v2_1_1_6_room_server_observer_mqtt|lilygo_tlora_v2_1_1_6_room_server_observer_mqtt_)
+      # The canonical room identity uses this same observer feature base.
+      # Keep the dynamically growing browser terminal at its qualified
+      # observer startup allocation so the Full build retains runtime heap.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048"
+      record_build_reduction "web.terminal initial scrollback 2048 bytes; grows up to 32768 bytes when memory permits"
+      ;;
+    lilygo_tbeam_1w_repeater|lilygo_tbeam_1w_repeater_bridge_espnow|lilygo_tbeam_1w_repeater_observer_mqtt|\
+    t_beam_s3_supreme_sx1262_repeater|t_beam_s3_supreme_sx1262_repeater_bridge_espnow|\
+    t_beam_s3_supreme_sx1262_repeater_observer_mqtt|wio_tracker_l2_repeater|\
+    heltec_rc32_repeater|heltec_rc32_repeater_bridge_espnow|heltec_rc32_repeater_observer_mqtt|\
+    heltec_rc32_without_display_repeater|heltec_rc32_without_display_repeater_bridge_espnow|\
+    heltec_rc32_without_display_repeater_observer_mqtt|\
+    heltec_e213_repeater|heltec_e213_repeater_bridge_espnow|heltec_e213_repeater_observer_mqtt|\
+    heltec_e290_repeater|heltec_e290_repeater_bridge_espnow|heltec_e290_repeater_observer_mqtt|\
+    heltec_t190_repeater|heltec_t190_repeater_|heltec_t190_repeater_bridge_espnow|heltec_t190_repeater_observer_mqtt|\
+    station_g2_repeater|station_g2_repeater_bridge_espnow|station_g2_logging_repeater|\
+    station_g2_logging_repeater_bridge_espnow|station_g2_repeater_observer_mqtt|\
+    station_g3_esp32_repeater|station_g3_esp32_logging_repeater|station_g3_esp32_repeater_observer_mqtt|\
+    station_g3_esp32_r2_repeater|station_g3_esp32_r2_repeater_observer_mqtt|\
+    rak_3112_repeater|rak_3112_repeater_bridge_rs232|rak_3112_repeater_bridge_espnow|rak_3112_repeater_observer_mqtt|\
+    meshnology_w12_repeater|meshnology_w12_repeater_bridge_espnow|meshnology_w12_repeater_observer_mqtt|\
+    heltec_v4_repeater|heltec_v4_repeater_bridge_espnow|heltec_v4_repeater_observer_mqtt|\
+    heltec_v4_expansionkit_repeater|heltec_v4_expansionkit_repeater_observer_mqtt|\
+    heltec_v4_tft_repeater|heltec_v4_tft_repeater_bridge_espnow|\
+    heltec_v4_r8_repeater|heltec_v4_r8_repeater_bridge_espnow|heltec_v4_r8_repeater_observer_mqtt|\
+    heltec_v4_r8_tft_repeater|heltec_v4_r8_tft_repeater_bridge_espnow|heltec_v4_r8_tft_repeater_observer_mqtt)
+      # These boards have onboard PSRAM. Keep complete repeater tables in
+      # verified external memory; their resident radio paths also use the
+      # internal headroom. Missing PSRAM leaves USB recovery alive.
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_REPEATER_REQUIRE_PSRAM=1"
+      ;;
+  esac
+
+  case "${env_name,,}" in
+    heltec_wireless_tracker_repeater|heltec_wireless_tracker_repeater_observer_mqtt|\
+    heltec_tracker_v2_repeater|heltec_tracker_v2_repeater_observer_mqtt)
+      # Preserve the full 160x80 UI and panel RGB565 scanout with a compact
+      # RGB332 canvas. The eight named UI colors remain exact; intermediate
+      # colors use the same supported 256-color path as the T096.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DST7735_BUFFER_COLOR_DEPTH=8"
+      record_build_reduction "display.framebuffer uses 256-color RGB332 storage; 160x80 geometry and all screen controls retained"
+      ;;
+  esac
+
+  case "${env_name,,}" in
+    heltec_wireless_tracker_repeater|heltec_wireless_tracker_repeater_observer_mqtt|\
+    heltec_tracker_v2_repeater|heltec_tracker_v2_repeater_observer_mqtt|\
+    heltec_wsl3_repeater|heltec_wsl3_repeater_observer_mqtt)
+      # These complete S3 repeater images are close to their internal RAM
+      # boundary. Optimize the actual linked code instead of lowering the
+      # runtime reserve or cutting tables, transports, or OTA capabilities.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -flto -flto-partition=one -DMESH_UNIVERSAL_LTO=1 -ffunction-sections -fdata-sections -mtext-section-literals -mlongcalls"
+      append_platformio_extra_script "post:scripts/esp32_universal_radio_lto.py"
       ;;
   esac
 
@@ -3952,6 +4078,13 @@ apply_esp32_full_size_profile() {
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_NEIGHBOURS=${max_neighbours}"
 
   case "${env_name,,}" in
+    heltec_wireless_tracker_room_server|heltec_wireless_tracker_room_server_observer_mqtt|\
+    heltec_tracker_v1_1_room_server_observer_mqtt|heltec_tracker_v2_room_server|\
+    heltec_tracker_v2_room_server_observer_mqtt)
+      # Preserve the complete Room post table and source geometry; compute
+      # Merkle proofs from bounded groups instead of caching every leaf.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_BOUNDED_SOURCE_PROOFS=1"
+      ;;
     lilygo_tlora_v2_1_1_6_room_server|lilygo_tlora_v2_1_1_6_room_server_|\
     lilygo_tlora_v2_1_1_6_room_server_observer_mqtt|lilygo_tlora_v2_1_1_6_room_server_observer_mqtt_|\
     tbeam_room_server_observer_mqtt|tbeam_sx1262_room_server_observer_mqtt|tbeam_sx1276_room_server_observer_mqtt)
@@ -3997,8 +4130,12 @@ apply_esp32_full_size_profile() {
     heltec_tracker_v2_repeater|heltec_tracker_v2_repeater_observer_mqtt)
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DFLOOD_ADVERT_RTC_FAST_SLOTS=50 -DFLOOD_ADVERT_RTC_SLOW_SLOTS=50"
       ;;
-    heltec_t190_repeater_|heltec_t190_repeater_observer_mqtt)
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DFLOOD_ADVERT_RTC_FAST_SLOTS=16"
+    heltec_t190_repeater_|heltec_t190_repeater_observer_mqtt|\
+    heltec_v3_repeater|heltec_v3_repeater_observer_mqtt|\
+    heltec_v3_repeater_bridge_rs232|heltec_v3_repeater_bridge_espnow)
+      # Preserve all 128 records while moving 48 into retained RTC banks.
+      # V3 uses the released internal space for resident radio switching code.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DFLOOD_ADVERT_RTC_FAST_SLOTS=16 -DFLOOD_ADVERT_RTC_SLOW_SLOTS=32"
       ;;
   esac
 
@@ -4527,6 +4664,11 @@ apply_companion_radio_full_profile() {
       Heltec_t096_companion_radio_full_*)
         export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -Wl,--defsym=__mesh_nrf52_min_heap_size=73728"
         ;;
+      Heltec_t1_companion_radio_full)
+        # Retain all contacts and held messages while storing only their
+        # authenticated data, leaving room for the full runtime heap budget.
+        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DONE_KEY_DM_COMPACT_HELD=1"
+        ;;
     esac
     record_build_reduction \
       "nRF52 Full: 256 offline frames normally; 128 while mOTA borrows queue storage"
@@ -4631,7 +4773,7 @@ apply_companion_radio_full_profile() {
       # independent; the saved WiFi/BLE selection applies on the next boot.
       # Only CPU-owned retained frames use RTC; the borrowed OTA context
       # stays in ordinary DRAM and keeps 128 receive frames while active.
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_EXCLUSIVE_WIFI_BLE=1 -DOTA_SHARED_COMPANION_QUEUE=1 -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_EXCLUSIVE_WIFI_BLE=1 -DOTA_SHARED_COMPANION_QUEUE=1 -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=36"
       record_build_reduction \
         "Cardputer Full: USB plus selected WiFi or Bluetooth; 256 offline frames normally, 128 during mOTA"
       ;;
@@ -4654,7 +4796,7 @@ apply_companion_radio_full_profile() {
       # Reuse idle queue storage during explicit OTA; retain all 224 normal slots.
       if [[ "${env_name,,}" != generic_espnow_companion_radio_full ]]; then
         export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_SHARED_COMPANION_QUEUE=1 -DONE_KEY_DM_COMPACT_HELD=1"
-        if [[ "${env_name,,}" == xiao_c3_companion_radio_full ]]; then
+        if [[ "${env_name,,}" == xiao_c3_companion_radio_full || "${env_name,,}" == heltec_ct62_companion_radio_full ]]; then
           # Move 32 of the existing 128 retained slots into byte-accessible
           # RTC FAST. Both the 224 normal and 128 active-OTA limits stay intact.
           export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32"
@@ -4662,34 +4804,44 @@ apply_companion_radio_full_profile() {
       else
         # Keep all 224 frames during OTA too; RTC FAST holds 32 existing
         # slots without borrowing the queue or shrinking held-DM storage.
-        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32"
+        # The terminal can grow its initial scrollback when heap permits.
+        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048"
+        record_build_reduction \
+          "web.terminal initial scrollback 2048 bytes; grows up to 32768 bytes when memory permits"
       fi
       record_build_reduction \
         "companion.capacity limited to 100 contacts for runtime RAM; 224 queued frames and all Full transports retained"
       ;;
     heltec_v3_companion_radio_full)
-      # The 1.17.1.8 matrix exceeds the runtime heap budget at 150 contacts
-      # after adding alerts and held DMs. Preserve the 256-frame queue, Full
-      # transports and the unchanged runtime heap safety margin.
+      # Preserve 100 contacts, all 256 queue frames, Full transports and the
+      # runtime heap safety margin with resident retune code. Each RTC bank
+      # holds 32 existing CPU-only slots; the independent OTA context and
+      # workspace remain in ordinary DRAM. No frames are borrowed during OTA.
       append_platformio_build_unflags "-DMAX_CONTACTS=350"
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100 -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32"
       record_build_reduction \
         "companion.capacity limited to 100 contacts for runtime RAM; 256 queued frames and all Full transports retained"
+      ;;
+    heltec_wsl3_companion_radio_full)
+      # Keep all 350 contacts and 256 queue frames. Move existing CPU-only
+      # frames into the two qualified ESP32-S3 RTC banks; no OTA borrowing.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32"
       ;;
     heltec_wireless_tracker_companion_radio_full)
       append_platformio_build_unflags "-DMAX_CONTACTS=350"
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=150"
-      # Retain all 256 frames, independent OTA workspace, held DMs, and the
-      # RGB565 display. Each RTC bank holds 32 existing CPU-only frames.
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32"
+      # Retain 256 frames normally and 128 while mOTA borrows the workspace.
+      # Each RTC bank holds 32 retained frames; the RGB565 display is intact.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_SHARED_COMPANION_QUEUE=1 -DOTA_PRESERVE_UNREAD_ON_BORROW=1 -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32"
       record_build_reduction \
         "companion.capacity limited to 150 contacts for runtime RAM; 256 queued frames and all Full transports retained"
+      record_build_reduction \
+        "Companion Full: 256 offline frames normally; 128 while mOTA borrows queue storage; preserve unread on admission"
       ;;
-    mke_s3_companion_radio_full|\
-    thinknode_m2_companion_radio_full|\
-    thinknode_m5_companion_radio_full)
-      # These S3 boards retain the complete 256-frame queue during OTA, with
+    mke_s3_companion_radio_full)
+      # This non-PSRAM S3 retains the complete 256-frame queue during OTA, with
       # 32 existing frames in each RTC bank and all 350 contacts unchanged.
+      # ThinkNode M2/M5 use their onboard PSRAM instead of these RTC banks.
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32"
       ;;
     sensecapindicator-lora_companion_radio_full|\
@@ -4707,6 +4859,13 @@ apply_companion_radio_full_profile() {
     meshadventurer_sx1268_companion_radio_full)
       append_platformio_build_unflags "-DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=40 -DOFFLINE_QUEUE_SIZE=128"
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100 -DMAX_GROUP_CHANNELS=30 -DOFFLINE_QUEUE_SIZE=16"
+      # The universal Full BLE base already retains its notification settings
+      # in RTC slow RAM. Place four existing message slots there as well;
+      # preserve all 16 slots and leave the BLE-only recipe unchanged.
+      if [[ "${env_name,,}" == meshadventurer_companion_radio_full ||
+            "${env_name,,}" == meshadventurer_m33s_companion_radio_full ]]; then
+        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=4"
+      fi
       record_build_reduction \
         "companion.capacity limited to 100 contacts, 30 channels, and 16 queued frames by measured internal DRAM"
       ;;
@@ -4717,6 +4876,31 @@ apply_companion_radio_full_profile() {
         record_build_reduction \
           "companion.capacity limited to 100 contacts, 8 channels, and 16 queued frames by measured internal DRAM"
       fi
+      ;;
+  esac
+
+  case "${env_name,,}" in
+    nibble_screen_connect_companion_radio_full_|nibble_zero_connect_companion_radio_full_)
+      # The source workspace borrows idle queue slots under the same guarded
+      # admission used by other Full Companions. Preserve normal capacity.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_SHARED_COMPANION_QUEUE=1 -DOTA_PRESERVE_UNREAD_ON_BORROW=1"
+      record_build_reduction \
+        "Companion Full: 256 offline frames normally; 128 while mOTA borrows queue storage; preserve unread on admission"
+      ;;
+  esac
+
+  # These constrained Full layouts keep the entire held-message count while
+  # avoiding the larger retained Packet representation. This recovers static
+  # DRAM without reducing either the queue or the required heap margin.
+  case "${env_name,,}" in
+    heltec_wireless_paper_companion_radio_full|\
+    heltec_wireless_tracker_companion_radio_full|\
+    lilygo_tlora_v2_1_1_6_companion_radio_full|\
+    mke_s3_companion_radio_full|\
+    nibble_screen_connect_companion_radio_full_|\
+    nibble_zero_connect_companion_radio_full_|\
+    thinknode_m5_companion_radio_full)
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DONE_KEY_DM_COMPACT_HELD=1"
       ;;
   esac
 
@@ -4764,7 +4948,7 @@ apply_radio_overrides() {
 apply_firmware_profile_overrides() {
   case "${FIRMWARE_PROFILE_OVERRIDE,,}" in
     cascade)
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCASCADE_PROFILE=1 -DDEFAULT_PATH_HASH_MODE=2 -DDEFAULT_LOOP_DETECT=1 -DDEFAULT_CAD_ENABLED=0 -DDEFAULT_RX_DELAY_BASE=2.0f -DDEFAULT_AGC_RESET_INTERVAL_SECONDS=8 -DDEFAULT_ADVERT_INTERVAL_MINUTES=0 -DDEFAULT_FLOOD_ADVERT_INTERVAL_HOURS=83 -DDEFAULT_MULTI_ACKS=1 -DDEFAULT_MANUAL_ADD_CONTACTS=1 -DDEFAULT_AUTOADD_CONFIG=0 -DDEFAULT_POWERSAVING_ENABLED=1 -DDEFAULT_RXPS_ENABLED=1 -DDEFAULT_RXPS_LEVEL=8 -DDEFAULT_RXPS_PREAMBLE=16 -DRXPS_FIXED_ENABLED=1 -DRXPS_FIXED_LEVEL=8 -DRXPS_FIXED_PREAMBLE=16 -DDEFAULT_WIFI_POWER_SAVE_MODE=0"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCASCADE_PROFILE=1 -DDEFAULT_PATH_HASH_MODE=2 -DDEFAULT_LOOP_DETECT=1 -DDEFAULT_CAD_ENABLED=0 -DDEFAULT_RX_DELAY_BASE=2.0f -DDEFAULT_AGC_RESET_INTERVAL_SECONDS=16 -DDEFAULT_ADVERT_INTERVAL_MINUTES=0 -DDEFAULT_FLOOD_ADVERT_INTERVAL_HOURS=83 -DDEFAULT_MULTI_ACKS=1 -DDEFAULT_MANUAL_ADD_CONTACTS=1 -DDEFAULT_AUTOADD_CONFIG=0 -DDEFAULT_POWERSAVING_ENABLED=1 -DDEFAULT_RXPS_ENABLED=1 -DDEFAULT_RXPS_LEVEL=8 -DDEFAULT_RXPS_PREAMBLE=16 -DRXPS_FIXED_ENABLED=1 -DRXPS_FIXED_LEVEL=8 -DRXPS_FIXED_PREAMBLE=16 -DDEFAULT_WIFI_POWER_SAVE_MODE=0"
       ;;
   esac
 }
@@ -5303,25 +5487,97 @@ restore_platformio_build_flags() {
   fi
 }
 
+pio_transient_for_url() {
+  local output_log=$1 pattern=$2 url=$3 line
+  while IFS= read -r line; do
+    line=${line%$'\r'}
+    case "$line" in *"when downloaded ${url}") return 0 ;; esac
+  done < <(grep -Ei "$pattern" "$output_log")
+  return 1
+}
+
 run_pio_with_size_detection() {
   local build_output_log
   local build_status
+  local attempt delay fallback_kind kind url recovered_pinned_assets=' '
+  local arduino3311_libs_url='https://github.com/espressif/arduino-esp32/releases/download/3.3.11/esp32-core-3.3.11-libs.tar.xz'
+  local c6_platform_url='https://github.com/pioarduino/platform-espressif32/releases/download/53.03.13-1/platform-espressif32.zip'
+  local c6_libs_url='https://github.com/espressif/esp32-arduino-lib-builder/releases/download/idf-release_v5.3/esp32-arduino-libs-idf-release_v5.3-489d7a2b-v1.zip'
+  local iot_core_url='https://github.com/IoTThinks/powersaving-arduino-lib/releases/download/2.0.17/esp32-2.0.17.zip'
+  local core3311_url='https://github.com/espressif/arduino-esp32/releases/download/3.3.11/esp32-core-3.3.11.tar.xz'
+  local core313_url='https://github.com/espressif/arduino-esp32/releases/download/3.1.3/esp32-3.1.3.zip'
+  local picotool_url='https://github.com/earlephilhower/pico-quick-toolchain/releases/download/5.0.0/x86_64-linux-gnu.picotool-6f6458d.260719.tar.gz'
+  local pioasm_url='https://github.com/earlephilhower/pico-quick-toolchain/releases/download/5.0.0/x86_64-linux-gnu.pioasm-98a542c1.260719.tar.gz'
+  local transient_pattern="PackageException: Got the unrecognized status code '(408|429|500|502|503|504)' when downloaded"
   local -a output_statuses
   # SCons can delete the environment's build directory when flags change.
   # A tee log inside that directory is then unlinked while still open, hiding
   # the size error from the measured-size fallback after PlatformIO exits.
+  MESHCORE_PIO_TRANSIENT_EXHAUSTED=0
+  MESHCORE_PIO_ESP32_3311_LIBS_EXHAUSTED=0
   build_output_log=$(mktemp "${TMPDIR:-/tmp}/meshcore-build-XXXXXX.log") || return 1
-  pio "$@" 2>&1 | tee "$build_output_log"
-  output_statuses=("${PIPESTATUS[@]}")
-  build_status=${output_statuses[0]}
-  if [ "${output_statuses[1]}" -ne 0 ]; then
-    build_status=1
-  elif [ "$build_status" -ne 0 ] \
-      && grep -Eiq \
+  attempt=1
+  while :; do
+    if pio "$@" 2>&1 | tee "$build_output_log"; then
+      output_statuses=("${PIPESTATUS[@]}")
+    else
+      output_statuses=("${PIPESTATUS[@]}")
+    fi
+    build_status=${output_statuses[0]}
+    if [ "${output_statuses[1]}" -ne 0 ]; then
+      build_status=1
+      break
+    fi
+    if [ "$build_status" -eq 0 ]; then break; fi
+    if grep -Eiq \
         'will not fit in region|region .+ overflowed by|section .+ will not fit|sketch too big|program size.*is greater than maximum|exceed(s|ing).*(flash|partition|app)' \
         "$build_output_log"; then
-    build_status=42
-  fi
+      build_status=42
+      break
+    fi
+    # Retry only PlatformIO's explicit transient download failures. Compiler,
+    # checksum, missing-package and all other failures remain immediate.
+    if ! grep -Eiq "$transient_pattern" "$build_output_log"; then break; fi
+    if [ "$attempt" -eq 4 ]; then
+      MESHCORE_PIO_TRANSIENT_EXHAUSTED=1
+      if pio_transient_for_url "$build_output_log" "$transient_pattern" "$arduino3311_libs_url"; then
+        MESHCORE_PIO_ESP32_3311_LIBS_EXHAUSTED=1
+      fi
+      fallback_kind=''
+      for kind in platform libs iot_core core3311 core313 picotool pioasm; do
+        case "$kind" in
+          platform) url=$c6_platform_url ;;
+          libs) url=$c6_libs_url ;;
+          iot_core) url=$iot_core_url ;;
+          core3311) url=$core3311_url ;;
+          core313) url=$core313_url ;;
+          picotool) url=$picotool_url ;;
+          pioasm) url=$pioasm_url ;;
+        esac
+        case "$recovered_pinned_assets" in *" $kind "*) continue ;; esac
+        if pio_transient_for_url "$build_output_log" "$transient_pattern" "$url"; then
+          fallback_kind=$kind
+          recovered_pinned_assets+="$kind "
+          break
+        fi
+      done
+      if [ -n "$fallback_kind" ]; then
+        if install_esp32_c6_pinned_fallback "$fallback_kind"; then
+          attempt=1
+          MESHCORE_PIO_TRANSIENT_EXHAUSTED=0
+          MESHCORE_PIO_ESP32_3311_LIBS_EXHAUSTED=0
+          continue
+        else
+          build_status=$?
+        fi
+      fi
+      break
+    fi
+    case "$attempt" in 1) delay=5 ;; 2) delay=15 ;; *) delay=30 ;; esac
+    echo "Transient PlatformIO download failure; retrying in ${delay}s (${attempt}/3)." >&2
+    sleep "$delay"
+    attempt=$((attempt + 1))
+  done
   rm -f -- "$build_output_log"
   return "$build_status"
 }
@@ -6531,6 +6787,61 @@ resolve_bulk_command_targets() {
   mapfile -t RESOLVED_BUILD_TARGETS < <("$resolver_name")
 }
 
+validate_release_build_shard() {
+  local command_name=${1:-}
+  local shard_index=${MESHCORE_RELEASE_SHARD_INDEX-}
+  local shard_count=${MESHCORE_RELEASE_SHARD_COUNT-}
+
+  if [ -z "${MESHCORE_RELEASE_SHARD_INDEX+x}" ] \
+      && [ -z "${MESHCORE_RELEASE_SHARD_COUNT+x}" ]; then
+    return 0
+  fi
+  if [ "$command_name" != "build-firmwares-logging-matrix" ]; then
+    echo "Release sharding is valid only with build-firmwares-logging-matrix." >&2
+    return 1
+  fi
+  if ! [[ "$shard_index" =~ ^(0|[1-9][0-9]{0,8})$ ]] \
+      || ! [[ "$shard_count" =~ ^[1-9][0-9]{0,8}$ ]] \
+      || [ "$shard_index" -ge "$shard_count" ]; then
+    echo "Set both MESHCORE_RELEASE_SHARD_INDEX (zero-based) and MESHCORE_RELEASE_SHARD_COUNT, with index less than count." >&2
+    return 1
+  fi
+}
+
+apply_release_build_shard() {
+  local command_name=${1:-}
+  local target position=0
+  local selected=()
+
+  RELEASE_SHARD_ALL_TARGETS=()
+  validate_release_build_shard "$command_name" || return $?
+  if [ -z "${MESHCORE_RELEASE_SHARD_INDEX+x}" ]; then
+    return 0
+  fi
+  RELEASE_SHARD_ALL_TARGETS=("${RESOLVED_BUILD_TARGETS[@]}")
+  for target in "${RELEASE_SHARD_ALL_TARGETS[@]}"; do
+    if [ "$((position % MESHCORE_RELEASE_SHARD_COUNT))" -eq "$MESHCORE_RELEASE_SHARD_INDEX" ]; then
+      selected+=("$target")
+    fi
+    position=$((position + 1))
+  done
+  if [ ${#selected[@]} -eq 0 ]; then
+    echo "Release shard ${MESHCORE_RELEASE_SHARD_INDEX}/${MESHCORE_RELEASE_SHARD_COUNT} has no targets; refusing an empty worker." >&2
+    return 1
+  fi
+  RESOLVED_BUILD_TARGETS=("${selected[@]}")
+  echo "Release shard ${MESHCORE_RELEASE_SHARD_INDEX}/${MESHCORE_RELEASE_SHARD_COUNT}: ${#selected[@]} of ${#RELEASE_SHARD_ALL_TARGETS[@]} canonical targets."
+}
+
+write_release_build_shard_ledgers() {
+  if [ -z "${MESHCORE_RELEASE_SHARD_INDEX+x}" ]; then
+    return 0
+  fi
+  local stem="release-shard-${MESHCORE_RELEASE_SHARD_INDEX}-of-${MESHCORE_RELEASE_SHARD_COUNT}"
+  printf '%s\n' "${RESOLVED_BUILD_TARGETS[@]}" > "${OUTPUT_DIR}/${stem}-targets.txt" || return $?
+  printf '%s\n' "${RELEASE_SHARD_ALL_TARGETS[@]}" > "${OUTPUT_DIR}/${stem}-all-targets.txt"
+}
+
 get_build_platform_sort_rank() {
   case "$1" in
     NRF52_PLATFORM)
@@ -6658,6 +6969,9 @@ resolve_command_targets() {
     )
     echo "Bulk target order: nRF52, ESP32, RP2040, STM32; alphabetical within each platform, one PlatformIO process at a time."
   fi
+  # Assign a canonical target only after aliases have been normalized. Every
+  # generated Full/reduced/logging profile then stays with that target's worker.
+  apply_release_build_shard "$1"
 }
 
 configure_effective_build_profile() {
@@ -7602,6 +7916,7 @@ run_logging_matrix_build_targets() {
     echo "No build targets resolved."
     return 1
   fi
+  write_release_build_shard_ledgers || return $?
   LOGGING_MATRIX_FAILURES=()
   LOGGING_MATRIX_DEFERRED_TARGETS=()
   mapfile -t ordinary_full_targets < <(select_ordinary_full_targets "${targets[@]}")
@@ -8036,6 +8351,7 @@ launch_background_build() {
     PLATFORMIO_CORE_DIR PLATFORMIO_BUILD_DIR PLATFORMIO_BUILD_FLAGS
     PLATFORMIO_BUILD_UNFLAGS PLATFORMIO_BUILD_SRC_FILTER
     PLATFORMIO_EXTRA_SCRIPTS DISABLE_DEBUG OPTION3_PIO_JOBS OUTPUT_DIR
+    MESHCORE_RELEASE_SHARD_INDEX MESHCORE_RELEASE_SHARD_COUNT
     FIRMWARE_VERSION FIRMWARE_BUILD_NUMBER BUILD_PROFILE_OVERRIDE
     BUILD_PROFILE_EXPLICIT SINGLE_TARGET_FULL_BUILD EXACT_IDENTITY_FULL_BUILD FIRMWARE_PROFILE_OVERRIDE
     MESHDEBUG_OVERRIDE PACKET_LOGGING_OVERRIDE MQTT_BRIDGE_OVERRIDE
@@ -8207,6 +8523,7 @@ main() {
   if [ $# -gt 0 ]; then
     validate_command "$@"
   fi
+  validate_release_build_shard "${1:-}" || exit 1
 
   # Hold one checkout-wide lock from PlatformIO configuration discovery through
   # the final target. Detached and foreground builds must never share or clean

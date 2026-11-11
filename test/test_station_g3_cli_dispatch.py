@@ -29,6 +29,28 @@ def unknown_tail(method, *, legacy=False):
     return method[start:]
 
 
+def full_fem_branches(method, signatures):
+    """Retain the real conditional that closes inside the final FEM branch.
+
+    This G3 fixture exercises the Full branch. Its Mini unsupported alternative
+    shares C++ braces with that branch, so it is omitted here while its actual
+    opening condition, else, and closing directive stay balanced for the compiler.
+    """
+    guard = "#if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) && WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC"
+    first = method.index(signatures[0])
+    opening = method.rfind("\n" + guard, 0, first)
+    if opening < 0:
+        raise AssertionError("review the production compact FEM conditional")
+    alternate = method.find("\n#else\n", opening, first)
+    if alternate < 0 or method[alternate + len("\n#else\n"):first].strip() != "} else":
+        raise AssertionError("review the production Full FEM alternative")
+    branches = "\nelse ".join(extract_braced(method, signature) for signature in signatures)[:-1]
+    if branches.count("\n#endif") != 1 or not branches.rstrip().endswith("#endif"):
+        raise AssertionError("review the production FEM closing conditional")
+    return (method[opening + 1:opening + 1 + len(guard)] +
+            '\n#error "G3 dispatch fixture requires the Full FEM branch"\n#else\n' + branches)
+
+
 HARNESS = r'''
 #include "nvs.h"
 #include "StationG3Board.h"
@@ -179,12 +201,12 @@ class StationG3CliDispatchTest(unittest.TestCase):
             'if (memcmp(command, "set ", 4) == 0)'))
         values = {
             "@KEY_EQUALS@": body(common, "static bool configKeyEquals("),
-            "@SET_BRANCHES_OPEN@": "\nelse ".join(extract_braced(setter, signature) for signature in (
+            "@SET_BRANCHES_OPEN@": full_fem_branches(setter, (
                 'if (memcmp(config, "radio.fem.rxgain ", 17) == 0)',
-                'if (memcmp(config, "radio.fem.txgain ", 17) == 0)'))[:-1],
-            "@GET_BRANCHES_OPEN@": "\nelse ".join(extract_braced(getter, signature) for signature in (
+                'if (memcmp(config, "radio.fem.txgain ", 17) == 0)')),
+            "@GET_BRANCHES_OPEN@": full_fem_branches(getter, (
                 'if (configKeyEquals(config, "radio.fem.rxgain"))',
-                'if (configKeyEquals(config, "radio.fem.txgain"))'))[:-1],
+                'if (configKeyEquals(config, "radio.fem.txgain"))')),
             "@DISPATCH@": dispatch,
             "@TOP_BOARD@": extract_braced(top, "if (_board->handleCommand("),
         }
@@ -235,6 +257,16 @@ class StationG3CliDispatchTest(unittest.TestCase):
             self.assertIn(failure, result.stderr)
         else:
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_mini_unsupported_profile_cannot_silently_replace_full_fem_checks(self):
+        work = Path(self.work.name)
+        checked = subprocess.run([
+            os.environ.get("CXX", "g++"), "-E", "-P", "-x", "c++",
+            "-DSTATION_G3_ESP32=1", "-DWIO_E5_MINI_COMPACT_UNSUPPORTED_AGC=1",
+            "-I" + str(work), "-I" + str(ROOT / "src"), str(work / "production.cpp"),
+        ], capture_output=True, text=True, timeout=15)
+        self.assertNotEqual(checked.returncode, 0)
+        self.assertIn("G3 dispatch fixture requires the Full FEM branch", checked.stderr)
 
     def test_local_and_remote_get_set_reach_checked_board_persistence(self):
         self.run_case("routing")

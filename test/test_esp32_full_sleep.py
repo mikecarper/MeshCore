@@ -168,6 +168,10 @@ struct Button { bool polling = false; bool needsPolling() const { return polling
 struct Wireless { unsigned services = 0; unsigned enabled() const { return services; } } companion_wireless;
 static bool companion_wifi_background_stopped = false;
 namespace mesh {
+namespace ui {
+bool rotary_owns_button = false;
+bool rotaryOwnsButtonPin(unsigned) { return rotary_owns_button; }
+}
 bool logging = false, watchdog = false;
 bool isUsbLoggingEnabled() { return logging; }
 bool isUsbLoggingWatchdogArmed() { return watchdog; }
@@ -213,6 +217,10 @@ int main() {
   sdk_result = 99; int before = sleeps; idle(); assert(sleeps == before); sdk_result = ESP_OK;
   blocks(board.ota); blocks(board.test); blocks(the_mesh.pending);
   blocks(interface_manager.pending); blocks(user_btn.polling); blocks(mesh::logging);
+  // A shared pin belongs to the rotary input, not the momentary-button poller.
+  mesh::ui::rotary_owns_button = user_btn.polling = true;
+  before = sleeps; idle(); assert(sleeps == before + 1);
+  mesh::ui::rotary_owns_button = user_btn.polling = false;
   blocks(bt_controller_active);
   blocks(bt_host_active); blocks(sensors.gps_uart); blocks(bluetooth_interface.pending);
   blocks(mesh::watchdog); blocks(mesh::wireless::controller.transition);

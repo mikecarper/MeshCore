@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "mcus": {
+    "esp32s3": {
+      "stock_sha256": "1cc7d2371f7df850b9cdfcb5f4f688f8bffbac007fd6de5828589f84b7d32af7",
+      "patched_sha256": "0c0b94c3160404b83517cf45fd3a4b7eebfc8c8afda3af75e4d8de14c71d3446",
+      "package_sha256": "4bdee1351bd9b528332d3ef37f2a3526807ee62a3e1dfb85832f984dd7481801",
+      "objects": {
+        "btc_dm.c.obj": "022c4a114c2b5b76f77dc8424673e5299ea5e28ae3738ac589fbcb71d5b41458",
+        "bta_dm_act.c.obj": "2a7cd4acf81f389943ecc2957dd2ed86c2042d88b7a38820b2f31574dc3a5aa4",
+        "btm_sec.c.obj": "fd074e491a3bb1b794749708a91bd609ad69e3b35fd4bad1e8f7ea882e574790"
+      }
+    }
+  }
+}

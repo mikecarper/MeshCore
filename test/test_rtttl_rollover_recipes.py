@@ -40,6 +40,28 @@ class RtttlRolloverRecipeTests(unittest.TestCase):
             with self.subTest(base=base):
                 self.assertEqual(self.config.get(base, "extra_scripts", []).count(HOOK), 1)
 
+    def test_custom_peripheral_sources_and_rtttl_reach_all_arduino_targets(self):
+        sources = ("+<helpers/ui/GpioRotaryInput.cpp>", "+<helpers/ui/buzzer.cpp>")
+        tested = []
+        for section in self.config.sections():
+            if not section.startswith("env:"):
+                continue
+            flags = " ".join(self.config.get(section, "build_flags", []))
+            if not any(platform in flags for platform in (
+                    "ESP32_PLATFORM", "NRF52_PLATFORM", "RP2040_PLATFORM", "STM32_PLATFORM")):
+                continue
+            filters = self.config.get(section, "build_src_filter", [])
+            if "+<helpers/*.cpp>" not in filters:
+                # Partition migrators and seeders compile standalone apps,
+                # without MeshCore's helper tree or Companion UI.
+                continue
+            with self.subTest(target=section):
+                for source in sources:
+                    self.assertIn(source, filters)
+                self.assertTrue(self.has_rtttl(section))
+                tested.append(section)
+        self.assertGreater(len(tested), 100)
+
     def test_actual_builder_synthesized_full_targets_retain_their_base_hook(self):
         # Feed resolved tracked options into the real builder's target mapper.
         # No PlatformIO command, dependency download, compilation or flashing.

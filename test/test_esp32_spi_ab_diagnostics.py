@@ -18,7 +18,10 @@ class Esp32SpiABDiagnosticsTests(unittest.TestCase):
     def test_eight_bin_capture_preserves_stages_sums_and_rejects_a_second_page(self):
         self.check_production_cli(8)
 
-    def check_production_cli(self, histogram_count=None):
+    def test_cache_capture_wrap_failure_and_bounded_read_only_cli(self):
+        self.check_production_cli(8, cache_timing=True)
+
+    def check_production_cli(self, histogram_count=None, cache_timing=False):
         fixture = (ROOT / 'test/fixtures/radio_profiles/switch_tuning_test.cpp').read_text()
         fixture = fixture.rsplit('\nint main() {', 1)[0]
         fixture += r'''
@@ -70,6 +73,31 @@ int main() {
     if(size) assert(memchr(guarded+1,0,size));
   }
 #endif
+#if MESH_HIL_ESP_CACHE_TIMING
+  auto& cache = mesh::radio_cache_timing::capture();
+  cache = {};
+  fake_cache_misses = 0xfffffff0U;
+  begin(0, 1, 100);
+  fake_cache_misses = 4;
+  finish(Success, 200);
+  assert(cache.count == 1 && cache.misses == 20 && cache.minimum == 20);
+  begin(1, 0, 200);
+  fake_cache_misses = 300;
+  finish(Failure, 400);
+  assert(cache.count == 1 && cache.misses == 20);
+  assert(strstr(f.cmd("get radio.fast.cache"), "count=1 sum_hi=0 sum_lo=20 min=20 max=20 last=20"));
+  assert(strstr(f.cmd("set radio.fast.cache 0", false), "read-only"));
+  assert(strstr(f.cmd("get radio.fast.cache extra"), "read-only"));
+  for (unsigned size = 0; size <= 160; ++size) {
+    char guarded[162]; memset(guarded, 0x55, sizeof(guarded));
+    assert(mesh::esp_spiab::handle("cache", "", 0, guarded + 1, size));
+    assert(guarded[0] == 0x55 && guarded[size + 1] == 0x55);
+    if (size) assert(memchr(guarded + 1, 0, size));
+  }
+  assert(cache.count == 1 && cache.misses == 20 && fake_cache_misses == 300);
+#else
+  assert(strstr(f.cmd("get radio.fast.cache"), "unknown"));
+#endif
   assert(f.radio.attempts==0 && f.fs.files.empty());
 }
 '''
@@ -80,7 +108,15 @@ int main() {
                                encoding='ascii')
             cpp, binary = work / 'cli.cpp', work / 'cli'
             cpp.write_text(fixture, encoding='ascii')
-            extra_flags = []
+            extra_flags = ['-I', str(work)]
+            if cache_timing:
+                (work / 'soc').mkdir()
+                (work / 'soc/extmem_reg.h').write_text(
+                    '#define EXTMEM_IBUS_ACS_MISS_CNT_REG 0x1234\n', encoding='ascii')
+                (work / 'soc/soc.h').write_text(
+                    '#pragma once\ninline uint32_t fake_cache_misses = 0;\n'
+                    '#define REG_READ(address) (fake_cache_misses)\n', encoding='ascii')
+                extra_flags += ['-DMESH_HIL_ESP_CACHE_TIMING=1', '-DCONFIG_IDF_TARGET_ESP32S3=1']
             if histogram_count is not None:
                 extra_flags.append('-DMESH_HIL_PROFILE_HISTOGRAM_COUNT='+str(histogram_count))
                 if os.name != 'nt':

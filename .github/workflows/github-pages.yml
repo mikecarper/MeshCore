@@ -8,11 +8,20 @@ on:
       - keymindCascade
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
 
 jobs:
   github-pages:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
 
       - name: Checkout Repo
@@ -39,12 +48,11 @@ jobs:
           mkdocs build
           cmp firmware/esp32_partition_catalog.json site/_data/esp32_partition_catalog.json
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4.1.0
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Preserve the upstream custom domain, but let forks publish at their
-          # normal <owner>.github.io/<repo>/ URL without claiming that domain.
-          cname: ${{ github.repository_owner == 'meshcore-dev' && 'docs.meshcore.io' || '' }}
-          publish_dir: ./site
-          publish_branch: 'gh-pages'
+          path: ./site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -39,7 +39,7 @@ struct Prefs {
 struct UI {
   Prefs* prefs;
   Prefs* persisted;
-  unsigned syncs = 0;
+  unsigned syncs = 0, melodies = 0;
   bool sound_quiet = true, vibration_quiet = false;
   UI(Prefs* p, Prefs* saved) : prefs(p), persisted(saved) {}
   void syncAlertPreferences() {
@@ -48,6 +48,11 @@ struct UI {
     ++syncs;
     sound_quiet = prefs->buzzer_quiet;
     vibration_quiet = prefs->vibe_quiet;
+  }
+  void notificationMelody(const char* text) {
+    assert(!sound_quiet && !prefs->buzzer_quiet && !persisted->buzzer_quiet);
+    assert(text && !strncmp(text, "SoundOn:", 8));
+    ++melodies;
   }
 };
 class MyMesh {
@@ -76,11 +81,12 @@ std::string run(MyMesh& mesh, const char* command) {
 }
 void error(MyMesh& mesh, const char* command) {
   const auto before = mesh._prefs;
-  const unsigned saves = mesh.saves, syncs = mesh.ui.syncs;
+  const unsigned saves = mesh.saves, syncs = mesh.ui.syncs, melodies = mesh.ui.melodies;
   assert(run(mesh, command).find("Error") == 0);
   assert(mesh._prefs.buzzer_quiet == before.buzzer_quiet);
   assert(mesh._prefs.vibe_quiet == before.vibe_quiet);
   assert(mesh.saves == saves && mesh.ui.syncs == syncs);
+  assert(mesh.ui.melodies == melodies);
 }
 void supported(MyMesh& mesh, const char* name, bool initial_on) {
   const std::string get = std::string("get ") + name;
@@ -89,6 +95,7 @@ void supported(MyMesh& mesh, const char* name, bool initial_on) {
   const uint8_t other = sound ? mesh._prefs.vibe_quiet : mesh._prefs.buzzer_quiet;
   assert(run(mesh, get.c_str()) == (initial_on ? "> on" : "> off"));
   assert(mesh.saves == 0 && mesh.ui.syncs == 0);
+  assert(mesh.ui.melodies == 0);
   for (const char* value : {"", " ", "on extra", "off extra", "1", "0", "ON", "OFF",
                             "true", "false", "onward", "officer"}) {
     error(mesh, (set + " " + value).c_str());
@@ -103,6 +110,7 @@ void supported(MyMesh& mesh, const char* name, bool initial_on) {
   assert(mesh.saves == 0 && mesh.ui.syncs == 1);
   assert(mesh.ui.sound_quiet == bool(mesh._prefs.buzzer_quiet));
   assert(mesh.ui.vibration_quiet == bool(mesh._prefs.vibe_quiet));
+  assert(mesh.ui.melodies == 0);
 
   // Persist first, then apply to the running UI. Changing one output must not
   // overwrite the independent preference or unrelated node settings.
@@ -116,6 +124,7 @@ void supported(MyMesh& mesh, const char* name, bool initial_on) {
   assert(mesh.saved.unrelated == 0x12345678);
   assert(mesh.ui.sound_quiet == bool(mesh._prefs.buzzer_quiet));
   assert(mesh.ui.vibration_quiet == bool(mesh._prefs.vibe_quiet));
+  assert(mesh.ui.melodies == (sound ? 1u : 0u));
 
   const Prefs previous = mesh._prefs, persisted = mesh.saved;
   mesh.save_ok = false;
@@ -126,13 +135,35 @@ void supported(MyMesh& mesh, const char* name, bool initial_on) {
   assert(mesh.saved.buzzer_quiet == persisted.buzzer_quiet);
   assert(mesh.saved.vibe_quiet == persisted.vibe_quiet);
   assert(run(mesh, get.c_str()) == (initial_on ? "> off" : "> on"));
+  assert(mesh.ui.melodies == (sound ? 1u : 0u));
+
+  // Explicitly enabling an already enabled buzzer is an audible test without
+  // another storage write, even when storage would reject a changed setting.
+  if (sound) {
+    assert(run(mesh, "set buzzer on") == "OK");
+    assert(mesh.saves == 2 && mesh.ui.syncs == 3 && mesh.ui.melodies == 2);
+    assert(run(mesh, "get buzzer") == "> on" && mesh.ui.melodies == 2);
+  }
 
   // A build without an attached UI can still persist the board preference.
   mesh._ui = nullptr;
   mesh.save_ok = true;
   assert(run(mesh, (set + (initial_on ? " on" : " off")).c_str()) == "OK");
-  assert(mesh.saves == 3 && mesh.ui.syncs == 2);
+  assert(mesh.saves == 3 && mesh.ui.syncs == (sound ? 3u : 2u));
   assert(run(mesh, get.c_str()) == (initial_on ? "> on" : "> off"));
+  assert(mesh.ui.melodies == (sound ? 2u : 0u));
+
+  // A failed enable leaves the muted device silent.
+  if (sound) {
+    mesh._ui = &mesh.ui;
+    mesh.ui.syncAlertPreferences();
+    mesh.save_ok = false;
+    const unsigned syncs = mesh.ui.syncs;
+    assert(run(mesh, "set buzzer on").find("Error") == 0);
+    assert(mesh.saves == 4 && mesh.ui.syncs == syncs);
+    assert(mesh._prefs.buzzer_quiet && mesh.saved.buzzer_quiet);
+    assert(mesh.ui.sound_quiet && mesh.ui.melodies == 2);
+  }
 }
 int main() {
   MyMesh buzzer, vibration;

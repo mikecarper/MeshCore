@@ -815,6 +815,8 @@ def main() -> None:
     parser.add_argument("--firmware-version", default=DEFAULT_VERSION)
     parser.add_argument("--resume", action="store_true", help="reuse qualified output from an interrupted run")
     parser.add_argument("--pio-jobs", type=int, default=4)
+    parser.add_argument("--workers", type=int, choices=(1, 2), default=1,
+                        help="isolated target build workers; each has its own checkout and PlatformIO packages")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     if not re.fullmatch(r"v[0-9]+(?:\.[0-9]+){3}-halo-keymind-cascade-dev", args.firmware_version):
@@ -841,6 +843,7 @@ def main() -> None:
           f"OTAFIX {BOOTLOADER_VERSION} variants; migration roles: {len(BOARDS)}; "
           f"migration utilities: {len(migration_bridges())}")
     print(f"Output: {destination}", flush=True)
+    print(f"Build workers: {args.workers}; compiler jobs per worker: {args.pio_jobs}", flush=True)
     if args.dry_run:
         return
     environment = ordinary_build_environment(os.environ.copy())
@@ -861,16 +864,26 @@ def main() -> None:
               'ordinary resume qualification still applies.', flush=True)
         # All other packages retain the existing recipe/qualification checks
         # in build_legacy.sh; this helper never makes them resumable.
-    run_logged([
-        "bash", "build_legacy.sh", "build-firmwares-logging-matrix",
-        "--firmware-version", args.firmware_version,
-        "--radio-preset", "usa-cascade-fixed", "--profile", "cascade",
-        "--require-ota", "--skip-kiss", "--resume",
-    ], work / "release-build.log", environment)
+    if args.workers > 1:
+        from parallel_release_workers import build_parallel_matrix
+        build_parallel_matrix(ROOT, args.firmware_version, source, args.workers,
+                              args.pio_jobs, environment, work)
+    else:
+        run_logged([
+            "bash", "build_legacy.sh", "build-firmwares-logging-matrix",
+            "--firmware-version", args.firmware_version,
+            "--radio-preset", "usa-cascade-fixed", "--profile", "cascade",
+            "--require-ota", "--skip-kiss", "--resume",
+        ], work / "release-build.log", environment)
     # Embedding is an application variant, not a replacement bootloader/SD
     # package. Keep its recipe and resume artifacts outside the ordinary pass.
-    build_embedded_bootloader_artifacts(work, embedded_work, args.firmware_version,
-                                       short_source, environment)
+    if args.workers > 1:
+        from parallel_release_workers import build_parallel_embedded
+        build_parallel_embedded(ROOT, args.firmware_version, source, args.workers,
+                                args.pio_jobs, environment, work, embedded_work)
+    else:
+        build_embedded_bootloader_artifacts(work, embedded_work, args.firmware_version,
+                                           short_source, environment)
     # Reuse the exact qualified publication bytes for ordinary targets. Keep
     # only migration-exclusive legacy identities outside the ordinary matrix:
     # collect_artifacts() walks recursively, so nesting those under work would

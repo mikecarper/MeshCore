@@ -107,7 +107,7 @@ bool loadPrimaryRadio(mesh::RadioProfileParams& profile) {
   return ok && profile.freq >= 100.0f && profile.freq <= 2500.0f
       && profile.bw > 0.0f && profile.bw <= 500.0f
       && profile.sf >= 5 && profile.sf <= 12
-      && profile.cr >= 5 && profile.cr <= 8;
+      && profile.cr >= 4 && profile.cr <= 8;
 }
 
 void startLoRaReceiver() {

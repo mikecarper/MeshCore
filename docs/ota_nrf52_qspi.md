@@ -306,6 +306,11 @@ enforces the package's hardware identity before approval.
 
 ## Explicit XIAO bootloader updates over LoRa
 
+The installed and replacement bootloaders must have matching board IDs and
+names. This preserves the installed XIAO or Sense bootloader type. It cannot
+determine the physical module if its bootloader was previously replaced with
+the wrong type. Ordinary application firmware OTA is unchanged.
+
 This section documents the deployed XIAO raw-QSPI layout. Curated nRF52840
 targets without external staging use a separate internal-flash layout with the
 same explicit operator safety model; see

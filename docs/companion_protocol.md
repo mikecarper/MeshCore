@@ -1041,8 +1041,8 @@ Byte values are authoritative; names are aliases. When reading firmware source, 
 In `RESP_CODE_DEVICE_INFO`, bytes 4–7 are the saved Bluetooth PIN setting
 as a little-endian `uint32`: `0` selects the default/random policy; a nonzero
 value is the saved custom PIN. After `CMD_SET_DEVICE_PIN` succeeds, querying
-device info returns that saved choice immediately. The active pairing PIN
-and the device's pairing screen change after reboot.
+device info returns that saved choice immediately. The active PIN changes for
+future pairings without a reboot; existing bonds continue to use their keys.
 
 ### Asynchronous push types
 

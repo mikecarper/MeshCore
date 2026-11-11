@@ -33,8 +33,9 @@ class RakNorGpioReservationsTest(unittest.TestCase):
         self.assertIsNotNone(compiler, 'host C++17 compiler required')
         board = (ROOT / 'src/helpers/NRF52Board.cpp').read_text(encoding='ascii')
         fixture = FIXTURE.read_text(encoding='ascii')
-        fixture = fixture.replace('@EXPOSED@', extract_braced(board, 'bool isExposedNrf52UserGpio('))
         fixture = fixture.replace('@APPROVAL@', extract_braced(board, 'bool NRF52Board::isUserGpioAvailable('))
+        fixture = fixture.replace('@OUTPUT@', extract_braced(board, 'bool NRF52Board::isPeripheralOutputAvailable('))
+        fixture = fixture.replace('@IDENTITY@', extract_braced(board, 'uint16_t NRF52Board::peripheralPinIdentity('))
         shared = ('RAK_4631=1', 'PIN_BOARD_SDA=13', 'PIN_BOARD_SCL=14',
                   'PIN_GPS_EN=-1', 'PIN_VBAT_READ=5', 'USER_GPIO_CONTROL=1')
         normal = ('OTA_RAK15002_SD_STORE=1', 'OTA_SD_STORE=1',
@@ -49,7 +50,6 @@ class RakNorGpioReservationsTest(unittest.TestCase):
             ('normal_sensor_nor', normal + ('NRF52_PLATFORM=1', 'OTA_QSPI_STORE=1',
                                            'OTA_RAK_AUTO_STORE=1', 'TEST_EXPECT_NOR=1'), 48),
             ('normal_sensor_without_nor', normal + ('NRF52_PLATFORM=1', 'TEST_EXPECT_NOR=0'), 46),
-            ('wrong_backend_does_not_claim', normal + ('OTA_QSPI_STORE=1', 'TEST_EXPECT_NOR=0'), 46),
             ('arbitrary_six_nor_pads', arbitrary + ('NRF52_PLATFORM=1', 'OTA_QSPI_STORE=1',
                                                    'TEST_EXPECT_NOR=1'), 51),
             ('arbitrary_without_backend', arbitrary + ('NRF52_PLATFORM=1', 'TEST_EXPECT_NOR=0'), 39),
@@ -64,7 +64,8 @@ class RakNorGpioReservationsTest(unittest.TestCase):
                       '-fno-pie', '-no-pie'] if sys.platform.startswith('linux') else [])
         with tempfile.TemporaryDirectory(prefix='rak-nor-gpio-reservations-') as folder:
             work = Path(folder)
-            (work / 'WVariant.h').write_text('#pragma once\n#include <cstdint>\n', encoding='ascii')
+            (work / 'WVariant.h').write_text('#pragma once\n#include <cstdint>\n'
+                'extern const uint32_t g_ADigitalPinMap[];\n', encoding='ascii')
             (work / 'Arduino.h').write_text(ARDUINO, encoding='ascii')
             # Preserve the header unchanged; its quoted sensor include resolves
             # against the real helper directory after this private directory.

@@ -16,6 +16,14 @@ _start:
         .word   0
 
 install:
+        ; Publish this blob's own header as the ROM's retained PRAM identity.
+        ; No JLI hooks are installed: keep the ROM's normal jump-table base.
+        mov     r0, _start
+        mov     r1, 0x800FF8
+        ld_s    r2, [r0, 0]
+        st_s    r2, [r1, 0]
+        ld_s    r2, [r0, 4]
+        st_s    r2, [r1, 4]
         mov_s   r0, 2
         j_s     [blink]
 

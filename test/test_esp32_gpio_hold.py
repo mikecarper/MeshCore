@@ -347,8 +347,12 @@ int main(){ using namespace mesh::esp32;
  StationG3Board board; resetTerminalDeepSleepHolds();
  releaseOutputAfterDeepSleep(P_LORA_NSS,HIGH); board.loRaFEMControl.init();
  assert(physical(P_PA1_EN)==LOW && physical(active_lna)==HIGH && physical(inactive_lna)==HIGH);
- // The selector enables RX only after a physical radio has been found.
+ // The selector enables RX only after a physical radio has been found;
+ // fresh RX keeps its default bypass until an explicit ON preference is applied.
+ assert(!board.loRaFEMControl.isLNAEnabled());
  board.loRaFEMControl.setRxModeEnable();
+ assert(physical(active_lna)==HIGH && physical(inactive_lna)==HIGH);
+ board.loRaFEMControl.setLNAEnable(true);
  assert(physical(active_lna)==LOW && physical(inactive_lna)==HIGH);
  board.loRaFEMControl.setPAGainEnable(true); board.loRaFEMControl.setTxModeEnable();
  assert(physical(P_PA1_EN)==HIGH && physical(active_lna)==HIGH && physical(inactive_lna)==HIGH);

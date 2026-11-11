@@ -1,6 +1,9 @@
 #pragma once
 
 #include <RadioLib.h>
+#include "SX126xStatus.h"
+#include <helpers/RadioAGCConfig.h>
+#include <helpers/MorseRx.h>
 #include <math.h>
 #include "SX126xMorseRssi.h"
 
@@ -11,6 +14,8 @@ class CustomSTM32WLx : public STM32WLx {
   bool _headerSeen = false;
 
   public:
+#include "SX126xPulseDriverMethods.inc"
+#include "STM32WLCompactLoRa.inc"
     CustomSTM32WLx(STM32WLx_Module *mod) : STM32WLx(mod) { }
     // STM32WLx inherits the SX126x LoRa packet setters. Unlike CustomSX1262,
     // this driver has no acknowledged fast-hop cache: every protocol change

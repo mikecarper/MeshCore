@@ -19,6 +19,7 @@ FLAGS = ["-DESP32_PLATFORM=1", "-DESP_PLATFORM=1", "-DADMIN_PASSWORD=1",
 
 FIXTURE = r'''
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
+#define MESH_DEBUG_PRINTLN(...)
 #include <helpers/esp32/ManagementPassword.h>
 #include <cassert>
 #include <cstdint>
@@ -33,6 +34,11 @@ FIXTURE = r'''
 #include <helpers/esp32/InfrastructureBridgeCoordinator.h>
 #include <helpers/WiFiConnectionDiagnostics.h>
 #include <helpers/WirelessControl.h>
+namespace mesh { namespace wifi {
+bool infrastructure_wifi_saved = true;
+bool infrastructureWiFiEnabled() { return infrastructure_wifi_saved; }
+bool saveInfrastructureWiFiEnabled(bool enabled) { infrastructure_wifi_saved=enabled;return true; }
+}}
 uint32_t now = 0;
 uint32_t millis() { return now; }
 bool millisHasNowPassed(uint32_t deadline) { return int32_t(now - deadline) >= 0; }
@@ -214,7 +220,11 @@ bool WebConfigServer::allow_start = true;
 constexpr unsigned OTA_TX_DRAIN_TIMEOUT_MS = 1, OTA_MQTT_STOP_SETTLE_MS = 1;
 const char* ota_resolve_base(int) { return "test"; }
 struct MyMesh {
+  bool isEspNowEnabledPreference() const { return _prefs.espnow_bridge_enabled != 0; }
+  bool setEspNowEnabledPreference(bool enabled) { _prefs.espnow_bridge_enabled=enabled;return true; }
   Prefs _prefs; RoleCLI _cli;
+  Prefs* getNodePrefs() { return &_prefs; }
+  ObserverPrefs* getObserverPrefs() { return &_cli.prefs; }
   MQTTBridge* @WORKER@ = nullptr;
   ESPNowBridge espnow_bridge;
   WebConfigServer* _webconfig = nullptr;
@@ -248,6 +258,7 @@ struct MyMesh {
   bool canIdleDualRadio() const { return true; }
   uint32_t limitSleepToMillisTimer(unsigned long, uint32_t secs) const { return secs; }
   uint32_t limitSleepToScheduledRadioWork(uint32_t secs) const { return secs; }
+  AbstractBridge* activeBridge() { return @WORKER@; }
   const AbstractBridge* activeBridge() const { return @WORKER@; }
   const char* getFirmwareVer() const { return "test"; } const char* getBuildDate() const { return "test"; }
   const char* getRole() const { return "test"; }
@@ -264,6 +275,7 @@ struct MyMesh {
   @INLINE_METHODS@
   void defaults() { @DEFAULTS@ }
   void startupSetup() { @STARTUP@ }
+  void startupBridge() { @BOOT_BRIDGE@ }
   void servicePortal() { @PORTAL_LOOP@ }
   void manifestAttempt() { @MANIFEST@ }
   ~MyMesh() { delete _webconfig; delete @WORKER@; }
@@ -408,6 +420,7 @@ class ESP32FullPowerLifecycleTest(unittest.TestCase):
             "bool setMqttBridgeState(", "bool setBridgeState(",
             "bool isEspNowBridgeRunning()", "bool isMqttBridgeRunning()",
             "bool isMqttBridgeStopping()", "bool isMqttBridgeStartPending()",
+            "bool restartMqttBridge()",
             "bool isWebConfigActive() const", "bool isWebConfigStopping() const",
             "bool hasWirelessNetworkClient() const", "bool stopWebConfigForOTA("))
         methods = "\n".join(extract_braced(source, signature) for signature in (
@@ -423,6 +436,10 @@ class ESP32FullPowerLifecycleTest(unittest.TestCase):
         methods += "\n" + wifi_owner
         defaults_start = source.index("  // bridge defaults")
         defaults = source[defaults_start:source.index("  _prefs.bridge_delay", defaults_start)]
+        begin_body = extract_braced(source, "void MyMesh::begin(")
+        boot_start = begin_body.index("// Defer construction to avoid static init crashes")
+        boot_start = begin_body.rfind("  if (_prefs.bridge_enabled", 0, boot_start)
+        boot_bridge = extract_braced(begin_body[boot_start:], "  if (_prefs.bridge_enabled")
         startup = source[source.index("  bool start_webui ="):]
         startup = startup[:startup.index("#endif\n\n", startup.index("  if (start_webui)"))]
         tick = source.index("_webconfig->tick(millis());")
@@ -441,13 +458,48 @@ class ESP32FullPowerLifecycleTest(unittest.TestCase):
         return (FIXTURE.replace("@INLINE_METHODS@", inline.replace(" override", ""))
                 .replace("@METHODS@", methods).replace("@DEFAULTS@", defaults)
                 .replace("@WIFI_OWNER_DECLARATION@", "bool webConfigOwnsWiFi() const;" if wifi_owner else "")
-                .replace("@STARTUP@", startup).replace("@PORTAL_LOOP@", portal_loop)
+                .replace("@STARTUP@", startup).replace("@BOOT_BRIDGE@", boot_bridge).replace("@PORTAL_LOOP@", portal_loop)
                 .replace("@MANIFEST@", manifest).replace("@OTA_CLI@", cli[begin:end])
                 .replace("@OTA_STATE@", state)
                 .replace("@INFRA_BACKEND@", infra_backend)
                 .replace("@STOP_OWNED_WIFI@", stop_owned)
                 .replace("@SETUP_WINDOW@", window).replace("@CHECKS@", checks)
                 .replace("@WORKER@", worker))
+
+    def test_saved_wifi_off_blocks_repeater_and_room_boot_without_changing_services(self):
+        backend = extract_braced((ROOT / "examples/InfrastructureWireless.h").read_text(),
+                                 "class InfrastructureWirelessBackend") + ";"
+        backend = "MyMesh the_mesh; Board& board = the_mesh._cli.board;\n" + backend
+        checks = r"""
+int main() {
+  mesh::wifi::infrastructure_wifi_saved = false;
+  InfrastructureWirelessBackend backend;
+  auto& control=mesh::wireless::control();control.begin(backend);
+  assert(control.blocked(mesh::wireless::WiFi));
+  the_mesh.defaults();
+  WebConfigServer::saved_enabled=@WEBUI@;
+  if(@CONFIGURED@)strcpy(the_mesh._cli.prefs.wifi_ssid,"saved-network");
+  the_mesh.startupBridge(); // Real role constructor/start block.
+  assert(the_mesh.@WORKER@==nullptr);
+  assert(the_mesh.setEspNowBridgeState(true));
+  const auto stops=the_mesh.espnow_bridge.stops;
+  the_mesh.startupSetup(); // Real first-boot WebUI policy block.
+  assert(!the_mesh.isWebConfigActive()&&!the_mesh.isMqttBridgeRunning());
+  assert(the_mesh.espnow_bridge.isRunning()&&the_mesh.espnow_bridge.stops==stops);
+  assert(the_mesh._prefs.bridge_enabled&&the_mesh._prefs.espnow_bridge_enabled);
+  assert(WebConfigServer::saved_enabled==@WEBUI@);
+  assert(!the_mesh.setMqttBridgeState(true)); // Background owner cannot bypass.
+  assert(the_mesh.restartMqttBridge()); // A settings save may remain dormant.
+  assert(the_mesh.@WORKER@==nullptr&&the_mesh.espnow_bridge.stops==stops);
+  assert(!mesh::wifi::infrastructure_wifi_saved);
+}
+"""
+        for role in ("simple_repeater", "simple_room_server"):
+            for webui in (-1, 0, 1):
+                for configured in (False, True):
+                    with self.subTest(role=role, webui=webui, configured=configured):
+                        body=checks.replace("@WEBUI@",str(webui)).replace("@CONFIGURED@",str(int(configured)))
+                        self.compile_and_run(self.fixture(role,body,backend),*FLAGS,"-DESP32=1")
 
     def test_actual_full_startup_timeout_retry_ota_and_teardown(self):
         for role in ("simple_repeater", "simple_room_server"):

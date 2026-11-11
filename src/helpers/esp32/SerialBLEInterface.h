@@ -59,8 +59,6 @@ class SerialBLEInterface : public BaseSerialInterface,
   std::atomic<bool> _cacheAuthenticated{false};
   std::atomic<esp_gatt_if_t> _cacheGattsIf{ESP_GATT_IF_NONE};
   std::atomic<uint8_t> _cacheRemoteAddress[6] = {};
-  uint8_t _cacheVerifiedPeer[6] = {};
-  bool _cacheVerifiedPeerValid = false;
   CacheMarker _cacheMarker = CacheMarker::Absent;
   std::atomic<uint16_t> _cacheMarkerHandle{0};
   uint16_t _cacheEventHandle = 0;
@@ -69,6 +67,8 @@ class SerialBLEInterface : public BaseSerialInterface,
   uint8_t _cacheFailures = 0;
   uint32_t _cacheAttemptConnection = 0;
   uint32_t _cacheEncryptedConnection = 0;
+  uint32_t _cacheAuthenticatedConnection = 0;
+  uint32_t _cacheAuthenticatedAt = 0;
   uint32_t _cacheTriggeredConnection = 0;
   uint32_t _cacheOperationConnection = 0;
   uint32_t _cacheLastAttempt = 0;
@@ -92,6 +92,15 @@ class SerialBLEInterface : public BaseSerialInterface,
   std::atomic<bool> _callbacksEnabled{false};
   bool _stackActive = false;
   bool _shutdownPending = false;
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION && defined(CONFIG_BLUEDROID_ENABLED) && !defined(MESH_USE_NIMBLE_ARDUINO)
+#if !defined(CONFIG_BT_ACL_CONNECTIONS) || CONFIG_BT_ACL_CONNECTIONS < 1
+#error "Bond recovery requires the configured ACL connection limit"
+#endif
+  bool _bondRecoveryRestart = false;
+  // GATT callbacks own registration/removal; the loop only reads atomics.
+  // Never iterate the Arduino BLEServer's unsynchronized connection map.
+  std::atomic<uint16_t> _bondLiveConnections[CONFIG_BT_ACL_CONNECTIONS];
+#endif
   bool _nativeHostStopped = false;
   bool _configured = false;
   bool _powerAttempted = false;
@@ -103,7 +112,9 @@ class SerialBLEInterface : public BaseSerialInterface,
   bool _hasBondedPeer = false;
   mesh::companion::BluetoothPeerIdentity _bondedPeer;
   uint16_t last_conn_id;
-  uint32_t _pin_code;
+  // Pairing callbacks run on the Bluetooth host task while the Companion task
+  // can change the PIN. Publish the new value without racing those callbacks.
+  std::atomic<uint32_t> _pin_code{0};
   uint32_t _last_write;
   uint32_t _adv_restart_started;
   bool _adv_restart_pending;
@@ -181,6 +192,9 @@ protected:
   #else
   void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) override;
   void onMtuChanged(BLEServer* pServer, esp_ble_gatts_cb_param_t* param) override;
+  #if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION && defined(CONFIG_BLUEDROID_ENABLED)
+  void onDisconnect(BLEServer* pServer, esp_ble_gatts_cb_param_t* param) override;
+  #endif
   #endif
   void onDisconnect(BLEServer* pServer) override;
 
@@ -215,6 +229,10 @@ public:
     _bonded_only = false;
     _last_write = 0;
     last_conn_id = 0;
+#if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION && defined(CONFIG_BLUEDROID_ENABLED) && !defined(MESH_USE_NIMBLE_ARDUINO)
+    for (auto& connection : _bondLiveConnections)
+      connection.store(UINT16_MAX, std::memory_order_relaxed);
+#endif
     recv_queue = xQueueCreateStatic(
       FRAME_QUEUE_SIZE, sizeof(Frame), recv_queue_storage, &recv_queue_state
     );
@@ -236,6 +254,10 @@ public:
              bool clear_bonds = false, bool stealth_pair_once = false,
              const mesh::companion::BluetoothPeerIdentity*
                  bonded_only_peer = nullptr);
+
+  // Change the passkey for subsequent pairings without touching saved bonds.
+  // A disabled stack applies it when it next starts.
+  bool setPin(uint32_t pin_code);
 
   // BaseSerialInterface methods
   void enable() override;

@@ -114,6 +114,7 @@ int main() { return 0; }
             cpp.write_text(program)
             subprocess.run(["g++", "-std=c++17", "-fsyntax-only", "-I", str(ROOT / "src"),
                             "-DMESH_W12_PRAM_EXPERIMENT=1", "-DMESH_ENABLE_LR2021_AUTO_XTRIM=1",
+                            "-DMESH_W12_PRAM_SEQ_TX_LAB=1",
                             "-DWITH_UDP_BRIDGE=1", str(cpp)], check=True, timeout=30)
         self.assertLessEqual(32 * 328 + 4 * 32 * (4 + 1 + 4) + 32 * 8 + 124 + 46 * 16, 12800)
         self.assertLessEqual(16 * 328 + 3 * 16 * (4 + 1 + 4) + 124 + 26 * 16, 6400)
@@ -1329,6 +1330,41 @@ int main() {
         self.assertEqual(alias["components"]["neighbor_history"], 2048 * 9 + 16)
         self.assertEqual(alias["components"]["radio_packet_pool"], 10240)
 
+    def test_tlora_full_rtc_history_and_terminal_budget(self):
+        flags = {"MESH_CLIENT_REPEATER_ONLY": 1, "CONFIG_IDF_TARGET_ESP32": 1,
+                 "ESP32_PLATFORM": 1, "LILYGO_TLORA": 1,
+                 "MESHCORE_EXPANDED_PARTITION_PROFILE": 1,
+                 "MAX_RECENT_REPEATERS": 256, "ADMIN_PASSWORD": "test",
+                 "WIFI_SSID": "test"}
+        before = ram.requirements("ESP32_PLATFORM", flags, "tlora_repeater")["components"]
+        after = ram.requirements("ESP32_PLATFORM", {**flags,
+             "MESH_RECENT_REPEATERS_RTC_SLOW": 1,
+             "MESH_TERMINAL_INITIAL_OUTPUT_CAPACITY": 2048}, "tlora_repeater")["components"]
+        self.assertEqual(before["neighbor_history"], 256 * 9 + 16)
+        self.assertNotIn("neighbor_history", after)
+        self.assertEqual(before["browser_terminal_scrollback"], 4096)
+        self.assertEqual(after["browser_terminal_scrollback"], 2048)
+        self.assertEqual(before["flood_filter_table"], after["flood_filter_table"])
+        for invalid in ({"MAX_RECENT_REPEATERS": 512}, {"LILYGO_TLORA": 0},
+                        {"FLOOD_ADVERT_RTC_SLOW_SLOTS": 1},
+                        {"MESHCORE_EXPANDED_PARTITION_PROFILE": 0}):
+            value = {**flags, "MESH_RECENT_REPEATERS_RTC_SLOW": 1, **invalid}
+            if invalid == {"LILYGO_TLORA": 0}: value.pop("LILYGO_TLORA")
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                ram.requirements("ESP32_PLATFORM", value, "tlora_repeater")
+
+    def test_wireless_tracker_terminal_budget_retains_flood_rules(self):
+        flags = {"MESH_CLIENT_REPEATER_ONLY": 1, "ADMIN_PASSWORD": "test",
+                 "WIFI_SSID": "test", "FLOOD_PACKET_FILTER_SLOTS": 63,
+                 "MAX_NEIGHBOURS": 254}
+        before = ram.requirements("ESP32_PLATFORM", flags, "Heltec_Wireless_Tracker_repeater")
+        after = ram.requirements("ESP32_PLATFORM", {**flags,
+            "MESH_TERMINAL_INITIAL_OUTPUT_CAPACITY": 2048}, "Heltec_Wireless_Tracker_repeater")
+        self.assertEqual(before["components"]["browser_terminal_scrollback"], 4096)
+        self.assertEqual(after["components"]["browser_terminal_scrollback"], 2048)
+        self.assertEqual(before["components"]["flood_filter_table"], after["components"]["flood_filter_table"])
+        self.assertEqual(before["required_heap_bytes"] - after["required_heap_bytes"], 2048)
+
     def test_qualified_esp32_repeaters_stream_source_proofs_without_cutting_other_budgets(self):
         for psram in (False, True):
             flags = {"ENABLE_OTA": 1, "MESH_CLIENT_REPEATER_ONLY": 1,
@@ -1824,11 +1860,65 @@ printf '%s\\n' "$PLATFORMIO_BUILD_FLAGS"
                     self.assertIn("-DONE_KEY_DM_COMPACT_HELD=1", result.stdout)
                 else:
                     self.assertNotIn("-DOTA_SHARED_COMPANION_QUEUE", result.stdout)
-            if target in ("Heltec_v3_companion_radio_full", "generic_espnow_companion_radio_full",
-                          "Heltec_Wireless_Paper_companion_radio_full"):
+            if target in ("Heltec_v3_companion_radio_full", "generic_espnow_companion_radio_full"):
                 self.assertNotIn("-DONE_KEY_DM_COMPACT_HELD", result.stdout)
+            if target == "generic_espnow_companion_radio_full":
+                self.assertIn("-DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048", result.stdout)
+            if target == "Heltec_Wireless_Paper_companion_radio_full":
+                self.assertIn("-DONE_KEY_DM_COMPACT_HELD=1", result.stdout)
+            self.assertNotIn("-DOTA_PRESERVE_UNREAD_ON_BORROW=1", result.stdout)
+            if target == "Heltec_ct62_companion_radio_full":
+                self.assertIn("-DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32", result.stdout)
             self.assertIn("-DWIFI_OTA_SEEDER=1", result.stdout)
             self.assertIn("-DBLE_PIN_CODE=123456", result.stdout)
+
+    def test_wsl3_full_moves_queue_to_rtc_without_reducing_capacity(self):
+        result = subprocess.run(["bash", "-c", '''
+source build.sh
+PIO_ENV_PLATFORM_BY_NAME["$1"]=ESP32_PLATFORM
+pio_env_option_contains() { return 0; }
+requires_esp32_companion_full_ota_fallback() { return 1; }
+apply_companion_radio_full_profile "$1" "$1"
+printf '%s\\n' "$PLATFORMIO_BUILD_FLAGS"
+''', "test", "Heltec_WSL3_companion_radio_full"], cwd=ROOT, text=True,
+            capture_output=True, check=True)
+        self.assertIn("-DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32", result.stdout)
+        self.assertIn("-DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32", result.stdout)
+        self.assertNotIn("-DMAX_CONTACTS=100", result.stdout)
+        self.assertNotIn("-DOFFLINE_QUEUE_SIZE=", result.stdout)
+        self.assertNotIn("-DOTA_SHARED_COMPANION_QUEUE", result.stdout)
+        self.assertIn("-DWIFI_OTA_SEEDER=1", result.stdout)
+        self.assertIn("-DBLE_PIN_CODE=123456", result.stdout)
+
+    def test_compact_held_dm_is_limited_to_selected_full_layouts(self):
+        selected = {
+            "Heltec_t1_companion_radio_full": "NRF52_PLATFORM",
+            "Heltec_Wireless_Paper_companion_radio_full": "ESP32_PLATFORM",
+            "Heltec_Wireless_Tracker_companion_radio_full": "ESP32_PLATFORM",
+            "LilyGo_TLora_V2_1_1_6_companion_radio_full": "ESP32_PLATFORM",
+            "MKE_s3_companion_radio_full": "ESP32_PLATFORM",
+            "nibble_screen_connect_companion_radio_full_": "ESP32_PLATFORM",
+            "nibble_zero_connect_companion_radio_full_": "ESP32_PLATFORM",
+            "ThinkNode_M5_companion_radio_full": "ESP32_PLATFORM",
+        }
+        for target, platform in selected.items():
+            with self.subTest(target=target):
+                result = subprocess.run(["bash", "-c", '''
+source build.sh
+PIO_ENV_PLATFORM_BY_NAME["$1"]="$2"
+pio_env_option_contains() { return 0; }
+requires_esp32_companion_full_ota_fallback() { return 1; }
+apply_companion_radio_full_profile "$1" "$1"
+printf '%s\\n' "$PLATFORMIO_BUILD_FLAGS"
+''', "test", target, platform], cwd=ROOT, text=True, capture_output=True, check=True)
+                self.assertIn("-DONE_KEY_DM_COMPACT_HELD=1", result.stdout)
+                if target in ("Heltec_Wireless_Tracker_companion_radio_full",
+                              "nibble_screen_connect_companion_radio_full_",
+                              "nibble_zero_connect_companion_radio_full_"):
+                    self.assertIn("-DOTA_SHARED_COMPANION_QUEUE=1", result.stdout)
+                    self.assertIn("-DOTA_PRESERVE_UNREAD_ON_BORROW=1", result.stdout)
+                else:
+                    self.assertNotIn("-DOTA_PRESERVE_UNREAD_ON_BORROW=1", result.stdout)
 
     def test_missing_and_truncated_elf_are_rejected(self):
         with tempfile.TemporaryDirectory() as temp:

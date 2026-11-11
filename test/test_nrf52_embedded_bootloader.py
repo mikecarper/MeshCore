@@ -224,17 +224,45 @@ int main() {
                 with self.assertRaisesRegex(ValueError, message):
                     EMBED.validate_candidate_zip(data, profile(data, **options))
         data = candidate(boot_image(v7=True))
-        with self.assertRaisesRegex(ValueError, "layout differs"):
+        with self.assertRaisesRegex(ValueError, "reviewed profile"):
             EMBED.validate_candidate_zip(data, profile(data, name="XIAO_DFU", storage="qspi"))
 
-    def test_pinned_new_qspi_profile_does_not_expand_signed_inventory(self):
+    def test_unreviewed_profile_is_rejected_even_if_asset_is_pinned(self):
         image = boot_image(v7=True, name="FUTURE_DFU", board_id=0x12345678)
         data = candidate(image, v7=True)
         self.assertIsNone(motalib.bootloader_qualified_storage_profiles(0x12345678, "FUTURE_DFU"))
-        actual, identity = EMBED.validate_candidate_zip(data, profile(data, v7=True, name="FUTURE_DFU"))
+        item = profile(data, v7=True, name="FUTURE_DFU")
+        item["id"] = "future_board"
+        with self.assertRaisesRegex(ValueError, "reviewed profile"):
+            EMBED.validate_candidate_zip(data, item)
+        with patch.dict(EMBED.PROFILE_IDENTITIES, {"future_board": (0x12345678, "FUTURE_DFU")}):
+            actual, identity = EMBED.validate_candidate_zip(data, item)
         self.assertEqual(actual, image)
         self.assertEqual(identity.board_id, 0x12345678)
         self.assertIsNone(motalib.bootloader_qualified_storage_profiles(0x12345678, "FUTURE_DFU"))
+
+    def test_xiao_and_sense_candidates_cannot_be_swapped(self):
+        for profile_id, correct, wrong in (
+            ("xiao_nrf52840_ble", 0x28860044, 0x28860045),
+            ("xiao_nrf52840_ble_sense", 0x28860045, 0x28860044),
+        ):
+            for board_id in (correct, wrong):
+                with self.subTest(profile=profile_id, board_id=board_id):
+                    image = boot_image(v7=True, board_id=board_id)
+                    data = candidate(image, v7=True)
+                    item = profile(data, v7=True)
+                    item["id"] = profile_id
+                    if board_id == correct:
+                        self.assertEqual(EMBED.validate_candidate_zip(data, item)[0], image)
+                    else:
+                        with self.assertRaisesRegex(ValueError, "reviewed profile"):
+                            EMBED.validate_candidate_zip(data, item)
+
+    def test_reviewed_identities_cover_pinned_release_profiles(self):
+        profiles = json.loads((ROOT / "docs/_data/bootloader_manifest.json").read_text())["profiles"]
+        self.assertEqual(set(EMBED.PROFILE_IDENTITIES), {p["id"] for p in profiles})
+        for item in profiles:
+            self.assertEqual(EMBED.PROFILE_IDENTITIES[item["id"]][1], item["deviceName"])
 
     def test_zip_member_geometry_is_bounded(self):
         for extra in (("unexpected.txt", b"x"), ("../firmware.bin", b"x")):
@@ -310,6 +338,54 @@ int main() {
         with self.assertRaisesRegex(ValueError, "restricted to RAK4631"):
             self.emit(v7=True, legacy_path=path)
 
+    def test_overlay_identity_is_bound_to_its_physical_environment(self):
+        base = "-DNRF52_PLATFORM -DENABLE_OTA=1"
+        logical = "RAK_4631_repeater_lora_ota_no_external_sensors"
+        result = self.emit(flags=base + " -DOTA_VARIANT='\"" + logical + "\"'")
+        self.assertEqual(result["target"], logical)
+        self.assertEqual(result["hardware"], "RAK_4631")
+        self.assertEqual(result["profile"], "wiscore_rak4631_auto")
+        result = self.emit(flags=base, cppdefines=[("OTA_VARIANT", '"' + logical + '"')])
+        self.assertEqual(result["target"], logical)
+        # R1Neo shares the RAK profile, but it is not the selected board.
+        # Likewise, a different role or a malformed value must never create a
+        # resource for the physical environment.
+        for alias in ("R1Neo_repeater", "RAK_4631_room_server",
+                      "Xiao_nrf52_sense_repeater", "RAK_4631_repeater_bad",
+                      "", "RAK_4631_repeater/other"):
+            with self.subTest(alias=alias), self.assertRaisesRegex(ValueError, "target"):
+                self.emit(flags=base, cppdefines=[("OTA_VARIANT", alias)])
+
+    def test_overlay_suffix_does_not_authorize_another_hardware_or_role(self):
+        base = "-DNRF52_PLATFORM -DENABLE_OTA=1"
+        logical = "RAK_4631_repeater_lora_ota_no_external_sensors"
+        physical = {"id": "same"}
+        overlay = {"id": "same"}
+        parsed = {"sourceHardware": "RAK_4631", "role": "repeater"}
+        for changed in ({"sourceHardware": "R1Neo", "role": "repeater"},
+                        {"sourceHardware": "RAK_4631", "role": "room"}):
+            with self.subTest(changed=changed), patch.object(
+                    EMBED, "select_profile", side_effect=[(physical, parsed), (overlay, changed)]):
+                with self.assertRaisesRegex(ValueError, "hardware or role"):
+                    self.emit(flags=base, cppdefines=[("OTA_VARIANT", logical)])
+
+    def test_trailing_underscore_and_room_overlay_remain_supported(self):
+        base = "-DNRF52_PLATFORM -DENABLE_OTA=1"
+        for physical, role, logical in (
+                ("RAK_4631_repeater_", "repeater",
+                 "RAK_4631_repeater_lora_ota_no_external_sensors"),
+                ("RAK_4631_room_server_", "room",
+                 "RAK_4631_room_server_lora_ota_no_external_sensors")):
+            folder = "simple_repeater" if role == "repeater" else "simple_room_server"
+            with self.subTest(physical=physical):
+                result = EMBED.emit_resource(
+                    self.project, physical, self.project / "generated",
+                    flags=base, cppdefines=[("OTA_VARIANT", logical)],
+                    src_filter=f"+<../examples/{folder}>", linker="nrf52840_s140_v6.ld")
+                self.assertEqual(result["target"], logical)
+                self.assertEqual(result["role"], role)
+                self.assertEqual(result["hardware"], "RAK_4631")
+
     def test_pio_hook_requires_explicit_version_and_correct_mcu(self):
         class Environment(dict):
             def __init__(inner):
@@ -356,6 +432,12 @@ int main() {
             "CPPDEFINES": [("OTA_BOOTLOADER_MIGRATION", 1)], "CPPPATH": [str(generated)]}))
         self.assertEqual(environment.actions[1], ("sources", (str(generated / "objects"), str(generated)),
                                                  {"src_filter": ["+<*.cpp>"]}))
+        environment = Environment()
+        logical = "RAK_4631_repeater_lora_ota_no_external_sensors"
+        environment["BUILD_FLAGS"] += " -DOTA_VARIANT='\"" + logical + "\"'"
+        execute(environment, MESHCORE_NRF52_EMBED_BOOTLOADER="2.4.12")
+        metadata = json.loads((generated / "BootloaderMigrationResource.json").read_text())
+        self.assertEqual(metadata["target"], logical)
 
 
 if __name__ == "__main__":

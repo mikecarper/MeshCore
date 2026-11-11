@@ -6,9 +6,11 @@
 
 #include "CustomLR1121.h"
 #include "RadioLibWrappers.h"
+#include "LRxxxxPulseWrapper.h"
 #include "LR11x0Reset.h"
 
-class CustomLR1121Wrapper : public RadioLibWrapper {
+class CustomLR1121Wrapper : public LRxxxxPulseWrapper<CustomLR1121> {
+  using PulseBase=LRxxxxPulseWrapper<CustomLR1121>;
   using DeepInitCallback = bool (*)();
   DeepInitCallback _deep_init = nullptr;
 public:
@@ -27,7 +29,7 @@ public:
     return static_cast<CustomLR1121*>(_radio)->activeRegulatorMode();
   }
   ~CustomLR1121Wrapper() { unregisterInterruptAction(); }
-  CustomLR1121Wrapper(CustomLR1121& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
+  CustomLR1121Wrapper(CustomLR1121& radio, mesh::MainBoard& board) : PulseBase(radio, board) { }
   bool supportsMorseTx() const override { return true; }
   bool supportsMorseRx() const override { return MESH_ENABLE_MORSE_RX && supportsRadioDeepInit(); }
 #if MESH_ENABLE_MESHTEXT_WIRE

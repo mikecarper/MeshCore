@@ -292,8 +292,8 @@
     if (sf < 5 || sf > 12) {
       throw new PresetTestError("sf must be between 5 and 12");
     }
-    if (cr < 5 || cr > 8) {
-      throw new PresetTestError("cr must be between 5 and 8");
+    if (cr < 4 || cr > 8) {
+      throw new PresetTestError("cr must be between 4 and 8");
     }
     if (tx < -30 || tx > 60) {
       throw new PresetTestError("tx must be between -30 and 60 dBm");

@@ -1,6 +1,8 @@
 #pragma once
+#include "RadioFastCode.h"
 
 #include <RadioLib.h>
+#include "SX126xStatus.h"
 #include "RadioRegulatorState.h"
 #include <math.h>
 #include "MeshCore.h"
@@ -9,6 +11,8 @@
 #include <helpers/RadioSwitchTuning.h>
 #include "SX126xMorseRssi.h"
 #include "ESP32RadioTrace.h"
+#include "WarmRxRefresh.h"
+#include "SX126xRxpsPulse.h"
 #if defined(STATION_G3_ESP32)
 #include <StationG3RadioSlot.h>
 #endif
@@ -72,6 +76,11 @@ class CustomSX1262 : public SX1262 {
   uint32_t _profileFastResumes = 0;
   bool _coldStandby = true;
   bool _tcxoWakePending = false;
+#if MESH_WARM_RX_REFRESH
+  WarmRxRefresh::Step _warm_refresh_step = WarmRxRefresh::Step::None;
+  bool _warm_refresh_tracking = false;
+  uint32_t _warm_refresh_returned_us = 0;
+#endif
 
   public:
     uint32_t getTcxoDelay() const { return tcxoDelay; }
@@ -166,6 +175,95 @@ class CustomSX1262 : public SX1262 {
     void beginProfileSwitch(bool continuousRx) { _profileSwitch.begin(continuousRx, standbyXOSC); }
     void endProfileSwitch(bool success) { _profileSwitch.end(success); }
     bool profileSwitchFailed() const { return _profileSwitch.failed(); }
+#if MESH_WARM_RX_REFRESH
+    // Deliberately use the full acknowledged LoRa RX staging sequence. This
+    // path is independent of radio2 cache/FS shortcuts and performs no sleep,
+    // calibration, gain, retention, or frequency writes.
+    void invalidatePulseReceiveState() { invalidateMorseModemCache(); }
+    uint64_t pulsePacketBudgetUs() const { return (uint64_t(_preambleMillis)+_maxPayloadMillis)*1000ULL; }
+    int16_t stagePulseReceive() {
+      Module* mod=getMod();
+      invalidateMorseModemCache();
+      const uint16_t flags=getIrqMapped(RADIOLIB_IRQ_RX_DEFAULT_FLAGS | (1UL<<RADIOLIB_IRQ_PREAMBLE_DETECTED));
+      const uint16_t mask=getIrqMapped((1UL<<RADIOLIB_IRQ_RX_DONE) | (1UL<<RADIOLIB_IRQ_TIMEOUT)
+          | (1UL<<RADIOLIB_IRQ_CRC_ERR) | (1UL<<RADIOLIB_IRQ_HEADER_ERR));
+      const uint8_t dio[]={uint8_t(flags>>8),uint8_t(flags),uint8_t(mask>>8),uint8_t(mask),0,0,0,0};
+      int16_t rc=mod->SPIwriteStream(RADIOLIB_SX126X_CMD_SET_DIO_IRQ_PARAMS,dio,sizeof(dio),true,false);
+      if(rc) return rc;
+      const uint8_t bases[]={0,0};
+      rc=mod->SPIwriteStream(RADIOLIB_SX126X_CMD_SET_BUFFER_BASE_ADDRESS,bases,sizeof(bases),true,false);
+      if(rc) return rc;
+      // Caller has stopped RX and preserved any completion before clearing.
+      const uint8_t clear[]={0xFF,0xFF};
+      rc=mod->SPIwriteStream(RADIOLIB_SX126X_CMD_CLEAR_IRQ_STATUS,clear,sizeof(clear),true,false);
+      if(rc) return rc;
+      uint8_t modem=0;
+      rc=mod->SPIreadStream(RADIOLIB_SX126X_CMD_GET_PACKET_TYPE,&modem,1,true,false);
+      if(rc) return rc;
+      if(modem!=RADIOLIB_SX126X_PACKET_TYPE_LORA) return RADIOLIB_ERR_WRONG_MODEM;
+      const uint8_t read_iq[]={RADIOLIB_SX126X_CMD_READ_REGISTER,0x07,0x36};
+      uint8_t iq=0;
+      rc=mod->SPIreadStream(read_iq,sizeof(read_iq),&iq,1,true,false);
+      if(rc) return rc;
+      if(invertIQEnabled==RADIOLIB_SX126X_LORA_IQ_INVERTED) iq&=0xFB;else iq|=0x04;
+      const uint8_t write_iq[]={RADIOLIB_SX126X_CMD_WRITE_REGISTER,0x07,0x36};
+      rc=mod->SPIwriteStream(write_iq,sizeof(write_iq),&iq,1,true,false);
+      if(rc) return rc;
+      const uint8_t packet[]={uint8_t(preambleLengthLoRa>>8),uint8_t(preambleLengthLoRa),headerType,implicitLen,crcTypeLoRa,invertIQEnabled};
+      rc=mod->SPIwriteStream(RADIOLIB_SX126X_CMD_SET_PACKET_PARAMS,packet,sizeof(packet),true,false);
+      if(!rc) rxTimeout=RADIOLIB_SX126X_RX_TIMEOUT_INF;
+      return rc;
+    }
+    int16_t verifyPulseReceive() {
+      Module* mod=getMod();
+      if(isChipBusy()) return RADIOLIB_ERR_SPI_CMD_TIMEOUT;
+      uint8_t status=0;
+      const int16_t rc=sx126xReadStatus(mod,status);
+      if(rc) return rc;
+      return status && status!=0xFF && ((status>>4)&7)==5 ? RADIOLIB_ERR_NONE : -11023;
+    }
+    int16_t enterPulseContinuous() {
+      // Called only from owned awake RC standby after checked RTC cleanup.
+      Module* mod=getMod();
+      const int16_t rc=stagePulseReceive();
+      if(rc) return rc;
+      mod->setRfSwitchState(Module::MODE_RX);
+      const uint8_t continuous[]={0xFF,0xFF,0xFF};
+      const int16_t result=mod->SPIwriteStream(RADIOLIB_SX126X_CMD_SET_RX,continuous,sizeof(continuous),true,false);
+      if(!result) { _headerSeen=false;_activityAt=0; }
+      return result;
+    }
+    bool warmRxRefreshReady() const {
+      const uint8_t required=mesh::RadioSwitchTuning::Warm|mesh::RadioSwitchTuning::Packet;
+      return (getProfileSwitchFeatures()&required)==required && _profileSwitch.enabled
+          && !_profileSwitch.open && _profileSwitch.rxValid && !_coldStandby && !_tcxoWakePending
+          && _profileSwitch.packetValid
+          && _profileSwitch.packetPreamble==preambleLengthLoRa
+          && _profileSwitch.packetCrc==crcTypeLoRa && _profileSwitch.packetImplicitLen==implicitLen
+          && _profileSwitch.packetHeader==headerType && _profileSwitch.packetIq==invertIQEnabled;
+    }
+    void trackWarmRxRefresh(bool enabled) { _warm_refresh_tracking=enabled; }
+    WarmRxRefresh::Step warmRxRefreshStep() const { return _warm_refresh_step; }
+    int16_t warmRxRefreshError() const { return _profileSwitch.error; }
+    uint32_t warmRxRefreshReturnedUs() const { return _warm_refresh_returned_us; }
+    int16_t startWarmRxRefreshReceive() {
+      // Never fall back to the normal, parameter-writing receive entry here.
+      if(!_profileSwitch.canResumeFast()
+          || !(getProfileSwitchFeatures()&mesh::RadioSwitchTuning::Packet)
+          || !_profileSwitch.matchesPacket(preambleLengthLoRa,crcTypeLoRa,implicitLen,headerType,invertIQEnabled)) {
+        _warm_refresh_step=WarmRxRefresh::Step::Context;
+        return WarmRxRefresh::ContextError;
+      }
+      const uint32_t before=_profileFastResumes;
+      const int16_t result=startReceive();
+      if(result==RADIOLIB_ERR_NONE && _profileFastResumes-before!=1) {
+        _warm_refresh_step=WarmRxRefresh::Step::Context;
+        _profileSwitch.invalidate();
+        return WarmRxRefresh::ContextError;
+      }
+      return result;
+    }
+#endif
 #if (defined(MC_NRF_RADIO_PROFILE_PRIORITY) && MC_NRF_RADIO_PROFILE_PRIORITY) \
     || (defined(MC_NRF_RADIO_PROFILE_USB_IRQ_GUARD) && MC_NRF_RADIO_PROFILE_USB_IRQ_GUARD)
     bool hilOwnsWarmProfileRetune() const {
@@ -199,7 +297,7 @@ class CustomSX1262 : public SX1262 {
       return rc;
     }
 
-    int16_t standby() override {
+    MC_RADIO_FAST_CODE_ATTR int16_t standby() override {
 #if MESH_RADIO_TRACE_ENABLED
       traceOperation(mesh::radiotrace::Reconfigure);
 #endif
@@ -211,12 +309,18 @@ class CustomSX1262 : public SX1262 {
       useFs = useFs && hilUseFsOnRetune;
 #endif
       if (alreadyAwake && useFs) {
+#if MESH_WARM_RX_REFRESH
+        if(_warm_refresh_tracking) _warm_refresh_step=WarmRxRefresh::Step::Fs;
+#endif
         getMod()->setRfSwitchState(Module::MODE_IDLE);
         rc = setFs();
 #ifdef MC_SX1262_HIL
         if (rc == RADIOLIB_ERR_NONE) ++hilFsEntries;
 #endif
       } else {
+#if MESH_WARM_RX_REFRESH
+        if(_warm_refresh_tracking) _warm_refresh_step=WarmRxRefresh::Step::Standby;
+#endif
         rc = alreadyAwake
             ? SX1262::standby(RADIOLIB_SX126X_STANDBY_XOSC, false)
             : _coldStandby ? SX1262::standby(RADIOLIB_SX126X_STANDBY_RC) : SX1262::standby();
@@ -353,7 +457,7 @@ class CustomSX1262 : public SX1262 {
     // SetModulationParams commands. Keep RadioLib's caches and automatic LDRO
     // calculation consistent with its ordinary SF/BW/CR setters. Caller must
     // own a safe standby/reconfigure window, just as for those setters.
-    int16_t setLoRaModulationParams(float bw, uint8_t sf, uint8_t cr) {
+    MC_RADIO_FAST_CODE_ATTR int16_t setLoRaModulationParams(float bw, uint8_t sf, uint8_t cr) {
       if (sf < 5 || sf > 12) return RADIOLIB_ERR_INVALID_SPREADING_FACTOR;
       if (cr < 4 || cr > 8) return RADIOLIB_ERR_INVALID_CODING_RATE;
       if (!isfinite(bw)) return RADIOLIB_ERR_INVALID_BANDWIDTH;
@@ -484,9 +588,9 @@ class CustomSX1262 : public SX1262 {
     // parameters instead of issuing GetPacketType while RX duty cycling may
     // have the chip asleep. A failed live query otherwise becomes an encoded
     // negative error in the unsigned time-on-air result and can stall TX.
-    RadioLibTime_t getTimeOnAir(size_t len) override {
+    MC_RADIO_FAST_CODE_ATTR RadioLibTime_t getTimeOnAir(size_t len) override {
       uint8_t cr = this->codingRate;
-      // RadioLib stores ordinary CR 4/5 through 4/8 as 0-4. Long-interleaving
+      // RadioLib stores ordinary CR 4/4 through 4/8 as 0-4. Long-interleaving
       // CR values 0-4 and 5-7 map to the same time-on-air denominators.
       if (cr < 5) {
         cr += 4;
@@ -693,7 +797,7 @@ class CustomSX1262 : public SX1262 {
 
     // BUSY high means the chip is asleep (RX duty-cycle sleep window) or mid
     // command; any SPI access would stall until the chip's next listen window.
-    bool isChipBusy() {
+    MC_RADIO_FAST_CODE_ATTR bool isChipBusy() {
       uint32_t busy = this->mod->getGpio();
       return busy != RADIOLIB_NC && this->mod->hal->digitalRead(busy);
     }
@@ -781,7 +885,7 @@ class CustomSX1262 : public SX1262 {
   public:
 #endif
 
-    int16_t startReceive() override {
+    MC_RADIO_FAST_CODE_ATTR int16_t startReceive() override {
 #if MESH_RADIO_TRACE_ENABLED
       const bool tracing = mesh::radiotrace::trace().pending();
       const uint64_t trace_before = tracing ? mesh::radiotrace::nowUs() : 0;
@@ -809,6 +913,9 @@ class CustomSX1262 : public SX1262 {
         reuseIq = reuseIq && _profileSwitch.matchesPacketIq(invertIQEnabled);
 #endif
         _profileSwitch.rxValid = false;  // fail closed on any command error
+#if MESH_WARM_RX_REFRESH
+        if(_warm_refresh_tracking) _warm_refresh_step=WarmRxRefresh::Step::ClearIrq;
+#endif
         int16_t rc = clearIrqStatus();
 #ifdef MC_SX1262_HIL
         if (rc == RADIOLIB_ERR_NONE && skipPacket) ++hilPacketSkips;
@@ -827,9 +934,15 @@ class CustomSX1262 : public SX1262 {
                                       implicitLen, headerType, invertIQEnabled);
         }
         if (rc == RADIOLIB_ERR_NONE) {
+#if MESH_WARM_RX_REFRESH
+          if(_warm_refresh_tracking) _warm_refresh_step=WarmRxRefresh::Step::SetRx;
+#endif
           rxTimeout = RADIOLIB_SX126X_RX_TIMEOUT_INF;
           getMod()->setRfSwitchState(Module::MODE_RX);
           rc = setRx(rxTimeout);  // original BUSY waits and status checks
+#if MESH_WARM_RX_REFRESH
+          if(_warm_refresh_tracking) _warm_refresh_returned_us=static_cast<uint32_t>(micros());
+#endif
         }
         stagedMode = RADIOLIB_RADIO_MODE_NONE;
         if (rc == RADIOLIB_ERR_NONE) {
@@ -888,7 +1001,7 @@ class CustomSX1262 : public SX1262 {
     }
 #endif
 
-    bool isReceiving() {
+    MC_RADIO_FAST_CODE_ATTR bool isReceiving() {
 #if MESH_RADIO_TRACE_ENABLED
       const bool tracing = mesh::radiotrace::trace().pending();
       const uint64_t trace_before = tracing ? mesh::radiotrace::nowUs() : 0;

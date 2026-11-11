@@ -10,15 +10,54 @@ import subprocess
 import tempfile
 import unittest
 
+from cpp_source import body
+
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / 'test/fixtures/cli_reply_text.json'
 SELECTION = re.compile(
     r'MESH_CLI_REPLY_TEXT\(("(?:\\.|[^"\\])*"),\s*("(?:\\.|[^"\\])*")\)')
 TOKENS = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|'
                     r'//[^\n]*|/\*.*?\*/|[A-Za-z_][A-Za-z_0-9]*|[^\s]', re.S)
+SHARED_TERMINAL_ERROR = re.compile(
+    r'terminalOutput\(\)\.printf\("  ERROR: %s",\s*'
+    r'MESH_CLI_REPLY_TEXT\(("(?:\\.|[^"\\])*"),\s*("(?:\\.|[^"\\])*")\)\)')
+SHARED_TERMINAL_ERROR_MEMBER = re.compile(
+    r'(?<![A-Za-z_0-9:.])printTerminalError\(\s*'
+    r'MESH_CLI_REPLY_TEXT\(("(?:\\.|[^"\\])*"),\s*("(?:\\.|[^"\\])*")\)\)')
+
+# New transactional-setting failures, reviewed with the persistence change.
+# Their shorter forms must retain uncertain-publication wording. The storage
+# tests separately verify that failed saves preserve the active configuration.
+UNCERTAIN_STORAGE_REPLIES = {
+    'Error: radioat save unconfirmed; live queue unchanged': 'Error: save unconfirmed',
+    'Err - GPS retention save unconfirmed; active setting unchanged': 'Err - save unconfirmed',
+    'Error: radioat deletion not saved': 'Error: save unconfirmed',
+}
+# Here 2.4ghz labels the command which just failed, rather than a numeric
+# setting or limit. Share these compact errors with the other saved services.
+WIRELESS_CONTEXT_REPLIES = {
+    'Error: 2.4ghz setting could not be saved': 'Error: save unconfirmed',
+    'Error: 2.4ghz save failed; previous settings restore unconfirmed':
+        'Error: save/restore unconfirmed',
+}
+
+
+def expand_shared_terminal_errors(source):
+    # Normalize only the reviewed member-call shape to the prior printf call,
+    # then reconstruct its original literal print for the whole-source/message
+    # guards. The executable test invokes the actual member implementation.
+    source = SHARED_TERMINAL_ERROR_MEMBER.sub(
+        lambda match: 'terminalOutput().printf("  ERROR: %s", MESH_CLI_REPLY_TEXT('
+                      + ', '.join(match.groups()) + '))', source)
+    def expand(match):
+        messages = [json.dumps('  ERROR: ' + json.loads(value))
+                    for value in match.groups()]
+        return 'terminalOutput().print(MESH_CLI_REPLY_TEXT(%s, %s))' % tuple(messages)
+    return SHARED_TERMINAL_ERROR.sub(expand, source)
 
 
 def original_tokens(source):
+    source = expand_shared_terminal_errors(source)
     source = re.sub(r'^#include [<"](?:helpers/)?CLIReplyText\.h[>"]\s*\n',
                     '', source, flags=re.M)
     source = SELECTION.sub(lambda match: match.group(1), source)
@@ -40,10 +79,27 @@ class CliReplyTextTests(unittest.TestCase):
             category = r'^[ \t]*(Error|ERROR|ERR|Err|OK)(?=[: ,\-])'
             self.assertEqual(re.findall(category, old), re.findall(category, new))
             self.assertEqual(re.findall(r'[\r\n]', old), re.findall(r'[\r\n]', new))
-            self.assertEqual(re.findall(r'\d+(?:\.\d+)?', old),
-                             re.findall(r'\d+(?:\.\d+)?', new))
+            reviewed_wireless_context = (row['file'] == 'src/helpers/WirelessControl.h'
+                                         and old in WIRELESS_CONTEXT_REPLIES)
+            if reviewed_wireless_context:
+                self.assertEqual(new, WIRELESS_CONTEXT_REPLIES[old])
+                self.assertEqual(re.findall(r'\d+(?:\.\d+)?', old), ['2.4'])
+                self.assertFalse(re.findall(r'\d+(?:\.\d+)?', new))
+            else:
+                self.assertEqual(re.findall(r'\d+(?:\.\d+)?', old),
+                                 re.findall(r'\d+(?:\.\d+)?', new))
             self.assertFalse(old.startswith(('> ', '{', 'KEYBACKUP ', 'ACK')))
             protected = old.lower().replace('[reboot]', '')
+            reviewed_storage = (row['file'] == 'examples/simple_repeater/MyMesh.cpp'
+                                and old in UNCERTAIN_STORAGE_REPLIES)
+            if reviewed_storage:
+                self.assertEqual(new, UNCERTAIN_STORAGE_REPLIES[old])
+                self.assertIn('save unconfirmed', new)
+                protected = protected.replace('save unconfirmed', '')
+            if (row['file'] == 'src/helpers/WirelessControl.h'
+                    and old == 'OK - WiFi setting saved; reboot to apply'):
+                self.assertEqual(new, 'OK - saved; reboot to apply')
+                protected = protected.replace('reboot', '')
             if (row['file'] == 'src/helpers/ota/OtaCli.cpp' and
                     old == 'ERR self serve requires ESP32 or external-storage nRF52; host sources use ota folder'):
                 # This describes source capabilities, not host data or its retention.
@@ -54,13 +110,13 @@ class CliReplyTextTests(unittest.TestCase):
             for protected in ('[reboot]', 'default'):
                 if protected in old:
                     self.assertIn(protected, new)
-            if 'unchanged' in old:
+            if 'unchanged' in old and not reviewed_storage:
                 self.assertIn('sleep policy unchanged', old)
                 self.assertIn('sleep policy unchanged', new)
         for file, messages in expected.items():
             source = (ROOT / file).read_text()
             actual = {(json.loads(match.group(1)), json.loads(match.group(2)))
-                      for match in SELECTION.finditer(source)}
+                      for match in SELECTION.finditer(expand_shared_terminal_errors(source))}
             self.assertEqual(actual, messages, file)
             # Substituting each original literal recovers every original C++
             # token, including command tests, branches, calls and arguments.
@@ -68,6 +124,52 @@ class CliReplyTextTests(unittest.TestCase):
             # hash; keep their tokens covered by this guard as well.
             self.assertEqual(hashlib.sha256(original_tokens(source)).hexdigest(),
                              fixture['noncompact_tokens_sha256'][file], file)
+
+    def test_shared_terminal_error_prefix_keeps_every_output_byte(self):
+        compiler = os.environ.get('CXX') or shutil.which('g++') or shutil.which('clang++')
+        if not compiler:
+            self.skipTest('host C++ compiler required')
+        source = (ROOT / 'examples/companion_radio/MyMesh.cpp').read_text()
+        calls = list(SHARED_TERMINAL_ERROR_MEMBER.finditer(source))
+        self.assertEqual(len(calls), 57)
+        self.assertFalse(SHARED_TERMINAL_ERROR.search(source),
+                         "all reviewed shared-prefix calls must use the member")
+        implementation = body(source, "void MyMesh::printTerminalError(")
+        approved = {(row['verbose'], row['concise']) for row in
+                    json.loads(FIXTURE.read_text())['messages']
+                    if row['file'] == 'examples/companion_radio/MyMesh.cpp'}
+        for call in calls:
+            self.assertIn(tuple('  ERROR: ' + json.loads(value)
+                                for value in call.groups()), approved)
+        harness = ('#include <cstdio>\n#include <CLIReplyText.h>\n'
+                   '#ifdef _WIN32\n#include <fcntl.h>\n#include <io.h>\n#endif\n'
+                   'struct MockOutput {\n'
+                   '  int printf(const char* format, const char* message) {\n'
+                   '    return std::printf(format, message);\n'
+                   '  }\n};\n'
+                   'struct MyMesh {\n'
+                   '  MockOutput output;\n'
+                   '  MockOutput& terminalOutput() { return output; }\n'
+                   '  void printTerminalError(const char* message);\n'
+                   '  void exercise() {\n' +
+                   '\n'.join(call.group() + ';' for call in calls) + '\n}\n};\n' +
+                   implementation + '\n'
+                   'int main() {\n#ifdef _WIN32\n_setmode(_fileno(stdout), _O_BINARY);\n#endif\n'
+                   'MyMesh mesh; mesh.exercise();\n}\n')
+        with tempfile.TemporaryDirectory(prefix='terminal-error-prefix-') as folder:
+            work = Path(folder)
+            (work / 'test.cpp').write_text(harness)
+            for compact in (0, 1):
+                result = subprocess.run([compiler, '-std=c++11', '-Os', '-Wall',
+                    '-Wextra', '-Werror', '-DMESH_CLI_COMPACT_REPLIES='+str(compact),
+                    '-I'+str(ROOT/'src/helpers'), str(work/'test.cpp'),
+                    '-o', str(work/'test')], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+                result = subprocess.run([str(work/'test')], capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                expected = ''.join('  ERROR: ' + json.loads(call.group(compact+1))
+                                   for call in calls).encode()
+                self.assertEqual(result.stdout, expected)
 
     def test_ota_prose_keeps_discovery_and_retry_parser_keywords(self):
         messages = {row['verbose']: row['concise']

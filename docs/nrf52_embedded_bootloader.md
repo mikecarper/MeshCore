@@ -15,10 +15,17 @@ the exact board's [OTAFIX 2.4.12 bootloader](https://github.com/mikecarper/Adafr
 in one application image. After installing that application, it checks the
 bootloader once at 70 seconds after startup and updates it when needed. The
 check waits for idle radio and OTA activity, and skips a valid matching
-bootloader at the same or newer version. Reviewed stock bootloaders, including
-RAK 0.4.3, are supported by exact installed-image hashes rather than their names.
-Recovery and unrecognized bootloaders are excluded from automatic installation. Ordinary firmware has no automatic
-bootloader update.
+bootloader at the same or newer version. Reviewed stock bootloaders are checked by exact installed-image hashes rather
+than their names. Recovery and unrecognized bootloaders are excluded from
+automatic installation. Ordinary firmware has no automatic bootloader update.
+
+**XIAO and Sense:** The installed bootloader must match the bundled candidate.
+The two factory bootloaders have distinct reviewed image hashes; OTAFIX uses
+distinct board IDs. A base-XIAO bundle skips a Sense bootloader, and unknown or
+mismatched loaders are refused. Existing XIAO bundles contain only the base
+candidate, so they do not automatically update a Sense bootloader. These checks
+identify the installed bootloader; they cannot verify the physical module if a
+different bootloader was previously installed manually.
 
 This follows the internal-flash bridge in
 [MeshEnvy firmware PR #2](https://github.com/MeshEnvy/meshcore-firmware/pull/2).
@@ -76,17 +83,47 @@ candidate's board and runtime layout. Modern identity mismatches never fall back
 to stock-loader rules. Current all-in-one Repeater and Room Server builds also
 include a small, exact-byte stock inventory automatically; no environment variable
 or separate legacy file is needed for those images. The initial reviewed inventory
-covers the published factory RAK 0.3.2/0.4.1/0.4.2/0.4.3/0.4.4 images on RAK4631
-and RAK3401, R1 Neo's own image, T114 vendor images, T-Echo/Lite, T1000-E's recovery
-image, Wio Tracker L1, and the exact XIAO base/Sense product images. See
+covers reviewed stock images for RAK4631, RAK3401, R1 Neo, T114, T-Echo/Lite,
+T1000-E, Wio Tracker L1 and matching XIAO product images. XIAO Plus stock
+bootloaders are not admitted until their replacement compatibility is verified. See
 [`nrf52_legacy_bootloaders.py`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/scripts/nrf52_legacy_bootloaders.py)
 for exact source URLs, file and padded-image hashes, hardware and layout mappings.
 
 Each entry binds the entire 40 KiB bootloader region, the physical build target,
 the replacement profile and the S140/application layout. A different byte, shared
 USB ID or a matching version string is insufficient. A RAK3401 may legitimately
-have the factory RAK4631 loader; its replacement is still the exact RAK3401 profile.
-Related boards do not inherit representative module/SDK hashes automatically.
+have the factory RAK4631 loader; the selected build target determines its
+board-specific replacement. Related boards do not inherit representative
+module/SDK hashes automatically.
+
+The reviewed inventory also includes all 72 published OTAFIX 0.9.2 fork images
+from oltaco's six releases through 2.3-BP1.4 and vk496's `dev-latest` release.
+It records separate exact installed-region fingerprints for each published ZIP
+and UF2 because their flash padding can differ. Each is restricted to its
+matching board profile and S140 layout; XIAO and XIAO Sense are separate, and
+the RAK4631 image does not authorize a RAK3401 or R1 Neo transition. Future,
+modified or differently padded images remain unrecognized until reviewed.
+
+To use this route with an older application, first deliver a matching
+`with-bootloader-2.4.12` application image using an update method that the
+installed firmware and bootloader already support. A normal application image
+does not contain the embedded updater or this inventory. A legacy internal-only
+LoRa receiver may require a compatible delta from its exact installed image;
+if it cannot receive the larger application, use its supported local update
+route. After the application starts, the usual 70-second check or authenticated
+admin command described below applies. A recognized hash alone does not guarantee an
+update: flash protection, MBR geometry, persistence and space must still pass.
+The full fork-to-2.4.12 transitions have not been qualified on every board.
+
+The mikecarper OTAFIX 2.4 releases protect the bootloader and its settings from
+application writes. The embedded MBR route therefore stops at its protection
+check when that protection is active; identifying the old image cannot unlock
+it. Use the installed bootloader's own update capability when available. That
+capability depends on both release and board: for example, the published P1
+2.4.6 loader can apply application updates from QSPI but cannot replace itself,
+while some other 2.4.6 loaders include a bootloader-update handler. Inspect
+the installed capability and use a supported local DFU route if it is absent.
+
 Unknown or recovery images remain excluded, and flash protection, MBR geometry,
 watchdog and durable-state checks remain mandatory. These are source/image
 compatibility checks, not a claim that every transition or power interruption has

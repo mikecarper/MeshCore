@@ -1,0 +1,221 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-10",
+  "status": "completed",
+  "physical_scope": "Companion source only. Repeater-source hardware testing was skipped at the user's request.",
+  "environment": {
+    "host": "Mercerwood Pi",
+    "browser": "Chromium 154",
+    "serial": "native Web Serial",
+    "source_board": "Heltec V4.3 OLED",
+    "source_firmware_role": "released v1.18.0.1 Full Companion",
+    "target_board": "Heltec V3",
+    "target_control_and_firmware_data_transport": "LoRa",
+    "target_usb": "closed during transfer/install; used only for initial baseline/read-only diagnostics before the first transfer",
+    "firmware_source_roles_changed": false,
+    "target_test_firmware_code_commit": "2e3f8669",
+    "test_version_labels": "Browser-HIL version labels are bench builds, not published release numbers."
+  },
+  "final_browser_ui_bundle": {
+    "manifest_sha256": "53c686ce0c8925eab5239dbec94f271d2c8cb02c1396b7f6f622853d55a9aeca",
+    "browser_js_sha256": "e412da472ca66794cd15feb99531dafa55bf866814ae1042750085a5c934160c",
+    "javascript_file_sha256": {
+      "lora_ota_browser.js": "e412da472ca66794cd15feb99531dafa55bf866814ae1042750085a5c934160c",
+      "lora_ota_candidates.js": "6a031cfc7052ec21f4d48314528899059812851c3d2996518e36d8390563ddd5",
+      "lora_ota_catalog.js": "34a7889f87389efa2ec6dff8ef72c8feb8e215d23fe432c76c0b4ab2edb51e99",
+      "lora_ota_chain.js": "1cc30c5c7093e991deb34c2547779ee004d12f15ed86e94e2981d3c8c6aa262f",
+      "lora_ota_chain_ui.js": "5165a46dded6d12fdd79008beb1de6bc3890fd998a892a04d6efdb287c00e8e9",
+      "lora_ota_checks.js": "a0e433076444094a6c2fd4a9b8c9dbd8c8431d140ad0e00af505b90846895373",
+      "lora_ota_collect.js": "270dbac18e903e160f3da8f6ffe9b1077f83461d5118a020044360b51a51beee",
+      "lora_ota_companion.js": "a90bc0cb0ed3043d0f2f0ac73e6122bfb5724c32cbadf6bcf62dabe55973e8b4",
+      "lora_ota_companion_source.js": "a6c06e1b1a04d796b4d4b05e7552eafb9aa2f2f17887388d0594c7f8bb7ad039",
+      "lora_ota_contacts.js": "841d950850bef564b1acb41fa0e64f5e2d84d3297104490955e6b5bf3e375ac4",
+      "lora_ota_delta.js": "811955e5b4f476feecc126b44728e794879667696a8b2e80ca3c7eb85a28cb82",
+      "lora_ota_delta_worker.js": "13ab2f10ac201b41d6ddb8fcba8036528bd361d56b2c41633efd8107aa0c6532",
+      "lora_ota_discovery.js": "3c8055ee4766940b37c0cc329e6642c7029cc8f3dda61aa7afef39a1fbe5e8fe",
+      "lora_ota_lease.js": "360f4baa7fbb23fff94c62b1c695bc0bc0f3389d0472842927d5de9bf52b544d",
+      "lora_ota_package.js": "e90fa11565053fad9616f19eff428b5dce4ffc2753e39b22ed8dee049ebd4eba",
+      "lora_ota_plan.js": "99504549ff0a6b11f67baf96e8da65f8b3946393e8a0e00cd977b68289ff15dc",
+      "lora_ota_port.js": "881f1f868fa8159883b3463335ad683c0596030dddc9d93c97a6d8894cdc8757",
+      "lora_ota_radio_setup.js": "5db48c25e1860cffc087d3085a8c3f0be032cc481b75cc0e70ffda7df3d8c328",
+      "lora_ota_recovery.js": "9218fc32dfb34a1993fb966b25ddcfff6c64b9b53f01e3fcad594b9f6016c1d0",
+      "lora_ota_region_profiles.js": "91559111eafda7ee4dc6bb995f5b3cb179e238457c1363d9025e9f5c56cae659",
+      "lora_ota_repeat.js": "98e3d0d41a52b912eb63c7d0fdc3fec9d31d7bf7279c4bed7e7c151dccb7e5e6",
+      "lora_ota_route.js": "7cd562097d0c2857263cc8d2bf7a16b6c51bec87d19f8633e44a37386c4c8f50",
+      "lora_ota_routed_session.js": "d6cc0c957591bde6aaeab71d7082dd4c2a2a7cef1327609ff5c77dfdd2e83712",
+      "lora_ota_serial.js": "49fcd6ba89b2eff87aff20cb0e874f79837bfdc91ca85724ac72b0630fadfe85",
+      "lora_ota_session.js": "14ce5f6afdaae5fdc81d39882921735b6bbaa87d992514c455e6864048a39a52",
+      "lora_ota_sim.js": "d6e5c10ff2702bedebfbd0f10bffeb10a398aedf3b37f6ab08e7860d7a0364dc",
+      "lora_ota_zip.js": "da80c382faec3a0920a75ea92de045104a39fa4cd388a157d0664ab4775c3086"
+    },
+    "scope": "Final local site bundle; the earlier long-transfer case predates some later UI changes."
+  },
+  "automated_tests": {
+    "node": {
+      "tests": 403,
+      "passed": 402,
+      "failed": 0,
+      "optional_skipped": 1
+    },
+    "real_browser_baseline": {
+      "passed": 149,
+      "failed": 0
+    },
+    "focused_browser_reruns_after_later_fixes": {
+      "stop": 1,
+      "password": 5,
+      "channel_choice": 15,
+      "workflow": 15
+    },
+    "counting_note": "Focused browser reruns overlap baseline coverage. These counts are not added together.",
+    "scope": "Automated browser tests use simulated devices; physical LoRa evidence is listed separately."
+  },
+  "tests": [
+    {
+      "name": "Released Full Companion source, interrupted transfer resumed and installed",
+      "result": "pass",
+      "source_kind": "companion",
+      "source_board": "Heltec V4.3 OLED",
+      "source_firmware": "v1.18.0.1-halo-keymind-cascade-dev-03214a16",
+      "source_transport_mode": "native USB firmware-source compatibility",
+      "target_board": "Heltec V3",
+      "target_firmware": "v1.18.0.2-browser-hil-2e3f8669",
+      "target_reported_body_hash": "c9d8b9c4d4384ab3",
+      "target_image_sha256": "10cd0fa0b0441b885d954d75e86b537bdc7fb86bc1b5a7fd77b178ee3111b36d",
+      "ota_package_id": "177fcadc",
+      "ota_package_sha256": "045d283f86645f42dbe152e1ca0939a70e967fa9231659eba6ac1eb4e6da367a",
+      "differential_payload_bytes": 821942,
+      "blocks_completed": 803,
+      "source_binary_frame_limit": 176,
+      "largest_binary_command": 41,
+      "native_folder_requests": 5115,
+      "source_saved_radio_after": [
+        909.9500122,
+        250.0,
+        5,
+        5
+      ],
+      "target_saved_radio_after": [
+        909.9500122,
+        250.0,
+        5,
+        5
+      ],
+      "source_folder_released": true,
+      "target_temporary_radio2_off_after": true,
+      "post_install_identity_and_reported_body_hash_verified": true,
+      "install_reply_lost": true,
+      "saved_channel_reconnect_succeeded": true,
+      "result_scope": "The large interrupted download resumed and completed installation on the remote target over LoRa.",
+      "completed_at_utc": "2026-11-10T08:34:05.939Z",
+      "update_radio": [
+        908.5,
+        250,
+        7,
+        5
+      ],
+      "preamble": 128,
+      "binary_command_measurement_scope": "Transfer/install trace; initial hardware setup is excluded."
+    },
+    {
+      "name": "Released Full Companion source: temporary-window renewal and Stop transfer",
+      "result": "pass",
+      "captured_at_utc": "2026-11-10T09:35:43.655Z",
+      "source_kind": "companion",
+      "source_board": "Heltec V4.3 OLED",
+      "source_firmware": "v1.18.0.1-halo-keymind-cascade-dev-03214a16",
+      "source_transport_mode": "native USB firmware-source compatibility",
+      "target_board": "Heltec V3",
+      "ota_package_id": "6436c7ca",
+      "ota_package_sha256": "bb61ddb025fbb3c0f04947b8db93bceb7d8b933c726efd465b8d9b0e0fefa3a9",
+      "transfer_blocks_completed": 203,
+      "transfer_blocks_total": 2136,
+      "update_radio": [
+        908.5,
+        500,
+        5,
+        7
+      ],
+      "preamble": 128,
+      "source_profile": "temporary primary",
+      "target_profile": "temporary radio2",
+      "target_window_before_minutes": 15,
+      "target_window_renewed_minutes": 120,
+      "transfer_continued_after_window_renewal": true,
+      "stop_button_observed_ms": 120,
+      "same_usb_connection_retained": true,
+      "app_start_commands_on_connection": 1,
+      "source_stream_running_after_stop": true,
+      "source_serving_after_stop": false,
+      "native_folder_requests": 1135,
+      "recovery_journal_retained": true,
+      "remote_download_retained": true,
+      "result_scope": "Partial transfer and local Stop only; this package was not installed."
+    },
+    {
+      "name": "Released Full Companion source: replace stopped download and install different firmware",
+      "result": "pass",
+      "completed_at_utc": "2026-11-10T09:42:00.739Z",
+      "source_kind": "companion",
+      "source_board": "Heltec V4.3 OLED",
+      "source_firmware": "v1.18.0.1-halo-keymind-cascade-dev-03214a16",
+      "source_transport_mode": "native USB firmware-source compatibility",
+      "target_board": "Heltec V3",
+      "target_reported_body_hash": "40bda3fdd596a4b8",
+      "ota_package_id": "032e2696",
+      "ota_package_sha256": "7a68147461679b2911476f0a7ef4a933c3f04a1e2de45a82f1ddb60ea4c5cc25",
+      "differential_payload_bytes": 156,
+      "same_usb_connection_retained": true,
+      "app_start_commands_on_connection": 1,
+      "target_cancel_commands": 1,
+      "target_pull_commands": 1,
+      "target_installhash_commands": 1,
+      "source_binary_frame_limit": 176,
+      "largest_binary_command": 96,
+      "native_folder_requests_on_connection": 1144,
+      "update_radio": [
+        908.5,
+        500,
+        5,
+        7
+      ],
+      "preamble": 128,
+      "source_profile": "temporary primary",
+      "target_profile": "temporary radio2",
+      "source_saved_radio_after": [
+        909.9500122,
+        250.0,
+        5,
+        5
+      ],
+      "target_saved_radio_after": [
+        909.9500122,
+        250.0,
+        5,
+        5
+      ],
+      "source_folder_released": true,
+      "target_temporary_radio2_off_after": true,
+      "post_install_identity_and_reported_body_hash_verified": true,
+      "source_firmware_role_unchanged": true,
+      "result_scope": "The stopped package was discarded once, then a different 156-byte differential was transferred, installed and verified over LoRa.",
+      "target_firmware": "v1.18.0.4-browser-hil-2e3f8669",
+      "target_image_sha256": "71ef52f3fd61111207a9dc11c29ed964beddcacedee9ed045c0379664ddea6f4"
+    },
+    {
+      "name": "Repeater USB source physical LoRa update",
+      "result": "skipped",
+      "reason": "Skipped at the user's explicit request before publication."
+    }
+  ],
+  "limits": [
+    "No claim of physical qualification for every board, region, firmware version or source role.",
+    "Regional suggestions are unit/browser tested; this campaign does not measure RF emissions, antenna gain or regulatory compliance.",
+    "Reported target body hashes are the firmware identity hash reported by the device; package/image SHA-256 fields are separate."
+  ],
+  "privacy": "Contains aggregate results, public firmware metadata and hashes only; excludes credentials, full device keys, IP addresses, serial device paths and private messages.",
+  "resolved_during_campaign": [
+    "The initial immediate post-pull lease check starved manifest transfer. Renewal now waits for the data phase; the physical rerun renewed the window and continued transferring.",
+    "A delayed regional suggestion could overwrite a manual frequency edit. The suggestion now rejects stale state and respects manual edits; the browser regression and physical rerun preserved 908.500 MHz."
+  ]
+}

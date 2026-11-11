@@ -43,10 +43,29 @@ def methods(text, prefix):
 def full_command_keys(text):
     comparisons = re.findall(
         r'(?:strcmp|strncmp|memcmp)\((?:command|cmd|text),\s*"(get|set) ([a-z][\w.]*)[ "]', text)
+    # Setters can reuse a named prefix for matching and value offsets. Count
+    # those only when the prefix is actually compared against command input;
+    # declarations used solely by help text do not establish parser coverage.
+    for name, key in re.findall(r'\bconst\s+char\s+(\w+)\s*\[\]\s*=\s*"set ([a-z][\w.]*) ?"', text):
+        if re.search(r'(?:strcmp|strncmp|memcmp)\((?:command|cmd|text),\s*' + re.escape(name) + r'\b', text):
+            comparisons.append(('set', key))
     return tuple({key for kind, key in comparisons if kind == verb} for verb in ('set', 'get'))
 
 
 COMMON_QUERY_EXCEPTIONS = {
+    'agc.status': 'Passive warm-maintenance counters for set agc',
+    'agc.timing': 'Passive warm transition-to-checked-RX command timing',
+    'agc.recovery': 'Passive ordinary rearm timing and retained warm errors',
+    'agc.pulse': 'Cached RXPS pulse geometry and cycle outcome counters',
+    'agc.sleep': 'Cached sampled sleep/wake timing and cancellation counters',
+    'agc.checks': 'Cached RTC cleanup, RX-mode verification and IRQ check counters',
+    'agc.scan': 'Cached dual-profile maintenance lease and extended visit counters',
+    'agc.old.status': 'Compile-gated passive legacy full-reset counters',
+    'agc.old.timing': 'Compile-gated passive legacy helper and RX-entry timing',
+    'agc.old.errors': 'Compile-gated passive legacy command/rearm errors',
+    'agc.reset.status': 'Legacy alias of passive agc.old.status',
+    'agc.reset.timing': 'Legacy alias of passive agc.old.timing',
+    'agc.reset.errors': 'Legacy alias of passive agc.old.errors',
     'bootloader.ver': 'Installed bootloader identity',
     'bridge.running': 'Live bridge state; set bridge.enabled controls intent',
     'espnow.running': 'Live ESP-NOW bridge state; set espnow.enabled controls intent',
@@ -83,6 +102,15 @@ OBSERVER_QUERY_EXCEPTIONS = {
 
 
 class CLISettingsContractTest(unittest.TestCase):
+    def test_named_set_prefix_requires_actual_command_comparison(self):
+        source = r'''static const char setter[] = "set ota.direct.radio";
+static const char help[] = "set help.only";
+static const char other[] = "set value.only";
+const bool set = !strncmp(command, setter, sizeof(setter) - 1);
+const bool value = !strcmp(value, other);
+const bool get = !strcmp(command, "get ota.direct.radio");'''
+        self.assertEqual(full_command_keys(source), ({'ota.direct.radio'}, {'ota.direct.radio'}))
+
     def test_shared_primary_parser_can_be_skipped_without_changing_other_commands(self):
         harness = r'''
 #include <cassert>
@@ -112,6 +140,14 @@ int main() {
   assert(radio->handleCommand("set radio 916,125,8,6", 0, reply));
   assert(!strncmp(reply, "OK", 2) && radio->isDirty());
   assert(prefs.freq == 916 && prefs.bw == 125 && prefs.sf == 8 && prefs.cr == 6);
+  radio->clearDirty();
+  assert(radio->handleCommand("set radio 916,500,12,4", 0, reply));
+  assert(!strncmp(reply, "OK", 2) && radio->isDirty() && prefs.cr == 4);
+  radio->clearDirty();
+  for (const char* text : {"set radio 916,500,12,3", "set radio 916,500,12,9"}) {
+    assert(radio->handleCommand(text, 0, reply));
+    assert(strstr(reply, "invalid radio") && !radio->isDirty() && prefs.cr == 4);
+  }
 }
 '''
         with tempfile.TemporaryDirectory(prefix='common-radio-dispatch-') as directory:
@@ -204,8 +240,9 @@ namespace mesh { struct Utils {
     def test_every_migrated_radio_setter_is_reachable_in_infrastructure(self):
         common_set, common_get = methods(COMMON.read_text(encoding='utf-8'), 'void CommonCLI::handle')
         shared = extract_braced(RADIO.read_text(encoding='utf-8'), 'bool CommonRadioPrefs::handleCommand(')
-        migrated = set(re.findall(r'startsWith\(command, "set ([\w.]+) ', shared))
-        self.assertEqual(len(migrated), 13, 'Review changes to the shared radio command surface')
+        migrated = set(re.findall(r'startsWith\(command,\s*"set ([\w.]+) ', shared))
+        self.assertEqual(len(migrated), 14, 'Review changes to the shared radio command surface')
+        self.assertIn('agc', migrated, 'The saved-interval alias must remain audited')
         self.assertFalse(migrated - literal_keys(common_set))
         self.assertFalse(migrated - literal_keys(common_get))
 
@@ -265,6 +302,7 @@ namespace mesh { struct Utils {
         sets |= {k for verb, k in re.findall(r'"(get|set) ([\w.]+) ?"', shared) if verb == 'set'}
         self.assertEqual(gets - sets, {
             'bootloader.ver',                        # Installed bootloader identity
+            'usb.raw.max',                           # Read-only local USB receive capacity
             'contact.cache', 'contact.cache.timing',  # Contact-storage diagnostics
             'display.wifi',                          # Connection/display status
             'wifi.tcp',                              # Read-only app listener/traffic diagnostic
@@ -274,6 +312,7 @@ namespace mesh { struct Utils {
             'key.backup.transport',                  # Identity-backup transport capability
             'mqtt', 'mqtt.running',                  # MQTT connection status
             'ota.direct',                            # Direct USB OTA session diagnostics
+            'ota.direct.capabilities',               # Read-only direct OTA guard capabilities
             'password', 'prv.key',                   # Local secret/identity reads
             'public.key',                            # Read-only public identity
             'pwrmgt.bootreason', 'role',             # Boot/build facts
@@ -328,8 +367,8 @@ namespace mesh { struct Utils {
                     set_blocks.append(extract_braced(setter, 'if (strcmp(config, "extra.sf") == 0 ||'))
                     get_blocks.append(extract_braced(getter, 'if (strcmp(config, "extra.sf") == 0)'))
                     for key in keys:
-                        set_blocks.append(extract_braced(setter, f'if (memcmp(config, "{key} ", {len(key)+1}) == 0)'))
-                        get_blocks.append(extract_braced(getter, f'if (configKeyEquals(config, "{key}"))'))
+                        set_blocks.append(extract_braced(setter, f'if (memcmp(config, "{key} ", {len(key)+1}) == 0'))
+                        get_blocks.append(extract_braced(getter, f'if (configKeyEquals(config, "{key}")'))
                     fixture = template.replace('@SET@', ' else '.join(set_blocks))
                     fixture = fixture.replace('@GET@', ' else '.join(get_blocks))
                     fixture = fixture.replace('@DISPATCH@', dispatch)

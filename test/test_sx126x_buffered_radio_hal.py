@@ -227,7 +227,7 @@ class SX126xBufferedRadioHalTests(unittest.TestCase):
         self.assertIsNotNone(compiler)
         headers={name:(RADIO/name).read_text(encoding="ascii") for name in (
             "SX126xBufferedRadioHal.h","Nrf52BufferedRadioHal.h","ESP32BufferedRadioHal.h",
-            "TunableRadioHal.h")}
+            "TunableRadioHal.h","RadioFastCode.h")}
         with tempfile.TemporaryDirectory(prefix="sx126x-buffered-radio-") as folder:
             base=Path(folder)
             (base/"hal/Arduino").mkdir(parents=True)
@@ -245,7 +245,7 @@ class SX126xBufferedRadioHalTests(unittest.TestCase):
                     ("rp2040",("RP2040_PLATFORM",),"SX126xBufferedRadioHal.h")):
                 # Without the real override, byte-for-byte correctness alone
                 # still passes; the per-command transfer requirement must fail.
-                legacy=re.sub(r"  void spiTransfer\([^}]+\}\n","",headers[header])
+                legacy=re.sub(r"  (?:MC_RADIO_FAST_CODE_ATTR )?void spiTransfer\([^}]+\}\n","",headers[header])
                 self.assertNotEqual(legacy,headers[header])
                 for clock in (8000000,8888888):
                     for name,implementation,succeeds in (("buffered",headers[header],True),

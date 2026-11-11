@@ -7,6 +7,8 @@
   const TYPE_EXTERNAL_VOLTAGE = 0x14;
   const TYPE_NOISE = 0x15;
   const TYPE_NOISE_SECONDARY = 0x16;
+  const TYPE_DAILY_EXTREMA = 0x17;
+  const TYPE_COMBINED_EXTREMA = 0x18;
   const BINARY_TEMPERATURE_MAGIC = "TTB1";
   const BINARY_VOLTAGE_MAGIC = "TVB1";
   const BINARY_EXTERNAL_VOLTAGE_MAGIC = "IVB1";
@@ -34,6 +36,8 @@
     <button type="button" data-telemetry-example="externalVoltage">I2C voltage CLI page</button>
     <button type="button" data-telemetry-example="packetNoise">Radio1 noise packet</button>
     <button type="button" data-telemetry-example="noiseSecondary">Radio2 noise CLI page</button>
+    <button type="button" data-telemetry-example="dailyExtrema">Daily min/max</button>
+    <button type="button" data-telemetry-example="combinedExtrema">Temperature + battery</button>
   </div>
 
   <label for="telemetry-reply-input">Raw packet or payload hex</label>
@@ -106,6 +110,16 @@
       label: "Radio2 noise-floor CLI page",
       command: "get telemetry.noise2",
       reply: "> FoAAkmUPCABEy3ff",
+    }),
+    dailyExtrema: Object.freeze({
+      label: "Temperature daily min/max",
+      command: "get telemetry.temp minmax",
+      reply: "> FwEBAB7o9FNlBgUhJSk1OT//8AAAAAAAD//AAAAAAAA//wAAAAAAAP/8AAAAAAAD//AAAAAAAA//wAAAAAAAAA==",
+    }),
+    combinedExtrema: Object.freeze({
+      label: "Temperature and battery daily min/max",
+      command: "get telemetry.minmax",
+      reply: "> GAEeANJJawQygBFCgCKLwf8BAAL/AgQAAUAhQCAQQAAD/wP/Af/wAAAAAAAP/wAAAAAAAP/wAAAAAAAP/wAAAAAAAP/wAAAAAAAP/wAAAAAAAP/wAAAAAAAP/wAAAAAAAP/wAAAAAAAP/wAAAAAAAA==",
     }),
     temperature: Object.freeze({
       label: "Temperature example",
@@ -705,6 +719,123 @@
     };
   }
 
+  function extremaValue(series, code) {
+    if (series === 1) {
+      if (code > 130) throw new TelemetryDecodeError("Daily extrema temperature code is reserved.");
+      if (code === 0) return "Missing";
+      if (code === 1) return "< -50 °C";
+      if (code === 2) return "> 77 °C";
+      return `${code - 53} °C`;
+    }
+    if (code === 0) return "Missing";
+    if (code === 1) return "< 1.88 V";
+    if (code === 255) return "> 4.40 V";
+    return `${((1880 + (code - 2) * 10) / 1000).toFixed(2)} V`;
+  }
+
+  function extremaPair(series, day, minimum, maximum, minCodes, maxCodes,
+                       newestEpoch, intervalMinutes, noIndex) {
+    const missing = 0;
+    const positionsPerDay = 1440 / intervalMinutes;
+    const build = (index, codes) => {
+      const values = codes.map((code) => extremaValue(series, code));
+      if (index === noIndex) {
+        if (codes.some((code) => code !== missing)) {
+          throw new TelemetryDecodeError("Missing daily extrema must not contain samples.");
+        }
+        return { index: null, epoch: null, previous: values[0], value: values[1], next: values[2], codes };
+      }
+      if (index >= positionsPerDay || codes[1] === missing) {
+        throw new TelemetryDecodeError("Daily extrema index or value is invalid.");
+      }
+      const secondsAgo = (day * positionsPerDay + index) * intervalMinutes * 60;
+      if (secondsAgo > newestEpoch) throw new TelemetryDecodeError("Daily extrema timestamp precedes the Unix epoch.");
+      return { index, epoch: newestEpoch - secondsAgo, previous: values[0], value: values[1], next: values[2], codes };
+    };
+    if ((minimum === noIndex) !== (maximum === noIndex)) {
+      throw new TelemetryDecodeError("Daily extrema minimum and maximum availability must agree.");
+    }
+    return { minimum: build(minimum, minCodes), maximum: build(maximum, maxCodes) };
+  }
+
+  // 0x17 v1: one series and seven rolling days, newest first. Each extreme
+  // carries its offset within the day and the older/current/newer samples.
+  function decodeDailyExtrema(bytes) {
+    if (bytes.length < 9) throw new TelemetryDecodeError("Daily extrema header is incomplete.");
+    if (bytes[1] !== 1) throw new TelemetryDecodeError("Unsupported daily extrema version.");
+    const series = bytes[2];
+    const intervalMinutes = bytes[4];
+    const newestEpoch = uint32LE(bytes, 5);
+    if (series < 1 || series > 2) throw new TelemetryDecodeError("Unknown daily extrema series.");
+    if (bytes[3] !== 0) throw new TelemetryDecodeError("Daily extrema channel must be zero.");
+    if (intervalMinutes !== 30) {
+      throw new TelemetryDecodeError("Daily extrema sample interval does not match its series.");
+    }
+    const width = 8;
+    const rowBits = 14 + 6 * width;
+    const dataBits = 7 * rowBits;
+    const dataBytes = Math.ceil(dataBits / 8);
+    assertLength(bytes, 9 + dataBytes, "Daily extrema");
+    const padding = dataBytes * 8 - dataBits;
+    if (padding && (bytes[bytes.length - 1] & ((1 << padding) - 1))) {
+      throw new TelemetryDecodeError("Daily extrema padding bits must be zero.");
+    }
+    const rows = [];
+    let bitOffset = 0;
+    function read(widthBits) {
+      const value = readPackedBits(bytes, 9, bitOffset, widthBits);
+      bitOffset += widthBits;
+      return value;
+    }
+    for (let day = 0; day < 7; day += 1) {
+      const minimum = read(7);
+      const maximum = read(7);
+      const minCodes = [read(width), read(width), read(width)];
+      const maxCodes = [read(width), read(width), read(width)];
+      rows.push({ day: day + 1, ...extremaPair(series, day, minimum, maximum,
+        minCodes, maxCodes, newestEpoch, intervalMinutes, 127) });
+    }
+    const labels = ["", "Temperature", "Battery voltage"];
+    return { typeCode: TYPE_DAILY_EXTREMA, kind: "extrema", label: labels[series],
+      series, newestEpoch, intervalMinutes, count: 7, byteLength: bytes.length, rows, warnings: [] };
+  }
+
+  // The compact combined response has two six-bit-indexed rows per day.
+  function decodeCombinedExtrema(bytes) {
+    if (bytes.length < 7) throw new TelemetryDecodeError("Combined extrema header is incomplete.");
+    if (bytes[1] !== 1) throw new TelemetryDecodeError("Unsupported combined extrema version.");
+    if (bytes[2] !== 30) throw new TelemetryDecodeError("Combined extrema requires a 30-minute interval.");
+    const newestEpoch = uint32LE(bytes, 3);
+    const dataBits = 7 * 2 * (12 + 6 * 8);
+    const dataBytes = Math.ceil(dataBits / 8);
+    assertLength(bytes, 7 + dataBytes, "Combined extrema");
+    const padding = dataBytes * 8 - dataBits;
+    if (padding && (bytes[bytes.length - 1] & ((1 << padding) - 1))) {
+      throw new TelemetryDecodeError("Combined extrema padding bits must be zero.");
+    }
+    let offset = 0;
+    function read(bits) {
+      const result = readPackedBits(bytes, 7, offset, bits);
+      offset += bits;
+      return result;
+    }
+    const rows = [];
+    for (let day = 0; day < 7; ++day) {
+      const measurements = [];
+      for (const series of [1, 2]) {
+        const minimum = read(6), maximum = read(6);
+        const minCodes = [read(8), read(8), read(8)];
+        const maxCodes = [read(8), read(8), read(8)];
+        measurements.push(extremaPair(series, day, minimum, maximum,
+          minCodes, maxCodes, newestEpoch, 30, 63));
+      }
+      rows.push({ day: day + 1, temperature: measurements[0], voltage: measurements[1] });
+    }
+    return { typeCode: TYPE_COMBINED_EXTREMA, kind: "extrema-combined",
+      label: "Temperature and battery voltage", newestEpoch, intervalMinutes: 30,
+      count: 7, byteLength: bytes.length, rows, warnings: [] };
+  }
+
   function decodeGps(bytes, header) {
     if (bytes.length < 17) {
       throw new TelemetryDecodeError("GPS payload is shorter than its 17-byte header.");
@@ -830,6 +961,16 @@
       throw new TelemetryDecodeError("The Base64 payload decoded to zero bytes.");
     }
 
+    if (bytes[0] === TYPE_DAILY_EXTREMA) {
+      const decoded = decodeDailyExtrema(bytes);
+      decoded.encoded = encoded;
+      return decoded;
+    }
+    if (bytes[0] === TYPE_COMBINED_EXTREMA) {
+      const decoded = decodeCombinedExtrema(bytes);
+      decoded.encoded = encoded;
+      return decoded;
+    }
     const header = decodeHeader(bytes);
     let decoded;
     if (header.typeCode === TYPE_TEMPERATURE) {
@@ -844,7 +985,7 @@
       decoded = decodeNoise(bytes, header);
     } else {
       throw new TelemetryDecodeError(
-        `Unsupported telemetry type 0x${header.typeCode.toString(16).padStart(2, "0")}; expected 0x11 through 0x16.`
+        `Unsupported telemetry type 0x${header.typeCode.toString(16).padStart(2, "0")}; expected 0x11 through 0x18.`
       );
     }
     decoded.encoded = encoded;
@@ -853,6 +994,9 @@
 
   function mergeDecodedTelemetry(decodedItems) {
     if (decodedItems.length === 1) return decodedItems[0];
+    if (decodedItems.some((item) => item.kind === "extrema" || item.kind === "extrema-combined")) {
+      throw new TelemetryDecodeError("Decode each daily extrema reply separately.");
+    }
     const first = decodedItems[0];
     decodedItems.slice(1).forEach((item) => {
       const sameSource = (item.sourceId || null) === (first.sourceId || null);
@@ -945,6 +1089,40 @@
     const localZone =
       (Intl.DateTimeFormat().resolvedOptions() || {}).timeZone || "browser local";
     const timestampHeader = localTime ? `Timestamp (${localZone})` : "Timestamp (UTC)";
+
+    if (decoded.kind === "extrema-combined") {
+      const rows = decoded.rows.flatMap((day) => [
+        ["Temperature", day.temperature], ["Battery voltage", day.voltage],
+      ].flatMap(([series, pair]) => [["Minimum", pair.minimum], ["Maximum", pair.maximum]]
+        .map(([name, sample]) => ({
+          muted: sample.epoch === null,
+          values: [day.day, series, name,
+                   sample.epoch === null ? "—" : timestampText(sample.epoch, localTime),
+                   sample.previous, sample.value, sample.next],
+          csvValues: [day.day, series, name.toLowerCase(),
+                      sample.epoch === null ? "" : timestampText(sample.epoch, localTime),
+                      sample.previous, sample.value, sample.next],
+        }))));
+      return { headers: ["Day", "Measurement", "Extreme", timestampHeader, "Previous", "Value", "Next"],
+        csvHeaders: ["rolling_day", "measurement", "extreme",
+                     localTime ? `timestamp (${localZone})` : "timestamp_utc", "previous", "value", "next"], rows };
+    }
+    if (decoded.kind === "extrema") {
+      return {
+        headers: ["Day", "Extreme", timestampHeader, "Previous", "Value", "Next"],
+        csvHeaders: ["rolling_day", "extreme", localTime ? `timestamp (${localZone})` : "timestamp_utc",
+                     "previous", "value", "next"],
+        rows: decoded.rows.flatMap((day) => [
+          ["Minimum", day.minimum], ["Maximum", day.maximum],
+        ].map(([name, sample]) => ({
+          muted: sample.epoch === null,
+          values: [day.day, name, sample.epoch === null ? "—" : timestampText(sample.epoch, localTime),
+                   sample.previous, sample.value, sample.next],
+          csvValues: [day.day, name.toLowerCase(), sample.epoch === null ? "" : timestampText(sample.epoch, localTime),
+                      sample.previous, sample.value, sample.next],
+        }))),
+      };
+    }
 
     if (decoded.kind === "noise") {
       return {
@@ -1062,6 +1240,16 @@
   }
 
   function summaryItems(decoded, localTime) {
+    if (decoded.kind === "extrema" || decoded.kind === "extrema-combined") {
+      const items = [["Payload", `${decoded.label} daily extrema (0x${decoded.typeCode.toString(16)})`],
+        ["Days", "7 rolling days, newest first"],
+        ["Interval", `${decoded.intervalMinutes} minutes`],
+        ["Newest sample", timestampText(decoded.newestEpoch, localTime)],
+        ["Decoded size", `${decoded.byteLength} bytes`]];
+      if (decoded.channel) items.splice(1, 0, ["LPP channel", String(decoded.channel)]);
+      if (decoded.profile) items.splice(1, 0, ["Radio profile", `radio${decoded.profile}`]);
+      return items;
+    }
     const lastEpoch = decoded.rows.length === 0
       ? decoded.firstEpoch : decoded.rows[decoded.rows.length - 1].epoch;
     const items = [

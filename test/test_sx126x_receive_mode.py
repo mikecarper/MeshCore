@@ -143,6 +143,10 @@ int main() {
 class ReceiveModeTest(unittest.TestCase):
     def test_real_spi_transport_legacy_current_and_mode_probe(self):
         candidates = sorted((ROOT / '.pio/libdeps').glob('*/RadioLib/src/Module.cpp'))
+        # A read-only pinned dependency can be shared by isolated source reviews.
+        installed = os.environ.get('MESH_TEST_RADIOLIB_DIR')
+        if installed:
+            candidates.insert(0, Path(installed) / 'src/Module.cpp')
         pin = re.search(r'jgromes/RadioLib.git#([0-9a-f]{40})',
                         (ROOT / 'platformio.ini').read_text()).group(1)
         lib = None

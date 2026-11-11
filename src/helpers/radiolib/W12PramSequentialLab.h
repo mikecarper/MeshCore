@@ -16,7 +16,7 @@ struct SequentialPlan {
 
 inline bool packSequentialLab(const Profile& p, Packed& out) {
   if (p.freq_hz < 150000000u || p.freq_hz > 1090000000u || p.sf < 5 || p.sf > 10
-      || p.cr < 5 || p.cr > 8 || !p.preamble) return false;
+      || p.cr < 4 || p.cr > 8 || !p.preamble) return false;
   uint8_t bw;
   switch (p.bw_hz) { case 62500: bw=3; break; case 125000: bw=4; break; case 250000: bw=5; break; default: return false; }
   // 5/6 are RadioLib's two-symbol reference values, not validated for the
@@ -57,7 +57,7 @@ inline bool sequentialPlan(const Profile (&profiles)[2], uint8_t selected,
 inline bool sequentialReceiveAirtime(const Profile& p, uint8_t cr, bool crc,
                                      int len, uint32_t& ms) {
   ms=0;
-  if (p.sf<5 || p.sf>12 || !p.bw_hz || !p.preamble || cr<5 || cr>8
+  if (p.sf<5 || p.sf>12 || !p.bw_hz || !p.preamble || cr<4 || cr>8
       || len<0 || len>255) return false;
   const uint64_t symbol_num=(uint64_t(1) << p.sf)*1000000ULL;
   const bool ldro=symbol_num>=16000ULL*p.bw_hz;

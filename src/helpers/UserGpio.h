@@ -76,6 +76,7 @@ private:
   static uint64_t pinMask(uint8_t pin) { return UINT64_C(1) << pin; }
 
   bool isAvailable(uint32_t pin) const;
+  bool claimPin(uint8_t pin);
   State currentState(uint8_t pin) const;
   State timerFinalState(uint8_t pin) const;
   void writeState(uint8_t pin, State state);

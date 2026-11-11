@@ -261,9 +261,30 @@ int main() {
   s.edit_buffer="125"; assert(s.commitItemEdit(SettingsScreen::RadioBw));
   assert(prefs.bw==125 && the_mesh_cp.saves==2);
   s.edit_u8=4; assert(!s.commitItemEdit(SettingsScreen::RadioSf));
-  assert(!s.commitItemEdit(SettingsScreen::RadioCr));
+  for(uint8_t invalid:{3,9}) {
+    s.edit_u8=invalid; const auto command=the_mesh_cp.command;
+    assert(!s.commitItemEdit(SettingsScreen::RadioCr));
+    assert(prefs.cr==5 && the_mesh_cp.saves==2 && the_mesh_cp.applies==2);
+    assert(the_mesh_cp.command==command);
+  }
   s.edit_tx_power=23; assert(!s.commitItemEdit(SettingsScreen::RadioPwr));
   assert(prefs.sf==8 && prefs.cr==5 && prefs.tx_power_dbm==22 && the_mesh_cp.saves==2);
+  // Keyboard editing reaches uncoded 4/4 and respects both coding-rate bounds.
+  Keyboard::Event left{Keyboard::ARROW_LEFT,""},right{Keyboard::ARROW_RIGHT,""};
+  s.edit_u8=5; s.handleEditInput(SettingsScreen::RadioCr,left); assert(s.edit_u8==4);
+  s.handleEditInput(SettingsScreen::RadioCr,left); assert(s.edit_u8==4);
+  assert(s.commitItemEdit(SettingsScreen::RadioCr));
+  assert(prefs.cr==4 && the_mesh_cp.saves==3 && the_mesh_cp.applies==3);
+  assert(the_mesh_cp.command=="set radio 915.250000,125.000000,8,4,96");
+  s.edit_u8=8; s.handleEditInput(SettingsScreen::RadioCr,right); assert(s.edit_u8==8);
+  the_mesh_cp.fail=true;
+  assert(!s.commitItemEdit(SettingsScreen::RadioCr));
+  assert(prefs.cr==4 && the_mesh_cp.saves==3 && the_mesh_cp.applies==3);
+  assert(strstr(s.edit_error,"save failed"));
+  the_mesh_cp.fail=false;
+  s.edit_u8=4; s.handleEditInput(SettingsScreen::RadioCr,right); assert(s.edit_u8==5);
+  assert(s.commitItemEdit(SettingsScreen::RadioCr));
+  assert(prefs.cr==5 && the_mesh_cp.saves==4 && the_mesh_cp.applies==4);
   // The UI must use the live shared command path and leave prefs untouched on failure.
   assert(the_mesh_cp.command=="set radio 915.250000,125.000000,8,5,96");
   the_mesh_cp.fail=true;
@@ -290,7 +311,6 @@ int main() {
   // Signed TX values remain visible and editable through zero and both driver limits.
   s.menu_index=SettingsScreen::RadioPwr; s.edit_tx_power=-9;
   s.render(display); assert(display.last=="- -9 +");
-  Keyboard::Event left{Keyboard::ARROW_LEFT,""},right{Keyboard::ARROW_RIGHT,""};
   s.handleEditInput(SettingsScreen::RadioPwr,left); assert(s.edit_tx_power==-9);
   s.handleEditInput(SettingsScreen::RadioPwr,right); assert(s.edit_tx_power==-8);
   assert(s.commitItemEdit(SettingsScreen::RadioPwr) && prefs.tx_power_dbm==-8);

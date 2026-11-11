@@ -202,11 +202,19 @@ int main(int argc,char** argv){
    CompanionNodePrefs loaded;double lat=0,lon=0;
    assert(legacy.loadPrefs(loaded,lat,lon));
    assert(loaded.tx_delay_factor==0.5f&&loaded.direct_tx_delay_factor==0.2f);
-   assert(loaded.interference_threshold==0&&loaded.agc_reset_interval==0&&loaded.tz_offset==0);
+   assert(loaded.interference_threshold==0&&loaded.agc_reset_interval==4&&loaded.tz_offset==0);
    assert(loaded.flood_retry_attempts==15&&loaded.flood_retry_max_path==1);
    assert(loaded.flood_retry_group_max_path==0xff&&loaded.flood_retry_advert_enabled==1);
    assert(loaded.one_key_dm_enabled==0);
    assert(loaded.freq==original.freq&&loaded.ble_pin==original.ble_pin);
+   // A persisted disable or non-default cadence must override the new default.
+   for(uint8_t interval : {0,4,15,255}){
+     original.agc_reset_interval=interval;
+     assert(legacy.savePrefs(original,47.1,-122.2));
+     CompanionNodePrefs rebooted;
+     assert(legacy.loadPrefs(rebooted,lat,lon));
+     assert(rebooted.agc_reset_interval==interval);
+   }
  } else if(scenario==6){
    DataStore legacy;legacy.fs.files["/new_prefs"]=disk;
 #if defined(TBEAM_1W)

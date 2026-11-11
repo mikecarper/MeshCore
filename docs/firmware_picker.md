@@ -462,13 +462,19 @@ See the [two-profile setup guide](radio_profiles.md#companion-messages-on-both-p
 
 | File | Use |
 | --- | --- |
-| <code>-merged.bin</code> | Erase/fresh install, recovery, role migration, or partition-profile change on ESP32 over USB |
 | Non-merged <code>.bin</code> | Update an existing same-board, same-role, same-partition installation |
+| <code>-merged.bin</code> | Fresh install, recovery, or partition-profile change on ESP32 over USB |
 | <code>*-expander.bin</code> or <code>*-wifi-bridge.bin</code> | Exact-board ESP32 partition expansion over Wi-Fi |
 | <code>*-expander.mota</code> or <code>*-lora-bridge.mota</code> | Exact-board ESP32 partition expansion over compatible LoRa OTA |
 | Other <code>.zip</code> firmware shown by the picker | Native nRF52 Serial DFU update package; it is not an extra archive |
 | <code>.uf2</code> | UF2 bootloader drag-and-drop install or update |
 | <code>.hex</code> | Erase/recovery flash with a supported wired programmer |
+
+For a compatible existing ESP32 installation, use the app-only `.bin` to keep
+saved settings. Bluetooth pairings also normally survive when the Bluetooth stack
+and storage layout stay the same. A merged image can overwrite settings and
+pairings even without selecting a separate erase; for a partition change, check
+the migration guide for a settings-preserving expansion image.
 
 Never send a merged ESP32 image through browser OTA or LoRa OTA. Back up the
 node identity, configuration, keys, and radio settings, and verify every
@@ -476,6 +482,22 @@ filename suffix before flashing. A staged migration writes the partition table;
 power loss during that write can require cable recovery. The
 [migration guide](esp32_wifi_partition_migration.md) states what each route
 preserves and which older layouts it accepts.
+
+### XIAO ESP32-S3: Meshtastic USB reset
+
+If a Seeed XIAO ESP32-S3 running Meshtastic does not enter the flash loader
+automatically, try connecting it through a USB hub with a data-capable cable,
+then retry the flasher's automatic reset. If the flasher offers a **1200-baud
+reset**, use it. The device may disappear and return as a different serial
+port; select the new port in the flasher. A serial error during the reset can
+simply mean the device disconnected while changing modes.
+
+This workaround was tested on one XIAO S3 Wio running Meshtastic 2.7.15 on
+Windows: the direct USB reset failed and the hub succeeded. After installing
+MeshCore 1.18.0.1, automatic loader entry also worked without the hub. Results
+may differ by firmware and computer. If the hub does not help, use the board's
+BOOT/RESET procedure to enter download mode. A similar ESP32-S3 USB-mode reset
+issue is described in [Espressif's issue tracker](https://github.com/espressif/arduino-esp32/issues/10204).
 
 ## LoRa OTA and OTAFIX
 

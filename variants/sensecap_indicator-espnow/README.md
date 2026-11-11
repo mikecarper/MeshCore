@@ -28,6 +28,29 @@ PSRAM to avoid contention with RGB scanout. The screen blanks after five
 minutes on USB power; the hardware button or a touch wakes it without
 selecting anything.
 
+## Processor speed on LoRa Indicators
+
+Auto holds 240 MHz on LoRa Indicator images, including when device power saving
+is enabled. On SDKs with dynamic frequency scaling, both the minimum and maximum
+are 240 MHz. Power saving still controls the existing idle, GPS and Bluetooth
+policies; this change does not disable it or change AGC settings.
+
+The physical investigation on November 6, 2026 compared two instrumented builds
+with AGC at 16 seconds and power saving unchanged. Build `7f32a059` used the
+previous Auto policy, which allowed 40–80 MHz, and repeatedly hit a watchdog
+after setup. Build `a93922f4` forced a fixed 240 MHz selection, completed setup
+and the first loop stages, and stayed up for the 80-second observation.
+Within that same `a93922f4` image, a later request for 80 MHz was rejected by the SDK;
+the command reported `Error: CPU clock apply failed; unchanged`, restored
+240 MHz, and the node stayed up for the next 75 seconds. This does not establish
+that a successfully applied fixed 80 MHz clock is unstable.
+
+Explicit 80, 160 and 240 MHz selections retain their checked apply/save/rollback
+behavior. `get cpu.freq` reports the selected and actual clocks. WebConfig uses
+the same board-supported choices; an SDK rejection leaves the previous setting
+unchanged. Existing saved explicit selections are preserved; Auto remains stored
+as Auto rather than rewriting preferences to 240.
+
 ## Touch navigation
 
 Touch diagnostics are available on all touchscreen builds using the shared UI,

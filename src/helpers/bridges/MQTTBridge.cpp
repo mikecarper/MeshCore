@@ -1081,7 +1081,7 @@ void MQTTBridge::releaseRuntimeBuffers() {
 // ---------------------------------------------------------------------------
 void MQTTBridge::begin() {
 #if defined(ESP32)
-  if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) {
+  if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) {
     _start_requested = false;
     return;
   }

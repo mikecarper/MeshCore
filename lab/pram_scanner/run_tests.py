@@ -67,6 +67,7 @@ with tempfile.TemporaryDirectory() as d:
     run([sys.executable,str(lab/'test_header_timer_repair.py')])
     run([sys.executable,str(lab/'test_wait_ticks.py')])
     run([sys.executable,str(lab/'test_timer_observation.py')])
+    run([sys.executable,str(root/'test/test_lr2021_pram_install.py')])
     blob = (lab/'scan-safe.bin').read_bytes()
     words = re.findall(r'0x([0-9a-fA-F]{8})u', (root/'src/helpers/radiolib/W12PramScannerBlob.h').read_text())
     assert len(blob) % 4 == 0 and b''.join(struct.pack('<I',int(w,16)) for w in words) == blob

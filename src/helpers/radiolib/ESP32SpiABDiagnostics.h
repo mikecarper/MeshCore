@@ -35,6 +35,20 @@ inline void recordClock(uint32_t divider, uint32_t hz) {
 // transaction, lock, reset, or statistics mutation here.
 inline bool handle(const char* suffix, const char* args, int verb,
                    char* reply, size_t capacity) {
+#if defined(MESH_HIL_ESP_CACHE_TIMING) && MESH_HIL_ESP_CACHE_TIMING
+  if (!strcmp(suffix, "cache")) {
+    if (verb != 0 || *args) {
+      snprintf(reply, capacity, "Error: get radio.fast.cache (read-only)");
+      return true;
+    }
+    const auto snapshot = mesh::radio_cache_timing::capture();
+    snprintf(reply, capacity, "> count=%lu sum_hi=%lu sum_lo=%lu min=%lu max=%lu last=%lu",
+        (unsigned long)snapshot.count, (unsigned long)(snapshot.misses >> 32),
+        (unsigned long)uint32_t(snapshot.misses), (unsigned long)snapshot.minimum,
+        (unsigned long)snapshot.maximum, (unsigned long)snapshot.last);
+    return true;
+  }
+#endif
   const bool hw = !strcmp(suffix, "hw"), info = !strcmp(suffix, "hil");
   const bool timing = !strcmp(suffix, "time"), hist = !strcmp(suffix, "hist");
   if (!hw && !info && !timing && !hist) return false;

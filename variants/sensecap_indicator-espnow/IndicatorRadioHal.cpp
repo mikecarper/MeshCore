@@ -61,8 +61,13 @@ bool IndicatorRadioHal::beginExpander() {
 }
 
 bool IndicatorRadioHal::readInputs(uint16_t& value, bool firstPortOnly) {
+  _inputSnapshot.valid=false;
   if (!beginExpander()
       || !readRegister(INPUT_REGISTER, value, firstPortOnly)) return false;
+  ++_inputSnapshot.generation;
+  _inputSnapshot.at=static_cast<uint32_t>(micros());
+  _inputSnapshot.inputs=value;
+  _inputSnapshot.valid=true;
   processInterruptLevel(value);
   return true;
 }

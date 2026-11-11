@@ -665,7 +665,7 @@ assert.deepStrictEqual(
   picker.resolveProfileAssets([standardRepeater], "").map(function (entry) {
     return entry.installKind;
   }),
-  ["merged-bin", "bin"]
+  ["bin", "merged-bin"]
 );
 
 const fullLogging = profile("Generic_ESPNOW_repeatr-full-logging");
@@ -726,6 +726,9 @@ assert.deepStrictEqual(
 );
 
 const fullCompanionSteps = picker.installSteps(v4Full, "merged-bin");
+assert(fullCompanionSteps.some(step => step.includes("pairings even without a separate erase")));
+assert(picker.installSteps(v4Full, "bin").some(step =>
+  step.includes("pairings when the Bluetooth stack and storage layout stay the same")));
 assert(fullCompanionSteps.some(function (step) {
   return step.includes("usb.logging");
 }));
@@ -1220,8 +1223,13 @@ console.log('role-specific runtime directions tests passed');
 // Every currently published profile must retain its own release-bound controls.
 // Bootloader-carrying applications stay separate from ordinary applications.
 const publishedControls = require('../docs/_data/firmware_controls.json');
+function publishedAssetTag(target) {
+  const source = publishedControls.profiles[target]?.embeddedBootloaderSource;
+  return source ? publishedControls.familyTag.replace(/-[0-9a-f]{8}$/, '-' + source.slice(0, 8))
+    : publishedControls.familyTag;
+}
 const publishedAssets = Object.entries(publishedControls.profiles).map(([target, info]) =>
-  asset(target + '-' + publishedControls.familyTag +
+  asset(target + '-' + publishedAssetTag(target) +
     (info.platform === 'NRF52_PLATFORM' ? '.uf2' : '.bin')));
 const publishedReleases = [release(publishedControls.familyTag, '2026-10-24T00:00:00Z', publishedAssets)];
 const publishedCatalog = picker.buildCatalog(publishedReleases, publishedControls);
@@ -1317,7 +1325,7 @@ assert.deepStrictEqual(publishedCatalog.profiles.filter(profile =>
 
 function rak118PartialCatalog(targets, extraControls = {}) {
   const metadata = {...publishedControls, profiles: {...publishedControls.profiles, ...extraControls}};
-  const files = targets.map(target => asset(target + '-' + publishedControls.familyTag + '.uf2'));
+  const files = targets.map(target => asset(target + '-' + publishedAssetTag(target) + '.uf2'));
   return picker.buildCatalog([
     release(publishedControls.familyTag, '2026-10-24T00:00:00Z', files),
   ], metadata);
@@ -1396,7 +1404,7 @@ for (const [legacyBase, successorBase] of embeddedRakCompatibilitySuccessors) {
       const partial = rak118PartialCatalog(targets, metadata);
       assert(partial.profiles.some(profile => profile.target === legacy),
         legacy + ' must remain selectable with only a successor for ' + fault);
-      assert(partial.rows.some(row => row.target === legacy && row.name === legacy + '-' + publishedControls.familyTag + '.uf2'),
+      assert(partial.rows.some(row => row.target === legacy && row.name === legacy + '-' + publishedAssetTag(legacy) + '.uf2'),
         'Missing-successor checks must retain the exact legacy file');
     }
     const exact = rak118PartialCatalog([legacy, successor]);

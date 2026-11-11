@@ -1,5 +1,6 @@
 #include "Arduino.h"
-#ifdef PIN_BUZZER
+#include <helpers/CustomPeripheralConfig.h>
+#if defined(PIN_BUZZER) || MESH_CUSTOM_PERIPHERALS
 #include "buzzer.h"
 #if MESH_GPS_VOICE
 #if defined(MESH_GPS_VOICE_G726_BITRATE)
@@ -47,18 +48,62 @@ static mesh::audio::VoiceClip buttonVoiceClip(ButtonVoicePrompt prompt) {
 }
 #endif
 
-void genericBuzzer::begin() {
-    digitalWrite(PIN_BUZZER, LOW);
-    pinMode(PIN_BUZZER, OUTPUT);
+int8_t genericBuzzer::_override_pin = -1;
+uint32_t genericBuzzer::_generation = 0;
+
+bool genericBuzzer::selected() {
+    if (_seen_generation != _generation) {
+        _seen_generation = _generation;
+#if MESH_GPS_VOICE
+        _voice_pending = false;
+        _voice_allow_quiet = false;
+        _voice_gap_started = false;
+#endif
+    }
+    return _pin >= 0 && (_override_pin < 0 || _pin == _override_pin);
+}
+
+void genericBuzzer::setOverridePin(int8_t pin) {
+    if (_override_pin == pin) return;
+    rtttl::stop();
+#if MESH_GPS_VOICE
+    gps_voice.stop();
+#endif
+#ifdef PIN_BUZZER
+    if (pin >= 0) digitalWrite(PIN_BUZZER, LOW);
+#endif
 #ifdef PIN_BUZZER_EN
-    digitalWrite(PIN_BUZZER_EN, LOW);
-    pinMode(PIN_BUZZER_EN, OUTPUT);
+    if (pin >= 0) digitalWrite(PIN_BUZZER_EN, LOW);
+#endif
+    _override_pin = pin;
+    ++_generation;
+}
+
+void genericBuzzer::setPin(int8_t pin) {
+    if (pin == _pin) return;
+    stop();
+    if (_pin >= 0) {
+        digitalWrite(_pin, LOW);
+        pinMode(_pin, INPUT);
+    }
+    _pin = pin;
+    begin();
+}
+
+void genericBuzzer::begin() {
+    if (!selected()) return;
+    digitalWrite(_pin, LOW);
+    pinMode(_pin, OUTPUT);
+#ifdef PIN_BUZZER_EN
+    if (usesBuiltInPin()) digitalWrite(PIN_BUZZER_EN, LOW);
+    if (usesBuiltInPin()) pinMode(PIN_BUZZER_EN, OUTPUT);
 #endif
     // Start muted until the UI applies the saved preference.
     quiet(_is_quiet);
 }
 
 void genericBuzzer::play(const char *melody) {
+    if (!selected() || !melody) return;
 #if MESH_GPS_VOICE
     // A muted ordinary alert must not cancel the one courtesy confirmation
     // that may still be queued or playing while the preference is quiet.
@@ -71,22 +116,27 @@ void genericBuzzer::play(const char *melody) {
 
     if (_is_quiet) return;
 
-    rtttl::begin(PIN_BUZZER,melody);
+#ifdef PIN_BUZZER_EN
+    if (usesBuiltInPin()) digitalWrite(PIN_BUZZER_EN, HIGH);
+#endif
+    rtttl::begin(_pin,melody);
 //    Serial.print("DBG: Playing melody - isQuiet: ");
 //    Serial.println(isQuiet());
 }
 
 void genericBuzzer::playNotification(const char* melody) {
+    if (!selected() || !melody) return;
     // Muted background alerts must not interrupt an explicit button prompt.
     if (_is_quiet) return;
     stop();
 #ifdef PIN_BUZZER_EN
-    digitalWrite(PIN_BUZZER_EN, HIGH);
+    if (usesBuiltInPin()) digitalWrite(PIN_BUZZER_EN, HIGH);
 #endif
-    rtttl::begin(PIN_BUZZER, melody);
+    rtttl::begin(_pin, melody);
 }
 
 void genericBuzzer::stopNotification() {
+    if (!selected()) return;
 #if MESH_GPS_VOICE
     // Notification timers own their tones, not user-requested confirmations.
     // Preserve a pending direction tone, speech gap, or active voice clip.
@@ -100,6 +150,7 @@ bool genericBuzzer::speakGps(bool enabled) {
 }
 
 bool genericBuzzer::speakButton(ButtonVoicePrompt prompt, bool allowQuiet) {
+    if (!selected()) return false;
     const char* melody = nullptr;
     switch (prompt) {
     case ButtonVoicePrompt::GpsOn:
@@ -138,17 +189,17 @@ bool genericBuzzer::speakButton(ButtonVoicePrompt prompt, bool allowQuiet) {
     if (!melody) return true;
 #endif
 #ifdef PIN_BUZZER_EN
-    digitalWrite(PIN_BUZZER_EN, HIGH);
+    if (usesBuiltInPin()) digitalWrite(PIN_BUZZER_EN, HIGH);
 #endif
 #if MESH_GPS_VOICE
     _voice_prompt = prompt;
-    _voice_pending = true;
+    _voice_pending = usesBuiltInPin();
     _voice_allow_quiet = allowQuiet;
     _voice_gap_started = false;
 #endif
     // Preserve the recognisable rising/falling control tone even where voice
     // playback is disabled. Optional tones release their PWM before speech.
-    if (melody) rtttl::begin(PIN_BUZZER, melody);
+    if (melody) rtttl::begin(_pin, melody);
     return true;
 }
 
@@ -175,6 +226,7 @@ bool genericBuzzer::voiceGain(uint8_t gain) {
 #endif
 
 void genericBuzzer::stop() {
+    if (!selected()) return;
     rtttl::stop();
 #if MESH_GPS_VOICE
     _voice_pending = false;
@@ -183,11 +235,12 @@ void genericBuzzer::stop() {
     gps_voice.stop();
 #endif
 #ifdef PIN_BUZZER_EN
-    if (_is_quiet) digitalWrite(PIN_BUZZER_EN, LOW);
+    if (_is_quiet && usesBuiltInPin()) digitalWrite(PIN_BUZZER_EN, LOW);
 #endif
 }
 
 bool genericBuzzer::isPlaying() {
+    if (!selected()) return false;
 #if MESH_GPS_VOICE
     if (_voice_pending || gps_voice.active()) return true;
 #endif
@@ -195,6 +248,7 @@ bool genericBuzzer::isPlaying() {
 }
 
 void genericBuzzer::loop() {
+    if (!selected()) return;
 #if MESH_GPS_VOICE
     gps_voice.service();
     if (gps_voice.playing()) return;
@@ -223,10 +277,10 @@ void genericBuzzer::loop() {
     }
     // Courtesy mute/unmute speech can temporarily power the driver while the
     // preference stays quiet. Return both pins to their low-power state.
-    if (_is_quiet) {
-      digitalWrite(PIN_BUZZER, LOW);
+    if (_is_quiet && _pin >= 0) {
+      digitalWrite(_pin, LOW);
 #ifdef PIN_BUZZER_EN
-      digitalWrite(PIN_BUZZER_EN, LOW);
+      if (usesBuiltInPin()) digitalWrite(PIN_BUZZER_EN, LOW);
 #endif
     }
 }
@@ -240,13 +294,14 @@ void genericBuzzer::shutdown() {
 }
 
 void genericBuzzer::quiet(bool buzzer_state) {
-    if (buzzer_state) stop();
+    if (buzzer_state && selected()) stop();
     _is_quiet = buzzer_state;
+    if (!selected()) return;
 #ifdef PIN_BUZZER_EN
     if (_is_quiet) {
-      digitalWrite(PIN_BUZZER_EN, LOW);
+      if (usesBuiltInPin()) digitalWrite(PIN_BUZZER_EN, LOW);
     } else {
-      digitalWrite(PIN_BUZZER_EN, HIGH);
+      if (usesBuiltInPin()) digitalWrite(PIN_BUZZER_EN, HIGH);
     }
 #endif
 }
@@ -255,4 +310,4 @@ bool genericBuzzer::isQuiet() {
     return _is_quiet;
 }
 
-#endif  // ifdef PIN_BUZZER
+#endif // builtin buzzer or configurable external outputs

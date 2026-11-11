@@ -23,6 +23,7 @@ class ManagementPasswordCommandsTest(unittest.TestCase):
 #include <helpers/esp32/ManagementPassword.h>
 #include <helpers/CLICommandUtils.h>
 #include <helpers/ConfigCapabilities.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -52,6 +53,8 @@ struct Board {
   bool isLoRaFemPaGainEnabled() { assert(false); return false; }
 } board;
 struct Radio {
+  bool maintenance_pending=false;
+  bool isAGCMaintenancePending() const { return maintenance_pending; }
   bool supportsRxPowerSavingRfRxDisable() const { assert(false); return false; }
 } radio_driver;
 struct UI {
@@ -70,6 +73,7 @@ class CommonCLI {
 };
 class MyMesh {
  public:
+  Radio* _radio=&radio_driver;
   Profiles _radio_profiles;
   UI* _ui = nullptr;
   char _management_password[16] = "password";
@@ -106,6 +110,18 @@ template <typename Role> void test(Role& role) {
   assert(snapshot(changed) && !strcmp(changed.password, " leading space"));
 }
 int main() {
+  {
+    MyMesh blocked; Snapshot initial;
+    assert(publish("password")&&snapshot(initial));
+    radio_driver.maintenance_pending=true;
+    char command[]="password replacement", reply[160];
+    const int before=saves;
+    blocked.command(command,reply);
+    assert(!strcmp(reply,"Error: radio maintenance pending; retry shortly"));
+    assert(saves==before&&!strcmp(blocked._management_password,"password"));
+    unchanged(initial.generation);
+    radio_driver.maintenance_pending=false;
+  }
   CommonCLI infrastructure; test(infrastructure);
   assert(!strcmp(infrastructure.prefs.password, " leading space"));
   MyMesh companion; test(companion);

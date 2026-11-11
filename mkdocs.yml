@@ -43,6 +43,7 @@ not_in_nav: |
 
 nav:
   - Home: index.md
+  - Updates Over LoRa: browser_lora_ota.md
   - Firmware and tools:
       - firmware_picker.md
       - notifications.md
@@ -57,6 +58,7 @@ nav:
           - role_feature_switches.md
           - full_companion_features.md
           - companion_radio_full.md
+          - rotary_input.md
           - full_companion_usb_switcher.md
           - companion_offline_queue.md
           - halo_keymind_settings.md
@@ -77,6 +79,7 @@ nav:
       - Radio, networking, and power:
           - radio_profiles.md
           - radio_presets.md
+          - radio_agc.md
           - fleet_management.md
           - room_services.md
           - carrier_wave.md
@@ -131,6 +134,7 @@ extra_css:
   - https://unpkg.com/leaflet@1.9.4/dist/leaflet.css
   - _stylesheets/extra.css
   - _stylesheets/firmware_picker.css?v=20261013-pick-first-1
+  - _stylesheets/lora_ota.css
   - _stylesheets/telemetry_decoder.css?v=20261022-noise-history
   - _stylesheets/management_decoder.css
   - _stylesheets/filter_tool.css
@@ -143,7 +147,7 @@ extra_javascript:
   - _javascript/notification_builder.js?v=20261006-channel9
   - https://unpkg.com/leaflet@1.9.4/dist/leaflet.js
   - _javascript/firmware_picker.js?v=20261024-included-bootloader
-  - _javascript/telemetry_decoder.js?v=20261022-noise-history
+  - _javascript/telemetry_decoder.js?v=20261109-daily-minmax
   - _javascript/management_decoder.js
   - _javascript/filter_tool.js?v=20261030-compact-defaults
   - _javascript/preset_test.js?v=20260923-2

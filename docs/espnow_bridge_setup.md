@@ -129,6 +129,10 @@ LoRa repeater, see [raw ESP-NOW compatibility](WiFi.md#wifi-companion-setup).
 
 ### Send bridge traffic only on MediaMesh
 
+This example uses the USA primary and MediaMesh settings. For another primary
+preset, use its [regional MediaMesh settings](radio_profiles.md#mediamesh-presets)
+on both ends.
+
 Keep the receiving repeater's primary USA profile at 910.525 MHz while sending
 packets arriving over the bridge only on MediaMesh:
 

@@ -42,6 +42,16 @@
 class genericBuzzer
 {
     public:
+#ifdef PIN_BUZZER
+        explicit genericBuzzer(int8_t pin = PIN_BUZZER) : _pin(pin) {}
+#else
+        explicit genericBuzzer(int8_t pin = -1) : _pin(pin) {}
+#endif
+        void setPin(int8_t pin); // stop playback before releasing the previous pin
+        int8_t pin() const { return _pin; }
+        // NonBlockingRTTTL is global. A selected custom output owns it until
+        // cleared; built-in UI instances retain their mute preference only.
+        static void setOverridePin(int8_t pin);
         void begin();  // set up buzzer port
         void play(const char *melody); // Generic play function
         void playNotification(const char* melody);
@@ -61,6 +71,18 @@ class genericBuzzer
         bool isQuiet();  // get buzzer state on/off
 
     private:
+        int8_t _pin;
+        static int8_t _override_pin;
+        static uint32_t _generation;
+        uint32_t _seen_generation = 0;
+        bool selected();
+        bool usesBuiltInPin() const {
+#ifdef PIN_BUZZER
+            return _pin == PIN_BUZZER;
+#else
+            return false;
+#endif
+        }
         // gemini's picks:
         const char *startup_song = "Startup:d=4,o=5,b=160:16c6,16e6,8g6";
         const char *shutdown_song = "Shutdown:d=4,o=5,b=100:8g5,16e5,16c5";

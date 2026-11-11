@@ -3,6 +3,7 @@
 #include "RadioLibWrappers.h"
 #include "RadioInterruptEvents.h"
 #include "RadioProfileChip.h"
+#include "RadioFastCode.h"
 #include "ProfileSwitchTiming.h"
 #include "NrfRadioPriorityLease.h"
 #include "NrfRadioUsbIrqGuard.h"
@@ -195,7 +196,7 @@ void RadioLibWrapper::unregisterInterruptAction() {
   _interrupt_slot = 0xff;
 }
 
-bool RadioLibWrapper::hasAssertedRadioInterrupt() const {
+MC_RADIO_FAST_CODE_ATTR bool RadioLibWrapper::hasAssertedRadioInterrupt() const {
 #if defined(ESP32_PLATFORM)
   // GPIO wake does not guarantee that the normal edge ISR ran during light
   // sleep. Retain a completed packet even when DIO is already high after
@@ -222,10 +223,16 @@ bool RadioLibWrapper::hasAssertedRadioInterrupt() const {
 #endif
 }
 
-bool RadioLibWrapper::hasPendingRadioInterrupt() const {
+MC_RADIO_FAST_CODE_ATTR bool RadioLibWrapper::hasPendingRadioInterrupt() const {
   return _loop_event_pending || (_interrupt_slot < RADIO_INTERRUPT_SLOT_COUNT && radio_interrupt_events[_interrupt_slot].pending())
       || hasAssertedRadioInterrupt();
 }
+
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+bool RadioLibWrapper::hasPendingSoftwareRadioInterrupt() const {
+  return _loop_event_pending || (_interrupt_slot < RADIO_INTERRUPT_SLOT_COUNT && radio_interrupt_events[_interrupt_slot].pending());
+}
+#endif
 
 bool RadioLibWrapper::claimRadioInterrupt() {
   const bool startup = _loop_event_pending;
@@ -235,6 +242,19 @@ bool RadioLibWrapper::claimRadioInterrupt() {
   // recvRaw still verifies RX_DONE before reading FIFO, including a late ISR.
   return startup || interrupt || hasAssertedRadioInterrupt();
 }
+
+#if MESH_WARM_RX_REFRESH && defined(SENSECAP_INDICATOR_LORA)
+bool RadioLibWrapper::claimAGCSoftwareInterrupt() {
+  // Called only in checked RC standby with raw IRQ==0 and a fresh low DIO.
+  // Expander callbacks publish synchronously from HAL reads. No bus access
+  // occurs between that checked observation and this software-only claim.
+  const bool startup=_loop_event_pending;
+  _loop_event_pending=false;
+  const bool interrupt=_interrupt_slot<RADIO_INTERRUPT_SLOT_COUNT
+      && radio_interrupt_events[_interrupt_slot].claim();
+  return startup || interrupt;
+}
+#endif
 
 void RadioLibWrapper::begin() {
 #if MESH_ENABLE_RADIO_DIRECTION
@@ -291,6 +311,18 @@ void RadioLibWrapper::begin() {
   _rx_retry_delay_ms = 0;
   _rx_retry_pending = false;
 
+#if MESH_WARM_RX_REFRESH
+  // The driver has resolved its oscillator by this point. Constructors cannot
+  // safely derive this from an as-yet-unconfigured TCXO delay.
+  if(supportsWarmRxRefresh() && !_rxps_pulse.pending && !_rxps_pulse_sleep_override) {
+    const uint32_t sleep=defaultAGCPulseSleepUs();
+    if(!_rxps_pulse.configure(sleep,rxPowerSavingTransitionUs(),agcPulseTimerHz())) {
+      _rxps_pulse.sleep_us=0;
+      _rxps_pulse.sleep_ticks=0;
+    }
+  }
+#endif
+
   if (_board->getStartupReason() == BD_STARTUP_RX_PACKET) {  // received a LoRa packet (while in deep sleep)
     _loop_event_pending = true; // Main-owned wake event; ISR remains sole publisher
   }
@@ -314,6 +346,9 @@ void RadioLibWrapper::begin() {
   // start average out some samples
   _floor_estimator.reset(true);
   _secondary_floor_estimator.reset(true);
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  _agessaman_floor.reset();
+#endif
   _nf_calib_active = false;
   _nf_window_armed = _nf_lazy_refresh = _nf_refresh_attempted = false;
   _nf_last_calib = 0;
@@ -325,6 +360,9 @@ void RadioLibWrapper::begin() {
 }
 
 uint32_t RadioLibWrapper::getRngSeed() {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.pending) return 0;
+#endif
   return _radio->random(0x7FFFFFFF);
 }
 
@@ -425,7 +463,11 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetTxPower(int8_t dbm) {
   return status == RADIOLIB_ERR_NONE ? Result::APPLIED : Result::FAILED;
 }
 
-uint8_t RadioLibWrapper::beginReconfigure() {
+MC_RADIO_FAST_CODE_ATTR uint8_t RadioLibWrapper::beginReconfigure() {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.pending) return 2;
+#endif
+
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
   if (labReconfigureBlocked()) return 2;
 #endif
@@ -527,6 +569,11 @@ uint8_t RadioLibWrapper::beginReconfigure() {
 #endif
       ;
   if (_rx_ps_armed || was_rx) {
+#if MESH_WARM_RX_REFRESH && !MESH_COMPACT_STM32_RADIO
+    if (_warm_refresh.attempting) {
+      _warm_refresh.transition(static_cast<uint32_t>(micros()),warmRxRefreshUsesFs());
+    }
+#endif
     const int16_t standby_status =
 #if MESH_HIL_PROFILE_TIMING
         profile_timing.standbyResult(_radio->standby());
@@ -559,7 +606,7 @@ uint8_t RadioLibWrapper::beginReconfigure() {
   return resume_rx;
 }
 
-void RadioLibWrapper::endReconfigure(bool resume_rx) {
+MC_RADIO_FAST_CODE_ATTR void RadioLibWrapper::endReconfigure(bool resume_rx) {
   if (resume_rx) startRecv();
 }
 
@@ -676,6 +723,9 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
   if (resume_rx > 1) return resume_rx == 2
       ? mesh::RadioParamApplyResult::BUSY : mesh::RadioParamApplyResult::FAILED;
 
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  const bool was_exact = usesAgessamanNoiseFloor();
+#endif
   const bool had_previous_params = _params_valid;
   const float previous_freq = _cur_freq;
   const float previous_bw = _cur_bw;
@@ -725,6 +775,13 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetParams(float freq, float bw, 
     _profiles.setPrimary(requested, _profiles.primary_temporary);
     _profile_generation = _profiles.generation[0];
     _profile_refresh_required = false;
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+    if (was_exact != usesAgessamanNoiseFloor()
+        || (usesAgessamanNoiseFloor() && (!had_previous_params || previous_freq != freq
+            || previous_bw != bw || previous_sf != sf || previous_cr != cr))) {
+      recalibrateNoiseFloor();
+    }
+#endif
   } else {
     // RX resume is part of a primary command just as it is for scan hops.
     // Restore the active physical profile and power policy before recovery;
@@ -821,7 +878,7 @@ bool RadioLibWrapper::validateProfile(const mesh::RadioProfileParams& p) const {
 #endif
 }
 
-mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
+MC_RADIO_FAST_CODE_ATTR mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
 #if MESH_ENABLE_TX_BEACONS
   if (_beacon_owned && !_beacon_restoring) return mesh::RadioParamApplyResult::BUSY;
 #endif
@@ -1234,6 +1291,11 @@ void RadioLibWrapper::serviceProfileScan() {
 #if defined(ESP32_PLATFORM)
   _esp32_profile_idle_visit_us = 0;
 #endif
+#if MESH_WARM_RX_REFRESH
+  // Even Packet phase still owns the unchanged-profile FIFO. Do not hop,
+  // reset scan generations, or publish an idle deadline before it is consumed.
+  if(_rxps_pulse.pending) return;
+#endif
   (void)profileTimestamp(_profiles.enabled());
   if (_cw_active) return;
   if (!_params_valid || (_profile_retry_at && (int32_t)(millis() - _profile_retry_at) < 0)) return;
@@ -1479,7 +1541,7 @@ uint32_t RadioLibWrapper::getProfileAirtime(uint8_t profile, int len, uint8_t cr
   if (!validateProfile(p)) return 0;
   const double symbol = mesh::RadioProfiles::symbolUs(p);
   if (symbol <= 0 || len < 0) return 0;
-  if (cr < 5 || cr > 8) cr = p.cr;
+  if (cr < 4 || cr > 8) cr = p.cr;
   const int de = symbol >= 16000
 #if MESH_RADIO_PROFILE_CHIP == 1121
       // RadioLib 7.8.1 forces SX128x-compatible LDRO for high-band SF11/12.
@@ -1583,6 +1645,9 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetRxBoostedGainMode(bool enable
 }
 
 void RadioLibWrapper::idle() {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.pending) return;
+#endif
   if (_cw_active) return;
   _radio->standby();
   _rx_hold_continuous = false;
@@ -1590,6 +1655,10 @@ void RadioLibWrapper::idle() {
 }
 
 bool RadioLibWrapper::setTrackerSleep(bool sleeping) {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.pending) return false;
+#endif
+
 #if MESH_ENABLE_TX_BEACONS
   if (_beacon_owned) return false;
 #endif
@@ -1604,6 +1673,46 @@ bool RadioLibWrapper::setTrackerSleep(bool sleeping) {
   // radios and must not be used for a scheduled tracker wake.
   return !sleeping || _radio->sleep() == RADIOLIB_ERR_NONE;
 }
+
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+bool RadioLibWrapper::usesAgessamanNoiseFloor() const {
+  // Duty cycling and scanning retain their bounded, profile-aware estimator.
+  return !_profiles.enabled() && !_rx_ps_enabled;
+}
+
+void RadioLibWrapper::serviceAgessamanNoiseFloor() {
+  const bool rx = state == STATE_RX && !hasPendingRadioInterrupt();
+  const bool published = _agessaman_floor.loop(rx,
+      [this]() { return isReceivingPacket(); },
+      [this]() { return getCurrentRSSI(); }, _noise_floor);
+  _nf_refresh_requested = !_agessaman_floor.complete()
+      || _agessaman_floor.pendingPublication();
+  if (!published) return;
+
+  _noise_floor_centi_dbm = int32_t(_noise_floor) * 100;
+  _noise_floor_valid = true;
+  _nf_last_calib = millis();
+#if MESH_ENABLE_TELEMETRY_HISTORY
+  _nf_published_at[0] = static_cast<uint32_t>(_nf_last_calib);
+  _nf_published_generation[0] = _profiles.generation[0];
+  _nf_published_valid |= 1U;
+#endif
+}
+
+void RadioLibWrapper::resetAgessamanNoiseFloor() {
+  _noise_floor = 0;
+  _noise_floor_centi_dbm = 0;
+  _noise_floor_valid = false;
+  _agessaman_floor.reset();
+  _nf_refresh_requested = true;
+  _nf_calib_active = false;
+  _nf_window_armed = _nf_lazy_refresh = _nf_refresh_attempted = false;
+  _nf_last_calib = _nf_calib_deadline = _nf_sample_from = 0;
+#if MESH_ENABLE_TELEMETRY_HISTORY
+  _nf_published_valid &= ~1U;
+#endif
+}
+#endif
 
 void RadioLibWrapper::triggerNoiseFloorCalibrate(int threshold) {
   _threshold = threshold;
@@ -1630,6 +1739,16 @@ void RadioLibWrapper::triggerNoiseFloorCalibrate(int threshold) {
 }
 
 void RadioLibWrapper::recalibrateNoiseFloor() {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.pending) return;
+#endif
+
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  if (usesAgessamanNoiseFloor()) {
+    resetAgessamanNoiseFloor();
+    return;
+  }
+#endif
   // A gain or tuning change starts a new baseline. Keep the published value
   // available while discarding the old samples and rise-hold history.
   _noise_floor_valid = false;
@@ -1659,6 +1778,12 @@ void RadioLibWrapper::recalibrateNoiseFloor() {
 }
 
 void RadioLibWrapper::requestPeriodicNoiseFloorRefresh() {
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  if (usesAgessamanNoiseFloor()) {
+    requestNoiseFloorRefresh();
+    return;
+  }
+#endif
   const uint32_t interval = _nf_lazy_refresh ? NF_LAZY_REFRESH_INTERVAL_MS
       : (_rx_ps_enabled && !_rx_ps_continuous_fallback
           ? NF_RXPS_REFRESH_INTERVAL_MS : NF_CALIB_INTERVAL_MS);
@@ -1673,6 +1798,14 @@ void RadioLibWrapper::requestPeriodicNoiseFloorRefresh() {
 }
 
 void RadioLibWrapper::requestNoiseFloorRefresh() {
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  if (usesAgessamanNoiseFloor()) {
+    _agessaman_floor.trigger();
+    _nf_refresh_requested = !_agessaman_floor.complete()
+        || _agessaman_floor.pendingPublication();
+    return;
+  }
+#endif
   if (_nf_refresh_requested) return;
   _nf_refresh_requested = true;
   _nf_lazy_refresh = false;
@@ -1688,10 +1821,147 @@ void RadioLibWrapper::doResetAGC() {
 }
 
 void RadioLibWrapper::resetAGC() {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.pending) return;
+#endif
+
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  AGCTimingDiagnostics::PeriodicRequest diagnostic_request(_agc_timing);
+#endif
   resetAGCIfIdle();
 }
 
+#if MESH_WARM_RX_REFRESH
+void RadioLibWrapper::admitAGCPulse(uint32_t now) {
+  _rxps_pulse.admitted(now);
+  if(!_profiles.enabled()) return;
+  _agc_scan_lease.begin(now,_profiles.generation[0],_profiles.generation[1],
+      _profile_generation,_physical_preamble,_profile_visit_stamp,
+#if defined(ESP32_PLATFORM)
+      _esp32_profile_visit_started_us
+#else
+      0
+#endif
+  );
+#if defined(ESP32_PLATFORM)
+  _esp32_profile_idle_visit_us=0;
+#endif
+}
+
+void RadioLibWrapper::validateAGCScanLease() {
+  if(!_agc_scan_lease.validate(_profiles.enabled(),_active_profile,_profiles.generation[0],
+      _profiles.generation[1],_profile_generation,_physical_preamble)) {
+    // A changed pair cannot receive maintenance credit for the old context.
+    // Keep its FIFO on the old physical profile until the packet owner finishes.
+    _rxps_pulse.cancelRequest();
+    _profile_refresh_required=true;
+  }
+}
+
+void RadioLibWrapper::finishAGCScanLease() {
+  if(!_agc_scan_lease.active || _rxps_pulse.pending) return;
+  if(!_agc_scan_lease.stale) {
+    // Primary listening counts as time spent on that visit. Preserve its old
+    // deadline so the overdue secondary gets the next safe scan opportunity.
+    _profile_visit_stamp=_agc_scan_lease.visit_stamp;
+#if defined(ESP32_PLATFORM)
+    _esp32_profile_visit_started_us=_agc_scan_lease.visit_started_us;
+#endif
+  }
+  _agc_scan_lease.finish(static_cast<uint32_t>(micros()));
+}
+
+mesh::AGCMaintenanceResult RadioLibWrapper::periodicAGCMaintenance(bool adaptive) {
+  using Result=mesh::AGCMaintenanceResult;
+  _agc_scan_lease.fast_retry=false;
+  if(!supportsWarmRxRefresh()) {
+    if(adaptive) return !isCalibratingNoiseFloor() && tryResetAGC() ? Result::Applied : Result::Deferred;
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    AGCTimingDiagnostics::PeriodicRequest diagnostic_request(_agc_timing);
+#endif
+    // Keep the legacy command sequence and resampling behavior. Admission
+    // still does not guarantee that every ignored legacy command succeeded.
+    return resetAGCIfIdle() ? Result::Applied : Result::Deferred;
+  }
+#if MESH_ENABLE_OLD_AGC
+  // At four minutes or longer, finish the witnessed refresh with the existing
+  // full-reset method. Never repeat the pulse while its legacy half waits for
+  // an idle primary visit. RXPS/interval changes clear this retained completion.
+  // Unsupported backends (notably LR2021) still complete the refresh normally.
+  const bool full_reset=_rxps_pulse.fullResetDue() && supportsOldAGC()
+      && getOldAGCInterval()==mesh::AGC_OLD_AUTO;
+#else
+  constexpr bool full_reset=false;
+#endif
+  if(!full_reset) {
+    const auto completed=_rxps_pulse.takeCompletion();
+    if(completed==RxpsPulse::Result::Applied) return Result::Applied;
+    if(completed==RxpsPulse::Result::Failed) return Result::Failed;
+    if(completed==RxpsPulse::Result::Deferred || _rxps_pulse.pending) return Result::Deferred;
+    _rxps_pulse.request(static_cast<uint32_t>(micros()));
+  }
+  if(state!=STATE_RX || !_params_valid || _active_profile>1 || _profile_generation!=_profiles.generation[_active_profile]
+      || _profile_refresh_required || _profile_repair_required || _profile_retry_at
+      || (_profiles.enabled() ? (!_profile_rxps_suspended
+          || _profile_scan_generation[0]!=_profiles.generation[0]
+          || _profile_scan_generation[1]!=_profiles.generation[1]) : _profile_rxps_suspended)
+      || (_rx_ps_enabled && !_rx_ps_continuous_fallback) || _rx_ps_armed || _rx_hold_continuous
+      || _rx_retry_pending || _nf_calib_active || _nf_window_armed || _cw_active || _morse_owned
+#if MESH_ENABLE_MORSE_RX
+      || _morse_rx_owned
+#endif
+#if MESH_ENABLE_TX_BEACONS
+      || _beacon_owned
+#endif
+#if MESH_ENABLE_RADIO_DIRECTION
+      || !mesh::radioDirection::radioReceiveAllowed()
+#endif
+      || isChipBusy()) { _rxps_pulse.deferred();return Result::Deferred; }
+  if(_active_profile!=0) {
+    if(_profiles.enabled()) {
+      ++_agc_scan_lease.deferred;
+      _agc_scan_lease.fast_retry=!adaptive;
+    }
+    _rxps_pulse.deferred();return Result::Deferred;
+  }
+#if MESH_ENABLE_OLD_AGC
+  // Reuse every primary ownership/configuration guard for the second half too:
+  // another radio mode may have taken over since the pulse completed.
+  if(full_reset) {
+    const auto legacy=periodicOldAGCMaintenance();
+    if(legacy!=Result::Deferred) _rxps_pulse.takeCompletion();
+    return legacy;
+  }
+#endif
+  if(!startAGCPulse()) return Result::Deferred;
+  // Arming is not completion. The scheduler remains due until a naturally
+  // witnessed sleep/wake and checked continuous reentry have finished.
+  return Result::Deferred;
+}
+
+#endif
+
+#if MESH_ENABLE_OLD_AGC && (!MESH_COMPACT_STM32_RADIO || MESH_WARM_RX_REFRESH)
+mesh::AGCMaintenanceResult RadioLibWrapper::periodicOldAGCMaintenance() {
+  if(!supportsOldAGC()) return mesh::AGCMaintenanceResult::Deferred;
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  AGCTimingDiagnostics::PeriodicRequest diagnostic_request(_agc_timing);
+#endif
+  return resetAGCIfIdle()?mesh::AGCMaintenanceResult::Applied:mesh::AGCMaintenanceResult::Deferred;
+}
+#endif
+
 bool RadioLibWrapper::tryResetAGC() {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.pending) return false;
+#endif
+
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  AGCTimingDiagnostics::PeriodicRequest diagnostic_request(_agc_timing);
+#endif
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  if (usesAgessamanNoiseFloor()) return resetAGCIfIdle(false);
+#endif
   // BUSY is expected during RXPS sleep. Reuse the legacy explicit wake/reset
   // sequence there; polling only every 50 ms can miss every short RX window.
   // Outside known duty cycling, a busy SPI command still defers admission.
@@ -1699,17 +1969,52 @@ bool RadioLibWrapper::tryResetAGC() {
 }
 
 bool RadioLibWrapper::resetAGCIfIdle(bool refresh_floor) {
-#if MESH_ENABLE_TX_BEACONS
-  if (_beacon_owned) return false;
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.pending) return false;
 #endif
-  if (_cw_active) return false;
-  // make sure we're not mid-receiving and mid-sending of packet!
-  if (isPacketPendingOrReceiving() || (state == STATE_TX_WAIT)) return false;
 
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  _agc_timing.sequenceRequest();
+#endif
+#if MESH_ENABLE_TX_BEACONS
+  if (_beacon_owned) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    _agc_timing.reject(AGCTimingDiagnostics::Skip::Beacon);
+#endif
+    return false;
+  }
+#endif
+  if (_cw_active) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    _agc_timing.reject(AGCTimingDiagnostics::Skip::Carrier);
+#endif
+    return false;
+  }
+  // make sure we're not mid-receiving and mid-sending of packet!
+  if (isPacketPendingOrReceiving() || (state == STATE_TX_WAIT)) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+    _agc_timing.reject(AGCTimingDiagnostics::Skip::Packet);
+#endif
+    return false;
+  }
+
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  _agc_timing.admit(static_cast<uint32_t>(micros()));
+#endif
   doResetAGC();
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  _agc_timing.helperFinished(static_cast<uint32_t>(micros()));
+#endif
   state = STATE_IDLE;   // trigger a startReceive()
   const bool gain_restored = !_rx_boosted_gain_valid
       || (_rx_boosted_gain_applied = applyRxBoostedGainMode(_cur_rx_boosted_gain));
+
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  if (usesAgessamanNoiseFloor()) {
+    resetAgessamanNoiseFloor();
+    return true;
+  }
+#endif
 
   // Adaptive maintenance restores the same RF path. A valid, idle baseline
   // keeps its existing refresh deadline instead of spending another complete
@@ -1731,6 +2036,10 @@ bool RadioLibWrapper::resetAGCIfIdle(bool refresh_floor) {
 }
 
 bool RadioLibWrapper::recoverRadio(bool hard) {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.pending) return false;
+#endif
+
 #if MESH_ENABLE_TX_BEACONS
   // A failed startSendRaw() may request recovery. Defer that to the owner's
   // restore transaction so a reset never reapplies the beacon wire settings.
@@ -2483,6 +2792,9 @@ void RadioLibWrapper::serviceDirectionPolicy() {
 }
 
 void RadioLibWrapper::loop() {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.pending) { serviceAGCPulse();if(_rxps_pulse.owns()) return; }
+#endif
 #if MESH_ENABLE_RADIO_DIRECTION
   serviceDirectionPolicy();
   if (!mesh::radioDirection::radioReceiveAllowed()) {
@@ -2579,6 +2891,13 @@ void RadioLibWrapper::loop() {
   }
   serviceProfileScan();
   serviceRxPowerSavingRetry(static_cast<uint32_t>(millis()));
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  if (usesAgessamanNoiseFloor()) {
+    serviceAgessamanNoiseFloor();
+    checkReceiveMode(static_cast<uint32_t>(millis()));
+    return;
+  }
+#endif
   if (_rx_ps_enabled && !_rx_ps_continuous_fallback) {
     rxPsWatchdogCheck();
   }
@@ -2668,7 +2987,11 @@ void RadioLibWrapper::loop() {
   }
 }
 
-void RadioLibWrapper::startRecv() {
+MC_RADIO_FAST_CODE_ATTR void RadioLibWrapper::startRecv() {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.owns()) return;
+#endif
+
 #if MESH_ENABLE_RADIO_DIRECTION
   if (!mesh::radioDirection::radioReceiveAllowed()) return;
 #endif
@@ -2677,6 +3000,16 @@ void RadioLibWrapper::startRecv() {
 #endif
   if (_cw_active || _profile_repair_required) return;
   int err = startReceiveMode();
+#if MESH_WARM_RX_REFRESH
+  validateAGCScanLease();
+  _rxps_pulse.receiveEntry(err,static_cast<uint32_t>(micros()));
+#endif
+#if MESH_WARM_RX_REFRESH && !MESH_COMPACT_STM32_RADIO
+  _warm_refresh.receiveEntry(err,static_cast<uint32_t>(micros()));
+#endif
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+  _agc_timing.receiveEntry(err, static_cast<uint32_t>(micros()));
+#endif
   if (err == RADIOLIB_ERR_NONE) {
     // A very short frame may complete while startReceiveMode() returns.
 #if defined(ESP32_PLATFORM)
@@ -2724,13 +3057,16 @@ void RadioLibWrapper::startRecv() {
     if (_startrx_fails < 255) _startrx_fails++;
     MESH_DEBUG_PRINTLN("RadioLibWrapper: error: startReceiveMode(%d)", err);
   }
+#if MESH_WARM_RX_REFRESH
+  finishAGCScanLease();
+#endif
 }
 
 int RadioLibWrapper::startReceiveMode() {
   return startContinuousReceive();
 }
 
-int RadioLibWrapper::startReceivePowerSaving() {
+MC_RADIO_FAST_CODE_ATTR int RadioLibWrapper::startReceivePowerSaving() {
   if (_nf_calib_active && _rx_ps_armed && isPacketPendingOrReceiving()) {
     return RADIOLIB_ERR_NONE;
   }
@@ -2890,6 +3226,14 @@ bool RadioLibWrapper::getNoiseFloorWakeDelay(uint32_t now, uint32_t& delay_ms) c
 #if MESH_ENABLE_TX_BEACONS
   if (_beacon_owned) return false;
 #endif
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  if (usesAgessamanNoiseFloor()) {
+    if (_cw_active || state != STATE_RX
+        || (_agessaman_floor.complete() && !_agessaman_floor.pendingPublication())) return false;
+    delay_ms = 0;
+    return true;
+  }
+#endif
   // Dual-profile scanning and foreign owners retain their existing cadence.
   // Failed RX startup has its separate retry deadline, not an active batch.
   if (_cw_active || _profiles.enabled() || state != STATE_RX
@@ -2920,6 +3264,10 @@ bool RadioLibWrapper::setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sl
 }
 
 mesh::RadioParamApplyResult RadioLibWrapper::trySetRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.pending) return mesh::RadioParamApplyResult::BUSY;
+#endif
+
   using Result = mesh::RadioParamApplyResult;
   if (enabled && (!isValidRxPowerSavingPeriod(rx_us) || !isValidRxPowerSavingPeriod(sleep_us)
       || !supportsRxPowerSaving())) return Result::FAILED;
@@ -2945,6 +3293,9 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetRxPowerSaving(bool enabled, u
   uint8_t resume_rx = beginReconfigure();
   if (resume_rx > 1) return resume_rx == 2 ? Result::BUSY : Result::FAILED;
 
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  const bool was_exact = usesAgessamanNoiseFloor();
+#endif
   _rx_ps_enabled = enabled;
   _rx_ps_rx_us = rx_us;
   _rx_ps_sleep_us = sleep_us;
@@ -2952,6 +3303,9 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetRxPowerSaving(bool enabled, u
   _rx_ps_last_error = RADIOLIB_ERR_NONE;
   _rx_ps_continuous_fallback = enabled
       && rxPowerSavingUsesContinuousFallback(rx_us, sleep_us);
+#if MC_AGESSAMAN_NOISE_FLOOR_EXACT
+  if (was_exact != usesAgessamanNoiseFloor()) recalibrateNoiseFloor();
+#endif
   endReconfigure(resume_rx);
   return Result::APPLIED;
 }
@@ -2986,6 +3340,10 @@ RxPowerSavingStatus RadioLibWrapper::getRxPowerSavingStatus() const {
 }
 
 int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.owns()) return 0;
+#endif
+
 #if MESH_ENABLE_RADIO_DIRECTION
   if (!mesh::radioDirection::radioReceiveAllowed()) return 0;
 #endif
@@ -3153,6 +3511,9 @@ void RadioLibWrapper::finishReceiveProcessing() {
 }
 
 uint32_t RadioLibWrapper::getEstAirtimeFor(int len_bytes) {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.owns()) return 0;
+#endif
   const uint32_t airtime_us =
       static_cast<uint32_t>(_radio->getTimeOnAir(len_bytes));
   if (mesh::isEncodedRadioLibAirtimeError(airtime_us)) {
@@ -3189,6 +3550,9 @@ bool RadioLibWrapper::hilPacketTransmitAllowed() const {
 #endif
 
 bool RadioLibWrapper::startSendRaw(const uint8_t* bytes, int len) {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.pending) return false;
+#endif
 #if MESH_ENABLE_RADIO_DIRECTION
   if (!mesh::radioDirection::radioTransmitAllowed()) return false;
 #endif
@@ -3239,6 +3603,9 @@ bool RadioLibWrapper::startSendRaw(const uint8_t* bytes, int len) {
 }
 
 bool RadioLibWrapper::isSendComplete() {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.pending) return false;
+#endif
   if (state == STATE_TX_WAIT && claimRadioInterrupt()) {
     const int16_t done = _radio->checkIrq(RADIOLIB_IRQ_TX_DONE);
     if (done <= 0 && done != RADIOLIB_ERR_UNSUPPORTED) {
@@ -3260,6 +3627,9 @@ bool RadioLibWrapper::isSendComplete() {
 }
 
 void RadioLibWrapper::onSendFinished() {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.owns()) return;
+#endif
 #if MESH_RADIO_TRACE_ENABLED
   if (mesh::radiotrace::trace().pending())
     mesh::radiotrace::trace().transmitFinish(_radio, mesh::radiotrace::nowUs(), false);
@@ -3279,6 +3649,9 @@ int16_t RadioLibWrapper::performChannelScan() {
 }
 
 int16_t RadioLibWrapper::performChannelScanWithTimeout(unsigned long timeout_ms) {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.pending) return RADIOLIB_ERR_SPI_CMD_TIMEOUT;
+#endif
   // RadioLib's blocking scanChannel() waits forever if the radio never raises
   // its CAD-done IRQ. Keep CAD bounded so a missing IRQ cannot starve the main
   // loop until the MCU watchdog resets the node.
@@ -3304,6 +3677,10 @@ int16_t RadioLibWrapper::performChannelScanWithTimeout(unsigned long timeout_ms)
 }
 
 bool RadioLibWrapper::isChannelActive() {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.pending) return true;
+#endif
+
 #if MESH_ENABLE_RADIO_DIRECTION
   if (!mesh::radioDirection::radioReceiveAllowed()) {
     if (_cw_active || state == STATE_TX_WAIT || isChipBusy()) return true;
@@ -3352,6 +3729,10 @@ bool RadioLibWrapper::isChannelActive() {
 }
 
 bool RadioLibWrapper::isReceivingPassive(int interference_margin_db) {
+#if MESH_WARM_RX_REFRESH
+  if(_rxps_pulse.pending) return true;
+#endif
+
 #if MESH_ENABLE_RADIO_DIRECTION
   // A TX-only node has no continuous-RX noise baseline or forwarding echoes.
   // Use bounded CAD instead of waiting forever for either of those RX states.
@@ -3405,7 +3786,7 @@ float RadioLibWrapper::packetScoreInt(float snr, int sf, int packet_len) {
   return score < 1.0f ? score : 1.0f;
 }
 
-PacketMillis RadioLibWrapper::calcMaxPacketMillis(uint8_t sf, float bw, uint8_t cr, uint16_t preambleSymbols) {
+MC_RADIO_FAST_CODE_ATTR PacketMillis RadioLibWrapper::calcMaxPacketMillis(uint8_t sf, float bw, uint8_t cr, uint16_t preambleSymbols) {
   // based on RadioLib's calculateTimeOnAir()
   uint32_t tsym_us = ((uint32_t)10000 << sf) / (bw * 10);
   uint32_t sfCoeff1_x4 = (sf == 5 || sf == 6) ? 25 : 17; // 6.25 : 4.25, semtech magic numbers to account for sync word + sfd
@@ -3425,7 +3806,7 @@ PacketMillis RadioLibWrapper::calcMaxPacketMillis(uint8_t sf, float bw, uint8_t 
       : (fallback_total_us > preamble_us ? fallback_total_us - preamble_us
                                         : fallback_total_us);
   // rescale payload_us for max possible CR
-  if (cr >= 5 && cr < 8) { payload_us = (payload_us * 8) / cr; }
+  if (cr >= 4 && cr < 8) { payload_us = (payload_us * 8) / cr; }
 
   return PacketMillis {static_cast<uint32_t>((preamble_guard_us + 999) / 1000),
                        (payload_us + 999) / 1000};

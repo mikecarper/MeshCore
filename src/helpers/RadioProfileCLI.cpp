@@ -40,6 +40,11 @@ const char* const TempPath = "/radio_profiles.tmp";
 // Never considered a boot-time committed image. Losing power before the
 // acknowledgement leaves the previous saved radio untouched.
 const char* const ReplyPath = "/radio_profiles.reply";
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION && MESH_ENABLE_FLOOD_PROFILE_POLICY
+const char* const FloodPath = "/flood_profiles";
+const char* const FloodBackup = "/flood_profiles.bak";
+const char* const FloodTemp = "/flood_profiles.tmp";
+#endif
 #if MESH_RADIO_SWITCH_TUNING
 const char* const FastPath = "/radio_fast";
 const char* const FastBackup = "/radio_fast.bak";
@@ -98,12 +103,30 @@ bool secondaryOverlaps(uint32_t primary_hz, float secondary_mhz, uint32_t cleara
   return (primary_hz > secondary_hz ? primary_hz - secondary_hz : secondary_hz - primary_hz)
          <= clearance_hz;
 }
+// Expand regional defaults through the ordinary tuple validation path.
+__attribute__((always_inline)) inline bool formatMediaMeshPreset(const char* name, float primary,
+                                                                char* tuple, size_t size) {
+  const auto region = cli::radio2PresetRegion(primary);
+  const char* center;
+  switch (region) {
+    case cli::MediaMeshRegion::US: center = "911.150"; break;
+    case cli::MediaMeshRegion::EU868: center = "869.525"; break;
+    case cli::MediaMeshRegion::Shared915: center = "922.500"; break;
+    case cli::MediaMeshRegion::EU433: center = "434.250"; break;
+    default: return false;
+  }
+  const bool eu868 = region == cli::MediaMeshRegion::EU868;
+  const bool range = !strcmp(name, "mediamesh-range");
+  const char* bandwidth = range ? (eu868 ? "62.5" : "125") : (eu868 ? "125" : "250");
+  const int length = snprintf(tuple, size, "%s,%s,%u,%u,rxtx,auto",
+                              center, bandwidth, eu868 ? 5U : 7U, eu868 ? 7U : 5U);
+  return length > 0 && size_t(length) < size;
+}
 #if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
 bool isMediaMeshProfile(const RadioProfileConfig& config) {
   return config.mode != RadioProfileMode::Off
-      && config.params.freq >= 911.1495f && config.params.freq <= 911.1505f
-      && (config.params.bw == 250.0f || config.params.bw == 125.0f)
-      && config.params.sf == 7 && config.params.cr == 5;
+      && cli::isMediaMeshPreset(config.params.freq, config.params.bw,
+                                config.params.sf, config.params.cr);
 }
 #endif
 }
@@ -201,6 +224,53 @@ bool RadioProfileCLI::writeImage(const char* path, const uint8_t* bytes, size_t 
   return ok && readImage(path, verify, size) == ImageReadResult::Valid
       && memcmp(bytes, verify, size) == 0;
 }
+
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION && MESH_ENABLE_FLOOD_PROFILE_POLICY
+void RadioProfileCLI::beginRepeaterFloodPolicy() {
+  repeater_flood_policy_ = true;
+  flood_profile_mask_ = 3;
+  flood_policy_hold_ = false;
+  if (!fs_) return;
+  uint8_t image[ImageSize];
+  const auto primary = readImage(FloodPath, image, sizeof(image));
+  auto valid = [&](ImageReadResult result) {
+    if (result != ImageReadResult::Valid || (image[3] & 0xFC) != 0xA0) return false;
+    for (size_t i = 4; i < ImageSize - 4; ++i) if (image[i]) return false;
+    return true;
+  };
+  if (valid(primary)) { flood_profile_mask_ = image[3] & 3; return; }
+  const auto backup = readImage(FloodBackup, image, sizeof(image));
+  if (valid(backup)) {
+    flood_profile_mask_ = image[3] & 3;
+    flood_policy_hold_ = (fs_->exists(FloodPath) && !fs_->remove(FloodPath))
+        || !fs_->rename(FloodBackup, FloodPath);
+    return;
+  }
+  // Unknown or damaged persisted intent never turns forwarding back on.
+  if (primary != ImageReadResult::Missing || backup != ImageReadResult::Missing) {
+    flood_profile_mask_ = 0; flood_policy_hold_ = true;
+  }
+}
+
+bool RadioProfileCLI::saveFloodPolicy(uint8_t mask) {
+  if (!fs_ || flood_policy_hold_ || mask > 3) return false;
+  uint8_t image[ImageSize] = {'R', '2', 1, uint8_t(0xA0 | mask)};
+  const uint32_t crc = checksum(image, ImageSize - 4);
+  memcpy(image + ImageSize - 4, &crc, 4);
+  if (!writeImage(FloodTemp, image, sizeof(image))) return false;
+  if (fs_->exists(FloodPath)) {
+    if (fs_->exists(FloodBackup) && !fs_->remove(FloodBackup)) return false;
+    if (!fs_->rename(FloodPath, FloodBackup)) return false;
+  }
+  if (!fs_->rename(FloodTemp, FloodPath)) {
+    if (fs_->exists(FloodBackup) && !fs_->rename(FloodBackup, FloodPath)) flood_policy_hold_ = true;
+    return false;
+  }
+  if (fs_->exists(FloodBackup)) fs_->remove(FloodBackup);
+  flood_profile_mask_ = mask;
+  return true;
+}
+#endif
 
 bool RadioProfileCLI::save(const RadioProfileConfig& config, uint16_t preamble, RadioCrossMode cross,
                            int8_t manual_secondary) {
@@ -439,17 +509,17 @@ __attribute__((noinline)) bool RadioProfileCLI::handleFastSettings(const char* k
     cli::formatError(reply, capacity, "use get/set radio.fast[.control] value"); return true;
   }
   if (remote || remote_command_) {
-    cli::formatError(reply, capacity, "radio.fast changes require local USB or BLE"); return true;
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio.fast changes require local USB or BLE", "local USB/BLE required")); return true;
   }
   if (hasReplyMutation() || fast_hold_) {
-    cli::formatError(reply, capacity, "radio settings held; retry after recovery"); return true;
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio settings held; retry after recovery", "held; retry recovery")); return true;
   }
   RadioSwitchTuning next = fast_pending_ ? fast_saved_ : current;
   if (spi) {
     // Single-digit selections remain strict; 9 labels the 8888888 Hz clock.
     if (!args[1] && strchr("02489", args[0])) next.spi_mhz = args[0] - '0';
     else if (!strcmp(args, "16")) next.spi_mhz = 16;
-    else { cli::formatError(reply, capacity, "SPI MHz: 0,2,4,8,9,16 where supported"); return true; }
+    else { cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("SPI MHz: 0,2,4,8,9,16 where supported", "SPI MHz: 0,2,4,8,9,16")); return true; }
   } else {
     const bool on = !strcmp(args, "on");
     if (!on && strcmp(args, "off")) { cli::formatError(reply, capacity, "use on or off"); return true; }
@@ -468,7 +538,7 @@ __attribute__((noinline)) bool RadioProfileCLI::handleFastSettings(const char* k
     fast_pending_ = true;
     fast_retry_ms_ = 0;
     snprintf(reply, capacity, "OK - saved; pending");
-  } else cli::formatError(reply, capacity, "radio tuning could not be applied/saved");
+  } else cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio tuning could not be applied/saved", "apply/save failed"));
   return true;
 }
 #endif
@@ -791,8 +861,8 @@ bool RadioProfileCLI::finishReplyMutation(bool delivered) {
 
 #if !MESH_CLIENT_REPEATER_ONLY
 // Companion channel joins use this transaction; repeaters use the CLI below.
-bool RadioProfileCLI::stageChannelPreset(const char* name) {
-  if (!name || !cli::radio2PresetTuple(name) || remote_command_
+bool RadioProfileCLI::stageChannelPreset(const char* name, const float* primary_frequency) {
+  if (!cli::isRadio2Preset(name) || remote_command_
       || !secondaryRuntimeAvailable()) return false;
   const auto& secondary = radio_->profiles()->secondary;
   if (secondary.mode != RadioProfileMode::Off
@@ -800,7 +870,7 @@ bool RadioProfileCLI::stageChannelPreset(const char* name) {
   char command[48], reply[160];
   snprintf(command, sizeof(command), "set radio2 %s", name);
   beginReplyCommand();
-  const bool handled = handle(command, reply, sizeof(reply));
+  const bool handled = handle(command, reply, sizeof(reply), false, primary_frequency);
   endReplyCommand();
   return handled && !strncmp(reply, "OK", 2)
       && remote_mutation_ == RemoteMutation::Saved;
@@ -1107,7 +1177,7 @@ void RadioProfileCLI::formatConfig(char* reply, size_t capacity, const RadioProf
   appendSecondaryWarnings(reply, capacity, preview);
 }
 
-bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, bool remote_origin) {
+bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, bool remote_origin, const float* primary_frequency) {
 #if defined(MESH_HIL_TX_FREQ_MHZ)
   if (handleHilTxFrequencyCommand(command, reply, capacity)) return true;
 #endif
@@ -1127,6 +1197,24 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
   while (*args == ' ' || *args == '\t') ++args;
 #if MESH_RADIO_SWITCH_TUNING
   if (handleFastSettings(key, args, verb, remote_origin, reply, capacity)) return true;
+#endif
+#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
+#if !MESH_ENABLE_FLOOD_PROFILE_POLICY
+  if (!strcmp(key, "radio.flood") || !strcmp(key, "radio2.flood")) {
+    cli::formatError(reply, capacity, "per-radio flood controls unsupported"); return true;
+  }
+#else
+  if (repeater_flood_policy_ && (!strcmp(key, "radio.flood") || !strcmp(key, "radio2.flood"))) {
+    const uint8_t bit = !strcmp(key, "radio.flood") ? 1 : 2;
+    if (verb == Get && !*args) snprintf(reply, capacity, "> %s", flood_profile_mask_ & bit ? "on" : "off");
+    else if (verb == Set && (!strcmp(args, "on") || !strcmp(args, "off"))) {
+      const uint8_t next = !strcmp(args, "on") ? flood_profile_mask_ | bit : flood_profile_mask_ & ~bit;
+      if (next == flood_profile_mask_ || saveFloodPolicy(next)) snprintf(reply, capacity, "OK - %s %s", key, args);
+      else cli::formatError(reply, capacity, "flood policy could not be saved");
+    } else cli::formatError(reply, capacity, "use get/set radio[2].flood on|off");
+    return true;
+  }
+#endif
 #endif
   enum { Base, Temporary, Scheduled, ScheduledTemporary, Crossing, Replies,
          Status, Scan, Timing, TimingAlias, KeyCount };
@@ -1148,7 +1236,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
   const bool status = kind == Status;
   const bool scan = kind == Scan;
   const bool timing = kind == Timing || kind == TimingAlias;
-  if (!radio_ || !radio_->profiles()) { cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio profiles unsupported", "profiles unsupported")); return true; }
+  if (!radio_ || !radio_->profiles()) { cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio profiles unsupported", "unsupported")); return true; }
   if (command == text && *args && verb == Get && (temporary || base)) verb = Set;
 #if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
   if (radio_->w12MultiSfEnabled() && (base || temporary || scheduled) && verb != Get
@@ -1158,10 +1246,10 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
 #endif
   if (remote_origin && !remote_command_
       && (((base || temporary) && verb == Set) || (scheduled_temp && verb == Delete))) {
-    cli::formatError(reply, capacity, "this role requires local USB for radio2 changes"); return true;
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("this role requires local USB for radio2 changes", "radio2: USB only")); return true;
   }
   if (hasReplyMutation() && verb != Get) {
-    cli::formatError(reply, capacity, "radio acknowledgement pending"); return true;
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio acknowledgement pending", "radio ack pending")); return true;
   }
   if ((timing || scan || status) && (verb != Get || *args)) {
     snprintf(reply, capacity, "Error: %s is read-only", timing ? "radio timing" : key);
@@ -1186,7 +1274,11 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     if (verb != Set || length >= sizeof(mode) || !parseRadioTxPolicy(mode, policy)
         || (*suffix && !force)
         || (force && policy != RADIO_TX_BOTH && policy != RADIO_TX_SECONDARY)) {
-      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("use get/set tx.reply auto|radio|radio2|both|off [force for radio2/both]", "get/set tx.reply auto|radio|radio2|both|off [force for radio2/both]"));
+#if defined(STM32_PLATFORM) && MESH_CLI_COMPACT_REPLIES
+      cli::formatError(reply, capacity, "tx.reply MODE [force:radio2/both]");
+#else
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("use get/set tx.reply auto|radio|radio2|both|off [force for radio2/both]", "tx.reply auto|radio|radio2|both|off [force for radio2/both]"));
+#endif
       return true;
     }
     const uint8_t previous = reply_setting_;
@@ -1232,7 +1324,13 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
       auto mode = !strcmp(args, "auto") ? RadioCrossMode::Auto : !strcmp(args, "on") ? RadioCrossMode::On : RadioCrossMode::Off;
       if (save(saved_, primary_preamble_, mode)) { cross_ = mode; publish(); snprintf(reply, capacity, "OK"); }
       else cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("settings could not be saved", "settings not saved"));
-    } else cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("use get/set radio2.cross [auto|on|off]", "get/set radio2.cross [auto|on|off]"));
+    } else {
+#if defined(STM32_PLATFORM) && MESH_CLI_COMPACT_REPLIES
+      cli::formatError(reply, capacity, "auto|on|off");
+#else
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("use get/set radio2.cross [auto|on|off]", "radio2.cross [auto|on|off]"));
+#endif
+    }
     return true;
   }
   if (scan) {
@@ -1294,7 +1392,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     if (remote_command_ || temp_pending_ || temp_active_ || hasSecondarySchedule()
         || hasReplyMutation() || publish_pending_ || radio_->profiles()->primary_temporary
         || radio_->profiles()->secondary_temporary) {
-      cli::formatError(reply, capacity, "automatic radio2 requires no pending change, lease or schedule");
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("automatic radio2 requires no pending change, lease or schedule", "radio2 change/lease/schedule pending"));
       return true;
     }
     if (!save({}, primary_preamble_, cross_, 0)) {
@@ -1375,25 +1473,41 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     }
     return true;
   }
-  if (verb != Set) { cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("invalid radio2 command", "bad radio2 command")); return true; }
-  if (base) {
-    const char* preset = cli::radio2PresetTuple(args);
-    if (preset) args = preset;
+  if (verb != Set) {
+#if defined(STM32_PLATFORM) && MESH_CLI_COMPACT_REPLIES
+    cli::formatError(reply, capacity, "bad command");
+#else
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("invalid radio2 command", "bad radio2 command"));
+#endif
+    return true;
   }
   char local[140];
-  if (strlen(args) >= sizeof(local)) { cli::formatError(reply, capacity, "params too long"); return true; }
-  strcpy(local, args);
+  if (base && cli::isRadio2Preset(args)) {
+    const float primary = primary_frequency
+        ? *primary_frequency : radio_->profiles()->primary.freq;
+    if (!formatMediaMeshPreset(args, primary, local, sizeof(local))) {
+#if defined(STM32_PLATFORM) && MESH_CLI_COMPACT_REPLIES
+      cli::formatError(reply, capacity, "use tuple");
+#else
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("no regional MediaMesh preset; use tuple", "no preset; use tuple"));
+#endif
+      return true;
+    }
+  } else {
+    if (strlen(args) >= sizeof(local)) { cli::formatError(reply, capacity, "params too long"); return true; }
+    strcpy(local, args);
+  }
   char* parts[8];
   const unsigned count = split(local, parts, 8);
   const unsigned expected = scheduled_temp ? 7 : scheduled || temporary ? 6 : 5;
   RadioProfileConfig config;
   uint32_t sf = 0, cr = 0, start = 0, end = 0, minutes = 0;
   bool valid = (count == expected || count == expected + 1)
-      && cli::parseDecimalStrict(parts[0], config.params.freq)
-      && cli::parseDecimalStrict(parts[1], config.params.bw)
-      && cli::parseUnsignedIntegerStrict(parts[2], sf) && sf <= 255
-      && cli::parseUnsignedIntegerStrict(parts[3], cr) && cr <= 255
-      && parseMode(parts[4], config.mode);
+        && cli::parseDecimalStrict(parts[0], config.params.freq)
+        && cli::parseDecimalStrict(parts[1], config.params.bw)
+        && cli::parseUnsignedIntegerStrict(parts[2], sf) && sf <= 255
+        && cli::parseUnsignedIntegerStrict(parts[3], cr) && cr <= 255
+        && parseMode(parts[4], config.mode);
   config.params.sf = sf; config.params.cr = cr;
   const uint32_t epoch = scheduled && rtc_ ? rtc_->getCurrentTime() : 0;
   if (valid && count > expected) valid = parsePreamble(parts[expected], config.params.preamble);
@@ -1406,12 +1520,20 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
   if (!valid) { snprintf(reply, capacity, MESH_CLI_REPLY_TEXT("Error: use %s f,bw,sf,cr,rx|rxtx%s[,preamble|auto]", "Error: %s f,bw,sf,cr,rx|rxtx%s[,preamble|auto]"), key,
       scheduled_temp ? ",start,end (UTC or +minutes)" : scheduled ? ",start (UTC or +minutes)" : temporary ? ",minutes" : ""); return true; }
   if (base && !mediaMeshScopeReady(config)) {
+#if defined(STM32_PLATFORM) && MESH_CLI_COMPACT_REPLIES
+    cli::formatError(reply, capacity, "scope unavailable/full"); return true;
+#else
     cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("MediaMesh region unavailable or full", "MediaMesh region unavailable/full")); return true;
+#endif
   }
   if (scheduled) {
     if (!epoch || start <= epoch || (uint64_t)(start-epoch) * 1000 > 0x7fffffffULL
         || (scheduled_temp && (end <= start || (uint64_t)(end-epoch) * 1000 > 0x7fffffffULL))) {
+#if defined(STM32_PLATFORM) && MESH_CLI_COMPACT_REPLIES
+      cli::formatError(reply, capacity, "future UTC, <=24 days"); return true;
+#else
       cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("future UTC start/end required, within 24 days", "future UTC start/end within 24 days")); return true;
+#endif
     }
     if (scheduled_temp) {
       const uint64_t pending_left = temp_pending_
@@ -1419,10 +1541,10 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
           : 0;
       const uint64_t session_left = pending_left > temp_remaining_ms_ ? pending_left : temp_remaining_ms_;
       if ((temp_active_ || temp_pending_) && (uint64_t)(start-epoch)*1000 < session_left) {
-        cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("temporary schedule overlaps active session", "temp overlaps active session")); return true;
+        cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("temporary schedule overlaps active session", "temp/session overlap")); return true;
       }
       for (const auto& s : schedules_) if (s.active && s.temporary && start < s.end && end > s.start) {
-        cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("temporary schedules overlap", "temp schedules overlap")); return true;
+        cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("temporary schedules overlap", "schedule overlap")); return true;
       }
     }
     const unsigned first = scheduled_temp ? 4 : 0;
@@ -1437,7 +1559,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
 #if MESH_ENABLE_FLEET_CONTROL
       if (remote_command_) {
         if (!stageRemoteSchedule(i, s)) {
-          cli::formatError(reply, capacity, "radio acknowledgement pending"); return true;
+          cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio acknowledgement pending", "radio ack pending")); return true;
         }
       } else { schedules_[first+i] = s; noteSecondaryManualChange(); publish(); }
 #else
@@ -1446,11 +1568,11 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
       snprintf(reply, capacity, "OK - %s %u queued, preamble=%u", key, i+1, preview.preamble(1, 32));
       appendSecondaryWarnings(reply, capacity, preview); return true;
     }
-    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("all four schedule slots occupied", "all four slots full")); return true;
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("all four schedule slots occupied", "all slots full")); return true;
   }
   if (temporary) {
     for (const auto& s : schedules_) if (s.active && s.temporary) {
-      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("clear tempradioat2 schedules first", "clear tempradioat2 first")); return true;
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("clear tempradioat2 schedules first", "clear tempradioat2")); return true;
     }
     if (remote_command_) stageRemoteMutation(RemoteMutation::Temporary, config, minutes * 60000UL);
     else {

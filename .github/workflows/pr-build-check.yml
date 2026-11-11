@@ -76,4 +76,4 @@ jobs:
         uses: ./.github/actions/setup-build-environment
 
       - name: Build ${{ matrix.environment }}
-        run: pio run -e ${{ matrix.environment }}
+        run: bash tools/ci/pio_retry.sh run -e ${{ matrix.environment }}

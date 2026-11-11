@@ -56,6 +56,11 @@ bool radio_init() {
 
   bool success = radio.std_init(&spi);
   if (success) {
+    // std_init() restores the normal RXEN table. Select the requested LNA
+    // state before any receive mode, including after a failed-radio probe.
+    success = radio.setExternalRxLnaEnabled(board.isLoRaFemLnaEnabled());
+  }
+  if (success) {
     // T-Beam 1W has external PA requiring longer ramp time (>800us recommended)
     const int16_t ramp_status = radio.setTxParams(
         LORA_TX_POWER, static_cast<uint8_t>(SX126X_PA_RAMP_TIME));
@@ -69,6 +74,7 @@ bool radio_init() {
   if (success) {
     board.attachRadioDriver(&radio_driver);
   } else {
+    board.attachRadioDriver(nullptr);
     MESH_DEBUG_PRINTLN(
         "T-Beam 1W radio pins: LDO=%d NSS=%d RST=%d BUSY=%d MISO=%d DIO1=%d CTRL=%d",
         digitalRead(SX126X_POWER_EN), digitalRead(P_LORA_NSS),

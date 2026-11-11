@@ -4,6 +4,7 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
+const { spawnSync } = require("child_process");
 const decoder = require("../docs/_javascript/telemetry_decoder.js");
 
 let passed = 0;
@@ -39,6 +40,51 @@ function pack15(codes) {
     }
   });
   return output;
+}
+
+// Independent MSB-first encoder for the 0x17 summary wire vectors.
+function extremaBytes(series, rows, options = {}) {
+  const width = 8;
+  const missing = 0;
+  const header = Buffer.from([0x17, 1, series, 0, 30, 0, 0, 0, 0]);
+  header.writeUInt32LE(options.epoch ?? 1704067200, 5);
+  const out = Buffer.alloc(Math.ceil((7 * (14 + 6 * width)) / 8));
+  let offset = 0;
+  function put(value, bits) {
+    for (let n = bits - 1; n >= 0; --n, ++offset) {
+      out[Math.floor(offset / 8)] |= ((value >> n) & 1) << (7 - offset % 8);
+    }
+  }
+  for (let day = 0; day < 7; ++day) {
+    const row = rows[day] || { min: 127, max: 127,
+      low: [missing, missing, missing], high: [missing, missing, missing] };
+    put(row.min, 7); put(row.max, 7);
+    for (const code of [...row.low, ...row.high]) put(code, width);
+  }
+  return Buffer.concat([header, out]);
+}
+
+function extremaReply(series, rows, options) {
+  return `> ${extremaBytes(series, rows, options).toString("base64")}`;
+}
+
+function combinedExtremaBytes(rows, options = {}) {
+  const header = Buffer.from([0x18, 1, 30, 0, 0, 0, 0]);
+  header.writeUInt32LE(options.epoch ?? 1704067200, 3);
+  const out = Buffer.alloc(105);
+  let offset = 0;
+  function put(value, bits) {
+    for (let n = bits - 1; n >= 0; --n, ++offset) {
+      out[Math.floor(offset / 8)] |= ((value >> n) & 1) << (7 - offset % 8);
+    }
+  }
+  for (let day = 0; day < 7; ++day) for (const type of ["temperature", "voltage"]) {
+    const row = rows[day]?.[type] || { min: 63, max: 63, low: [0, 0, 0], high: [0, 0, 0] };
+    put(row.min, 6); put(row.max, 6);
+    for (const code of [...row.low, ...row.high]) put(code, 8);
+  }
+  assert.strictEqual(offset, 840);
+  return Buffer.concat([header, out]);
 }
 
 function externalPage(epoch, channel, codes) {
@@ -181,15 +227,15 @@ test("GitHub readers can open the hosted decoder from its packet section", () =>
   );
   const hostedDecoder =
     "https://mikecarper.github.io/MeshCore/telemetry_decoder/#decode-a-packet";
-  const introduction = documentation.split("## Send raw telemetry packets")[0];
+  const introduction = documentation.split(/^## /m)[0];
   assert.ok(introduction.includes(
     'class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/telemetry_decoder/"'
   ), "The source-visible banner must link to the canonical hosted page.");
-  assert.ok(!introduction.includes(`](${hostedDecoder})`),
+  assert.ok(!introduction.includes(hostedDecoder),
     "The introduction must use the banner that disappears on the official host.");
   const packetSection = documentation.split("## Decode a packet\n")[1]
-    .split('<div class="telemetry-tool"')[0];
-  assert.ok(packetSection.includes(`](${hostedDecoder})`),
+    .split(/^## /m)[0];
+  assert.ok(packetSection.includes(`href="${hostedDecoder}"`),
     "The GitHub #decode-a-packet anchor must lead readers to the working tool.");
   assert.match(documentation, /GitHub's Markdown preview[\s\S]*cannot run/);
   assert.doesNotMatch(documentation, /<(?:textarea|input|button)\b/i,
@@ -200,6 +246,16 @@ test("GitHub readers can open the hosted decoder from its packet section", () =>
     "A versioned script prevents the old cached script from using the new empty host.");
 });
 
+test("decoder and CLI commands come before the detailed reference", () => {
+  const documentation = fs.readFileSync(
+    path.join(__dirname, "../docs/telemetry_decoder.md"), "utf8"
+  );
+  const headings = Array.from(documentation.matchAll(/^## (.+)$/gm), match => match[1].trim());
+  assert.deepStrictEqual(headings.slice(0, 3), [
+    "Decode a packet", "CLI history pages", "Send raw telemetry packets",
+  ]);
+});
+
 test("browser initialization creates the form and wires every example", () => {
   const fixture = browserFixture();
   assert.match(fixture.root.innerHTML, /<textarea[\s\S]*data-role="input"/);
@@ -207,6 +263,8 @@ test("browser initialization creates the form and wires every example", () => {
     ["packetTemperature", 8], ["packetVoltage", 8],
     ["packetExternalVoltage", 8], ["externalVoltage", 48],
     ["packetNoise", 8], ["noiseSecondary", 8],
+    ["dailyExtrema", 14],
+    ["combinedExtrema", 28],
   ]) {
     fixture.examples.get(example).emit("click");
     assert.strictEqual(fixture.fields.get("results").hidden, false,
@@ -549,6 +607,183 @@ test("noise chart leaves MAX, missing and unrecorded time gaps", () => {
   assert.strictEqual(chart.segments[1][0].y, 20);
   assert.match(chart.description, /MAX and missing samples leave gaps/);
   assert.strictEqual(decoder.noiseChartModel(decoder.decodeTelemetry(VOLTAGE_PACKET)), null);
+});
+
+test("daily extrema decode temperature and battery with neighboring slots and rolling-day times", () => {
+  const cases = [
+    [1, [72, 73, 74], [77, 78, 79], "20 °C", "25 °C"],
+    [2, [102, 103, 104], [202, 203, 204], "2.89 V", "3.89 V"],
+  ];
+  for (const [series, low, high, lowText, highText] of cases) {
+    const rows = [{ min: 3, max: 1, low, high }];
+    rows[6] = { min: 0, max: 0, low, high };
+    const input = extremaReply(series, rows);
+    const item = decoder.decodeTelemetry(input);
+    const interval = 1800;
+    assert.strictEqual(item.kind, "extrema");
+    assert.strictEqual(item.series, series);
+    assert.strictEqual(item.rows.length, 7);
+    assert.strictEqual(item.rows[0].minimum.value, lowText);
+    assert.strictEqual(item.rows[0].maximum.value, highText);
+    assert.strictEqual(item.rows[0].minimum.epoch, 1704067200 - 3 * interval);
+    assert.strictEqual(item.rows[0].maximum.epoch, 1704067200 - interval);
+    assert.strictEqual(item.rows[6].minimum.epoch, 1704067200 - 6 * 86400);
+    assert.strictEqual(item.rows[1].minimum.epoch, null);
+    assert.strictEqual(item.rows[1].minimum.value, "Missing");
+    const model = decoder.tableModel(item, false);
+    assert.strictEqual(model.rows.length, 14);
+    assert.strictEqual(model.rows[0].values[3], item.rows[0].minimum.previous);
+    assert.strictEqual(model.rows[0].values[5], item.rows[0].minimum.next);
+    const csv = decoder.modelToCsv(model);
+    assert.match(csv, /^rolling_day,extreme,timestamp_utc,previous,value,next\r\n/);
+    assert.ok(csv.includes(lowText));
+    const encoded = input.slice(2);
+    assert.strictEqual(decoder.decodeTelemetry(`01|${encoded}`).kind, "extrema");
+    assert.ok(input.length < 160);
+  }
+});
+
+test("daily extrema preserve out-of-range and missing sample values", () => {
+  for (const [series, low, high, expected] of [
+    [1, [0, 1, 3], [129, 2, 0], ["Missing", "< -50 °C", "> 77 °C"]],
+    [2, [0, 1, 2], [254, 255, 0], ["Missing", "< 1.88 V", "> 4.40 V"]],
+  ]) {
+    const item = decoder.decodeTelemetry(extremaReply(series, [{ min: 47, max: 0, low, high }]));
+    assert.strictEqual(item.rows[0].minimum.previous, expected[0]);
+    assert.strictEqual(item.rows[0].minimum.value, expected[1]);
+    assert.strictEqual(item.rows[0].maximum.value, expected[2]);
+    assert.strictEqual(item.rows[0].maximum.next, "Missing");
+  }
+  const fixture = browserFixture();
+  fixture.examples.get("dailyExtrema").emit("click");
+  fixture.fields.get("download").emit("click");
+  assert.strictEqual(fixture.downloads[0].filename, "meshcore-telemetry-extrema.csv");
+  assert.match(fixture.downloads[0].blob.parts.join(""), /20 °C/);
+});
+
+test("daily extrema reject malformed headers, rows, timestamps, lengths and padding", () => {
+  const base = extremaBytes(1, [{ min: 3, max: 1,
+    low: [72, 73, 74], high: [77, 78, 79] }]);
+  const check = (bytes, pattern) => assertDecoderError(
+    () => decoder.decodeTelemetry(`> ${bytes.toString("base64")}`), pattern);
+  for (const [at, value, pattern] of [[1, 2, /version/], [2, 3, /series/],
+    [3, 1, /channel/], [4, 15, /interval/]]) {
+    const bad = Buffer.from(base); bad[at] = value; check(bad, pattern);
+  }
+  check(base.subarray(0, 8), /header/);
+  check(base.subarray(0, base.length - 1), /bytes/);
+  check(Buffer.concat([base, Buffer.from([0])]), /bytes/);
+  const badPadding = Buffer.from(base); badPadding[badPadding.length - 1] |= 1;
+  check(badPadding, /padding/);
+  for (const bad of [
+    { min: 48, max: 1, low: [72, 73, 74], high: [77, 78, 79] },
+    { min: 127, max: 1, low: [0, 0, 0], high: [77, 78, 79] },
+    { min: 127, max: 127, low: [0, 1, 0], high: [0, 0, 0] },
+    { min: 3, max: 1, low: [72, 0, 74], high: [77, 78, 79] },
+    { min: 3, max: 1, low: [72, 131, 74], high: [77, 78, 79] },
+  ]) check(extremaBytes(1, [bad]), /index|availability|samples|reserved/);
+  check(extremaBytes(1, [{ min: 1, max: 1, low: [1, 2, 3], high: [1, 2, 3] }],
+    { epoch: 0 }), /Unix epoch/);
+  assertDecoderError(() => decoder.decodeTelemetry(`${extremaReply(1, [])}\n${extremaReply(1, [])}`),
+    /separately/);
+});
+
+test("combined temperature and battery extrema fit one reply and export clear CSV", () => {
+  const bytes = combinedExtremaBytes([{
+    temperature: { min: 3, max: 1, low: [72, 73, 74], high: [77, 78, 79] },
+    voltage: { min: 2, max: 0, low: [102, 103, 104], high: [202, 203, 204] },
+  }]);
+  assert.strictEqual(bytes.length, 112);
+  const encoded = bytes.toString("base64");
+  assert.strictEqual(encoded.length, 152);
+  assert.strictEqual(`ab|${encoded}`.length + 1, 156);
+  for (const text of [`> ${encoded}`, `ab|${encoded}`]) {
+    const item = decoder.decodeTelemetry(text);
+    assert.strictEqual(item.kind, "extrema-combined");
+    assert.strictEqual(item.rows.length, 7);
+    assert.strictEqual(item.rows[0].temperature.minimum.value, "20 °C");
+    assert.strictEqual(item.rows[0].voltage.maximum.value, "3.89 V");
+    assert.strictEqual(item.rows[0].temperature.minimum.epoch, 1704067200 - 3 * 1800);
+    assert.strictEqual(item.rows[0].voltage.maximum.epoch, 1704067200);
+    assert.strictEqual(item.rows[1].temperature.minimum.epoch, null);
+    const model = decoder.tableModel(item, false);
+    assert.strictEqual(model.rows.length, 28);
+    const csv = decoder.modelToCsv(model);
+    assert.match(csv, /^rolling_day,measurement,extreme,timestamp_utc,previous,value,next\r\n/);
+    assert.match(csv, /Temperature,minimum,[^\r\n]+19 °C,20 °C,21 °C/);
+    assert.match(csv, /Battery voltage,maximum,[^\r\n]+3\.88 V,3\.89 V,3\.90 V/);
+  }
+  const fixture = browserFixture();
+  fixture.examples.get("combinedExtrema").emit("click");
+  assert.strictEqual(fixture.fields.get("results").hidden, false,
+    fixture.fields.get("error").textContent);
+  fixture.fields.get("download").emit("click");
+  assert.strictEqual(fixture.downloads[0].filename, "meshcore-telemetry-extrema-combined.csv");
+  assert.match(fixture.downloads[0].blob.parts.join(""), /Battery voltage/);
+});
+
+test("combined extrema reject malformed data without inventing readings", () => {
+  const base = combinedExtremaBytes([{ temperature: {
+    min: 3, max: 1, low: [72, 73, 74], high: [77, 78, 79],
+  } }]);
+  const check = (bytes, pattern) => assertDecoderError(
+    () => decoder.decodeTelemetry(`> ${bytes.toString("base64")}`), pattern);
+  for (const [at, value, pattern] of [[1, 2, /version/], [2, 15, /interval/]]) {
+    const bad = Buffer.from(base); bad[at] = value; check(bad, pattern);
+  }
+  check(base.subarray(0, 6), /header/);
+  check(base.subarray(0, base.length - 1), /bytes/);
+  check(Buffer.concat([base, Buffer.from([0])]), /bytes/);
+  for (const bad of [
+    { min: 48, max: 1, low: [72, 73, 74], high: [77, 78, 79] },
+    { min: 63, max: 1, low: [0, 0, 0], high: [77, 78, 79] },
+    { min: 63, max: 63, low: [0, 1, 0], high: [0, 0, 0] },
+    { min: 3, max: 1, low: [72, 0, 74], high: [77, 78, 79] },
+    { min: 3, max: 1, low: [72, 131, 74], high: [77, 78, 79] },
+  ]) check(combinedExtremaBytes([{ temperature: bad }]), /index|availability|samples|reserved/);
+  check(combinedExtremaBytes([{ temperature: { min: 1, max: 1,
+    low: [1, 2, 3], high: [1, 2, 3] } }], { epoch: 0 }), /Unix epoch/);
+});
+
+test("browser decoder consumes real C++ extrema encoder output with both reply prefixes", () => {
+  const script = String.raw`
+import os, pathlib, subprocess, sys, tempfile
+sys.path.insert(0, 'test')
+from test_telemetry_daily_extrema import HARNESS
+with tempfile.TemporaryDirectory() as tmp:
+    src = pathlib.Path(tmp) / 'fixture.cpp'
+    exe = pathlib.Path(tmp) / 'fixture'
+    src.write_text(HARNESS)
+    subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++11', '-I', 'src', str(src), '-o', str(exe)], check=True)
+    sys.stdout.write(subprocess.check_output([str(exe)], text=True))
+`;
+  const result = spawnSync("python3", ["-c", script], {
+    cwd: path.join(__dirname, ".."), encoding: "utf8", timeout: 60000,
+  });
+  assert.strictEqual(result.status, 0, result.stderr);
+  const lines = result.stdout.trim().split(/\r?\n/);
+  assert.strictEqual(lines.length, 4);
+  const singles = lines.slice(0, 2).map((line) => {
+    const text = line.replace(/^>\s*/, "");
+    const plain = decoder.decodeTelemetry(`> ${text}`);
+    const correlated = decoder.decodeTelemetry(`ab|${text}`);
+    assert.deepStrictEqual(correlated.rows, plain.rows);
+    return plain;
+  });
+  const text = lines[2].replace(/^>\s*/, "");
+  assert.strictEqual(text.length, 152);
+  const combined = decoder.decodeTelemetry(`> ${text}`);
+  assert.deepStrictEqual(decoder.decodeTelemetry(`ab|${text}`).rows, combined.rows);
+  for (let day = 0; day < 7; ++day) {
+    for (const [i, key] of [[0, "temperature"], [1, "voltage"]]) {
+      assert.deepStrictEqual(combined.rows[day][key].minimum, singles[i].rows[day].minimum);
+      assert.deepStrictEqual(combined.rows[day][key].maximum, singles[i].rows[day].maximum);
+    }
+  }
+  assert.deepStrictEqual(singles.map((item) => item.series), [1, 2]);
+  assert.deepStrictEqual(combined.rows[0].temperature.minimum.codes, [40, 1, 20]);
+  assert.strictEqual(combined.rows[0].temperature.maximum.value, "> 77 °C");
+  assert.strictEqual(combined.rows[0].voltage.minimum.value, "< 1.88 V");
 });
 
 process.stdout.write(`1..${passed}\n`);

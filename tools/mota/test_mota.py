@@ -73,6 +73,33 @@ def test_internal_bootloader_target_wiring_is_central_and_not_duplicated():
         "t1000e_repeater_lora_ota_no_external_sensors",
         "ThinkNode_M3_repeater_lora_ota_no_external_sensors",
         "RAK_3401_repeater_lora_ota_no_external_sensors",
+        "RAK_3401_room_server_lora_ota_no_external_sensors",
+        "RAK_3401_sensor_lora_ota_no_external_sensors",
+        "Heltec_t096_room_server_lora_ota_no_external_sensors",
+        "Heltec_t096_sensor_lora_ota_no_external_sensors",
+        "Heltec_t1_room_server_lora_ota_no_external_sensors",
+        "Heltec_t114_room_server_lora_ota_no_external_sensors",
+        "Heltec_t114_sensor_lora_ota_no_external_sensors",
+        "Heltec_t114_without_display_room_server_lora_ota_no_external_sensors",
+        "Mesh_pocket_room_server_lora_ota_no_external_sensors",
+        "KeepteenLT1_room_server_lora_ota_no_external_sensors",
+        "Minewsemi_me25ls01_room_server_lora_ota_no_external_sensors",
+        "ProMicro_room_server_lora_ota_no_external_sensors",
+        "ProMicro_sensor_lora_ota_no_external_sensors",
+        "ProMicro_m33s_room_server_lora_ota_no_external_sensors",
+        "ProMicro_m33s_sensor_lora_ota_no_external_sensors",
+        "ProMicro_400m33s_room_server_lora_ota_no_external_sensors",
+        "ProMicro_400m33s_sensor_lora_ota_no_external_sensors",
+        "t1000e_room_server_lora_ota_no_external_sensors",
+        "t1000e_sensor_lora_ota_no_external_sensors",
+        "ThinkNode_M3_room_server_lora_ota_no_external_sensors",
+        "RAK_WisMesh_Tag_room_server_lora_ota_no_external_sensors",
+        "RAK_WisMesh_Tag_sensor_lora_ota_no_external_sensors",
+        "R1Neo_room_server_lora_ota_no_external_sensors",
+        "R1Neo_sensor_lora_ota_no_external_sensors",
+        "GAT562_30S_Mesh_Kit_room_server_lora_ota_no_external_sensors",
+        "GAT562_Mesh_Tracker_Pro_room_server_lora_ota_no_external_sensors",
+        "GAT562_Mesh_EVB_Pro_room_server_lora_ota_no_external_sensors",
         "RAK_4631_repeater_lora_ota_no_external_sensors",
         "RAK_4631_repeater_unified_lora_ota",
         "RAK_4631_room_server_lora_ota_no_external_sensors",
@@ -88,6 +115,8 @@ def test_internal_bootloader_target_wiring_is_central_and_not_duplicated():
     }
     assert set(inventory) == expected_inventory
     assert {
+        "RAK_3401_room_server_lora_ota_no_external_sensors",
+        "RAK_3401_sensor_lora_ota_no_external_sensors",
         "RAK_4631_room_server_lora_ota_no_external_sensors",
         "RAK_4631_room_server_ethernet_lora_ota_no_external_sensors",
         "RAK_4631_sensor_lora_ota_no_external_sensors",
@@ -721,9 +750,9 @@ def test_esp32_s3_full_profiles_use_arduino2_and_dio_boot_mode():
     assert 'framework-arduinoespressif32/package.json' in framework_preflight
     assert '"3\\.3\\.11"' in framework_preflight
     assert "pio pkg uninstall --global --tool framework-arduinoespressif32" in framework_preflight
-    assert 'pio pkg install --global --tool "$arduino3_core_url"' in framework_preflight
-    assert 'pio pkg install --global --tool "$arduino3_libs_url"' in framework_preflight
-    assert 'pio pkg install -e "$pio_env_name"' in framework_preflight
+    assert 'run_pio_with_size_detection pkg install --global --tool "$arduino3_core_url"' in framework_preflight
+    assert 'run_pio_with_size_detection pkg install --global --tool "$arduino3_libs_url"' in framework_preflight
+    assert 'run_pio_with_size_detection pkg install -e "$pio_env_name"' in framework_preflight
     build_call = build.split(
         'print_build_flags "$pio_env_name" "$env_name"', 1
     )[1].split(
@@ -1830,7 +1859,7 @@ def test_bootloader_build_inventory_is_unique_and_disjoint_from_app_targets():
         for value in re.findall(r"\{ 0x([0-9a-fA-F]{8}),", target_header)
     }
     audited = ml.audit_bootloader_target_inventory(app_targets)
-    assert len(audited) == len(expected) + 5  # internal, two XIAOs, Solar P1, two adaptive RAKs
+    assert len(audited) == len(expected) + 10  # XIAO, Solar, onboard-QSPI and adaptive RAK identities
     assert audited[0xD677B472] == (0x28860044, "SCAP_DFU")
     assert audited[0xD04AB3AB] == (0x239A0029, "3401_AUTO_DFU")
     assert audited[0xFEEAFD1B] == (0x239A0029, "4631_AUTO_DFU")

@@ -9,6 +9,7 @@
 #include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/EmergencyOtaWork.h>
 #include <helpers/FloodGroupPlainText.h>
+#include <helpers/FloodProfilePolicy.h>
 #include <helpers/FloodRuleExtensions.h>
 #include <helpers/GuestLoginSettings.h>
 #include <helpers/LoginHistory.h>
@@ -125,6 +126,7 @@
 #include <helpers/UserGpioReplyTracker.h>
 #endif
 #include <helpers/IdentityStore.h>
+#include <helpers/RepeaterScheduleStore.h>
 #include <helpers/SimpleMeshTables.h>
 #include <helpers/StaticPoolPacketManager.h>
 #include <helpers/StatsFormatHelper.h>
@@ -160,7 +162,6 @@ struct RepeaterStats {
 
 struct NeighbourInfo {
   mesh::Identity id;
-  uint32_t advert_timestamp;
   uint32_t heard_timestamp;
   int8_t snr; // multiplied by 4, user should divide to get float value
 #if defined(WITH_MQTT_NEIGHBORS)
@@ -308,8 +309,11 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
     , public WebConfigServer::Callbacks
 #endif
 {
+#if MESH_ENABLE_FLOOD_PROFILE_POLICY
+  mesh::flood_profiles::DeferredFloods* deferred_floods_ = nullptr;
+#endif
   struct ScheduledRadioSetting {
-    // RAM only: group aligned fields to keep each schedule within 32 bytes.
+    // Runtime deadlines are RAM only; permanent UTC tuples have a separate store.
     uint64_t hard_end_uptime_millis;
     float freq;
     float bw;
@@ -714,6 +718,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   bool scheduled_temp_radio_end_check_final;
   uint8_t scheduled_radio_retry_failures;
   ScheduledRadioSetting scheduled_radio_settings[MAX_SCHEDULED_RADIO_SETTINGS];
+  mesh::RepeaterScheduleStore<ScheduledRadioSetting, MAX_SCHEDULED_RADIO_SETTINGS_PER_TYPE> scheduled_radio_store;
 #if MESH_ENABLE_FLEET_CONTROL
   // One verified fleet schedule waits for its own physical acknowledgement.
   ScheduledRadioSetting fleet_schedule_setting_{};
@@ -721,6 +726,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   int fleet_schedule_slot_ = -1;
   bool fleet_command_ = false, fleet_schedule_pending_ = false;
   bool fleet_schedule_delivered_ = false, fleet_schedule_delete_all_temp_ = false;
+  bool fleet_schedule_persisted_ = false, fleet_schedule_cancelled_ = false;
   void serviceFleetScheduleReply();
 #endif
   uint8_t _ota_update_channel = 0;  // Snapshot: later ota branch commands cannot retarget a queued update
@@ -808,6 +814,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   // Retry ESP-NOW without taking over an active OTA session. MQTT creates its
   // WiFi task asynchronously, so it must first associate on the shared channel.
   bool startSharedEspNowBridgeIfReady() {
+    if (mesh::wireless::control().blocked(mesh::wireless::EspNow)) return false;
 #ifdef WITH_WEBCONFIG
     if (_unconfigured_setup_espnow_suspended) return false;
 #endif
@@ -1041,6 +1048,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   bool applySavedRadioParams();
   void queueSavedRadioApply();
   void refreshScheduledRadioState();
+  bool saveScheduledRadioSettings(int replacement_slot = -1,
+      const ScheduledRadioSetting* replacement = nullptr, const uint8_t* deleted = nullptr);
+  bool scheduledRadioClockReady() const;
   void processScheduledRadioSettings(bool tx_gap = false);
   bool isMillisTimerDue(unsigned long timestamp) const;
   bool floodChannelDataHopApplies(const mesh::Packet* packet) const;
@@ -1188,6 +1198,9 @@ protected:
   }
 
   bool allowPacketForward(const mesh::Packet* packet) override;
+#if MESH_ENABLE_FLOOD_PROFILE_POLICY
+  bool deferredFloodCandidate(const mesh::Packet* packet, uint8_t ingress, bool consume) override;
+#endif
   bool allowPacketTransmit(const mesh::Packet* packet) const override;
 #if MESH_DEBUG || MESH_ENABLE_PACKET_FILE_LOGGING \
     || (MESH_PACKET_LOGGING && !MESH_PACKET_LOGGING_COMPACT)
@@ -1287,6 +1300,9 @@ public:
 #endif
   MyMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
   ~MyMesh() {
+#if MESH_ENABLE_FLOOD_PROFILE_POLICY
+    delete deferred_floods_;
+#endif
 #ifdef WITH_UDP_BRIDGE
     delete udp_bridge;
 #endif
@@ -1296,7 +1312,7 @@ public:
   MyMesh& operator=(const MyMesh&) = delete;
 
   bool prepareStartupStorage();
-  void begin(FILESYSTEM* fs);
+  void begin(FILESYSTEM* fs, bool durable = true);
   void sendNodeDiscoverReq();
   const char* getFirmwareVer() override { return FIRMWARE_VERSION; }
   const char* getBuildDate() override { return FIRMWARE_BUILD_DATE; }
@@ -1344,6 +1360,33 @@ public:
   MQTTPrefs* getObserverPrefs() { return _cli.getObserverPrefs(); }
 #endif
 
+#ifdef WITH_ESPNOW_BRIDGE
+  bool isEspNowEnabledPreference() const {
+#if defined(WITH_MQTT_BRIDGE) || defined(WITH_RS232_BRIDGE) || defined(ESPNOW_BRIDGE_MERGED)
+    return _prefs.espnow_bridge_enabled != 0;
+#else
+    return _prefs.bridge_enabled != 0;
+#endif
+  }
+  bool setEspNowEnabledPreference(bool enabled) {
+    const uint8_t previous_bridge = _prefs.bridge_enabled;
+    const uint8_t previous_espnow = _prefs.espnow_bridge_enabled;
+#if defined(WITH_MQTT_BRIDGE) || defined(WITH_RS232_BRIDGE) || defined(ESPNOW_BRIDGE_MERGED)
+    _prefs.espnow_bridge_enabled = enabled;
+#endif
+#if !defined(WITH_MQTT_BRIDGE) && !defined(WITH_RS232_BRIDGE)
+    _prefs.bridge_enabled = enabled;
+#endif
+    if (_cli.saveCommonPrefs()) return true;
+    _prefs.bridge_enabled = previous_bridge;
+    _prefs.espnow_bridge_enabled = previous_espnow;
+    // Publication can precede a failed verification. Confirm the previous
+    // image again before a later reboot may load it.
+    _cli.saveCommonPrefs();
+    return false;
+  }
+#endif
+
   void savePrefs(
       PrefsSaveRouting::Scope scope = PrefsSaveRouting::Scope::Common) override {
     _cli.savePrefs(_fs, scope);
@@ -1364,6 +1407,9 @@ public:
 #endif
   mesh::Radio* getProfileRadio() override { return _radio; }
   void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble = 0) override;
+#if defined(NRF52_PLATFORM)
+  bool tryApplyIdleTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble) override;
+#endif
   bool scheduleNormalRadio() override;
 #if defined(ESP32_PLATFORM) || defined(USER_GPIO_CONTROL)
   uint32_t getUserGpioRequestSource() const override {
@@ -1753,6 +1799,7 @@ public:
     && (defined(WITH_MQTT_BRIDGE) || defined(WITH_RS232_BRIDGE))
 #ifdef WITH_MQTT_BRIDGE
   bool setMqttBridgeState(bool enable) override {
+    if (enable && mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) return false;
     if (!enable) {
       if (mqtt_bridge) mqtt_bridge->end();
       _alerter.setBridge(nullptr);
@@ -1802,6 +1849,8 @@ public:
 #endif
 
   bool setEspNowBridgeState(bool enable) override {
+    if (enable && mesh::wireless::control().blocked(mesh::wireless::EspNow)
+        && !mesh::wireless::control().allowService(mesh::wireless::EspNow)) return false;
     if (!enable) {
       if (espnow_bridge.isRunning()) espnow_bridge.end();
       shared_espnow_retry_at = 0;
@@ -1828,6 +1877,7 @@ public:
 
 #ifdef WITH_MQTT_BRIDGE
   bool restartMqttBridge() override {
+    if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) return true;
 #ifdef WITH_WEBCONFIG
     if (_wc_batch_active) {
       _wc_restart_pending = true;
@@ -1850,6 +1900,9 @@ public:
 #endif
 
   bool setBridgeState(bool enable) override {
+#if defined(WITH_MQTT_BRIDGE) && !defined(WITH_ESPNOW_BRIDGE)
+    if (enable && mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) return false;
+#endif
 #ifdef WITH_MQTT_BRIDGE
     if (!enable && mqtt_bridge && mqtt_bridge->isStartPending()) mqtt_bridge->end();
     if (enable && mqtt_bridge && mqtt_bridge->isStopping()) {
@@ -1964,6 +2017,9 @@ public:
   }
 
   bool restartBridge() override {
+#if defined(WITH_MQTT_BRIDGE) && !defined(WITH_ESPNOW_BRIDGE)
+    if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) return true;
+#endif
 #if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
 #ifdef WITH_WEBCONFIG
     if (_wc_batch_active) {

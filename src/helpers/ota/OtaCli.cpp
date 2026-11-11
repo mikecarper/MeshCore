@@ -319,7 +319,7 @@ static __attribute__((noinline)) bool handle_neighbors(
     SelfFwInfo list_self;
     bool list_has_endf = ota_self_firmware(list_self) && list_self.valid;
 #endif
-#if defined(NRF52_PLATFORM) && defined(OTA_SD_BOOTLOADER_UPDATE)
+#if defined(NRF52_PLATFORM) && (defined(OTA_SD_BOOTLOADER_UPDATE) || defined(OTA_QSPI_BOOTLOADER_UPDATE))
     SelfFwInfo list_sd_self;
     const bool list_sd_headroom = ota_self_firmware(list_sd_self) &&
         ota_bootloader_scratch_headroom_valid(
@@ -365,10 +365,13 @@ static __attribute__((noinline)) bool handle_neighbors(
         const OtaBootloaderIdentity& bid = c.bootloaderIdentity();
         installable = h->flags == (MFLAG_FULL | MFLAG_SIGNED | MFLAG_BOOTLOADER) &&
                       h->codec == CODEC_FULL &&
+                      ota_bootloader_identity_allowed_for_build(bid) &&
                       ota_bootloader_target_compatible(bid, h->target_id) &&
                       ota_bootloader_self_update_caps_valid(list_bl_update);
-#if defined(OTA_SD_BOOTLOADER_UPDATE)
+#if defined(OTA_SD_BOOTLOADER_UPDATE) || defined(OTA_QSPI_BOOTLOADER_UPDATE)
         installable = installable && list_sd_headroom;
+#endif
+#if defined(OTA_SD_BOOTLOADER_UPDATE)
 #if defined(OTA_TOWER_AUTO_STORE)
         installable = installable && c.fetch_store.usesExternal();
 #endif
@@ -444,7 +447,7 @@ bool handle_ota_command(const char* command, char* reply, mesh::MainBoard& board
 #if defined(NRF52_PLATFORM) && defined(OTA_RAK15002_SD_STORE) && !defined(OTA_SEEDER_ONLY)
   // Radio/USB startup and status remain independent of removable storage.
   // Explicit transfer/catalog/cache work may prepare it at this main-loop boundary.
-  if (!is_cmd(a, "qspi|storage|self|id|stats|pace|wire|help|?|h", &rest)) c.prepareRakStorage();
+  if (!is_cmd(a, "qspi|storage|self|id|ram|stats|pace|wire|help|?|h", &rest)) c.prepareRakStorage();
 #endif
   if (is_cmd(a, "neighbors|nbrs|updates|ls|n", &rest))
     return handle_neighbors(rest, reply, c);
@@ -464,7 +467,7 @@ static __attribute__((noinline)) bool handle_control_command(
   if (is_cmd(a, "help|?|h", &rest)) {
 #if defined(OTA_SEEDER_ONLY)
     snprintf(reply, 160,
-      "OTA seeder: status | stats | ls=find images | get <id> folder=capture | cancel | "
+      "OTA seeder: status | stats | ram | ls=find images | get <id> folder=capture | cancel | "
       "announce | folder | "
 #if defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
       "cache | "
@@ -475,15 +478,15 @@ static __attribute__((noinline)) bool handle_control_command(
 #if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
     strcpy(reply,
       "OTA: status | stats | ls | get <id> flash | install | "
-      "bootloader | cancel | announce | self | folder | config | key");
+      "bootloader | cancel | announce | self | ram | folder | config | key");
 #else
     strcpy(reply,
       "OTA: status | stats | ls | get <id> flash [rescue] | install | rescue install <hash16> | "
-      "cancel | announce | self | folder | config | key");
+      "cancel | announce | self | ram | folder | config | key");
 #endif
 #elif defined(NRF52_PLATFORM) && defined(OTA_RAK_AUTO_STORE)
     strcpy(reply,
-      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | serve | storage | folder | "
+      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | ram | serve | storage | folder | "
 #if defined(OTA_RAK15002_SD_STORE)
       "cache | "
 #endif
@@ -491,32 +494,32 @@ static __attribute__((noinline)) bool handle_control_command(
 #elif defined(NRF52_PLATFORM) && defined(OTA_QSPI_STORE)
 #if defined(OTA_QSPI_BOOTLOADER_UPDATE)
     strcpy(reply,
-      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | serve | "
+      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | ram | serve | "
       "qspi | folder | config | key");
 #else
     strcpy(reply,
-      "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | serve | qspi | "
+      "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | ram | serve | qspi | "
       "folder | config | key");
 #endif
 #elif defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
 #if defined(OTA_TOWER_AUTO_STORE)
     strcpy(reply,
-      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | serve | "
+      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | ram | serve | "
       "storage | folder | cache | config | key");
 #else
 #if defined(OTA_SD_BOOTLOADER_UPDATE)
     strcpy(reply,
-      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | serve | "
+      "OTA: status | stats | ls | get <id> flash | install | bootloader | cancel | announce | self | ram | serve | "
       "folder | cache | config | key");
 #else
     strcpy(reply,
-      "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | serve | folder | "
+      "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | ram | serve | folder | "
       "cache | config | key");
 #endif
 #endif
 #else
     snprintf(reply, 160,
-      "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | serve | folder | "
+      "OTA: status | stats | ls | get <id> flash | install | cancel | announce | self | ram | serve | folder | "
       "cache | config | key. `ota ls [page]`; folder [validate].");
 #endif
 
@@ -682,7 +685,8 @@ static __attribute__((noinline)) bool handle_control_command(
           strcpy(reply, "ERR malformed bootloader catalog row; capture it to folder for inspection");
           return true;
         }
-        if (!ota_bootloader_target_compatible(bid, seltgt)) {
+        if (!ota_bootloader_identity_allowed_for_build(bid) ||
+            !ota_bootloader_target_compatible(bid, seltgt)) {
           strcpy(reply, "ERR bootloader package does not match this installed bootloader identity");
           return true;
         }
@@ -690,7 +694,7 @@ static __attribute__((noinline)) bool handle_control_command(
           strcpy(reply, "ERR installed bootloader lacks safe LoRa bootloader-update support");
           return true;
         }
-#if defined(OTA_SD_BOOTLOADER_UPDATE)
+#if defined(OTA_SD_BOOTLOADER_UPDATE) || defined(OTA_QSPI_BOOTLOADER_UPDATE)
 #if defined(OTA_TOWER_AUTO_STORE)
         if (!c.fetch_store.usesExternal()) {
           strcpy(reply, "ERR bootloader packages require a usable SD card");
@@ -932,6 +936,18 @@ static __attribute__((noinline)) bool handle_control_command(
     sprintf(reply, "OK beacon sent (serving=%s)", c.serving ? "self fw" : "nothing");
 #endif
 
+  // ---- exact installed bootloader retained-RAM capability (read-only) ----
+  } else if (is_cmd(a, "ram", &rest)) {
+    if (*rest) {
+      strcpy(reply, "ERR usage: ota ram");
+    } else {
+#if defined(NRF52_PLATFORM)
+      ota_ram_caps_reply(reply, 160, ota_bootloader_ram_caps());
+#else
+      strcpy(reply, "OTA RAM: hybrid=0");
+#endif
+    }
+
   // ---- raw-QSPI staging diagnostics (read-only probe; preserves a latched fetch failure) ----
   } else if (is_cmd(a, "qspi|storage", &rest)) {
 #if defined(NRF52_PLATFORM) && defined(OTA_TOWER_AUTO_STORE)
@@ -1134,6 +1150,10 @@ static __attribute__((noinline)) bool handle_control_command(
         strcpy(reply, "Bootloader update unavailable: installed embedded manifest/CRC is invalid");
         return true;
       }
+      if (!ota_bootloader_identity_allowed_for_build(bid)) {
+        strcpy(reply, "Bootloader update unavailable: installed identity does not match this board");
+        return true;
+      }
       if (!ota_bootloader_self_update_caps_valid(bl)) {
         strcpy(reply, "Bootloader update unavailable: installed bootloader supports application OTA only");
         return true;
@@ -1175,6 +1195,45 @@ static __attribute__((noinline)) bool handle_control_command(
     snprintf(reply, 160, "%s | %s", ok ? "OK" : "ERR", m2);
 #else
     strcpy(reply, MESH_CLI_REPLY_TEXT("ERR this build cannot update its bootloader over LoRa", "ERR cannot update its bootloader via LoRa"));
+#endif
+
+  } else if (is_cmd(a, "installhash", &rest)) {
+    // A distinct verb is essential: older releases ignore arguments to
+    // `ota install`. Verify and apply in the same mesh-loop command so the
+    // four-byte discovery ID cannot substitute another staged package.
+    uint8_t expected[32];
+    if (!parse_hex_exact(rest, expected, sizeof(expected))) {
+      strcpy(reply, "ERR usage: ota installhash <64-hex-container-sha256>");
+      return true;
+    }
+#if defined(OTA_SEEDER_ONLY)
+    strcpy(reply, "ERR source-only; cannot install via LoRa");
+    return true;
+#elif defined(NRF52_PLATFORM) && defined(OTA_SD_STORE)
+    if (c.sdCacheFetching()) {
+      strcpy(reply, "ERR SD archive capture is active; use `ota cancel` before installing");
+      return true;
+    }
+#endif
+#if !defined(OTA_SEEDER_ONLY)
+    if (c.apply_pending || c.bootloader_apply_pending) {
+      strcpy(reply, "ERR another update is already armed");
+      return true;
+    }
+    if (c.fetch_to_folder || c.manager.fetchState() != OtaManager::COMPLETE ||
+        c.fetch_store.staged_size() == 0) {
+      strcpy(reply, "ERR no complete update in local install storage");
+      return true;
+    }
+    const VerifyResult verified = ota_verify(c.fetch_store, c.allow);
+    if (!verified.integrity_ok() || !verified.container_hash_ok ||
+        memcmp(expected, verified.container_hash, sizeof(expected)) != 0) {
+      strcpy(reply, "ERR staged package verification or hash mismatch");
+      return true;
+    }
+    char m2[100];
+    const bool ok = c.apply_fetched(m2);
+    snprintf(reply, 160, "%s | %s", ok ? "OK" : "ERR", m2);
 #endif
 
   } else if (is_cmd(a, "install|apply|applydelta", &rest)) {

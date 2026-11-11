@@ -415,9 +415,38 @@ int main() {
 
     def test_stm32_fold_matches_the_integrated_driver_capabilities(self):
         driver = (ROOT / "src/helpers/radiolib/CustomSTM32WLxWrapper.h").read_text(encoding="ascii")
-        self.assertNotRegex(driver, r"\b(?:supportsRxBoostedGainMode|supportsRxPowerSavingRfRxDisable|supportsRxPowerSaving)\s*\(")
-        self.assertNotRegex(driver, r"\bSupportsRxPowerSaving\b")
+        start = driver.index("#if MESH_COMPACT_STM32_RADIO\n")
+        end = driver.index("#endif", start) + len("#endif")
+        compact = driver[start:end]
+        # The compact ABI fixes RXPS capability to false. The integrated
+        # driver must reject an enabled parent capability; other integrated
+        # driver controls remain inherited.
+        self.assertIn("static_assert(!SupportsRxPowerSaving,", compact)
+        self.assertRegex(extract_braced(compact, "bool supportsRxPowerSaving()"),
+                         r"^bool supportsRxPowerSaving\(\) const final\s*\{\s*return false;\s*\}$")
+        inherited = driver[:start] + driver[end:]
+        self.assertNotRegex(inherited, r"\b(?:supportsRxBoostedGainMode|supportsRxPowerSavingRfRxDisable|supportsRxPowerSaving)\s*\(")
+        self.assertNotRegex(inherited, r"\bSupportsRxPowerSaving\b")
         self.assertIn("#define USE_STM32WL", driver)
+        code = r'''
+#include <cassert>
+#define MESH_COMPACT_STM32_RADIO 1
+struct Base {
+  static constexpr bool SupportsRxPowerSaving = false;
+  bool supportsRxPowerSaving() const { return false; }
+};
+struct Integrated : Base {
+''' + compact + r'''
+};
+int main() { Integrated radio; Base& base = radio; assert(!base.supportsRxPowerSaving() && !radio.supportsRxPowerSaving()); }
+'''
+        self.compile_run(code)
+        rejected = subprocess.run([
+            os.environ.get("CXX", "g++"), "-std=c++17", "-fsyntax-only", "-x", "c++", "-",
+        ], input=code.replace("SupportsRxPowerSaving = false", "SupportsRxPowerSaving = true"),
+            text=True, capture_output=True)
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("Compact STM32WL must update its RXPS policy API before enabling RXPS", rejected.stderr)
 
     def test_pending_radio_settings_keep_all_infrastructure_roles_awake(self):
         for role, name in (("simple_repeater", "MyMesh"), ("simple_room_server", "MyMesh"),

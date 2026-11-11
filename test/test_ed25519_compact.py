@@ -184,6 +184,31 @@ void public_from_scalar(unsigned char *out, const unsigned char *scalar) {
         stm32_base = platformio.split("[stm32_base]", 1)[1].split("\n[", 1)[0]
         self.assertIn("-D ED25519_COMPACT_BASE=1", stm32_base)
 
+    def test_compact_signing_does_not_retain_verifier_table(self):
+        # A build which signs but does not use the C verifier should retain
+        # only the single 120-byte public basepoint, not the verifier table.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            main = root / "main.c"
+            main.write_text("int main(void) { return 0; }\n")
+            for needs_verify in (False, True):
+                binary = root / ("verify" if needs_verify else "sign")
+                retained = ["-Wl,-u,ed25519_create_keypair"]
+                if needs_verify:
+                    retained.append("-Wl,-u,ed25519_verify")
+                subprocess.run(
+                    ["cc", "-std=c99", "-Os", "-flto",
+                     "-ffunction-sections", "-fdata-sections",
+                     "-DED25519_COMPACT_BASE=1", "-DED25519_NO_SEED=1",
+                     "-I" + str(ED25519), str(main),
+                     *(str(source) for source in SOURCES),
+                     "-Wl,--gc-sections", *retained, "-o", str(binary)],
+                    check=True)
+                symbols = subprocess.check_output(["nm", "-S", str(binary)], text=True)
+                names = {line.split()[-1] for line in symbols.splitlines() if line.split()}
+                self.assertIn("compact_basepoint", names)
+                self.assertEqual("Bi" in names, needs_verify)
+
     def test_standard_and_compact_paths_match_rfc8032(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             for label, extra_flags in (

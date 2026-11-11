@@ -336,7 +336,8 @@ int main() {
                 capture_output=True, text=True, timeout=30,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            symbols = subprocess.run(["nm", str(folder / "slot.o")], capture_output=True, text=True, timeout=10)
+            # A loaded CI runner can delay even this small symbol inspection.
+            symbols = subprocess.run(["nm", str(folder / "slot.o")], capture_output=True, text=True, timeout=60)
             self.assertEqual(symbols.returncode, 0, symbols.stderr)
             self.assertNotIn("handleBootSlotCommand", symbols.stdout)
 

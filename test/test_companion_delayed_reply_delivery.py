@@ -21,10 +21,12 @@ SANITIZERS = (["-fsanitize=address,undefined", "-fno-sanitize-recover=all",
 
 def production_methods(source, base, packet, dispatcher):
     methods = "\n".join(extract_braced(source, signature) for signature in (
-        "void MyMesh::writeErrFrame(", "size_t MyMesh::writePendingSerialFrame(",
+        "void MyMesh::writeErrFrame(", "void MyMesh::writeOKFrame(",
+        "size_t MyMesh::writePendingSerialFrame(",
         "void MyMesh::onContactResponse(", "bool MyMesh::onContactPathRecv(",
         "void MyMesh::onTraceRecv(", "void MyMesh::clearPendingReqs(",
         "bool MyMesh::hasPendingReqs(", "bool MyMesh::beginPendingRequest(",
+        "bool MyMesh::trySendBinaryLogin(", "void MyMesh::serviceDeferredLogin(",
         "bool MyMesh::allowRequestTag(", "bool MyMesh::allocateRequestTag(",
         "void MyMesh::armPendingRequest(",
         "void MyMesh::finishPendingRequest(",
@@ -36,6 +38,7 @@ def production_methods(source, base, packet, dispatcher):
         "bool MyMesh::hasFiniteDelayedReplyForRoute(",
     ))
     terminal = "\n".join(extract_braced(source, signature) for signature in (
+        "void MyMesh::printTerminalError(",
         "void MyMesh::clearTerminalLogin(", "void MyMesh::serviceTerminalLogin(",
         "void MyMesh::clearTerminalLogin(uint32_t now)",
         "void MyMesh::sendTerminalLogin(", "void MyMesh::printTerminalSendStatus(",
@@ -70,6 +73,8 @@ def production_methods(source, base, packet, dispatcher):
                     "TELEMETRY_REQ", "BINARY_REQ", "TRACE_PATH"):
         block = extract_braced(source, "} else if (cmd_frame[0] == CMD_SEND_" + command)
         branches.append(block.replace("} else if", "if", 1) + "\n")
+    branches.append(extract_braced(source, "} else if (cmd_frame[0] == CMD_LOGOUT")
+                    .replace("} else if", "if", 1) + "\n")
     methods += "\nvoid MyMesh::handleRequestFrame(size_t len) {\n" + prefix + "\n".join(branches) + "\n}\n"
     return methods
 
@@ -84,11 +89,13 @@ def production_delayed_reply_inputs(work):
     constants = "\n".join(re.findall(
         r"^#define (?:PUSH_CODE_\w+|RESP_CODE_\w+|CMD_SEND_\w+|ERR_CODE_\w+|REQ_TYPE_GET_TELEMETRY_DATA)\s+.+$",
         source, re.MULTILINE))
+    constants += "\n" + re.search(r"^#define CMD_LOGOUT\s+.+$", source, re.MULTILINE).group()
     wanted = ("PUB_KEY_SIZE", "MAX_PACKET_PAYLOAD", "MAX_PATH_SIZE", "OUT_PATH_UNKNOWN",
               "MSG_SEND_FAILED", "MSG_SEND_SENT_DIRECT", "MSG_SEND_SENT_FLOOD",
               "PAYLOAD_TYPE_RESPONSE", "PAYLOAD_TYPE_REQ", "PAYLOAD_TYPE_ANON_REQ",
               "PAYLOAD_TYPE_ACK", "REQ_TYPE_GET_STATUS", "REQ_TYPE_GET_TELEMETRY_DATA",
-              "TELEM_PERM_BASE", "ADV_TYPE_NONE", "ADV_TYPE_ROOM", "RESP_SERVER_LOGIN_OK")
+              "TELEM_PERM_BASE", "ADV_TYPE_NONE", "ADV_TYPE_REPEATER", "ADV_TYPE_ROOM",
+              "RESP_SERVER_LOGIN_OK")
     for relative in ("examples/companion_radio/MyMesh.h", "src/MeshCore.h", "src/Packet.h", "src/helpers/BaseChatMesh.h",
                      "src/helpers/ContactInfo.h", "src/helpers/AdvertDataLayout.h",
                      "src/helpers/SensorManager.h"):
@@ -119,7 +126,7 @@ def production_delayed_reply_inputs(work):
 
 
 class CompanionDelayedReplyDeliveryTests(unittest.TestCase):
-    def run_fixture(self, legacy_trace_slot=False):
+    def run_fixture(self, legacy_trace_slot=False, legacy_login_quarantine=False):
         compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
         if compiler is None:
             self.skipTest("a host C++17 compiler is required")
@@ -127,15 +134,21 @@ class CompanionDelayedReplyDeliveryTests(unittest.TestCase):
             work = Path(directory)
             production_delayed_reply_inputs(work)
             tracker = ROOT / "src/helpers/CompanionDelayedReplies.cpp"
-            if legacy_trace_slot:
+            if legacy_trace_slot or legacy_login_quarantine:
                 source = tracker.read_text()
-                reservation = extract_braced(source, "bool CompanionDelayedReplies::reserveBinaryTrace(")
-                refusing = reservation.replace("{", "{\n  if (hasBinaryTrace()) return false;", 1)
-                source = source.replace(reservation, refusing, 1).replace(
+                if legacy_trace_slot:
+                    reservation = extract_braced(source, "bool CompanionDelayedReplies::reserveBinaryTrace(")
+                    refusing = reservation.replace("{", "{\n  if (hasBinaryTrace()) return false;", 1)
+                    source = source.replace(reservation, refusing, 1)
+                else:
+                    guard = "if (!held.completed_login || !repeat_login) return false;"
+                    self.assertIn(guard, source)
+                    source = source.replace(guard, "return false;", 1)
+                source = source.replace(
                     '#include "CompanionDelayedReplies.h"', '#include <helpers/CompanionDelayedReplies.h>')
-                tracker = work / "legacy_trace_slot.cpp"
+                tracker = work / "legacy_guard.cpp"
                 tracker.write_text(source, encoding="ascii")
-            for terminal in ((0,) if legacy_trace_slot else (0, 1)):
+            for terminal in ((0,) if legacy_trace_slot or legacy_login_quarantine else (0, 1)):
                 with self.subTest(terminal=terminal):
                     binary = work / f"delayed-{terminal}.exe"
                     compiled = subprocess.run([
@@ -154,6 +167,9 @@ class CompanionDelayedReplyDeliveryTests(unittest.TestCase):
                     if legacy_trace_slot:
                         self.assertNotEqual(checked.returncode, 0, "The old active-trace refusal unexpectedly passed")
                         self.assertIn("same-route fresh trace must supersede a pending trace", checked.stderr)
+                    elif legacy_login_quarantine:
+                        self.assertNotEqual(checked.returncode, 0, "The old completed-login quarantine unexpectedly passed")
+                        self.assertIn("held login must transmit at the three-second boundary", checked.stderr)
                     else:
                         self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
                         self.assertIn("PASS: delayed production reply delivery", checked.stdout)
@@ -163,6 +179,9 @@ class CompanionDelayedReplyDeliveryTests(unittest.TestCase):
 
     def test_old_active_slot_refusal_blocks_same_route_fresh_trace(self):
         self.run_fixture(legacy_trace_slot=True)
+
+    def test_old_login_quarantine_blocks_completed_same_session_relogin(self):
+        self.run_fixture(legacy_login_quarantine=True)
 
 
 if __name__ == "__main__":

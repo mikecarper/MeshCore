@@ -69,7 +69,30 @@ void MomentaryButton::begin() {
   }
 }
 
+void MomentaryButton::resume() {
+  begin();
+  if (_pin < 0) return;
+  if (_threshold > 0) pinMode(_pin, INPUT);
+  const int raw = _threshold > 0 ? (analogRead(_pin) < _threshold) : digitalRead(_pin);
+  prev = raw;
+  _candidate_level = raw;
+  _candidate_since = millis();
+  _debouncing = false;
+  _press_active = false;
+  _click_count = 0;
+  _last_click_time = 0;
+  _pending_click = false;
+  down_at = 0;
+  cancel = 0;
+  _ignore_until_release = isPressed(raw);
+#if MOMENTARY_BUTTON_WAKE_HOLD_MS > 0
+  _last_pressed_at = 0;
+  _wake_hold_active = false;
+#endif
+}
+
 bool  MomentaryButton::isPressed() const {
+  if (_ignore_until_release || _pin < 0) return false;
   int btn = _threshold > 0 ? (analogRead(_pin) < _threshold) : digitalRead(_pin);
   return isPressed(btn);
 }
@@ -105,7 +128,7 @@ int MomentaryButton::check(bool repeat_click) {
 #if MOMENTARY_BUTTON_WAKE_HOLD_MS > 0
   // Keep the main loop awake after button activity, including when a press
   // starts at millis zero or spans rollover. Holding/repressing extends it.
-  if (isPressed(raw_btn)) {
+  if (!_ignore_until_release && isPressed(raw_btn)) {
     _last_pressed_at = now;
     _wake_hold_active = true;
   } else if (_wake_hold_active && !isWakeHoldActive()) {
@@ -127,6 +150,12 @@ int MomentaryButton::check(bool repeat_click) {
   } else if ((uint32_t)(now - _candidate_since) >= BUTTON_DEBOUNCE_MS) {
     btn = raw_btn;
     _debouncing = false;
+  }
+
+  if (_ignore_until_release) {
+    prev = btn;
+    if (!isPressed(btn)) _ignore_until_release = false;
+    return BUTTON_EVENT_NONE;
   }
 
   if (btn != prev) {

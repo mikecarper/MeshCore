@@ -61,7 +61,10 @@ bool RAK13800EthernetInterface::storageConflict() {
   return false;
 }
 
-bool RAK13800EthernetInterface::tryEnable() {
+bool RAK13800EthernetInterface::tryEnable(bool persist) {
+#if !defined(OTA_RAK15002_SD_STORE)
+  (void)persist;
+#endif
   if (_terminalStopping) { _spiError = "terminal shutdown"; return false; }
   if (_storageFault.load()) { _spiError = "SD inserted; set eth off first"; return false; }
   const State state = _state.load();
@@ -70,6 +73,11 @@ bool RAK13800EthernetInterface::tryEnable() {
     if (!_wanted.load() || (state != State::Starting && state != State::Retrying && state != State::Online)) {
       _spiError = status(); return false;
     }
+#if defined(OTA_RAK15002_SD_STORE)
+    if (persist && (!_saveMode || !_saveMode(_saveContext, true))) {
+      _spiError = "cannot save Ethernet mode"; return false;
+    }
+#endif
     SerialEthernetInterface::enable(); return true;
   }
   if (!finishRelease()) { _spiError = "OTA storage release pending"; return false; }
@@ -86,8 +94,16 @@ bool RAK13800EthernetInterface::tryEnable() {
     _spiError = "WisBlock SPI busy"; return false;
   }
   _ownsSharedSpi = true;
+  if (persist && (!_saveMode || !_saveMode(_saveContext, true))) {
+    (void)finishRelease();
+    _spiError = "cannot save Ethernet mode"; return false;
+  }
 #endif
-  return beginHardware();
+  const bool started = beginHardware();
+#if defined(OTA_RAK15002_SD_STORE)
+  if (!started && persist) _spiError = "Ethernet startup failed; enabled setting saved";
+#endif
+  return started;
 }
 
 bool RAK13800EthernetInterface::beginHardware() {
@@ -125,16 +141,24 @@ bool RAK13800EthernetInterface::beginHardware() {
   return true;
 }
 
-bool RAK13800EthernetInterface::tryDisable() {
+bool RAK13800EthernetInterface::tryDisable(bool persist) {
+#if !defined(OTA_RAK15002_SD_STORE)
+  (void)persist;
+#endif
   if (_terminalStopping) { _spiError = "terminal shutdown"; return false; }
 #if defined(OTA_RAK15002_SD_STORE)
   if ((_ownsSharedSpi || _releasePending) && (!_canReleaseSpi || !_canReleaseSpi(_spiContext))) {
     _spiError = "OTA storage busy"; return false;
   }
+  if (persist && (!_saveMode || !_saveMode(_saveContext, false))) {
+    _spiError = "cannot save Ethernet mode"; return false;
+  }
 #endif
-  SerialEthernetInterface::disable();
+  // Base disable invokes disconnectClient(), which wakes the worker. Publish
+  // stop first so a DHCP retry cannot start another blocking vendor call.
   _wanted.store(false);
   _state.store(State::Stopping);
+  SerialEthernetInterface::disable();
   notifyWorker();
   if (finishRelease()) _state.store(State::Off);
   _spiError = status();
@@ -177,9 +201,11 @@ bool RAK13800EthernetInterface::terminalShutdown(void* context, uint32_t timeout
 
 bool RAK13800EthernetInterface::shutdownForPowerOff(uint32_t timeout_ms) {
   _terminalStopping = true;
-  SerialEthernetInterface::disable();
+  // Base disable invokes disconnectClient(), which wakes the worker. Publish
+  // stop first so a DHCP retry cannot start another blocking vendor call.
   _wanted.store(false);
   _state.store(State::Stopping);
+  SerialEthernetInterface::disable();
   notifyWorker();
   const uint32_t started = millis();
   do {

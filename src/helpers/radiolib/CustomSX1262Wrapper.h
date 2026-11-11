@@ -1,18 +1,20 @@
 #pragma once
+#include "RadioFastCode.h"
 #include "SX126xReceiveMode.h"
 
 #include "CustomSX1262.h"
-#include "RadioLibWrappers.h"
+#include "SX126xPulseWrapper.h"
 #include "ProfileSwitchTiming.h"
 #include "SX126xReset.h"
 #include "SX126xMorseRamp.h"
 #include "SX126xMorseReceiver.h"
+#include "RxpsPulseTiming.h"
 
 #ifndef USE_SX1262
 #define USE_SX1262
 #endif
 
-class CustomSX1262Wrapper : public RadioLibWrapper {
+class CustomSX1262Wrapper : public SX126xPulseWrapper<CustomSX1262> {
   bool _profile_standby_held = false;
   bool _saved_standby_xosc = false;
 
@@ -26,7 +28,12 @@ protected:
   void setDriverSwitchFeatures(uint8_t features) override {
     static_cast<CustomSX1262*>(_radio)->setProfileSwitchFeatures(features);
   }
-  int8_t readReceiveMode() override { return sx126xReceiveMode((SX126x*)_radio); }
+  int8_t readReceiveMode() override {
+#if MESH_WARM_RX_REFRESH
+    if(_rxps_pulse.owns()) return -1;
+#endif
+    return sx126xReceiveMode((SX126x*)_radio);
+  }
   void beginProfileRetune(bool continuousRx) override {
     static_cast<CustomSX1262*>(_radio)->beginProfileSwitch(continuousRx);
   }
@@ -53,6 +60,9 @@ protected:
   }
 
 public:
+#if MESH_WARM_RX_REFRESH
+  bool supportsWarmRxRefresh() const override { return true; }
+#endif
   static constexpr bool SupportsRxPowerSaving = true;
   uint32_t rxPowerSavingTransitionUs() const override {
     return static_cast<CustomSX1262*>(_radio)->getTcxoDelay() + 1000UL;
@@ -68,7 +78,7 @@ public:
     return static_cast<CustomSX1262*>(_radio)->activeRegulatorMode();
   }
   ~CustomSX1262Wrapper() { unregisterInterruptAction(); }
-  CustomSX1262Wrapper(CustomSX1262& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
+  CustomSX1262Wrapper(CustomSX1262& radio, mesh::MainBoard& board) : SX126xPulseWrapper<CustomSX1262>(radio, board) { }
 #if MESH_ENABLE_HOST_KISS
   bool supportsHostKiss() const override { return true; }
 #endif
@@ -145,7 +155,7 @@ protected:
 #endif
   }
 
-  bool applyProfileModulation(float bw, uint8_t sf, uint8_t cr) {
+  MC_RADIO_FAST_CODE_ATTR bool applyProfileModulation(float bw, uint8_t sf, uint8_t cr) {
     auto* radio = static_cast<CustomSX1262*>(_radio);
     if (getDriverSwitchFeatures() & mesh::RadioSwitchTuning::Batch)
       return radio->setLoRaModulationParams(bw, sf, cr) == RADIOLIB_ERR_NONE;
@@ -154,7 +164,7 @@ protected:
         && radio->setCodingRate(cr) == RADIOLIB_ERR_NONE;
   }
 
-  bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
+  MC_RADIO_FAST_CODE_ATTR bool applyParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
     if (static_cast<CustomSX1262*>(_radio)->profileSwitchFailed()) return false;
 #if MESH_HIL_PROFILE_TIMING
     bool success = ((CustomSX1262 *)_radio)->setFrequency(freq) == RADIOLIB_ERR_NONE;
@@ -185,6 +195,9 @@ protected:
 
 public:
   bool setCodingRate(uint8_t cr) override {
+#if MESH_WARM_RX_REFRESH
+    if(_rxps_pulse.pending) return false;
+#endif
 #if MESH_ENABLE_TX_BEACONS
     if (isBeaconRadioOwned()) return false;
 #endif
@@ -193,6 +206,9 @@ public:
   }
 
   bool isReceivingPacket() override {
+#if MESH_WARM_RX_REFRESH
+    if(_rxps_pulse.owns()) return true;
+#endif
     if (_rx_ps_armed && isChipBusy()) return false;
     return ((CustomSX1262 *)_radio)->isReceiving();
   }
@@ -200,6 +216,9 @@ public:
     return ((CustomSX1262 *)_radio)->isChipBusy();
   }
   float getCurrentRSSI() override {
+#if MESH_WARM_RX_REFRESH
+    if(_rxps_pulse.owns()) return NAN;
+#endif
     return ((CustomSX1262 *)_radio)->getRSSI(false);
   }
 
@@ -209,6 +228,9 @@ public:
   }
   uint8_t getSpreadingFactor() const override { return ((CustomSX1262 *)_radio)->spreadingFactor; }
   void powerOff() {
+#if MESH_WARM_RX_REFRESH
+    if(_rxps_pulse.pending) return;
+#endif
     if (isCarrierWaveActive()) setCarrierWave(0, 0);
     if (_rx_ps_armed) stopReceiveDutyCycle();
     ((CustomSX1262 *)_radio)->standby();
@@ -280,7 +302,72 @@ public:
   }
 
 protected:
-  int startReceiveMode() override { return startReceivePowerSaving(); }
+#if MESH_WARM_RX_REFRESH && !MESH_COMPACT_STM32_RADIO
+  bool warmRxRefreshUsesFs() const override {
+    const auto* radio=static_cast<const CustomSX1262*>(_radio);
+    const bool enabled=(radio->getProfileSwitchFeatures()&mesh::RadioSwitchTuning::Fs)!=0;
+#ifdef MC_SX1262_HIL
+    return enabled && radio->hilUseFsOnRetune;
+#else
+    return enabled;
+#endif
+  }
+  WarmRxRefresh::Outcome performWarmRxRefresh(WarmRxRefresh::Reason& reason) override {
+    auto* radio=static_cast<CustomSX1262*>(_radio);
+    if(!radio->warmRxRefreshReady()) { reason=WarmRxRefresh::Reason::Cache; return WarmRxRefresh::Outcome::Deferred; }
+    const bool saved_warm=radio->standbyXOSC;
+    radio->standbyXOSC=true;
+    beginProfileRetune(true);
+    radio->trackWarmRxRefresh(true);
+    struct Scope {
+      CustomSX1262* radio; bool saved; bool success=true;
+      Scope(CustomSX1262* r,bool previous):radio(r),saved(previous) {}
+      ~Scope() { radio->trackWarmRxRefresh(false); radio->endProfileSwitch(success); radio->standbyXOSC=saved; }
+    } scope(radio,saved_warm);
+    _warm_refresh.attempting=true;
+    const uint8_t resume=beginReconfigure();
+    _warm_refresh.attempting=false;
+    if(resume==2) {
+      // Preserve a FIFO completing during standby. Never rearm on this path.
+      reason=WarmRxRefresh::Reason::Packet;
+      return WarmRxRefresh::Outcome::Deferred;
+    }
+    if(resume!=1) {
+      scope.success=false; reason=WarmRxRefresh::Reason::Command;
+      const int16_t error=radio->profileSwitchFailed()?radio->warmRxRefreshError():WarmRxRefresh::ContextError;
+      _warm_refresh.error(error,radio->profileSwitchFailed()?radio->warmRxRefreshStep():WarmRxRefresh::Step::Context);
+      // This transaction never changes the tuple. Even a failed standby can
+      // race a completion of that same tuple: let recvRaw verify/read it before
+      // ordinary reentry, rather than generic repair claiming its FIFO.
+      const bool packet_pending=hasPendingRadioInterrupt();
+      if(packet_pending) state=1; // STATE_RX owns the unchanged-tuple event.
+      _profile_refresh_required=_profile_repair_required=!packet_pending;
+      _profile_retry_at=millis()+250UL;
+      return WarmRxRefresh::Outcome::Failed;
+    }
+    const int16_t error=radio->startWarmRxRefreshReceive();
+    if(error!=RADIOLIB_ERR_NONE) {
+      scope.success=false; reason=WarmRxRefresh::Reason::Command;
+      _warm_refresh.error(error,radio->warmRxRefreshStep());
+      const bool packet_pending=hasPendingRadioInterrupt();
+      state=packet_pending?1:0; // Preserve a completion before bounded repair.
+      _profile_refresh_required=_profile_repair_required=!packet_pending;
+      _profile_retry_at=millis()+250UL;
+      return WarmRxRefresh::Outcome::Failed;
+    }
+    _warm_refresh.checkedWarmReceive(radio->warmRxRefreshReturnedUs());
+    state=1; // STATE_RX; checked fast SetRx succeeded, preserving IRQ events.
+    _startrx_fails=0; _rx_retry_pending=false; _rx_retry_delay_ms=0;
+    reason=WarmRxRefresh::Reason::None;
+    return WarmRxRefresh::Outcome::Applied;
+  }
+#endif
+  int startReceiveMode() override {
+#if MESH_WARM_RX_REFRESH
+    if(_rxps_pulse.pending && _rxps_pulse.phase==RxpsPulse::Phase::Packet) return pulseContinuous();
+#endif
+    return startReceivePowerSaving();
+  }
   int16_t armDutyCycle(RadioLibIrqFlags_t irq_flags, RadioLibIrqFlags_t irq_mask,
       uint32_t* effective_rx_us, uint32_t* effective_sleep_us) override {
     *effective_rx_us = _rx_ps_rx_us;
@@ -324,8 +411,17 @@ protected:
 public:
   bool supportsRxBoostedGainMode() const override { return true; }
   bool getRxBoostedGainMode() const override {
+#if MESH_WARM_RX_REFRESH
+    if(_rxps_pulse.pending) return _cur_rx_boosted_gain;
+#endif
     return ((CustomSX1262 *)_radio)->getRxBoostedGainMode();
   }
 
-  void doResetAGC() override { sx126xResetAGC((SX126x *)_radio, getRxBoostedGainMode()); }
+  void doResetAGC() override {
+    sx126xResetAGC((SX126x *)_radio, getRxBoostedGainMode()
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+        , &_agc_timing
+#endif
+    );
+  }
 };

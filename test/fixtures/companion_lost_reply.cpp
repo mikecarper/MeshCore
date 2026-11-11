@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
+#include <helpers/RadioMaintenanceCLI.h>
 
 #define PUB_KEY_SIZE 32
 #define MAX_HASH_SIZE 8
@@ -105,6 +106,11 @@ struct WebConfigServer { static constexpr uint32_t CAP_LOST_REPLY = 1UL << 18; }
 
 class MyMesh {
 public:
+  struct MaintenanceRadio {
+    bool pending=false;
+    bool isAGCMaintenancePending() const { return pending; }
+  } radio;
+  MaintenanceRadio* _radio=&radio;
   struct NoMorseReply {
     uint32_t generation() const { return 0; }
     void beginCommand(const uint8_t*) {}
@@ -444,6 +450,11 @@ static void automaticAckReceivePreservesUserExpiry() {
 
 static void localPolicyAndRemoteBoundary() {
   MyMesh m; char reply[160] = {};
+  m.radio.pending=true;
+  assert(m.handleCommand("set lost.reply yes",0,reply));
+  assert(std::string(reply)=="Error: radio maintenance pending; retry shortly");
+  assert(m._prefs.lost_reply==0&&m.saves==0);
+  m.radio.pending=false;
   assert(m.handleCommand("get lost.reply", 0, reply) && std::string(reply) == "> off");
   for (const char* value : {"no", "yes", "off"}) {
     const std::string command = std::string("set lost.reply ") + value;

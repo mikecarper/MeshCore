@@ -120,6 +120,29 @@ for target in heltec_tracker_v1_1_repeater_observer_mqtt \
   fi
 done
 
+# These exact Tracker Room Full profiles preserve all 254 neighbours and
+# source geometry while selecting the bounded source-proof implementation.
+for full in 0 1; do
+  ESP32_FULL_BUILD=$full
+  for target in heltec_tracker_v1_1_room_server_observer_mqtt \
+                heltec_tracker_v2_room_server \
+                heltec_tracker_v2_room_server_observer_mqtt \
+                heltec_tracker_v2_companion_radio_full_femon; do
+    PIO_ENV_PLATFORM_BY_NAME[$target]=ESP32_PLATFORM
+    PIO_ENV_FULL_BUILD_BY_NAME[$target]=1
+    PLATFORMIO_BUILD_FLAGS=""
+    PLATFORMIO_BUILD_UNFLAGS=""
+    apply_esp32_full_size_profile "$target"
+    expected=0
+    if [ "$full" = 1 ] && [[ "$target" == *room_server* ]]; then expected=1; fi
+    found=0
+    [[ " $PLATFORMIO_BUILD_FLAGS " == *" -DOTA_BOUNDED_SOURCE_PROOFS=1 "* ]] && found=1
+    [ "$found" = "$expected" ] || fail "$target Full=$full wrong bounded proof policy"
+    [[ " $PLATFORMIO_BUILD_FLAGS " != *" -DROOM_POSTS_RTC_SLOW_STORAGE=1 "* ]] \
+      || fail "$target unexpectedly relocated its Room posts"
+  done
+done
+
 # The exact Full TLora Room recipes keep their complete 32-post bank and
 # maximum source geometry while moving cold bytes to real RTC SLOW storage.
 for full in 0 1; do

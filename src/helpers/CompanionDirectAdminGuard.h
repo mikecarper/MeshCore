@@ -134,11 +134,15 @@ public:
     return !(path_len & 63) && packet && packet->getPathHashCount() == 0
         && packet->isRouteDirect();
   }
-  bool sendReturnPath(Mesh& mesh, const Identity& peer, uint32_t now) {
-    if (!matches(peer, now)) return false;
+  bool sendReturnPath(Mesh& mesh, const Identity& peer, uint32_t now,
+                      uint8_t tx_radio = RADIO_TX_PRIMARY) {
+    if (!matches(peer, now) || (tx_radio != RADIO_TX_PRIMARY && tx_radio != RADIO_TX_SECONDARY)) return false;
     const uint8_t empty[1] = {};
     Packet* packet = mesh.createPathReturn(peer_, secret_, empty, 0, 0, nullptr, 0);
-    if (packet) packet->tx_radio = RADIO_TX_PRIMARY;
+    if (packet) {
+      packet->tx_radio = tx_radio;
+      packet->radio_profile = packet->radio_origin = tx_radio == RADIO_TX_SECONDARY ? 1 : 0;
+    }
     if (!packet || !mesh.sendDirect(packet, nullptr, 0)) return false;
     login_ = false;
     until_ = now + LEASE_MS;

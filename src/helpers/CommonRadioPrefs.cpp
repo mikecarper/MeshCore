@@ -247,7 +247,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
         && parseDecimalStrict(parts[0], freq)
         && parseDecimalStrict(parts[1], bw)
         && parseIntStrict(parts[2], 5, 12, sf)
-        && parseIntStrict(parts[3], 5, 8, cr)
+        && parseIntStrict(parts[3], 4, 8, cr)
         && freq >= 150.0f && freq <= 2500.0f
         && isValidLoRaBandwidth(bw)) {
       setSpreadFactor(static_cast<uint8_t>(sf));
@@ -390,13 +390,14 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
     return true;
   }
 
-  if (strcmp(command, "get agc.reset.interval") == 0) {
+  if (strcmp(command, "get agc.reset.interval") == 0 || strcmp(command,"get agc")==0) {
     sprintf(reply, "> %d", (uint32_t) getAgcResetInt());
     return true;
   }
-  if (startsWith(command, "set agc.reset.interval ")) {
+  if (startsWith(command, "set agc.reset.interval ") || startsWith(command,"set agc ")) {
     int32_t seconds = 0;
-    if (parseIntStrict(command + strlen("set agc.reset.interval "), 0, 255, seconds)) {
+    const char* value=command+(startsWith(command,"set agc ")?strlen("set agc "):strlen("set agc.reset.interval "));
+    if (parseIntStrict(value, 0, 255, seconds)) {
       setAgcResetInt(static_cast<uint8_t>(seconds));
       sprintf(reply, "OK - interval rounded to %d", (uint32_t) getAgcResetInt());
     } else {

@@ -44,7 +44,8 @@ Mode mode() { return current; }
 }}
 namespace radioDirection = mesh::radioDirection;
 struct Radio {
-  bool calibrating = false;
+  bool calibrating = false, maintenance = false;
+  bool isAGCMaintenancePending() const { return maintenance; }
   bool isCalibratingNoiseFloor() const { return calibrating; }
 @DEFAULT@
 };
@@ -71,6 +72,9 @@ int main() {
   Clock clock;
   Dispatcher node{true, &legacy, &clock};
   uint32_t delay = 71;
+  legacy.maintenance=true;
+  assert(node.getNextNoiseFloorWakeDelay(delay) && delay==0 && clock.reads==0);
+  legacy.maintenance=false;delay=71;
   assert(!node.getNextNoiseFloorWakeDelay(delay) && delay == 71);
   legacy.calibrating = true;
   assert(node.getNextNoiseFloorWakeDelay(delay) && delay == 0);

@@ -169,7 +169,7 @@ public:
   uint8_t flood_max_unscoped = 0;
   uint8_t flood_max_advert = 0;
   uint8_t interference_threshold = 0;
-  uint8_t agc_reset_interval = 0; // secs / 4
+  uint8_t agc_reset_interval = 4; // 16 seconds; stored as secs / 4
   // Bridge settings
   uint8_t bridge_enabled = 0; // boolean
   uint16_t bridge_delay = 0;  // milliseconds (default 500 ms)
@@ -623,6 +623,11 @@ public:
   virtual bool saveIdentity(const mesh::LocalIdentity& new_id) = 0;
   virtual void clearStats() = 0;
   virtual void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins, uint16_t preamble = 0) = 0;
+#if defined(NRF52_PLATFORM)
+  // Atomically check for conflicting state and schedule a temporary profile.
+  // Roles without a suitable scheduler fail closed.
+  virtual bool tryApplyIdleTempRadioParams(float, float, uint8_t, uint8_t, int, uint16_t) { return false; }
+#endif
   // Status is pending only when no temporary primary tuple is already running.
   virtual bool isTempRadioPending() const { return false; }
   virtual uint32_t getTempRadioDurationSeconds() const { return 0; }

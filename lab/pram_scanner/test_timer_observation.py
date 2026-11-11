@@ -52,11 +52,12 @@ public:
   unsigned long _lab_ambiguous_recoveries=0;
   unsigned long _lab_cold_starts=0;
   mesh::w12pram::AutoPolicy _lab_auto;
+  mesh::w12pram::HandoffRetry _lab_handoff_retry;
   struct { uint32_t generation[2]={1,2}; } _profiles;
   bool _lab_resume_pending=false, _profile_repair_required=false;
   mesh::w12pram::Status _lab_status{};
   bool labReinitialize() { _lab_status={}; return true; }
-''' + definition(host, '  void labRecover(') + '\n' + definition(host, '  void labScannerRecoveryDiag(') + r'''
+''' + definition(host, '  bool labRecover(') + '\n' + definition(host, '  void labScannerRecoveryDiag(') + r'''
 };
 int main() {
   bgs b{}; b.state=3; b.last_hit=1; b.c=1; b.cads=42; b.lost_irq=0x001003A0;
@@ -77,7 +78,10 @@ int main() {
   assert(data[3]==0x06 && !mesh::w12pram::decode(data).hooked);
 
   FakeDriver driver; driver._lab_status=mesh::w12pram::decode(data);
+  driver._lab_handoff_retry.observe(1,2); driver._lab_handoff_retry.schedule(100);
+  assert(driver._lab_handoff_retry.pending());
   driver.labRecover(-705,mesh::w12pram::RecoveryOrigin::NoCad);
+  assert(!driver._lab_handoff_retry.pending()); // unrelated failure cancels stale retry
   char out[160]; driver.labScannerRecoveryDiag(out,sizeof(out));
   assert(std::strstr(out,"origin=no-cad") && std::strstr(out,"timer=armed")
       && std::strstr(out,"cached=unknown")); // reinit overwrote live status

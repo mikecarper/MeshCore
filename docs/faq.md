@@ -299,13 +299,22 @@ Best practice is when you set up a new repeater, choose a public key that is not
 
 
 ### 3.7. Q: My repeater may be suffering from deafness due to high power interference near my mesh's frequency, it is not hearing other in-range MeshCore radios. What can I do?
-**A:** This may be due to the SX1262 radio's auto gain control feature. You can use this command to periodically reset its AGC.
+**A:** Periodic receive maintenance may help; its effect depends on the radio
+and interference conditions. Configure it with:
 
 `set agc.reset.interval <number>`
 
-The `<number>` unit is in seconds and is incremented by 4. `set agc.reset.interval 4` works well to cure deafness.
+The unit is seconds, rounded down to a multiple of four. On receive-refresh
+builds, including Heltec V4, this schedules a checked sleep/wake cycle. With
+`agc.old auto`, intervals of 240 seconds or longer also run the old full-reset
+method afterward. Neither establishes a measured improvement in sensitivity.
 
-The reset is skipped while a packet is pending, being received, or being
+`set agc.old 600` instead selects an independent old reset every ten minutes;
+`set agc.old off` disables old periodic resets, including the automatic half.
+These settings are saved across reboot. See [AGC settings](cli_commands.md#view-or-change-the-agc-reset-interval)
+and the [old/new comparison](radio_agc.md).
+
+The existing full reset is skipped while a packet is pending, being received, or being
 transmitted. When safe, `RadioLibWrapper::resetAGC()` warm-sleeps the radio,
 returns the wrapper to idle so receive mode is re-armed, reapplies the cached RX
 boost setting, and starts a fresh noise-floor calibration.

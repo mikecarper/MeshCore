@@ -24,6 +24,7 @@ HARNESS = r'''
 #include <vector>
 #include <algorithm>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/CLIReplyText.h>
 #include <helpers/radiolib/RXPowerSaving.h>
 namespace mesh { enum class RadioParamApplyResult { APPLIED, BUSY, FAILED }; }
 using Apply=mesh::RadioParamApplyResult;
@@ -164,11 +165,25 @@ struct MyMesh {
   bool setGpsEnabled(bool);
   @APPLY_GPS_PREFS@
 #endif
+  void printTerminalError(const char* message);
   MyMesh& terminalOutput() { return *this; }
   void print(const char* value) { output+=value; }
+  template<typename... Args> size_t printf(const char* format,Args... args) {
+    const int count=std::snprintf(nullptr,0,format,args...);
+    assert(count>=0);
+    std::vector<char> text(size_t(count)+1);
+    assert(std::snprintf(text.data(),text.size(),format,args...)==count);
+    output.append(text.data(),size_t(count));
+    return size_t(count);
+  }
   void frame(size_t len) { @FRAMES@ }
   void web(const char* key,const char* value,char* reply) { @WEB@ }
   void terminal(const char* config) { @TERMINAL@ }
+  bool localPin(const char* command,char* reply) {
+    const size_t reply_size=160;
+    @LOCAL_PIN@
+    return false;
+  }
   bool gps(const char* gps_value,char* reply) {
 #if ENV_INCLUDE_GPS == 1
     const size_t reply_size=160;
@@ -265,6 +280,28 @@ int main() {
     MyMesh m;m.storage_accepts=save_ok;m.terminal(command);++checks;
     assert(error(m.output.c_str())!=save_ok && m.saves==1);
     if(!save_ok)m.laterSaveCannotResurrectFailure();
+  }
+  // Exercise the formatted terminal errors themselves, including the compact
+  // prose used by constrained boards. Invalid values must not touch storage.
+  const char* invalid_terminal[][2]={
+    {"af -1",MESH_CLI_REPLY_TEXT("airtime factor must be 0-9", "airtime 0-9")},
+    {"lat -91",MESH_CLI_REPLY_TEXT("latitude must be -90 to 90", "latitude -90 to 90")},
+    {"lon 181",MESH_CLI_REPLY_TEXT("longitude must be -180 to 180", "longitude -180 to 180")},
+  };
+  for(const auto& command:invalid_terminal) {
+    MyMesh m;m.terminal(command[0]);++checks;
+    assert(m.output==std::string("  ERROR: ")+command[1]+"\r\n");
+    assert(m.saves==0);m.expectOriginal();
+  }
+  // USB-only Companions retain the same saved-PIN CLI, including rollback
+  // after a storage failure and six-digit formatting of leading zeroes.
+  for(bool save_ok:{false,true}) {
+    MyMesh m;char reply[160]={};m.storage_accepts=save_ok;
+    assert(m.localPin("set pin 42",reply));++checks;
+    assert(m.saves==1 && m._prefs.ble_pin==(save_ok?42u:123456u));
+    assert(m.durable.ble_pin==m._prefs.ble_pin);
+    if(save_ok)assert(!strcmp(reply,"> pin is now 000042"));
+    else {assert(error(reply));m.laterSaveCannotResurrectFailure();}
   }
   for(const auto& bytes:std::vector<std::vector<uint8_t>>{
         {CMD_SET_PATH_HASH_MODE,0,3},{CMD_SET_TUNING_PARAMS},{CMD_SET_OTHER_PARAMS},
@@ -452,6 +489,7 @@ class CompanionPrefsTransactionTests(unittest.TestCase):
             '@APPLY_GPS_PREFS@': extract_braced(header, 'void applyGpsPrefs('),
             '@GPS_METHOD@': extract_braced(text, 'bool MyMesh::setGpsEnabled('),
             '@METHODS@': '\n'.join(extract_braced(text,sig) for sig in (
+                'void MyMesh::printTerminalError(',
                 'bool MyMesh::saveAdvertName(', 'bool MyMesh::saveAdvertLocation(',
                 'bool MyMesh::applyAndSaveRxPowerSaving(',
                 'bool MyMesh::applyAndSaveRxBoostedGain(',
@@ -464,6 +502,7 @@ class CompanionPrefsTransactionTests(unittest.TestCase):
             '@WEB@': ' else '.join(extract_braced(text,f'if ({expr})') for expr in web),
             '@TERMINAL@': ' else '.join(extract_braced(text,f'if ({expr})') for expr in terminal),
             '@GPS@': extract_braced(text,'if (gps_value)'),
+            '@LOCAL_PIN@': extract_braced(text,'if (strncmp(command, "set pin", 7) == 0'),
         }
         harness = HARNESS
         for marker,value in replacements.items():
@@ -475,11 +514,13 @@ class CompanionPrefsTransactionTests(unittest.TestCase):
             cpp.write_text(harness,encoding='utf-8')
             binary = root/('test.exe' if os.name=='nt' else 'test')
             for gps in (0,1):
-                with self.subTest(gps=gps):
-                    subprocess.run([os.environ.get('CXX','g++'),'-std=c++17','-Wall','-Wextra','-Werror',
-                                    '-Wno-sign-compare','-Wno-type-limits',f'-DENV_INCLUDE_GPS={gps}',
-                                    '-I',str(root),'-I',str(ROOT/'src'),str(cpp),'-o',str(binary)],check=True)
-                    subprocess.run([str(binary)],check=True)
+                for compact in (0,1):
+                    with self.subTest(gps=gps,compact=compact):
+                        subprocess.run([os.environ.get('CXX','g++'),'-std=c++17','-Wall','-Wextra','-Werror',
+                                        '-Wno-sign-compare','-Wno-type-limits',f'-DENV_INCLUDE_GPS={gps}',
+                                        f'-DMESH_CLI_COMPACT_REPLIES={compact}',
+                                        '-I',str(root),'-I',str(ROOT/'src'),str(cpp),'-o',str(binary)],check=True)
+                        subprocess.run([str(binary)],check=True)
 
 
 if __name__=='__main__':

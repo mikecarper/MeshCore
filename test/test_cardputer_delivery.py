@@ -347,11 +347,13 @@ struct MyMesh {''')
   void writeOKFrame() { ++ok; }
   void writeErrFrame(int) { ++errors; }
   void appChannel(size_t len);
+  void printTerminalError(const char*);
   void sendTerminalChannelMessage(ChannelDetails&,const char*,uint8_t);
 ''')
         app = body(source, "} else if (cmd_frame[0] == CMD_SEND_CHANNEL_TXT_MSG)")
         app = "void MyMesh::appChannel(size_t len) " + app[app.index("{"):]
-        methods = app + "\n" + body(source, "void MyMesh::sendTerminalChannelMessage(")
+        methods = (app + "\n" + body(source, "void MyMesh::printTerminalError(")
+                   + "\n" + body(source, "void MyMesh::sendTerminalChannelMessage("))
         exercise = r'''
 int main() {
   MyMesh m; strcpy(m.configured.name,"#mt-longfast");

@@ -67,7 +67,7 @@ void structuralStorage() {
     uint8_t* record = bytes.data() + 8;
     switch (fault) {
       case 0: record[10] = 255; break; // Invalid SF.
-      case 1: record[11] = 4; break; // Invalid coding rate.
+      case 1: record[11] = 3; break; // Below the CR4/4 lower bound.
       case 2: {
         const float bw = 123;
         std::memcpy(record + 4, &bw, 4); break;

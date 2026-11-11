@@ -8,6 +8,7 @@
 
 #if MESH_HIL_PROFILE_TIMING
 #include <stdint.h>
+#include "ESP32RadioCacheTiming.h"
 #include "NrfRadioIrqObserver.h"
 
 #ifndef MESH_HIL_PROFILE_HISTOGRAM_COUNT
@@ -109,6 +110,9 @@ inline void begin(uint8_t from, uint8_t to, uint32_t now_ticks) {
   auto& work = mesh_hil_profile_timing_work;
   work.active = from < 2 && to < 2 && from != to;
   if (!work.active) return;
+#if defined(MESH_HIL_ESP_CACHE_TIMING) && MESH_HIL_ESP_CACHE_TIMING
+  mesh::radio_cache_timing::begin();
+#endif
   work.direction = from;
 #if MESH_HIL_IRQ_TIMING
   // Establish a coherent IRQ counter/time baseline before radio work. This
@@ -159,6 +163,9 @@ class ReconfigureScope {
 inline void finish(Result result, uint32_t now_ticks) {
   auto& work = mesh_hil_profile_timing_work;
   if (!work.active) return;
+#if defined(MESH_HIL_ESP_CACHE_TIMING) && MESH_HIL_ESP_CACHE_TIMING
+  mesh::radio_cache_timing::finish(result == Success);
+#endif
   work.active = 0; // restoration or other applyParams calls cannot append
   work.duration_us[Whole] = (now_ticks - work.start_ticks) / ClockDivisor;
   work.mask |= uint32_t(1) << Whole;

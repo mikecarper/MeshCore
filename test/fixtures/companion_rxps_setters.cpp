@@ -8,6 +8,8 @@
 #include <vector>
 #include <helpers/CLICommandUtils.h>
 #include <helpers/CompanionHardwareCommandCompat.h>
+#include <helpers/CompanionFrameLimits.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include <helpers/radiolib/RXPowerSaving.h>
 #include "usb_mode_console.h"
 
@@ -40,7 +42,9 @@ struct Driver {
     return accepted;
   }
 } radio_driver;
-struct BaseSerialInterface {};
+struct BaseSerialInterface {
+  size_t usbRawPacketReceiveCapacity() const { return MAX_FRAME_SIZE; }
+};
 struct SerialTransport {
   BaseSerialInterface requester, other;
   BaseSerialInterface* current = &requester;
@@ -54,6 +58,11 @@ struct SerialTransport {
   }
 };
 struct MyMesh {
+  struct MockRadio {
+    bool pending = false;
+    bool isAGCMaintenancePending() const { return pending; }
+  } mock_radio;
+  MockRadio* _radio = &mock_radio;
   Prefs _prefs, durable;
   SerialTransport serial;
   SerialTransport* _serial = &serial;
@@ -101,6 +110,18 @@ static bool error(const std::string& reply) {
   return reply.find("Error") != std::string::npos || reply.find("ERROR") != std::string::npos;
 }
 int main() {
+  {
+    MyMesh node;
+    node.mock_radio.pending = true;
+    const std::string blocked = node.run("A7|set radio.rxps level 3 preamble 16");
+    assert(blocked == "A7|Error: radio maintenance pending; retry shortly");
+    assert(node.saves == 0 && radio_driver.calls == 0);
+    assert(same(node._prefs, Prefs()) && same(node.durable, Prefs()));
+    node.mock_radio.pending = false;
+    node.serial.current = &node.serial.requester;
+    assert(node.run("A7|set radio.rxps level 3 preamble 16").find("A7|OK - ") == 0);
+    assert(node.saves == 1 && radio_driver.calls == 1);
+  }
   for (bool nul : {false, true}) {
     for (const char* value : {"off", "on", "level 3 preamble 16", "level 8 preamble 32", "65625 60000"}) {
       MyMesh node;

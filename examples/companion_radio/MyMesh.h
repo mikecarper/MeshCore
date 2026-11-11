@@ -37,6 +37,7 @@
 #include <helpers/TempRadioReplyBarrier.h>
 #include <helpers/MeshtextConfig.h>
 #include <helpers/HostKiss.h>
+#include <helpers/RadioProbeObserver.h>
 #if MESH_ENABLE_ETHERNET_TUNNEL
 #include <helpers/EthernetTunnelSettings.h>
 #include <helpers/esp32/EthernetKissServer.h>
@@ -47,6 +48,7 @@ namespace mesh { class BeaconManager; }
 #include <helpers/MeshtextDelivery.h>
 #endif
 #include <helpers/CompanionNotificationPolicy.h>
+#include <helpers/CustomPeripheralConfig.h>
 #include "NodePrefs.h"
 
 #if defined(ESP32_PLATFORM) && defined(WIFI_SSID) && !defined(WEBCONFIG_DISABLED)
@@ -248,7 +250,13 @@ public:
   bool hasFiniteDelayedReplyForRoute(BaseSerialInterface* route) const;
   void resetUsbHostSessionInput();
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
-  void setDirectAdminUsbRoute(BaseSerialInterface* route) { _ota_direct_usb_route = route; }
+  void setDirectAdminUsbRoute(BaseSerialInterface* route) {
+    if (route != _ota_direct_usb_route) {
+      closeDirectOtaAdmin();
+      _ota_direct_radio_profile = 0;
+    }
+    _ota_direct_usb_route = route;
+  }
 #endif
 
   const char *getNodeName();
@@ -330,6 +338,11 @@ public:
   void melody(const char* text) override;
   void screen(int8_t mode) override;
   bool save(const mesh::notify::Settings& settings) override;
+#if MESH_CUSTOM_PERIPHERALS
+  bool notificationGpioMask(const mesh::notify::Settings& settings, uint64_t& mask) const;
+  void releaseNotificationGpio(uint64_t mask);
+  bool claimNotificationGpio();
+#endif
   bool notificationButton() { return _notifications.button(); }
   void setNotificationOutputMute(mesh::notify::Output output, bool muted);
   #else
@@ -338,6 +351,9 @@ public:
   #endif
   bool handleNotificationCommand(const char* command, char* reply, size_t size);
   bool handleAlertCommand(const char* command, char* reply, size_t size);
+#if MESH_CUSTOM_PERIPHERALS
+  void notifyCustomMessage(bool channel);
+#endif
 #if defined(WIO_E5_MINI_HEADLESS_COMPANION_UI)
   bool handleCompactLedCommand(const char* command, char* reply, size_t size);
 #endif
@@ -369,6 +385,7 @@ public:
   void setTerminalInputEditing(const Stream& output, bool editing) {
     if (_terminal_output == &output) _terminal_input_editing = editing;
   }
+  void printTerminalError(const char* message);
   void handleTerminalCommand(char* command, bool reader_prompt = true,
                              mesh::ReaderTryWrite reader_try_write = nullptr);
 #if COMPANION_FEATURE_NETWORK_TERMINAL || defined(WITH_WEBCONFIG)
@@ -515,6 +532,11 @@ protected:
                         bool is_emergency_channel, bool notify = true);
   void seedEmergencyChannelNotice(uint8_t index, const ChannelDetails& previous);
   void servicePendingChannelNotices();
+#if defined(BLE_PIN_CODE)
+  bool sendCommonBlePinWarning(BaseSerialInterface* route);
+  void scheduleCommonBlePinWarning(BaseSerialInterface* route);
+  void serviceCommonBlePinWarning();
+#endif
   int findChannelIdxForPacket(const mesh::GroupChannel& channel, const mesh::Packet* packet);
   bool allowFloodRetry(const mesh::Packet* packet) const override;
   uint8_t getFloodRetryMaxPathLength(const mesh::Packet* packet) const override;
@@ -691,11 +713,19 @@ public:
   bool canRecoverUsbLogging() const;
 
 private:
+#if MESH_ENABLE_RADIO_PROBE_OBSERVER
+  mesh::RadioProbeObserver _radio_probe;
+#endif
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
   mesh::CompanionDirectAdminGuard _ota_direct_admin;
   ContactInfo _ota_direct_contact;
   ContactInfo* _ota_direct_transient = nullptr;
   BaseSerialInterface* _ota_direct_usb_route = nullptr;
+  bool _ota_direct_radio_owned = false;
+  uint8_t _ota_direct_radio_profile = 0;
+  uint32_t _ota_direct_radio_generation = 0;
+  bool directOtaRadioEligible(uint8_t profile) const;
+  bool directOtaRadioCurrent() const;
   void closeDirectOtaAdmin();
   bool handleDirectOtaFrame(size_t len);
   bool handleDirectOtaCommand(const char* command, uint32_t timestamp, char* reply, size_t capacity);
@@ -714,6 +744,10 @@ private:
     preference = previous;
     return false;
   }
+#if defined(BLE_PIN_CODE)
+  bool applyAndSaveBLEPin(uint32_t pin);
+  void servicePendingBLEPinRestore();
+#endif
   bool saveAdvertName(const char* name);
   bool saveAdvertLocation(double latitude, double longitude);
   void writeOKFrame(BaseSerialInterface* route = nullptr);
@@ -833,7 +867,12 @@ private:
   void servicePendingSerialReply();
   void servicePendingSerialReply(uint32_t now);
   bool beginPendingRequest(mesh::CompanionDelayedReplies::Kind kind,
-                           const ContactInfo& contact, bool terminal = false);
+                           const ContactInfo& contact, bool terminal = false,
+                           const char* login_password = nullptr,
+                           BaseSerialInterface* reply_route = nullptr);
+  bool trySendBinaryLogin(const uint8_t* pub_key, const char* password,
+                           BaseSerialInterface* route);
+  void serviceDeferredLogin(uint32_t now);
   void armPendingRequest(uint32_t tag, uint32_t timeout, bool flood);
   void finishPendingRequest(int result, uint32_t tag, uint32_t timeout);
   void abandonPendingRequest();
@@ -971,6 +1010,20 @@ private:
   uint32_t _iter_table_revision;
   uint32_t _most_recent_lastmod;
   uint32_t _active_ble_pin;
+#if defined(BLE_PIN_CODE)
+  bool _ble_pin_apply_failed = false;
+  bool _ble_random_default = false;
+  bool _ble_pin_restore_pending = false;
+  uint32_t _ble_pin_restore = 0;
+  uint32_t _ble_pin_restore_last_retry = 0;
+  bool _using_common_ble_pin = false;
+  bool _common_ble_pin_warning_pending = false;
+  bool _common_ble_pin_warning_sent = false;
+  bool _common_ble_pin_warning_in_flight = false;
+  uint8_t _common_ble_pin_warning_pushes = 0;
+  uint32_t _common_ble_pin_warning_last_push = 0;
+  BaseSerialInterface* _common_ble_pin_warning_route = nullptr;
+#endif
   bool _iter_started;
   bool _iter_start_pending;
   bool _iter_contact_pending;
@@ -1045,7 +1098,7 @@ private:
 
   TransportKey send_scope;
 
-  uint8_t cmd_frame[MAX_FRAME_SIZE + 1];
+  uint8_t cmd_frame[BaseSerialInterface::MAX_USB_RAW_FRAME_SIZE + 1];
   uint8_t out_frame[MAX_FRAME_SIZE + 1];
   CayenneLPP telemetry;
 

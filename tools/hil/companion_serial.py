@@ -103,6 +103,12 @@ class Companion:
                 continue
             if frame[0] == 1:
                 raise Failure("Companion command rejected, error " + str(frame[1:2].hex()))
+            # A late startup reply can cross the next startup query. Ignore
+            # only that opposite reply type, without resending or extending
+            # the original deadline; every other response remains strict.
+            if ((payload[0] == 1 and 5 in expected and 13 not in expected and frame[0] == 13)
+                    or (payload[0] == 22 and 13 in expected and 5 not in expected and frame[0] == 5)):
+                continue
             check(frame[0] in expected, "unexpected Companion response " + str(frame[0]))
             return frame
         raise Failure("Companion response timeout for command " + str(payload[0]))

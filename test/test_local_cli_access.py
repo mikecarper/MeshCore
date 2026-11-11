@@ -22,7 +22,9 @@ PREAMBLE = r'''
 #include <string>
 #define TBEAM_SX1262 1
 #include <helpers/CLICommandUtils.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include <helpers/RadioProfileCommandUtils.h>
+#include <helpers/BaseSerialInterface.h>
 #include <helpers/BatteryChargeCLI.h>
 #include <helpers/CompanionLostReply.h>
 #include <helpers/CompanionTimezonePrefs.h>
@@ -49,9 +51,19 @@ struct MorseReplyHandoff {
 };
 template <typename Radio>
 bool handleMorseReplyCommand(MorseReplyHandoff&, Radio*, const char*, char*, size_t, uint32_t) { return false; }
+// Saved AGC parsing/storage runs in its dedicated persistence and bridge
+// suites. Like other maintenance seams here, decline commands without
+// claiming success, emitting a reply, or changing the access-test state.
+template <typename Radio>
+bool handleStoredOldAGCCommand(Radio*, const char*, char*, size_t) { return false; }
+template <typename Radio>
+bool handleAGCMaintenanceCommand(Radio*, const char*, uint32_t, char*, size_t) { return false; }
 struct RadioProfileCLI {
   bool remote_origin=false;
-  bool handle(const char*, char*, size_t, bool remote=false) { remote_origin=remote;return false; }
+  float primary_frequency=0;
+  bool handle(const char*, char*, size_t, bool remote=false, const float* primary=nullptr) {
+    assert(primary); primary_frequency=*primary; remote_origin=remote; return false;
+  }
   static bool parseSuffix(const char* input, unsigned fields, char* legacy, size_t size, uint16_t& preamble) {
     return cli::parseRadioPreambleSuffix(input, fields, legacy, size, preamble);
   }
@@ -133,6 +145,7 @@ struct Radio {
   mesh::RadioParamApplyResult accepted=mesh::RadioParamApplyResult::APPLIED;
   int8_t power=10;
   bool power_verified=true;
+  bool isAGCMaintenancePending() const {return false;}
   bool isTxPowerValid(int8_t) const {return true;}
   bool isTxPowerApplied(int8_t requested) const {return power_verified && power==requested;}
   bool setTxPower(int requested){power=requested;power_verified=true;return true;}
@@ -171,7 +184,8 @@ struct MyMesh : CompanionFleetFixture {
   struct {char mqtt_slot_password[2][64]={"mqtt-secret","other"};
           char mqtt_slot_token[2][64]={"mqtt-token","other-token"};} _mqtt_prefs;
   unsigned dirty_contacts_expiry=1; uint8_t dirty_contacts_failures=1;
-  int value=0; int* _ms=&value; int* _radio=&value; int* _mgr=&value;
+  int value=0; int* _ms=&value; Radio* _radio=&radio_driver; int* _mgr=&value;
+  BaseSerialInterface* _serial=nullptr;
   uint16_t _err_flags=0;
   bool _radio_available=false, save_ok=true;
   bool saved_radio_apply_pending=false, command_radio_apply_pending=false, tx_power_apply_pending=false;
@@ -280,12 +294,15 @@ int main() {
     assert(!strstr(reply,"secret") && !strstr(reply,"token") && !strstr(reply,"A5A5"));
   }
   const unsigned preset_calls=node._radio_presets.local_calls;
+  const float previous_primary=node._prefs.freq;
   assert(node.handleCommand("set freq 915.25",0,reply));
   assert(!node._radio_profiles.remote_origin);
+  assert(node._radio_profiles.primary_frequency==previous_primary);
   assert(node._radio_presets.local_calls==preset_calls+1);
   assert(node._prefs.freq==915.25f && !strncmp(reply,"OK",2));
   assert(node.handleCommand("set freq 920",100,reply));
   assert(node._radio_profiles.remote_origin);
+  assert(node._radio_profiles.primary_frequency==915.25f);
   assert(node._radio_presets.local_calls==preset_calls+1); // never over LoRa
   assert(node._prefs.freq==920.0f && !strcmp(reply,"OK"));
   for(uint32_t stamp:{0u,100u}) {
@@ -402,6 +419,7 @@ class LocalCliAccessTest(unittest.TestCase):
 #include <initializer_list>
 #define MAX_LORA_TX_POWER 22
 #include <helpers/CLICommandUtils.h>
+#include <helpers/RadioMaintenanceCLI.h>
 #include <helpers/radiolib/RadioPowerLimits.h>
 struct Prefs {
   float freq=910.525f,bw=62.5f;
@@ -531,9 +549,10 @@ int main() {
             header, "template <typename T> bool savePreference("))
         for export, webconfig, hil in product((0, 1), (False, True), (False, True)):
             with self.subTest(export=export, webconfig=webconfig, hil=hil), tempfile.TemporaryDirectory() as temp:
+                (Path(temp)/"Arduino.h").write_text('#pragma once\n#include <cstddef>\n#include <cstdint>\n',encoding='ascii')
                 binary = Path(temp) / "test"
                 result = subprocess.run([
-                    "c++", "-std=c++17", "-x", "c++", "-", "-I"+str(ROOT / "src"),
+                    "c++", "-std=c++17", "-x", "c++", "-", "-I"+temp, "-I"+str(ROOT / "src"),
                     "-I"+str(ROOT / "test/fixtures"),
                     "-DENABLE_PRIVATE_KEY_EXPORT="+str(export),
                     "-DMESH_ENABLE_LOST_REPLY=1",

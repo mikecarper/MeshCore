@@ -96,8 +96,8 @@
   });
 
   const INSTALL_ORDER = Object.freeze([
-    "merged-bin",
     "bin",
+    "merged-bin",
     "zip",
     "uf2",
     "hex",
@@ -2283,10 +2283,12 @@
     const byKind = {
       "merged-bin": [
         "Flash the merged image over a data-capable USB connection.",
-        "Use this path for first installation, recovery, or a partition migration. Erase flash only when you intend to reset saved data.",
+        "Use for first installation or recovery. A merged image can overwrite settings and Bluetooth pairings even without a separate erase.",
+        "For a partition change, check the migration guide for a settings-preserving expansion image.",
       ],
       bin: [
         "Use this app-only image for the exact board and role, with compatible installed application slots large enough for the image.",
+        "This normally keeps saved settings and pairings when the Bluetooth stack and storage layout stay the same.",
         "Do not use an app-only image to migrate partition layouts.",
       ],
       zip: [

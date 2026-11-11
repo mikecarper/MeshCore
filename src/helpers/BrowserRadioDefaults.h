@@ -67,7 +67,7 @@ inline bool decode(const uint8_t* p, size_t length, Settings& result) {
   next.preamble = read16(p + 36);
   next.txOverride = (flags & 2U) != 0;
   if (next.frequencyHz < 150000000U || next.frequencyHz > 2500000000U
-      || next.sf < 5 || next.sf > 12 || next.cr < 5 || next.cr > 8
+      || next.sf < 5 || next.sf > 12 || next.cr < 4 || next.cr > 8
       || (next.preamble && (next.preamble < 8 || next.preamble > 65528))
       || (!next.txOverride && p[34])
       || (next.txOverride && (next.txPowerDbm < -9 || next.txPowerDbm > 40)))

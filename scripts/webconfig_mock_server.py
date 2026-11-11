@@ -355,7 +355,7 @@ def apply_set(cfg, key, val):
             f, bw, sf, cr = float(f), float(bw), int(sf), int(cr)
         except ValueError:
             return False, "Error, invalid radio params"
-        if not (150 <= f <= 2500 and 7 <= bw <= 500 and 5 <= sf <= 12 and 5 <= cr <= 8):
+        if not (150 <= f <= 2500 and 7 <= bw <= 500 and 5 <= sf <= 12 and 4 <= cr <= 8):
             return False, "Error, invalid radio params"
         cfg["radio"].update(freq=f, bw=bw, sf=sf, cr=cr)
         return True, "OK - reboot to apply"

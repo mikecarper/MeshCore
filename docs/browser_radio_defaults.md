@@ -47,7 +47,7 @@ The disabled template has flags and all bytes 24–59 zero. Its CRC is
 values, corrupt CRCs and unsupported tuples are ignored as a whole; firmware
 does not partially adopt a record. TX override without the enable flag is invalid.
 
-Enabled records require frequency 150–2500 MHz, SF 5–12, CR 5–8, preamble zero
+Enabled records require frequency 150–2500 MHz, SF 5–12, CR 4–8, preamble zero
 or 8–65528 symbols, and one of these bandwidths in Hz:
 
 `7800, 10400, 15600, 20800, 31250, 41700, 62500, 125000, 250000, 500000`.

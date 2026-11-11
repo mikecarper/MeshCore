@@ -95,10 +95,12 @@ class MiniRepeaterProfileTest(unittest.TestCase):
                         if path == ROOT / "variants/wio-e5-mini/platformio.ini" and name == SECTION:
                             continue
                         self.assertNotRegex(flags, r"-D\s*" + macro + r"=0\b")
-        # Retain pre-existing trims plus the approved browser-defaults omission.
+        # Retain pre-existing trims plus the approved browser-defaults and new flood controls omissions.
         disabled = set(re.findall(r"-D\s*(MESH_ENABLE_\w+)=0\b", self.flags))
         self.assertRegex(self.flags, r"-D\s+MESH_ENABLE_BROWSER_RADIO_DEFAULTS=0\b")
+        self.assertRegex(self.flags, r"-D\s+MESH_ENABLE_FLOOD_PROFILE_POLICY=0\b")
         self.assertEqual(disabled, {*OPTIONAL_CUTS, "MESH_ENABLE_BROWSER_RADIO_DEFAULTS",
+                                    "MESH_ENABLE_FLOOD_PROFILE_POLICY",
                                     "MESH_ENABLE_CLOCK_SYNC",
                                     "MESH_ENABLE_FLOOD_GROUP_MODERATION"})
 
@@ -112,6 +114,237 @@ class MiniRepeaterProfileTest(unittest.TestCase):
         self.assertRegex(self.flags, r"-D\s+MESH_ENABLE_RECENT_REPEATERS=1\b")
         # Numeric shortcut GET is deliberately not part of this size profile.
         self.assertNotIn("NUMERIC", self.flags)
+
+    def test_compact_unsupported_agc_keeps_exact_mini_command_replies(self):
+        """Run the real compact parser for supported and malformed command keys."""
+        from test_replay_reset_integration import extract_braced
+        compiler = shutil.which("g++") or shutil.which("clang++")
+        if not compiler:
+            self.skipTest("host C++ compiler required")
+        self.assertRegex(self.flags, r"-D\s+WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC=1\b")
+        source = (ROOT / "src/helpers/CommonCLI.cpp").read_text(encoding="utf-8")
+        equals = extract_braced(source, "static bool configKeyEquals(")
+        matches = extract_braced(source, "static bool miniUnsupportedWarmAgcGet(")
+        spaces = extract_braced(source, "static const char* skipSpacesConst(")
+        set_branch = extract_braced(source, 'if (memcmp(config, "agc.old ", 8) == 0)')
+        # Keep the old-timer capability branch separate from the following
+        # compile-time shortcut for unsupported warm diagnostics.
+        start = source.index('  } else if(configKeyEquals(config,"agc.old"))')
+        end = source.index('#if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC)', start)
+        get_branch = source[start:end].replace("  } else if", "  if", 1) + "  }\n"
+        harness = r'''
+#include <cassert>
+#include <cstring>
+#include <helpers/AGCSettings.h>
+#define ATOMIC_FILE_WRITER_IMPLEMENTATION
+#include <helpers/AtomicFileWriter.h>
+#include "agc_settings_under_test.cpp"
+using Radio = mesh::Radio;
+@EQUALS@
+@MATCHES@
+@SPACES@
+struct Callbacks { Radio* radio; Radio* getProfileRadio() const { return radio; } };
+struct CLI {
+  Callbacks* _callbacks;
+  void set_old(const char* config, char* reply) {
+@SET_BRANCH@
+  }
+  void get_old(const char* config, char* reply) {
+@GET_BRANCH@
+  }
+};
+int main() {
+  assert(!miniUnsupportedWarmAgcGet(nullptr));
+  for (const char* key : {"agc.status", "agc.timing", "agc.recovery",
+                          "agc.pulse", "agc.sleep", "agc.checks", "agc.scan", "agc.status   "})
+    assert(miniUnsupportedWarmAgcGet(key));
+  for (const char* key : {"agc", "agc.reset.interval", "agc.old", "agc.old   ", "agc.old.status", "agc.oldx",
+                          "agc.status x", "agc.statusx", "agc.old\t", "other"})
+    assert(!miniUnsupportedWarmAgcGet(key));
+  MemoryFS fs; fs.rename_replaces = true;
+  Radio radio; Callbacks callbacks{&radio}; CLI cli{&callbacks};
+  assert(mesh::beginAGCSettings(&radio, &fs));
+  for (Radio* available : {&radio, static_cast<Radio*>(nullptr)}) {
+    callbacks.radio = available;
+    for (const char* command : {"agc.old ", "agc.old 0", "agc.old 999999999999"}) {
+      char reply[160] = {}; cli.set_old(command, reply); assert(!strcmp(reply, "Error: unsupported"));
+    }
+    for (const char* key : {"agc.old", "agc.old   "}) {
+      char reply[160] = {}; cli.get_old(key, reply); assert(!strcmp(reply, "Error: unsupported"));
+    }
+  }
+  assert(!radio.writes && fs.files.empty());
+  callbacks.radio = &radio; radio.supported = true;
+#if MESH_ENABLE_OLD_AGC
+  assert(mesh::beginAGCSettings(&radio, &fs));
+  radio.writes = 0;
+  char reply[160] = {}; cli.get_old("agc.old", reply); assert(!strcmp(reply, "> auto"));
+  for (const char* command : {"agc.old 0", "agc.old 16", "agc.old 86400"}) {
+    cli.set_old(command, reply); assert(!strncmp(reply, "OK - ", 5));
+    assert(strstr(reply, "(saved)"));
+    Radio rebooted; rebooted.supported = true;
+    assert(mesh::beginAGCSettings(&rebooted, &fs) && rebooted.interval == radio.interval);
+  }
+  assert(radio.interval == 86400 && radio.writes == 3);
+  for (const char* command : {"agc.old ", "agc.old -1", "agc.old 86401", "agc.old 999999999999", "agc.old 1x"}) {
+    cli.set_old(command, reply); assert(!strncmp(reply, "Error:", 6));
+    assert(radio.interval == 86400 && radio.writes == 3);
+  }
+  reply[0] = 0; cli.set_old("agc.oldx 1", reply); assert(!reply[0]);
+  cli.get_old("agc.old extra", reply); assert(!reply[0]);
+#else
+  char reply[160] = {};
+  cli.set_old("agc.old 4", reply); assert(!strcmp(reply, "Error: unsupported"));
+  cli.get_old("agc.old", reply); assert(!strcmp(reply, "Error: unsupported"));
+  assert(!radio.writes && fs.files.empty());
+#endif
+}
+'''.replace('@EQUALS@', equals).replace('@MATCHES@', matches).replace('@SPACES@', spaces).replace(
+            '@SET_BRANCH@', set_branch).replace('@GET_BRANCH@', get_branch)
+        with tempfile.TemporaryDirectory(prefix='mini-agc-unsupported-') as directory:
+            path = Path(directory)
+            (path / 'main.cpp').write_text('#include <initializer_list>\n' + harness, encoding='utf-8')
+            (path / 'Dispatcher.h').write_text(r'''#pragma once
+#include <cstdint>
+#include <cstddef>
+#include <helpers/OldAGCPolicy.h>
+namespace mesh { struct Radio {
+  bool supported = false;
+  uint32_t interval = AGC_OLD_AUTO;
+  mutable unsigned reads = 0;
+  unsigned writes = 0;
+  bool supportsOldAGC() const { return MESH_ENABLE_OLD_AGC && supported; }
+  uint32_t getOldAGCInterval() const { ++reads; return interval; }
+  bool setOldAGCInterval(uint32_t value) { ++writes; interval = value; return true; }
+  bool formatWarmRxRefresh(uint8_t,uint32_t,char*,size_t) const { return false; }
+}; }
+''', encoding='utf-8')
+            # Model only the hardware filesystem boundary; execute the actual
+            # shared CLI and atomic save code for default-off and opt-in builds.
+            store = (ROOT / 'src/helpers/AGCSettings.cpp').read_text()
+            for header in ('AGCSettings.h','CheckedSettingsFile.h',
+                           'PersistentStoreFormat.h','AtomicFileWriter.h'):
+                store = store.replace(f'#include "{header}"', f'#include <helpers/{header}>')
+            (path / 'agc_settings_under_test.cpp').write_text(store, encoding='utf-8')
+            for enabled in (0, 1):
+                with self.subTest(old_agc=enabled):
+                    result = subprocess.run([compiler, '-std=c++17', '-DSTM32_PLATFORM=1',
+                        '-DWIO_E5_MINI_COMPACT_UNSUPPORTED_AGC=1',
+                        '-DMESH_ENABLE_OLD_AGC='+str(enabled),
+                        '-I', str(path), '-I', str(ROOT / 'test/fixtures/radio_profiles/mocks'),
+                        '-I', str(ROOT / 'src'), str(path / 'main.cpp'), '-o', str(path / 'test')],
+                        capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    result = subprocess.run([str(path / 'test')], capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_mini_shortcuts_only_methods_with_inherited_noop_defaults(self):
+        """The compact route is valid only while Mini has no maintenance lease."""
+        header = (ROOT / 'src/Dispatcher.h').read_text(encoding='utf-8')
+        radio = (ROOT / 'src/helpers/radiolib/CustomSTM32WLxWrapper.h').read_text(encoding='utf-8')
+        wrapper = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.h').read_text(encoding='utf-8')
+        self.assertRegex(header, r'virtual bool isAGCMaintenancePending\(\) const \{ return false; \}')
+        self.assertRegex(header, r'virtual uint32_t agcMaintenanceRetryMs\(\) const \{ return 50; \}')
+        optional_methods = ('supportsWarmRxRefresh', 'isAGCMaintenanceActive',
+            'isAGCMaintenancePending', 'configureAGCMaintenance', 'cancelAGCMaintenance',
+            'setAGCPulseSleep', 'getAGCPulseSleep', 'setOldAGCInterval',
+            'getOldAGCInterval', 'formatWarmRxRefresh', 'periodicAGCMaintenance',
+            'agcMaintenanceRetryMs', 'periodicOldAGCMaintenance')
+        for method in optional_methods:
+            self.assertNotRegex(radio, r'\b' + method + r'\s*\(', method)
+        self.assertNotRegex(self.flags, r'-D\s+MESH_WARM_RX_REFRESH(?:=1)?(?:\s|$)')
+        warm_block = wrapper[wrapper.index('  void resetAGC() override;'):wrapper.index('  bool tryResetAGC() override;')]
+        self.assertIn('#if MESH_WARM_RX_REFRESH', warm_block)
+        self.assertIn('isAGCMaintenancePending() const override', warm_block)
+        self.assertIn('agcMaintenanceRetryMs() const override', warm_block)
+        for method in optional_methods:
+            for match in re.finditer(r'\b' + method + r'\s*\([^;{}]*\)\s*(?:const\s*)?override', wrapper):
+                self.assertIn(match.group(), warm_block, method + ' must remain behind the warm feature')
+
+    def test_compact_fem_replies_match_unavailable_board(self):
+        """Exercise original and compact production branches with no FEM or Morse."""
+        from test_replay_reset_integration import extract_braced
+        compiler = shutil.which('g++') or shutil.which('clang++')
+        if not compiler:
+            self.skipTest('host C++ compiler required')
+        board = (ROOT / 'variants/wio-e5-mini/target.h').read_text(encoding='utf-8')
+        target = (ROOT / 'variants/wio-e5-mini/target.cpp').read_text(encoding='utf-8')
+        stm = (ROOT / 'src/helpers/stm32/STM32Board.h').read_text(encoding='utf-8')
+        base = (ROOT / 'src/MeshCore.h').read_text(encoding='utf-8')
+        dispatcher = (ROOT / 'src/Dispatcher.h').read_text(encoding='utf-8')
+        morse = (ROOT / 'src/helpers/MorseRx.h').read_text(encoding='utf-8')
+        radio = (ROOT / 'src/helpers/radiolib/CustomSTM32WLxWrapper.h').read_text(encoding='utf-8')
+        wrapper = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.h').read_text(encoding='utf-8')
+        self.assertIn('WIOE5Board board;', target)
+        self.assertIn('class WIOE5Board : public STM32Board', board)
+        self.assertIn('class STM32Board : public mesh::MainBoard', stm)
+        for name in ('canControlLoRaFemLna', 'canControlLoRaFemPaGain'):
+            self.assertNotIn(name, board)
+            self.assertNotIn(name, stm)
+            self.assertRegex(base, r'virtual bool ' + name + r'\(\) const \{ return false; \}')
+        for name in ('isMorseTxActive', 'isMorseRxActive'):
+            self.assertNotIn(name, radio)
+            self.assertRegex(dispatcher, r'virtual bool ' + name + r'\(\) const \{ return false; \}')
+        self.assertRegex(wrapper, r'(?s)#if MESH_ENABLE_CARRIER_TOOLS\s+bool supportsMorseTx.*?isMorseTxActive\(')
+        self.assertRegex(wrapper, r'(?s)#if MESH_ENABLE_MORSE_RX\s+bool supportsMorseRx.*?isMorseRxActive\(')
+        self.assertRegex(self.flags, r'-D\s+MESH_ENABLE_CARRIER_TOOLS=0\b')
+        self.assertRegex(morse, r'#if defined\(STM32_PLATFORM\)\s+#define MESH_ENABLE_MORSE_RX 0')
+        source = (ROOT / 'src/helpers/CommonCLI.cpp').read_text(encoding='utf-8')
+        equals = extract_braced(source, 'static bool configKeyEquals(')
+        set_pos = source.index('  } else if (memcmp(config, "radio.fem.rxgain ", 17)')
+        set_start = source.rfind('#if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC)', 0, set_pos)
+        set_end = source.index('  } else if (strncmp(config, "radio.rxps.rfrx_disabled ", 25)', set_pos)
+        get_pos = source.index('  } else if (configKeyEquals(config, "radio.fem.rxgain")')
+        get_start = source.rfind('#if defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC)', 0, get_pos)
+        get_end = source.index('  } else if (memcmp(config, "tempradioat", 11)', get_pos)
+        set_branch, get_branch = source[set_start:set_end] + '  }\n', source[get_start:get_end] + '  }\n'
+        harness = r'''
+#include <cstdio>
+#include <cstring>
+#include <helpers/CLICommandUtils.h>
+@EQUALS@
+struct Radio { bool isMorseTxActive() const { return false; } bool isMorseRxActive() const { return false; } };
+struct Board { bool canControlLoRaFemLna() const { return false; } bool canControlLoRaFemPaGain() const { return false; }
+  bool isLoRaFemLnaEnabled() const { return false; } bool isLoRaFemPaGainEnabled() const { return false; }
+  bool setLoRaFemLnaEnabled(bool) { return false; } bool setLoRaFemPaGainEnabled(bool) { return false; } };
+struct Callbacks { Radio* getProfileRadio() { return nullptr; } void recalibrateNoiseFloor() {} };
+struct Prefs { int radio_fem_rxgain=0, radio_fem_txgain=0; };
+struct Test { Board* _board; Callbacks* _callbacks; Prefs* _prefs; void savePrefs() {}
+  void set(const char* config, char* reply) { if (false) {
+@SET@
+  }
+  void get(const char* config, char* reply) { if (false) {
+@GET@
+  }
+};
+int main() {
+  Board board; Callbacks callbacks; Prefs prefs; Test cli{&board,&callbacks,&prefs};
+  for (const char* value : {"on", "off", "bad", "", "on extra"}) for (const char* mode : {"rxgain", "txgain"}) {
+    char config[160] = {}, reply[160] = "unchanged";
+    snprintf(config,sizeof(config),"radio.fem.%s %s",mode,value); cli.set(config,reply);
+    assert(!strcmp(reply,"Error: unsupported")); puts(reply);
+  }
+  for (const char* key : {"radio.fem.rxgain", "radio.fem.txgain", "radio.fem.rxgain   ",
+                          "radio.rxgain", "radio.fem.rxgainx", "radio.fem.txgain extra"}) {
+    char config[160] = {}, reply[160] = "unchanged";
+    snprintf(config,sizeof(config),"%s",key); cli.get(config,reply); puts(reply);
+  }
+}
+'''.replace('@EQUALS@', equals).replace('@SET@', set_branch).replace('@GET@', get_branch)
+        with tempfile.TemporaryDirectory(prefix='mini-fem-unsupported-') as directory:
+            path = Path(directory)
+            (path / 'main.cpp').write_text('#include <cassert>\n#include <initializer_list>\n' + harness, encoding='utf-8')
+            outputs = []
+            for compact in (0, 1):
+                binary = path / ('test' + str(compact))
+                result = subprocess.run([compiler, '-std=c++17', '-DWIO_E5_MINI_COMPACT_UNSUPPORTED_AGC=' + str(compact),
+                                         '-I', str(ROOT / 'src'), str(path / 'main.cpp'), '-o', str(binary)],
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                result = subprocess.run([str(binary)], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                outputs.append(result.stdout)
+            self.assertEqual(outputs[0], outputs[1])
 
     def test_fixed_ota_relay_pace_is_scoped_and_preserves_dispatch(self):
         # Exercise actual queueing, TX completion, busy-channel fairness,
@@ -138,11 +371,12 @@ class MiniRepeaterProfileTest(unittest.TestCase):
                      "-DRADIO_LIVENESS_SOFT_ONLY=1"]
             sanitize = [] if os.name == "nt" else ["-fsanitize=address,undefined",
                          "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"]
-            for policy in (None, 0):
-                with self.subTest(policy=policy):
-                    executable = work / ("default.exe" if policy is None else "fixed.exe")
+            for policy, mini in ((None, False), (0, False), (0, True)):
+                with self.subTest(policy=policy, mini=mini):
+                    executable = work / ("mini.exe" if mini else "default.exe" if policy is None else "fixed.exe")
                     built = subprocess.run([compiler, "-std=c++17", "-O1", *sanitize, *flags,
                         *([] if policy is None else ["-DMESH_OTA_PACKET_PACING=0"]),
+                        *(["-DWIO_E5_MINI_COMPACT_UNSUPPORTED_AGC=1"] if mini else []),
                         "-I", str(work), "-I", str(ROOT / "test/mocks"), "-I", str(ROOT / "src"),
                         str(work / "main.cpp"), str(ROOT / "src/Dispatcher.cpp"),
                         str(ROOT / "src/Packet.cpp"), str(ROOT / "src/helpers/StaticPoolPacketManager.cpp"),
@@ -157,6 +391,11 @@ class MiniRepeaterProfileTest(unittest.TestCase):
                         input="#include <Dispatcher.h>\n", capture_output=True, text=True, timeout=10)
             self.assertNotEqual(invalid.returncode, 0)
             self.assertIn("OTA-enabled firmware requires variable packet pacing", invalid.stderr)
+            pulse = subprocess.run([compiler, "-std=c++17", "-fsyntax-only", "-x", "c++", "-",
+                        "-I", str(ROOT / "test/mocks"), "-I", str(ROOT / "src"),
+                        "-DWIO_E5_MINI_COMPACT_UNSUPPORTED_AGC=1", "-DMESH_WARM_RX_REFRESH=1"],
+                        input="#include <Dispatcher.h>\nstatic_assert(MESH_COMPACT_STM32_RADIO == 1, \"Compact storage retained\");\nstatic_assert(MESH_ENABLE_OLD_AGC == 0, \"Legacy timer remains optional\");\n", capture_output=True, text=True, timeout=10)
+            self.assertEqual(pulse.returncode, 0, pulse.stderr)
 
     def test_compact_crypto_and_unused_timer_wrappers_are_explicit(self):
         for macro in ("ED25519_COMPACT_SHA512=1", "ED25519_COMPACT_SCALAR=1",
@@ -280,6 +519,7 @@ printf '%s\n' "${BUILD_REDUCTIONS[@]}"
             "management.reporting and data.tx omitted to preserve the Mini Repeater app boundary",
             "logging.file omitted; live USB/MQTT packet logging retained",
             "battery.forwarding omitted; battery alerts and readings retained",
+            "radio.flood per-profile controls omitted; global repeat retained",
         ]
         for target in (TARGET, "wio-e5-mini_companion_radio_usb", "wio-e5-mini_sensor",
                        "wio-e5_repeater", "RAK_3x72_repeater", TARGET + "_custom"):

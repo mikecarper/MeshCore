@@ -19,7 +19,13 @@ Ordinary application images preserve the installed bootloader. Full Companion
 is a mOTA source and normally updates itself over USB. Older versions below
 describe compatibility history.
 
-This guide shows the shortest manual path for sending firmware from a computer to a MeshCore node over
+For a direct USB-to-node update, the [browser LoRa OTA tool](browser_lora_ota.md) prepares a matching
+temporary channel automatically, preferring an unused radio2 when supported. It preserves the saved radio
+channels and lists any required saved power-saving or OTA policy changes in Status; those changes are retained.
+The browser defaults to BW250/SF7/CR5, preamble 128 and 120 minutes for broader radio compatibility; the
+manual fast-channel examples below use SF5.
+
+The instructions below describe the manual path for sending firmware from a computer to a MeshCore node over
 LoRa. Choose the package type for the **destination** node:
 
 For an end-to-end controller that accepts a release ZIP or ready mOTA, see
@@ -51,7 +57,7 @@ locally over USB/BLE DFU or SWD first; there is no raw-card compatibility handof
 
 | Setting | Value |
 | --- | --- |
-| Center frequency | 910.525 MHz |
+| Center frequency | 909.950 MHz |
 | Bandwidth | 250 kHz |
 | Spreading factor | SF5 |
 | Coding rate used in this guide | CR5 |
@@ -60,7 +66,7 @@ locally over USB/BLE DFU or SWD first; there is no raw-card compatibility handof
 The copy/paste command is:
 
 ```text
-tempradio 910.525,250,5,5,120
+tempradio 909.950,250,5,5,120
 ```
 
 The fourth value is the transmit coding rate. This guide uses CR5, but the participating nodes' coding rates
@@ -68,8 +74,10 @@ do not need to match.
 
 `tempradio` is not saved and the node returns to its normal radio settings when the window ends or the node
 reboots. Current full-parser firmware also accepts `normalradio`, which cancels the temporary window and
-restores the saved tuple after replying on the current channel. This frequency is intended for North American
-configurations. Confirm that it is permitted in your location and change it when necessary.
+restores the saved tuple after replying on the current channel. The 909.950 MHz North American example moves
+the transfer away from the ordinary USA channel at 910.525 MHz. Choose a frequency permitted in your location
+and supported by every participating radio. Use that same temporary frequency, bandwidth and spreading
+factor on the source, destination and every intermediate repeater; their temporary windows must overlap.
 
 At SF5/BW250, an SX1262+TCXO destination can keep RXPS enabled only when it and
 every sender that can reach it (controller, source, and relays) follow the
@@ -236,7 +244,7 @@ revision used by the scripted updater:
 
 ```bash
 cargo install --git https://github.com/mikecarper/motatool.git \
-  --rev 8c38369e7d35ad50cf74261869676d52dd24adf7 --locked --bin motatool
+  --rev 5d9646cb08105245fb96c28450669c58763224bb --locked --bin motatool
 ```
 
 ## ESP32: package a full firmware image
@@ -418,7 +426,7 @@ especially with older single-block receivers. Use `hops 1` only when one real in
 On the source node, destination node, and every intermediate repeater, then run:
 
 ```text
-tempradio 910.525,250,5,5,120
+tempradio 909.950,250,5,5,120
 ```
 
 All participating nodes must use the same frequency, bandwidth, and spreading factor. Their time windows must
@@ -447,7 +455,7 @@ cable-free source is:
 python3 tools/ble_mota/ble_mota_seeder.py \
   --device MeshCore-MyCompanion \
   --dir ./motas \
-  --local 'tempradio 910.525,250,5,5,120'
+  --local 'tempradio 909.950,250,5,5,120'
 ```
 
 Leave this command running until the destination finishes downloading.
@@ -540,7 +548,7 @@ ota status
 ## Quick troubleshooting
 
 - **Nothing appears in `ota ls`:** confirm that `motatool serve` is still running and every required node
-  has an active `tempradio 910.525,250,5,5,120` window.
+  has an active `tempradio 909.950,250,5,5,120` window.
 - **The CLI says LoRa OTA is not included:** that firmware does not contain the LoRa OTA feature.
   If it is the source or destination, install a supported `-ota-` build over WiFi or USB first. An intermediate
   repeater does not need the OTA CLI and can relay opaquely while its matching `tempradio` window is active.

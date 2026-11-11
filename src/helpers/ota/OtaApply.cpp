@@ -1,6 +1,7 @@
 #include "OtaApply.h"
 #include "OtaFormat.h"
 #include "MotaContainer.h"
+#include "OtaBootloaderTrust.h"
 #include "Identity.h"
 #include "OtaByteIO.h"
 #include <string.h>
@@ -1052,6 +1053,15 @@ static bool ota_prepare_bootloader_update_external(Store& store,
                                                     ApplyState& st, char* msg) {
   static const size_t CAP = 96;
   st = ApplyState();
+  SelfFwInfo fi;
+  if (!ota_self_firmware(fi) ||
+      !ota_bootloader_scratch_headroom_valid(
+          fi.valid, mota_nrf52_app_base(), fi.image_len, OTA_BOOT_SCRATCH_START) ||
+      !ota_bootloader_live_bank_preserves_scratch(
+          mota_nrf52_app_base(), fi.image_len, OTA_BOOT_SCRATCH_START)) {
+    strcpy(msg, "running firmware/settings do not preserve E0000 scratch");
+    return false;
+  }
   const uint32_t total = store.staged_size();
   uint8_t hdr[8], manifest[MOTA_MFL];
   if (total < 8u + MOTA_MFL + 5u || !store.read(0, hdr, sizeof(hdr)) ||
@@ -1071,7 +1081,7 @@ static bool ota_prepare_bootloader_update_external(Store& store,
           m.signature, m.manifest_start, (int)m.signed_len)) {
     strcpy(msg, "bootloader package signature invalid"); return false;
   }
-  if (!allow.contains(m.signer_pubkey)) {
+  if (!ota_signer_trusted_for_manifest(m, allow)) {
     strcpy(msg, "bootloader signer is not in the trusted allowlist"); return false;
   }
   switch (ota_bootloader_confirmation_gate(m, installed, actual_mid, operator_mid,
@@ -1212,16 +1222,6 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreSdNrf52& store,
           OTA_BOOT_CONTINUITY_LAYOUT_ABI)) {
     st = ApplyState();
     strcpy(msg, "SD bootloader OTA requires a locally installed BLM2 retained-auth bootloader");
-    return false;
-  }
-  SelfFwInfo fi;
-  if (!ota_self_firmware(fi) ||
-      !ota_bootloader_scratch_headroom_valid(
-          fi.valid, mota_nrf52_app_base(), fi.image_len, OTA_BOOT_SCRATCH_START) ||
-      !ota_bootloader_live_bank_preserves_scratch(
-          mota_nrf52_app_base(), fi.image_len, OTA_BOOT_SCRATCH_START)) {
-    st = ApplyState();
-    strcpy(msg, "running firmware/settings do not preserve E0000 scratch");
     return false;
   }
   return ota_prepare_bootloader_update_external(

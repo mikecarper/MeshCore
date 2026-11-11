@@ -12,12 +12,14 @@
 #include "W12PramLabTrace.h"
 #endif
 #include "LR2021CalibrationPolicy.h"
+#include "LR2021CalibrationDiagnostics.h"
 #if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
 #include "LR2021PacketFrequency.h"
 #include "LR2021FrequencyCorrection.h"
 #endif
 #include "../MorseRx.h"
 #include <stdio.h>
+#include <math.h>
 
 #ifndef LR2021_TX_BUSY_TIMEOUT_MS
 #define LR2021_TX_BUSY_TIMEOUT_MS 1000UL
@@ -167,6 +169,10 @@ class CustomLR2021 : public LR2021 {
   }
 
   public:
+#define MC_LR_AGC_2021 1
+#include "LRxxxxAGCChip.inc"
+#undef MC_LR_AGC_2021
+
     CustomLR2021(Module *mod) : LR2021(mod) { irqDioNum = LR2021_IRQ_DIO; }
 
     uint8_t regulatorModes() const { return _regulator.modes(); }
@@ -429,6 +435,89 @@ class CustomLR2021 : public LR2021 {
         return setLoRaSideDetConfig(nullptr, 0);
       }
       return LR2021::setSideDetector(cfg, numDetectors);
+    }
+
+    // The wrapper admits this only after preserving packet/FIFO ownership and
+    // pausing any PRAM scanner. A resident scanner can use checked RC standby
+    // without an additional sleep/wake transition during full calibration.
+    // Never use begin()/reset()/setTCXO(0), which would destroy that state.
+    int16_t resetReceiverCalibration(const float* hardware_mhz=nullptr, size_t count=0,
+                                     bool retained_sleep=true) {
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      auto& device_diagnostic=mesh::lr2021::calibrationDeviceStatus();
+      device_diagnostic.begin();
+#endif
+      const float hardware_frequency = freqMHz;
+      mesh::lr2021::FrontEndCalibrationPlan frontend;
+      if (count > 3 || (count && !hardware_mhz) || !frontend.add(hardware_frequency))
+        return RADIOLIB_ERR_INVALID_FREQUENCY;
+      for (size_t i=0; i<count; ++i)
+        if (!frontend.add(hardware_mhz[i])) return RADIOLIB_ERR_INVALID_FREQUENCY;
+      constexpr uint16_t calibration_errors = RADIOLIB_LR2021_LF_RC_CALIB_ERR
+          | RADIOLIB_LR2021_HF_RC_CALIB_ERR | RADIOLIB_LR2021_PLL_CALIB_ERR
+          | RADIOLIB_LR2021_AAF_CALIB_ERR | RADIOLIB_LR2021_IMG_CALIB_ERR
+          | RADIOLIB_LR2021_MEAS_UNIT_ADC_CALIB_ERR | RADIOLIB_LR2021_PA_OFFSET_CALIB_ERR
+          | RADIOLIB_LR2021_PPF_CALIB_ERR | RADIOLIB_LR2021_SRC_CALIB_ERR
+          | RADIOLIB_LR2021_SRC_SATURATION_CALIB_ERR | RADIOLIB_LR2021_SRC_TOLERANCE_CALIB_ERR
+          | RADIOLIB_LR2021_RXFREQ_NO_FE_CAL_ERR;
+      uint16_t errors = 0;
+      int16_t status = getErrors(&errors);
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      device_diagnostic.record(mesh::lr2021::CalibrationDeviceStatus::Before,errors,status);
+#endif
+      if (status != RADIOLIB_ERR_NONE) return status;
+      // ClearErrors clears the entire word. Preserve unrelated device faults
+      // rather than erasing them just to obtain fresh calibration diagnostics.
+      // Missing FE coverage is repairable here because the complete validated
+      // profile plan is recalibrated below; oscillator/PLL-lock/busy faults are not.
+      if (errors & ~calibration_errors) return RADIOLIB_ERR_FRONTEND_CALIBRATION_FAILED;
+      if (errors) {
+        status = clearErrors();
+        if (status != RADIOLIB_ERR_NONE) return status;
+      }
+      status = standby();
+      if (status != RADIOLIB_ERR_NONE) return status;
+      if (retained_sleep) {
+        status = LR2021::sleep(true, 0);
+        if (status != RADIOLIB_ERR_NONE) return status;
+        status = standby();
+        if (status != RADIOLIB_ERR_NONE) return status;
+      }
+      status = calibrate(RADIOLIB_LR2021_CALIBRATE_ALL);
+      if (status != RADIOLIB_ERR_NONE) return status;
+      status = getErrors(&errors);
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      device_diagnostic.record(mesh::lr2021::CalibrationDeviceStatus::AfterBase,errors,status);
+#endif
+      if (status != RADIOLIB_ERR_NONE) return status;
+      if (errors) return RADIOLIB_ERR_FRONTEND_CALIBRATION_FAILED;
+      // Refresh the current physical frequency and every enabled profile in
+      // one CalibFE command. Updating slot 1 alone may lose secondary coverage;
+      // setFrequency() skips calibration when its frequency cache is unchanged.
+      status = calibrateFrontEnd(frontend.frequencies);
+      if (status != RADIOLIB_ERR_NONE) return status;
+      status = getErrors(&errors);
+#if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
+      device_diagnostic.record(mesh::lr2021::CalibrationDeviceStatus::AfterFrontEnd,errors,status);
+#endif
+      if (status != RADIOLIB_ERR_NONE) return status;
+      if (errors) return RADIOLIB_ERR_FRONTEND_CALIBRATION_FAILED;
+      // CalibFE visits a rounded calibration point. Explicitly restore the
+      // physical RF setting; bypass our nominal-frequency correction override
+      // and skip another frontend calibration for this same cached frequency.
+      status = LR2021::setFrequency(hardware_frequency, true);
+      if (status != RADIOLIB_ERR_NONE) return status;
+      // Native calibration does not cold-reset modem, oscillator or regulator
+      // settings. Reassert the configured RF routing and current band's exact
+      // gain level while still in standby, then let the wrapper restore RX.
+      status = restoreRfSwitchTable();
+      if (status != RADIOLIB_ERR_NONE) return status;
+      status = LR2021::setRxBoostedGainMode(
+          mesh::lr2021::isHighBand(hardware_frequency) ? gainModeHf : gainModeLf);
+      if (status != RADIOLIB_ERR_NONE) return status;
+      _activityAt = 0;
+      _headerSeen = false;
+      return RADIOLIB_ERR_NONE;
     }
 
     float getFreqMHz() const { return freqMHz; }

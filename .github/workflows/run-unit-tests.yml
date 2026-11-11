@@ -35,6 +35,57 @@ jobs:
         env:
           MESHCORE_REQUIRE_OTA_BROWSER: '1'
         run: python3 -B test/test_compact_elegant_ota.py -v
+      - name: Verify browser LoRa OTA package, transport, and session safeguards
+        run: |
+          python3 -m pip install detools==0.53.0
+          node test/test_browser_lora_ota_checks.js
+          node --test test/test_browser_lora_ota_availability.js
+          node --test test/test_browser_lora_ota_repeat.js
+          node --test test/test_browser_lora_ota_sim.js
+          node --test test/test_browser_lora_ota_companion_source.js
+          node --test test/test_browser_lora_ota_contacts.js
+          node --test test/test_browser_lora_ota_port_ownership.js
+          node --test test/test_browser_lora_ota_port_selection.js test/test_browser_lora_ota_source_detection.js test/test_browser_lora_ota_recovery.js test/test_browser_lora_ota_legacy_folder.js test/test_browser_lora_ota_lease.js test/test_browser_lora_ota_region_profiles.js
+          node --test test/test_browser_lora_ota_catalog.js
+          node --test test/test_browser_lora_ota_companion.js test/test_browser_lora_ota_companion_recovery.js
+          node --test test/test_browser_lora_ota_legacy_source.js
+          node --test test/test_browser_lora_ota_radio_setup.js test/test_browser_lora_ota_interruptions.js
+          node --test test/test_browser_lora_ota_package.js test/test_browser_lora_ota_zip.js test/test_browser_lora_ota_delta.js test/test_browser_lora_ota_serial.js test/test_browser_lora_ota_route.js test/test_browser_lora_ota_session.js test/test_browser_lora_ota_routed_session.js test/test_browser_lora_ota_plan.js test/test_browser_lora_ota_candidates.js test/test_browser_lora_ota_chain.js test/test_browser_lora_ota_chain_ui.js test/test_browser_lora_ota_discovery.js test/test_browser_lora_ota_collect.js
+          python3 -B test/test_browser_ota_lease.py
+          python3 -B test/test_ota_installhash.py -v
+          python3 -B test/test_ota_dm_envelope.py -v
+          python3 -B test/test_otafix_rak_inventory.py -v
+          MESHCORE_REQUIRE_OTAFIX_WASM=1 python3 -B test/test_otafix_wasm.py -v
+          MESHCORE_REQUIRE_OTAFIX_WASM=1 python3 -B test/test_otafix_wasm_browser.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 MESHCORE_REQUIRE_DETOOLS=1 python3 -B test/test_browser_lora_ota_delta.py -v
+          python3 -B test/test_browser_lora_ota_nrf_c_decoder.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_failure_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_native_folder_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_workflow_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_staged_recovery_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_usb_mtu_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_audit_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_companion_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_radio_setup_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_source_link_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_legacy_investigation_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_repeater_retry_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_password_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_recovery_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_auto_source_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_channel_choice_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_stop_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_investigation_progress_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_availability_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_routed_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_routefind_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_delta_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_nrf_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_zip_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_zip_ui_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 MESHCORE_REQUIRE_DETOOLS=1 python3 -B test/test_browser_lora_ota_candidates_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_chain_runtime.py -v
 
   wifi-diagnostics:
     runs-on: ubuntu-26.04
@@ -110,7 +161,7 @@ jobs:
       - name: Compile both legacy T096 BLE FEM settings with their RAM gates
         # Sequential environments in one process; do not replace these with
         # Full overlays, which have different OTA and runtime allocations.
-        run: pio run -e Heltec_t096_companion_radio_ble_femoff -e Heltec_t096_companion_radio_ble_femon
+        run: bash tools/ci/pio_retry.sh run -e Heltec_t096_companion_radio_ble_femoff -e Heltec_t096_companion_radio_ble_femon
 
   nrf52-sensor-smoke:
     runs-on: ubuntu-26.04
@@ -121,9 +172,10 @@ jobs:
       - name: Verify nRF52 HEX packaging with installed build dependencies
         run: |
           python3 -B test/test_nrf52_endf_hex.py -v
+          python3 -B test/test_qspi_bootloader_profiles.py -v
           python3 -B test/test_endf_restamp.py -v
       - name: Compile GPS Sensor tracker on nRF52 boards
-        run: pio run -e t1000e_sensor -e RAK_WisMesh_Tag_sensor
+        run: bash tools/ci/pio_retry.sh run -e t1000e_sensor -e RAK_WisMesh_Tag_sensor
       - name: Qualify unified T114 Repeater with screen detection and LoRa OTA
         run: >-
           bash build.sh build-firmware Heltec_t114_repeater_lora_ota_no_external_sensors
@@ -140,7 +192,7 @@ jobs:
           --build-profile auto --firmware-version v1.18.0.1-halo-keymind-cascade-dev
           --radio-preset usa-cascade-fixed --profile cascade --require-ota
       - name: Compile optional RAK15002 SD archive (no hardware qualification)
-        run: pio run -e RAK_4631_repeater_rak15002_sd_seeder_only
+        run: bash tools/ci/pio_retry.sh run -e RAK_4631_repeater_rak15002_sd_seeder_only
 
   optional-display-smoke:
     runs-on: ubuntu-26.04
@@ -180,10 +232,10 @@ jobs:
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
       - name: Compile GPS-capable Sensor tracker on ESP32-S3
-        run: pio run -e heltec_v4_sensor
+        run: bash tools/ci/pio_retry.sh run -e heltec_v4_sensor
       - name: Compile shared-slot Station G3 and legacy alias with buffered KISS
         # One PlatformIO process: these environments share the checkout build tree.
-        run: pio run -e Station_G3_ESP32_repeater -e Station_G3_ESP32_r2_repeater -e Station_G3_ESP32_kiss_modem
+        run: bash tools/ci/pio_retry.sh run -e Station_G3_ESP32_repeater -e Station_G3_ESP32_r2_repeater -e Station_G3_ESP32_kiss_modem
       - name: Qualify Station G3 Full MQTT internal RAM and exact OTA identity
         run: >-
           bash build.sh build-firmware Station_G3_ESP32_r2_repeater_observer_mqtt
@@ -191,7 +243,7 @@ jobs:
           --radio-preset usa-cascade-fixed --profile cascade --require-ota --full-exact
       - name: Compile W12 band-aware RF switching in repeater and Full Companion
         run: |
-          pio run -e meshnology_w12_repeater
+          bash tools/ci/pio_retry.sh run -e meshnology_w12_repeater
           bash build.sh build-firmware meshnology_w12_companion_radio_full --firmware-version v1.18.0.1-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade --require-ota
       - name: Show qualification build logs on failure
         if: failure()
@@ -311,7 +363,7 @@ jobs:
       - name: Compile RP2040 contacts, ESP32-C6 rooms and ESP-NOW Companion
         # One process: PlatformIO environments share this checkout's build tree.
         run: >-
-          pio run -e Xiao_rp2040_companion_radio_usb
+          bash tools/ci/pio_retry.sh run -e Xiao_rp2040_companion_radio_usb
           -e LilyGo_Tlora_C6_room_server_ -e Generic_ESPNOW_comp_radio_usb
 
   cardputer-smoke:
@@ -323,60 +375,74 @@ jobs:
       - name: Compile Cardputer-Adv roles and shared T-Deck Companion
         # One process: PlatformIO environments share the checkout build tree.
         run: >-
-          pio run -e M5Stack_Cardputer_Adv_companion_radio_ble
+          bash tools/ci/pio_retry.sh run -e M5Stack_Cardputer_Adv_companion_radio_ble
           -e M5Stack_Cardputer_Adv_companion_radio_usb
           -e M5Stack_Cardputer_Adv_repeater -e M5Stack_Cardputer_Adv_room_server
           -e LilyGo_TDeck_companion_radio_ble
       - name: Qualify combined Cardputer-Adv Full Companion
         run: bash build.sh build-firmware M5Stack_Cardputer_Adv_companion_radio_full --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade
 
-  universal-lora-smoke:
+  universal-lora-contracts:
+    name: Universal LoRa host contracts
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v6
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Verify shard coverage and failure handling
+        run: python3 -B test/test_universal_lora_ci_split.py -v
       - name: Verify chip probing, forwarding, and build contracts
-        run: |
-          python3 -B test/test_universal_lora.py -v
-          python3 -B test/test_universal_lora_builds.py -v
-          python3 -B test/test_universal_lora_gpio.py -v
-          python3 -B test/test_portable_lora_probe.py -v
-          python3 -B test/test_universal_lr_policy.py -v
-          python3 -B test/test_muzi_universal_builds.py -v
-          python3 -B test/test_muzi_universal_startup.py -v
-          python3 -B test/test_muzi_qspi_capacity.py -v
-          python3 -B test/test_notification_rtc_storage.py -v
-          python3 -B test/test_companion_channels_rtc.py -v
-          python3 -B test/test_universal_sx126x_builds.py -v
-          python3 -B test/test_universal_sx126x_defaults.py -v
-          python3 -B test/test_universal_radio_startup.py -v
-          python3 -B test/test_universal_radio_boot_policy.py -v
-          python3 -B test/test_universal_radio_lto.py -v
-          python3 -B test/test_consolidated_profiles.py -v
-          node test/test_universal_radio_picker.js
-      - name: Qualify universal T-Beam and T3 S3 Full firmware
-        # Sequential builds: PlatformIO shares the checkout's build tree.
-        run: |
-          for target in Tbeam_companion_radio_full LilyGo_T3S3_companion_radio_full Tbeam_repeater LilyGo_T3S3_repeater Tbeam_room_server LilyGo_T3S3_room_server Tbeam_repeater_observer_mqtt Tbeam_room_server_observer_mqtt Generic_E22_repeater Meshadventurer_repeater Meshadventurer_companion_radio_full Meshadventurer_room_server Tenstar_C3_repeater; do
-            bash build.sh build-firmware "$target" --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade --require-ota
-          done
-      - name: Compile the remaining role interfaces
-        run: pio run -e Tbeam_kiss_modem -e LilyGo_T3S3_kiss_modem -e LilyGo_T3S3_terminal_chat -e Generic_E22_kiss_modem -e Meshadventurer_kiss_modem -e Meshadventurer_terminal_chat -e Tenstar_C3_kiss_modem
-      - name: Compile Muzi shared radio recipes
-        # Infrastructure remains a local qualification build until its
-        # board-matched LoRa OTA loader has passed physical qualification.
-        run: pio run -e muzi_base_repeater -e muzi_base_room_server -e muzi_base_companion_radio_usb -e muzi_base_companion_radio_ble
-      - name: Qualify Muzi Full Companion
-        run: bash build.sh build-firmware muzi_base_companion_radio_full --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade
+        run: bash tools/ci/run_universal_lora_smoke.sh contracts
+
+  universal-lora-builds:
+    name: Universal LoRa (${{ matrix.shard }})
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        shard: [tbeam, t3s3, meshadventurer, e22-tenstar, muzi]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+      # Each matrix cell has its own checkout; builds remain sequential inside it.
+      - name: Qualify board family and remaining role interfaces
+        run: bash tools/ci/run_universal_lora_smoke.sh "${{ matrix.shard }}"
       - name: Upload universal build failure logs
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: universal-lora-build-logs
+          name: universal-lora-build-logs-${{ matrix.shard }}
           path: out/build-logs/*.log
           if-no-files-found: ignore
           retention-days: 7
+
+  # Keep the existing check name and require every matrix cell and host contract.
+  universal-lora-smoke:
+    if: ${{ always() }}
+    needs: [universal-lora-contracts, universal-lora-builds]
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Require every universal LoRa shard to pass
+        env:
+          UNIVERSAL_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os, sys
+          results = json.loads(os.environ["UNIVERSAL_RESULTS"])
+          failed = {name: info["result"] for name, info in results.items()
+                    if info["result"] != "success"}
+          if failed:
+              for name, result in sorted(failed.items()):
+                  print(f"::error::{name}: {result}")
+              sys.exit(1)
+          print("All universal LoRa contracts and build shards passed.")
+          PYCODE
 
   headless-kiss-smoke:
     runs-on: ubuntu-26.04
@@ -394,7 +460,7 @@ jobs:
       - name: Compile shared and historical KISS recipes
         # One process: PlatformIO shares the checkout's build tree.
         run: >-
-          pio run -e heltec_v4_r8_kiss_modem -e heltec_v4_r8_tft_kiss_modem
+          bash tools/ci/pio_retry.sh run -e heltec_v4_r8_kiss_modem -e heltec_v4_r8_tft_kiss_modem
           -e WioTrackerL1_kiss_modem -e WioTrackerL1Eink_kiss_modem
       - name: Qualify Wio L1 Full Companion with runtime OLED, e-paper or headless selection
         run: bash build.sh build-firmware WioTrackerL1_companion_radio_full --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade
@@ -410,10 +476,11 @@ jobs:
         run: |
           python3 -m pip install platformio pycryptodome==3.23.0
           mkdir -p .pio/libdeps/management-test
-          pio pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/management-test
+          bash tools/ci/pio_retry.sh pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/management-test
       - name: Verify protocol, encryption, scheduling and MQTT decoding
         run: |
           python3 -B test/test_management_report.py -v
+          MESHCORE_REQUIRE_DM_AEAD=1 python3 -B test/test_ota_dm_aead.py -v
           python3 -B test/test_management_cli_wrapper.py -v
           node test/test_management_decoder.js
           node scripts/test_telemetry_decoder.js
@@ -466,6 +533,7 @@ jobs:
           python3 -B test/test_management_feature_gate.py -v
           python3 -B test/test_carrier_wave.py -v
           python3 -B test/test_radio_profile_cli.py -v
+          python3 -B test/test_flood_profile_policy.py -v
           python3 -B test/test_mediamesh_scope_integration.py -v
           python3 -B test/test_radio_switch_tuning_cli.py -v
           python3 -B test/test_radio_switch_tuning_transaction.py -v
@@ -509,8 +577,12 @@ jobs:
         run: |
           python3 -B test/test_nrf52_embedded_variant.py -v
           python3 -B test/test_nrf52_embedded_bootloader.py -v
+          python3 -B test/test_nrf52_legacy_bootloaders.py -v
+          python3 -B test/test_nrf52_fork_bootloaders.py -v
+          python3 -B test/test_embedded_bootloader_stock_qualification.py -v
           python3 -B test/test_sensecap_bootloader_identity.py -v
           python3 -B test/test_sensecap_bootloader_runtime.py -v
+          python3 -B test/test_xiao_bootloader_remote_guard.py -v
           python3 -B tools/mota/test_bootloader_migration.py -v
           python3 -B tools/mota/test_bootloader_migration_runtime.py -v
           python3 -B test/test_bootloader_update_cli.py -v
@@ -528,6 +600,7 @@ jobs:
           python3 -B -m unittest discover -s tools/lora_ota -p 'test_ota_wizard*.py' -v
           python3 -B test/test_direct_ota_admin_client.py -v
           python3 -B test/test_companion_direct_admin_guard.py -v
+          python3 -B test/test_companion_usb_raw_frame_capacity.py -v
           python3 -B test/test_repeater_ota_serial_control.py -v
           python3 -B test/test_ota_zero_hop_route.py -v
 
@@ -537,11 +610,19 @@ jobs:
         # The test pins the archive SHA-256, verifies every .mota signature,
         # and checks the exact MeshTower V2 SD CRC from the bug report.
         run: |
-          curl --fail --location --retry 3 --max-time 120 --output "$MESHCORE_BOOTLOADER_MOTA_ZIP" \
-            https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/0.11.0-OTAFIX2.4.6/OTAFIX-2.4.6-bootloader-mota.zip
+          if ! curl --fail --location --retry 3 --max-time 120 --output "$MESHCORE_BOOTLOADER_MOTA_ZIP" \
+            https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/download/0.11.0-OTAFIX2.4.6/OTAFIX-2.4.6-bootloader-mota.zip; then
+            echo 'Release download failed; trying the GitHub API asset endpoint.'
+            curl --fail --location --retry 3 --max-time 120 \
+              --header 'Accept: application/octet-stream' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              --output "$MESHCORE_BOOTLOADER_MOTA_ZIP" \
+              https://api.github.com/repos/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/assets/546337954
+          fi
           python3 -B test/test_nrf52_bootloader_version.py -v
 
-  test:
+  test-core:
+    name: Core, native and security tests
     runs-on: ubuntu-26.04
     steps:
 
@@ -557,7 +638,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libssl-dev
           mkdir -p .pio/libdeps/room-mail-test
-          pio pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/room-mail-test
+          bash tools/ci/pio_retry.sh pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/room-mail-test
+
+      # Each job has its own checkout. Install the native libraries that the
+      # former shared job obtained before these tests; do not run PlatformIO
+      # processes concurrently in this checkout.
+      - name: Install native test dependencies
+        run: bash tools/ci/pio_retry.sh pkg install -e native
 
       - name: Verify shared SHA-512 signing against the original backend and RFC8032
         run: python3 -B test/test_ed25519_shared_sha512.py -v
@@ -567,20 +654,14 @@ jobs:
           python3 -B scripts/check_arduinojson_pin.py --self-test
           python3 -B scripts/check_arduinojson_pin.py
 
-      - name: Verify build-size diagnostics and nRF52 optimizer recipes
-        run: |
-          bash test/test_build_size_detection.sh
-          python3 -B test/test_nrf52_size_profile.py -v
-          python3 -B test/test_rak_combined_build_config.py -v
-
       - name: Run Unit Tests
-        run: pio test -e native -e native_kiss_modem -e native_ota_channel -vv
+        run: bash tools/ci/pio_retry.sh test -e native -e native_kiss_modem -e native_ota_channel -vv
 
       - name: Verify sensor reply bounds and duplicate counter saturation
         run: python3 -B test/test_upstream_cli_bounds.py -v
 
       - name: Verify real GPS NMEA parser and provider with address and undefined sanitizers
-        run: pio test -e native_gps -vv
+        run: bash tools/ci/pio_retry.sh test -e native_gps -vv
 
       - name: Verify parser, delivery, storage, permissions, clock and radio stability
         run: |
@@ -638,6 +719,9 @@ jobs:
           python3 -B test/test_room_web_http.py -v
           python3 -B test/test_room_web_gzip.py -v
           python3 -B test/test_esp32_full_size.py -v
+          python3 -B test/test_tlora_full_room_ota_dependency.py -v
+          python3 -B test/test_tlora_room_terminal_budget.py -v
+          python3 -B test/test_universal_radio_lto.py -v
           python3 -B test/test_room_web_service.py -v
           python3 -B test/test_contact_clock_bootstrap.py -v
           python3 -B test/test_rtc_discovery.py -v
@@ -655,6 +739,8 @@ jobs:
           python3 -B test/test_lr2021_trim_apply_wait.py -v
           python3 -B test/test_lr2021_calibration.py -v
           python3 -B test/test_lr2021_auto_trim.py -v
+          python3 -B test/test_lr2021_boot_auto_trim.py -v
+          python3 -B test/test_radio_probe_observer.py -v
           python3 -B test/test_lr2021_auto_trim_profiles.py -v
           python3 -B test/test_lr2021_frequency_correction.py -v
           python3 -B test/test_lr2021_packet_frequency.py -v
@@ -666,6 +752,7 @@ jobs:
           python3 -B test/test_esp32_radio_trace.py -v
           python3 -B test/test_esp32_radio_trace_cli.py -v
           python3 -B test/test_forwarding_profile_timing.py -v
+          python3 -B test/test_flood_profile_policy.py -v
           python3 -B test/test_clock_transit_profile_timing.py -v
           python3 -B test/test_bridge_recovery.py -v
           python3 -B test/test_bridge_ingress.py -v
@@ -682,27 +769,58 @@ jobs:
           python3 -B test/test_fleet_role_wiring.py -v
           python3 -B test/test_fleet_location.py -v
           python3 -B test/test_fleet_radio_schedules.py -v
+          python3 -B test/test_repeater_schedule_persistence.py -v
+          python3 -B test/test_clock_sync_calendar_bound.py -v
           python3 -B test/test_fleet_clock_control.py -v
 
-      - name: Verify OTA channel persistence and published image tags
-        run: |
-          python3 -B test/test_ota_channel_persistence.py -v
-          python3 -B test/test_observer_ota_channel.py -v
-          python3 -B test/test_observer_build_channels.py -v
-          python3 -B scripts/verify_ota_channel.py --self-test
+      - name: Verify split test jobs and aggregate gate
+        run: python3 -B test/test_unit_test_job_split.py -v
 
-      - name: Verify build output cleanup safety
-        run: python3 -B test/test_build_output_safety.py -v
+      - name: Upload Test Results
+        # Upload test results even if the test step failed.
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: .pio/build/native/
 
-      - name: Verify serial mOTA response deadlines and RX fairness
+  test-bridges-telemetry:
+    name: Bridges, networking and telemetry
+    runs-on: ubuntu-26.04
+    steps:
+
+      - name: Clone Repo
+        uses: actions/checkout@v6
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Install signed-package verification dependency
         run: |
-          python3 -B test/test_mota_serial_deadline.py -v
-          python3 -B test/test_mota_folder_deadline.py -v
-          python3 -B test/test_ota_folder_resume.py -v
-          python3 -B test/test_ota_direct_manager.py -v
-          python3 -B test/test_mota_kiss_direct.py -v
-          python3 -B test/test_ota_kiss_direct.py -v
-          python3 -B test/test_companion_foreign_hooks.py -v
+          python3 -m pip install cryptography
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+          mkdir -p .pio/libdeps/room-mail-test
+          bash tools/ci/pio_retry.sh pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/room-mail-test
+
+      # Each job has its own checkout. Install the native libraries that the
+      # former shared job obtained before these tests; do not run PlatformIO
+      # processes concurrently in this checkout.
+      - name: Install native test dependencies
+        run: bash tools/ci/pio_retry.sh pkg install -e native
+
+      - name: Set up Node.js for host tests
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      # In the previous single job these were installed by the nRF52 BLE
+      # step before the later tests. Keep them available on this runner too.
+      - name: Install ARM compiler and emulator for host tests
+        run: |
+          bash tools/ci/pio_retry.sh pkg install --global --tool 'platformio/toolchain-gccarmnoneeabi@1.140201.0'
+          python3 -m pip install unicorn==2.1.4
 
       - name: Verify filter playground modes and built-in defaults
         run: node scripts/test_filter_tool.js
@@ -744,8 +862,8 @@ jobs:
         working-directory: test
         run: >-
           python3 -B -m unittest
-          test_noise_floor_history test_noise_floor_readings test_noise_floor_sampler
-          test_noise_floor_rssi_errors test_noise_floor_cli -v
+          test_agessaman_noise_floor test_noise_floor_history test_noise_floor_readings test_noise_floor_sampler
+          test_noise_floor_rssi_errors test_noise_floor_cli test_telemetry_daily_extrema -v
 
       - name: Verify transactional telemetry preferences and legacy route recovery
         run: python3 -B test/test_telemetry_tx_persistence.py -v
@@ -779,6 +897,92 @@ jobs:
 
       - name: Verify DNS lease restoration and bounded diagnostics
         run: python3 -B test/test_network_dns.py -v
+
+      - name: Verify Ethernet RF harness framing, TX lock, isolation and safe serial ownership
+        run: |
+          python3 -B test/test_hil_tx_frequency_guard.py -v
+          python3 -B test/test_kiss_boot_trace.py -v
+          python3 -B test/test_kiss_ethernet_wire.py -v
+          python3 -B test/test_heltec_v3_flash_mode.py -v
+          python3 -B test/test_companion_ble_bench.py -v
+          python3 -B test/test_ble_visibility_probe.py -v
+          python3 -B test/test_ethernet_kiss_probe.py -v
+          python3 -B test/test_ethernet_tap_relay.py -v
+          python3 -B test/test_windows_usb_stdio_bridge.py -v
+          python3 -B test/test_ethernet_ssh_phone_bench.py -v
+          python3 -B test/test_meshcore_usb_sftp_bench.py -v
+          python3 -B test/test_ethernet_hil_serial_open.py -v
+          python3 -B test/test_ethernet_serial_guard.py -v
+          python3 -B test/test_ethernet_serial_rpc.py -v
+          python3 -B test/test_ethernet_primary_probe.py -v
+          python3 -B test/test_ethernet_radio2_sweep.py -v
+          python3 -B test/test_ethernet_preamble_bench.py -v
+          python3 -B test/test_ethernet_preamble_ssh_runner.py -v
+          python3 -B test/test_ethernet_kiss_modem_probe.py -v
+          python3 -B test/test_ethernet_tcp_stats.py -v
+          python3 -B test/test_meshcore_ip_relay.py -v
+          python3 -B test/test_meshcore_ip_ssh_phone_bench.py -v
+          python3 -B test/test_mcfirmware_bench_flash.py -v
+          python3 -B tools/hil/test_capture_infrastructure_boot.py -v
+          python3 -B tools/hil/test_companion_fanout_codec.py -v
+          python3 -B tools/hil/test_companion_fanout_hil.py -v
+
+      - name: Verify WiFi, ESP-NOW and combined wireless controls
+        run: |
+          python3 -B test/test_wireless_control.py -v
+          python3 -B test/test_wireless_policy_store.py -v
+          python3 -B test/test_wireless_saved_group.py -v
+          python3 -B test/test_wireless_no_services.py -v
+          python3 -B test/test_wireless_arm_capabilities.py -v
+          python3 -B test/test_infrastructure_wifi_preference.py -v
+          python3 -B test/test_companion_wifi_persistence.py -v
+          python3 -B test/test_webui_saved_intent.py -v
+          python3 -B test/test_stm32_wireless_specialization.py -v
+          python3 -B test/test_companion_no_wireless.py -v
+          python3 -B test/test_serial_wifi_sessions.py -v
+          python3 -B test/test_companion_wifi_listener.py -v
+          python3 -B test/test_wifi_compatibility.py -v
+          python3 -B test/test_companion_wifi_compatibility.py -v
+          python3 -B test/test_companion_wifi_status_format.py -v
+          python3 -B test/test_wifi_station_tx_power.py -v
+          python3 -B test/test_wifi_tx_cli.py -v
+          python3 -B test/test_serial_ethernet_sessions.py -v
+          python3 -B test/test_companion_wifi_session.py -v
+          python3 -B test/test_espnow_radio_lifecycle.py -v
+          python3 -B test/test_wifi_ap_lr_safety.py -v
+          python3 -B test/test_espnow_runtime.py -v
+          python3 -B test/test_espnow_bridge_diagnostics.py -v
+          python3 -B test/test_espnow_diagnostic_cli.py -v
+          python3 -B test/test_espnow_peer.py -v
+          python3 -B tools/hil/test_split_radio_probe.py -v
+          python3 -B tools/hil/test_split_radio_hardware_test.py -v
+          python3 -B test/test_wifi_ota_lifecycle.py -v
+
+
+  test-radio-power:
+    name: Radio, power and sensors
+    runs-on: ubuntu-26.04
+    steps:
+
+      - name: Clone Repo
+        uses: actions/checkout@v6
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Install signed-package verification dependency
+        run: |
+          python3 -m pip install cryptography
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+          mkdir -p .pio/libdeps/room-mail-test
+          bash tools/ci/pio_retry.sh pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/room-mail-test
+
+      # Each job has its own checkout. Install the native libraries that the
+      # former shared job obtained before these tests; do not run PlatformIO
+      # processes concurrently in this checkout.
+      - name: Install native test dependencies
+        run: bash tools/ci/pio_retry.sh pkg install -e native
 
       - name: Verify Sensor dog tracker ownership, routes, storage, GPS and sleep
         run: |
@@ -829,141 +1033,6 @@ jobs:
           python3 -B test/test_nrf52_profile_idle.py -v
           python3 -B test/test_esp32_scanner_power_yield.py -v
           python3 -B test/test_esp32_gpio_hold.py -v
-
-      - name: Verify Companion contact and channel TX routing
-        run: |
-          python3 -B test/test_companion_channel_alias.py -v
-          python3 -B test/test_companion_tx_routing.py -v
-          python3 -B test/test_companion_channel_publication.py -v
-          python3 -B test/test_companion_tx_raw_alias.py -v
-          python3 -B test/test_companion_traffic_routing.py -v
-          python3 -B test/test_host_kiss_radio.py -v
-          python3 -B test/test_host_kiss_infrastructure.py -v
-          python3 -B test/test_host_kiss.py -v
-          python3 -B test/test_host_kiss_usb.py -v
-          python3 -B test/test_host_kiss_ingress.py -v
-          python3 -B test/test_host_kiss_capabilities.py -v
-          python3 -B test/test_host_kiss_ram.py -v
-          python3 -B test/test_ethernet_kiss.py -v
-          python3 -B test/test_ethernet_radio.py -v
-          python3 -B test/test_companion_ethernet.py -v
-          python3 -B test/test_companion_discovery.py -v
-          python3 -B test/test_repeater_discovery.py -v
-          python3 -B test/test_repeater_discovery_settings.py -v
-          python3 -B test/test_companion_discovery_correlation.py -v
-          python3 -B test/test_pico_ble_queues.py -v
-          python3 -B test/test_companion_preferences_transaction.py -v
-          python3 -B test/test_companion_prefs_values.py -v
-          python3 -B test/test_companion_prefs_image.py -v
-          python3 -B test/test_companion_timezone_prefs.py -v
-          python3 -B test/test_companion_prefs_tail.py -v
-          python3 -B test/test_companion_radio_settings_transaction.py -v
-          python3 -B test/test_companion_prefs_transactions.py -v
-          python3 -B test/test_companion_primary_radio_persistence.py -v
-          python3 -B test/test_companion_response_bounds.py -v
-          python3 -B test/test_companion_rx_via.py -v
-          python3 -B test/test_companion_ack_delivery.py -v
-          python3 -B test/test_companion_lost_reply.py -v
-          python3 -B test/test_companion_delayed_reply_delivery.py -v
-          python3 -B test/test_companion_scheduled_reboot.py -v
-          python3 -B test/test_trace_profile_timing.py -v
-          python3 -B test/test_companion_hardware_serial.py -v
-          python3 -B test/test_companion_hardware_serial_gps.py -v
-          python3 -B test/test_companion_contact_lifetime.py -v
-          python3 -B test/test_contact_indices.py -v
-          python3 -B test/test_small_table_sort.py -v
-          python3 -B test/test_companion_identity_cli.py -v
-          python3 -B test/test_companion_packet_stream.py -v
-          python3 -B test/test_companion_uncached_storage.py -v
-          python3 -B test/test_companion_contact_partial_tail.py -v
-          python3 -B test/test_companion_channel_storage.py -v
-          python3 -B test/test_nrf52_extrafs_contract.py -v
-          python3 -B test/test_xiao_qspi_recovery.py -v
-          python3 -B test/test_nrf52_qspi_dma_fix.py -v
-          python3 -B test/test_xiao_identity_recovery.py -v
-          python3 -B test/test_companion_ota_config.py -v
-          python3 -B test/test_ota_identity_policy.py -v
-          python3 -B test/test_companion_radio_gain_restore.py -v
-          python3 -B test/test_room_sensor_radio_restore.py -v
-          python3 -B test/test_common_radio_persistence.py -v
-          python3 -B test/test_infrastructure_radio_apply.py -v
-          python3 -B test/test_common_cli_save_results.py -v
-          python3 -B test/test_common_cli_tx_pending.py -v
-          python3 -B test/test_radio_rx_settings_transaction.py -v
-          python3 -B test/test_common_prefs_uncertain_reply.py -v
-          python3 -B test/test_common_prefs_apply_reply.py -v
-          python3 -B test/test_common_prefs_commit.py -v
-          python3 -B test/test_common_cli_retry_tail.py -v
-          python3 -B test/test_common_prefs_legacy_rxgain.py -v
-          python3 -B test/test_flood_policy_capacity.py -v
-          python3 -B test/test_wardriving_default_migration.py -v
-          python3 -B test/test_flood_rule_layout.py -v
-          python3 -B test/test_mqtt_prefs_commit.py -v
-          python3 -B test/test_identity_and_settings_recovery.py -v
-          python3 -B test/test_contact_cache.py -v
-          python3 -B test/test_one_key_dm_shared_queue.py -v
-          python3 -B test/test_one_key_dm_compact_held.py -v
-          python3 -B test/test_companion_shared_ota_capacity.py -v
-          python3 -B test/test_espnow_raw_initialization.py -v
-
-      - name: Verify Ethernet RF harness framing, TX lock, isolation and safe serial ownership
-        run: |
-          python3 -B test/test_hil_tx_frequency_guard.py -v
-          python3 -B test/test_kiss_boot_trace.py -v
-          python3 -B test/test_kiss_ethernet_wire.py -v
-          python3 -B test/test_heltec_v3_flash_mode.py -v
-          python3 -B test/test_companion_ble_bench.py -v
-          python3 -B test/test_ble_visibility_probe.py -v
-          python3 -B test/test_ethernet_kiss_probe.py -v
-          python3 -B test/test_ethernet_tap_relay.py -v
-          python3 -B test/test_windows_usb_stdio_bridge.py -v
-          python3 -B test/test_ethernet_ssh_phone_bench.py -v
-          python3 -B test/test_meshcore_usb_sftp_bench.py -v
-          python3 -B test/test_ethernet_hil_serial_open.py -v
-          python3 -B test/test_ethernet_serial_guard.py -v
-          python3 -B test/test_ethernet_serial_rpc.py -v
-          python3 -B test/test_ethernet_primary_probe.py -v
-          python3 -B test/test_ethernet_radio2_sweep.py -v
-          python3 -B test/test_ethernet_preamble_bench.py -v
-          python3 -B test/test_ethernet_preamble_ssh_runner.py -v
-          python3 -B test/test_ethernet_kiss_modem_probe.py -v
-          python3 -B test/test_ethernet_tcp_stats.py -v
-          python3 -B test/test_meshcore_ip_relay.py -v
-          python3 -B test/test_meshcore_ip_ssh_phone_bench.py -v
-          python3 -B test/test_mcfirmware_bench_flash.py -v
-          python3 -B tools/hil/test_capture_infrastructure_boot.py -v
-
-      - name: Verify Meshtext chat codec, transport and Companion integration
-        run: |
-          python3 -B test/test_meshtext_chat.py -v
-          python3 -B test/test_meshtext_config.py -v
-          python3 -B test/test_meshtext_transport.py -v
-          python3 -B test/test_meshtext_primary_preamble.py -v
-          python3 -B test/test_meshtext_license.py -v
-          python3 -B test/test_pocket_gui_license.py -v
-          python3 -B test/test_beacon_frames.py -v
-          python3 -B test/test_beacon_manager.py -v
-          python3 -B test/test_beacon_radio.py -v
-          python3 -B test/test_beacon_dispatcher.py -v
-          python3 -B test/test_beacon_legacy_lora_protocol.py -v
-          python3 -B test/test_lr_meshtext_wire.py -v
-          python3 -B test/test_stm32wl_meshtext_protocol.py -v
-          python3 -B test/test_meshtext_modem_profiles.py -v
-          python3 -B test/test_environment_no_gps_link.py -v
-          python3 -B test/test_beacon_file_api.py -v
-          python3 -B test/test_beacon_sx1276_cad.py -v
-          python3 -B test/test_radio_profile_auto.py -v
-          python3 -B test/test_companion_meshtext.py -v
-          python3 -B test/test_companion_meshtext_storage.py -v
-          python3 -B test/test_companion_serial_hil.py -v
-          python3 -B test/test_companion_raw_radio2_sweep.py -v
-          python3 -B test/test_meshtext_listen_hil.py -v
-          python3 -B test/test_mercer_mt_flash.py -v
-          python3 -B test/test_mercer_nrf_app_flash.py -v
-          python3 -B test/test_indicator_repeater_hil_recipe.py -v
-          python3 -B test/test_indicator_radio_hal.py -v
-          python3 -B test/test_mota_usb_seeder_hil.py -v
-          python3 -B test/test_mota_espnow_chain_hil.py -v
 
       - name: Verify receive recovery and pinned radio status transport
         run: |
@@ -1019,6 +1088,8 @@ jobs:
           python3 -B test/test_radio_profile_idle_dispatcher.py -v
           python3 -B test/test_radio_rxps_rejection.py -v
           python3 -B test/test_repeater_radio_timing_integration.py
+          python3 -B test/test_deferred_flood_forwarding.py -v
+          python3 -B test/test_idle_tempradio_rearm.py
           python3 -B test/test_staggered_flood_advert.py -v
           python3 -B test/test_radio2_advert_setting.py -v
           python3 -B test/test_temp_radio_reply_delivery_contract.py
@@ -1043,6 +1114,20 @@ jobs:
           python3 -B test/test_ota_dev_reboot_guard.py -v
           python3 -B test/test_ota_dev_resume.py -v
 
+      - name: Verify checked receiver maintenance across radio families
+        working-directory: test
+        run: >-
+          python3 -B -m unittest -v
+          test_agc_driver_capability test_agc_compact_state
+          test_sx126x_rxps_pulse_commands test_lr_agc_pulse test_lr2021_receiver_reset
+          test_lr2021_calibration_device_diagnostics
+          test_lr2021_legacy_agc test_lr2021_handoff_diagnostics test_lr2021_pram_install test_sx1276_agc_pulse
+          test_rxps_pulse_fsm test_rxps_pulse_integration test_rxps_pulse_timing
+          test_indicator_agc_stale_irq
+          test_rxps_pulse_cli test_cli_maintenance_guard test_warm_rx_refresh
+          test_old_agc_all_radios test_agc_settings test_radio_maintenance_fastlane_roles test_agc_defaults
+          test_stm32_lora_driver test_stm32_companion_profile test_sx126x_receive_mode
+
       - name: Verify dual-profile switching and chirp timing
         working-directory: test
         run: >-
@@ -1060,46 +1145,6 @@ jobs:
           python3 -B test/test_hil_esp32_self_serve_ota.py -v
           python3 -B test/test_hil_esp32_usb_host_reboot.py -v
 
-      - name: Verify ESP32 static DRAM budget
-        run: |
-          python3 -B test/test_esp32_dram.py
-          python3 -B test/test_battery_charge_cli.py -v
-          python3 -B test/test_tbeam_charge_target.py -v
-          python3 -B test/test_elrs_power.py
-          python3 -B test/test_ota_heap_context.py
-          python3 -B test/test_ota_self_serve_policy.py -v
-          python3 -B test/test_ota_self_metadata_cache.py -v
-          python3 -B test/test_ota_nrf52_display_cache.py -v
-          python3 -B test/test_ota_device_deflate_encoder.py -v
-          python3 -B test/test_ota_device_deflate_role.py -v
-          python3 -B test/test_client_acl_spiffs.py
-          python3 -B test/test_client_acl_role.py -v
-          python3 -B test/test_client_acl_metadata.py -v
-          python3 -B test/test_client_acl_cli.py -v
-          python3 -B test/test_guest_cli.py -v
-          python3 -B test/test_login_history.py -v
-          python3 -B test/test_guest_login_settings.py -v
-          python3 -B test/test_repeater_guest_access.py -v
-          python3 -B test/test_client_acl_response.py -v
-
-      - name: Setup Node for official app compatibility tests
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          package-manager-cache: false
-
-      - name: Cache pinned official app and browser protocol sources
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/meshcore-tests
-          key: official-clients-${{ hashFiles('test/test_official_app_compatibility.py', 'test/test_official_config_gui.py', 'test/test_official_web_console.py') }}
-
-      - name: Verify stock app radio, Access Control and room compatibility
-        run: |
-          node --version
-          python3 -B test/test_official_app_compatibility.py -v
-          python3 -B test/test_official_room_app_compatibility.py -v
-
       - name: Verify ESP32 USB reboot sleep grace and G3 button wake
         run: |
           python3 -B test/test_usb_host_sleep_policy.py
@@ -1111,51 +1156,6 @@ jobs:
           python3 -B test/test_esp32_usb_sleep.py
           python3 -B test/test_esp32_full_sleep.py
           python3 -B test/test_esp32_full_power_lifecycle.py
-
-      - name: Verify official web console framing and power-saving idle sessions
-        run: |
-          python3 -B test/test_cpp_source.py -v
-          python3 -B test/test_official_web_console.py -v
-          python3 -B test/test_official_console_acceptance.py -v
-          python3 -B test/test_hil_linux_web_serial.py -v
-          python3 -B tools/hil/test_serial_session.py -v
-          python3 -B test/test_companion_release_acceptance.py -v
-          python3 -B test/test_mcfirmware_bench_backup.py -v
-          python3 -B test/test_mcfirmware_bench_app_flash.py -v
-          python3 -B test/test_mcfirmware_bench_data_restore.py -v
-          python3 -B tools/hil/test_room_webconfig_acceptance.py -v
-          python3 -B test/test_hil_slowfi_guard.py -v
-
-      - name: Verify official setup GUI initial time command deadline
-        run: python3 -B test/test_official_config_gui.py -v
-
-      - name: Verify ESP32 boot filesystem inventory and recovery safety
-        run: |
-          python3 -B test/test_esp32_boot_file_inventory.py -v
-          python3 -B test/test_esp32_boot_file_lifecycle.py -v
-
-      - name: Verify WiFi OTA startup and WebConfig handoff
-        run: |
-          python3 -B test/test_esp32_management_password.py -v
-          python3 -B test/test_companion_admin_password.py -v
-          python3 -B test/test_management_password_commands.py -v
-          python3 -B test/test_repeater_password_normalization.py -v
-          python3 -B test/test_wifi_setup_auth.py -v
-          python3 -B test/test_lightweight_ota_auth.py -v
-          python3 -B test/test_esp32_async_web_build_paths.py -v
-          python3 -B test/test_wifi_ota_start.py -v
-          python3 -B test/test_webconfig_ap_start.py -v
-          python3 -B test/test_service_start_retry.py -v
-          python3 -B test/test_webconfig_recovery_auth.py -v
-          python3 -B test/test_webconfig_password_sessions.py -v
-          python3 -B test/test_webconfig_password_persistence.py -v
-          python3 -B test/test_webconfig_password_reveal.py -v
-          python3 -B test/test_webconfig_login_throttle.py -v
-          python3 -B test/test_esp32_wifi_scan_fix.py -v
-          python3 -B test/test_esp32_wifi_scan_recipes.py -v
-
-      - name: Verify browser OTA completion and immediate HTTP listener restart
-        run: python3 -B test/test_async_web_lifecycle.py -v
 
       - name: Verify GPS status distinguishes user settings from receiver sleep
         run: |
@@ -1174,6 +1174,7 @@ jobs:
           python3 -B test/test_sx126x_buffered_radio_hal.py -v
           python3 -B test/test_esp32_tunable_target_constructors.py -v
           python3 -B test/test_esp32_spi_ab_diagnostics.py -v
+          python3 -B test/test_esp32_radio_command_code.py -v
           python3 -B test/test_profile_switch_timing.py -v
           python3 -B test/test_nrf_radio_yield_budget.py -v
           python3 -B test/test_nrf_radio_priority_lease.py -v
@@ -1201,6 +1202,106 @@ jobs:
           python3 -B test/test_sensor_battery_alerts.py -v
           python3 -B test/test_sensor_subscriptions.py -v
           python3 -B test/test_sensor_reply_bounds.py -v
+
+
+  test-companion-routing:
+    name: Companion checks (${{ matrix.suite }})
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        suite: [transport, preferences, storage]
+    steps:
+
+      - name: Clone Repo
+        uses: actions/checkout@v6
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Install signed-package verification dependency
+        run: |
+          python3 -m pip install cryptography
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+          mkdir -p .pio/libdeps/room-mail-test
+          bash tools/ci/pio_retry.sh pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/room-mail-test
+
+      # Each job has its own checkout. Install the native libraries that the
+      # former shared job obtained before these tests; do not run PlatformIO
+      # processes concurrently in this checkout.
+      - name: Install native test dependencies
+        run: bash tools/ci/pio_retry.sh pkg install -e native
+
+      # ABI/layout checks need this before the suites, rather than the later BLE step.
+      - name: Install ARM compiler for layout checks
+        run: bash tools/ci/pio_retry.sh pkg install --global --tool 'platformio/toolchain-gccarmnoneeabi@1.140201.0'
+
+      - name: Verify exact suite coverage and failure handling
+        run: python3 -B test/test_companion_routing_ci_split.py -v
+
+      # Separate runners own the three cells; all commands inside a checkout stay serial.
+      - name: Verify Companion ${{ matrix.suite }} contracts
+        run: bash tools/ci/run_companion_routing_tests.sh "${{ matrix.suite }}"
+
+  test-companion:
+    name: Companion and Bluetooth
+    runs-on: ubuntu-26.04
+    steps:
+
+      - name: Clone Repo
+        uses: actions/checkout@v6
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Install signed-package verification dependency
+        run: |
+          python3 -m pip install cryptography
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+          mkdir -p .pio/libdeps/room-mail-test
+          bash tools/ci/pio_retry.sh pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/room-mail-test
+
+      # Each job has its own checkout. Install the native libraries that the
+      # former shared job obtained before these tests; do not run PlatformIO
+      # processes concurrently in this checkout.
+      - name: Install native test dependencies
+        run: bash tools/ci/pio_retry.sh pkg install -e native
+
+      - name: Verify Meshtext chat codec, transport and Companion integration
+        run: |
+          python3 -B test/test_meshtext_chat.py -v
+          python3 -B test/test_meshtext_config.py -v
+          python3 -B test/test_meshtext_transport.py -v
+          python3 -B test/test_meshtext_primary_preamble.py -v
+          python3 -B test/test_meshtext_license.py -v
+          python3 -B test/test_pocket_gui_license.py -v
+          python3 -B test/test_beacon_frames.py -v
+          python3 -B test/test_beacon_manager.py -v
+          python3 -B test/test_beacon_radio.py -v
+          python3 -B test/test_beacon_dispatcher.py -v
+          python3 -B test/test_beacon_legacy_lora_protocol.py -v
+          python3 -B test/test_lr_meshtext_wire.py -v
+          python3 -B test/test_stm32wl_meshtext_protocol.py -v
+          python3 -B test/test_meshtext_modem_profiles.py -v
+          python3 -B test/test_environment_no_gps_link.py -v
+          python3 -B test/test_beacon_file_api.py -v
+          python3 -B test/test_beacon_sx1276_cad.py -v
+          python3 -B test/test_radio_profile_auto.py -v
+          python3 -B test/test_companion_meshtext.py -v
+          python3 -B test/test_companion_meshtext_storage.py -v
+          python3 -B test/test_companion_serial_hil.py -v
+          python3 -B test/test_companion_serial_startup_replies.py -v
+          python3 -B test/test_companion_raw_radio2_sweep.py -v
+          python3 -B test/test_meshtext_listen_hil.py -v
+          python3 -B test/test_mercer_mt_flash.py -v
+          python3 -B test/test_mercer_nrf_app_flash.py -v
+          python3 -B test/test_indicator_repeater_hil_recipe.py -v
+          python3 -B test/test_indicator_radio_hal.py -v
+          python3 -B test/test_mota_usb_seeder_hil.py -v
+          python3 -B test/test_mota_espnow_chain_hil.py -v
 
       - name: Verify Companion ASCII defaults and USB session cleanup
         run: |
@@ -1255,7 +1356,7 @@ jobs:
           MESHCORE_REQUIRE_ARM_COMPILER: '1'
           MESHCORE_REQUIRE_DFU_EMULATOR: '1'
         run: |
-          pio pkg install --global --tool 'platformio/toolchain-gccarmnoneeabi@1.140201.0'
+          bash tools/ci/pio_retry.sh pkg install --global --tool 'platformio/toolchain-gccarmnoneeabi@1.140201.0'
           python3 -B test/test_nrf52_svc_compat.py -v
           python3 -B test/test_nrf52_ble_cccd_fix.py -v
           python3 -B test/test_nrf52_ble_disconnect.py -v
@@ -1263,29 +1364,133 @@ jobs:
           pip install unicorn==2.1.4
           python3 -B test/test_nrf52_ble_dfu_fix.py -v
 
-      - name: Verify WiFi, ESP-NOW and combined wireless controls
+
+  test-client-compat:
+    name: App, web and OTA compatibility
+    runs-on: ubuntu-26.04
+    steps:
+
+      - name: Clone Repo
+        uses: actions/checkout@v6
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Install signed-package verification dependency
         run: |
-          python3 -B test/test_wireless_control.py -v
-          python3 -B test/test_stm32_wireless_specialization.py -v
-          python3 -B test/test_companion_no_wireless.py -v
-          python3 -B test/test_serial_wifi_sessions.py -v
-          python3 -B test/test_companion_wifi_listener.py -v
-          python3 -B test/test_wifi_compatibility.py -v
-          python3 -B test/test_companion_wifi_compatibility.py -v
-          python3 -B test/test_companion_wifi_status_format.py -v
-          python3 -B test/test_wifi_station_tx_power.py -v
-          python3 -B test/test_wifi_tx_cli.py -v
-          python3 -B test/test_serial_ethernet_sessions.py -v
-          python3 -B test/test_companion_wifi_session.py -v
-          python3 -B test/test_espnow_radio_lifecycle.py -v
-          python3 -B test/test_wifi_ap_lr_safety.py -v
-          python3 -B test/test_espnow_runtime.py -v
-          python3 -B test/test_espnow_bridge_diagnostics.py -v
-          python3 -B test/test_espnow_diagnostic_cli.py -v
-          python3 -B test/test_espnow_peer.py -v
-          python3 -B tools/hil/test_split_radio_probe.py -v
-          python3 -B tools/hil/test_split_radio_hardware_test.py -v
-          python3 -B test/test_wifi_ota_lifecycle.py -v
+          python3 -m pip install cryptography
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+          mkdir -p .pio/libdeps/room-mail-test
+          bash tools/ci/pio_retry.sh pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/room-mail-test
+
+      # Each job has its own checkout. Install the native libraries that the
+      # former shared job obtained before these tests; do not run PlatformIO
+      # processes concurrently in this checkout.
+      - name: Install native test dependencies
+        run: bash tools/ci/pio_retry.sh pkg install -e native
+
+      - name: Setup Node for official app compatibility tests
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      - name: Cache pinned official app and browser protocol sources
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/meshcore-tests
+          key: official-clients-${{ hashFiles('test/test_official_app_compatibility.py', 'test/test_official_config_gui.py', 'test/test_official_web_console.py') }}
+
+      - name: Verify stock app radio, Access Control and room compatibility
+        run: |
+          node --version
+          python3 -B test/test_official_app_compatibility.py -v
+          python3 -B test/test_official_room_app_compatibility.py -v
+
+      - name: Verify official web console framing and power-saving idle sessions
+        run: |
+          python3 -B test/test_cpp_source.py -v
+          python3 -B test/test_official_web_console.py -v
+          python3 -B test/test_official_console_acceptance.py -v
+          python3 -B test/test_hil_linux_web_serial.py -v
+          python3 -B tools/hil/test_serial_session.py -v
+          python3 -B test/test_companion_release_acceptance.py -v
+          python3 -B test/test_mcfirmware_bench_backup.py -v
+          python3 -B test/test_mcfirmware_bench_app_flash.py -v
+          python3 -B test/test_mcfirmware_bench_data_restore.py -v
+          python3 -B tools/hil/test_room_webconfig_acceptance.py -v
+          python3 -B test/test_hil_slowfi_guard.py -v
+
+      - name: Verify official setup GUI initial time command deadline
+        run: python3 -B test/test_official_config_gui.py -v
+
+      - name: Verify ESP32 boot filesystem inventory and recovery safety
+        run: |
+          python3 -B test/test_esp32_boot_file_inventory.py -v
+          python3 -B test/test_esp32_boot_file_lifecycle.py -v
+
+      - name: Verify WiFi OTA startup and WebConfig handoff
+        run: |
+          python3 -B test/test_esp32_management_password.py -v
+          python3 -B test/test_companion_admin_password.py -v
+          python3 -B test/test_management_password_commands.py -v
+          python3 -B test/test_repeater_password_normalization.py -v
+          python3 -B test/test_wifi_setup_auth.py -v
+          python3 -B test/test_lightweight_ota_auth.py -v
+          python3 -B test/test_esp32_async_web_build_paths.py -v
+          python3 -B test/test_wifi_ota_start.py -v
+          python3 -B test/test_webconfig_ap_start.py -v
+          python3 -B test/test_service_start_retry.py -v
+          python3 -B test/test_webconfig_recovery_auth.py -v
+          python3 -B test/test_webconfig_password_sessions.py -v
+          python3 -B test/test_webconfig_password_persistence.py -v
+          python3 -B test/test_webconfig_password_reveal.py -v
+          python3 -B test/test_webconfig_login_throttle.py -v
+          python3 -B test/test_esp32_wifi_scan_fix.py -v
+          python3 -B test/test_esp32_wifi_scan_recipes.py -v
+
+      - name: Verify browser OTA completion and immediate HTTP listener restart
+        run: python3 -B test/test_async_web_lifecycle.py -v
+
+
+  test-display:
+    name: Displays, UI and USB logging
+    runs-on: ubuntu-26.04
+    steps:
+
+      - name: Clone Repo
+        uses: actions/checkout@v6
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Install signed-package verification dependency
+        run: |
+          python3 -m pip install cryptography
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+          mkdir -p .pio/libdeps/room-mail-test
+          bash tools/ci/pio_retry.sh pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/room-mail-test
+
+      # Each job has its own checkout. Install the native libraries that the
+      # former shared job obtained before these tests; do not run PlatformIO
+      # processes concurrently in this checkout.
+      - name: Install native test dependencies
+        run: bash tools/ci/pio_retry.sh pkg install -e native
+
+      - name: Set up Node.js for host tests
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      # In the previous single job these were installed by the nRF52 BLE
+      # step before the later tests. Keep them available on this runner too.
+      - name: Install ARM compiler and emulator for host tests
+        run: |
+          bash tools/ci/pio_retry.sh pkg install --global --tool 'platformio/toolchain-gccarmnoneeabi@1.140201.0'
+          python3 -m pip install unicorn==2.1.4
 
       - name: Verify message reader buttons, touch targets, and footer layouts
         working-directory: test
@@ -1328,109 +1533,6 @@ jobs:
           python3 -B test/test_consolidated_profiles.py -v
           python3 -B test/test_rp2040_application_capabilities.py -v
 
-      - name: Verify Full logging compiler flags and packaged capabilities
-        run: |
-          python3 -B test/test_t114_autodisplay_recipes.py -v
-          python3 -B test/test_station_g3_radio_pins.py -v
-          python3 -B test/test_station_g3_cli_dispatch.py -v
-          python3 -B test/test_station_g3_fem_control.py -v
-          python3 -B test/test_station_g3_slot_settings.py -v
-          python3 -B test/test_station_g3_slot_detection.py -v
-          python3 -B test/test_station_g3_boot_recovery.py -v
-          python3 -B test/test_kiss_radio_slot.py -v
-          python3 -B test/test_station_g3_release_profiles.py -v
-          node test/test_station_g3_picker.js
-          python3 -B test/test_upstream_observer_recipes.py -v
-          python3 -B test/test_station_g3_sensor_recipes.py -v
-          python3 -B test/test_full_build_flag_dedup.py
-          python3 -B test/test_full_logging_compile.py
-          python3 -B test/test_full_logging_resume.py
-          python3 -B test/test_xiao_canonical_logging.py -v
-          python3 -B test/test_firmware_build_recipe.py -v
-          python3 -B test/test_firmware_capabilities.py
-          MESHCORE_TEST_REAL_PIO_PATHS=1 python3 -B test/test_esp32_partition_migration_build_dir.py -v
-          python3 -B test/test_esp32_migration_assets.py -v
-          python3 -B test/test_esp32_migration_expanders.py -v
-          python3 -B test/test_esp32_partition_migration_usb.py -v
-          python3 -B test/test_esp32_partition_migration_preservation.py -v
-          python3 -B test/test_esp32_partition_calibration_migration.py -v
-          python3 -B test/test_esp32_partition_migrator_ap_password.py -v
-          python3 -B test/test_waveshare_partition_migration.py -v
-          python3 -B test/test_usb_partition_bridge_set.py -v
-          bash test/test_build_profiles.sh
-          python3 -B test/test_onboard_qspi_profiles.py -v
-          bash test/test_full_infrastructure_selection.sh
-          bash test/test_nrf52_ota_profiles.sh
-          bash test/test_xiao_qspi_combined.sh
-
-      - name: Verify nRF52 UF2-reset CLI coverage
-        run: python3 -B test/test_nrf52_uf2reset_cli.py
-
-      - name: Verify CLI setting dispatch and get-set coverage
-        run: |
-          python3 -B test/test_path_hash_cli.py
-          python3 -B test/test_cli_settings_contract.py
-          python3 -B test/test_local_cli_access.py
-          python3 -B test/test_remote_cli_command_identity.py -v
-          python3 -B test/test_replay_reset_integration.py -v
-
-      - name: Verify firmware memory budgets and nRF52 Bluetooth startup
-        env:
-          MESHCORE_REQUIRE_ARM_COMPILER: '1'
-        run: |
-          python3 -B test/test_firmware_ram.py
-          python3 -B test/test_sh1106_memory.py -v
-          python3 -B test/test_recent_repeater_storage.py -v
-          python3 -B test/test_ota_cold_buffers.py -v
-          python3 -B test/test_ota_source_proofs.py -v
-          python3 -B test/test_neighbor_scope_storage.py
-          python3 -B test/test_ed25519_compact.py
-          python3 -B test/test_cascade_release_package.py
-          python3 -B test/test_release_publication.py
-          python3 -B test/test_local_release_full_selection.py
-          python3 -B test/test_local_release_capacity_archive.py
-          python3 -B test/test_nrf52_bootloader_release_catalog.py
-          python3 -B test/test_t096_full_memory.py
-          python3 -B test/test_st7735_framebuffer.py -v
-          python3 -B test/test_nrf52_ble_startup.py
-          python3 -B test/test_nrf52_ble_backpressure.py
-          python3 -B test/test_nrf52_ble_rx_queue.py -v
-          python3 -B test/test_nrf52_ble_tx_session.py -v
-          python3 -B test/test_nrf52_ble_trace.py
-          python3 -B test/test_nrf52_ble_debug_tools.py
-          python3 -B test/test_nrf52_usb_power.py
-          python3 -B test/test_nrf52_shutdown_leds.py -v
-          python3 -B test/test_shared_mota_queue.py
-
-      - name: Verify opt-in RAK4631 combined Ethernet and OTA modes
-        run: |
-          python3 -B test/test_rak_combined_ota.py -v
-          python3 -B test/test_rak_ethernet_transmit.py -v
-          python3 -B test/test_rak4631_ethernet_runtime.py -v
-          python3 -B test/test_ethernet_terminal_shutdown.py -v
-          python3 -B test/test_rak_sd_receiver.py -v
-          python3 -B test/test_rak15002_shared_spi.py -v
-          python3 -B test/test_ota_sd_auth_ownership.py -v
-          python3 -B test/test_nrf52_internal_bootloader_link.py -v
-          python3 -B test/test_rak_nor_gpio_reservations.py -v
-          python3 -B test/test_rak_companion_ethernet_worker.py -v
-          python3 -B test/test_rak_sd_context_handoff.py -v
-          python3 -B test/test_rak_sd_room_ethernet.py -v
-
-      - name: Verify nRF52 infrastructure trims and unchanged Companion scope
-        run: |
-          python3 -B test/test_nrf52_flash_trim.py -v
-          python3 -B test/test_nrf52_ota_pacing_size.py -v
-          python3 -B test/test_nrf52_vl53l0x_const.py -v
-          python3 -B test/test_nrf52_gnss_version_trim.py -v
-          python3 -B test/test_nrf52_program_lifetime.py -v
-          python3 -B test/test_nrf52_tft_font_trim.py -v
-          python3 -B test/test_ota_sd_cache.py -v
-          python3 -B test/test_rak15002_sd_seeder.py -v
-          python3 -B test/test_rak4631_rak15002_sd_recipes.py -v
-          python3 -B test/test_ota_target_names.py -v
-          python3 -B test/test_ota_cli_listing.py -v
-
       - name: Verify compact same-size fonts and lossless rendering
         run: |
           python3 -B test/test_compact_arial.py -v
@@ -1441,6 +1543,14 @@ jobs:
 
       - name: Verify Companion Bluetooth settings and WebConfig
         run: |
+          python3 -B test/test_gpio_rotary_input.py -v
+          python3 -B test/test_rotary_settings.py -v
+          python3 -B test/test_peripheral_outputs.py -v
+          python3 -B test/test_notification_gpio_claims.py -v
+          python3 -B test/test_peripheral_pin_policy.py -v
+          python3 -B test/test_user_gpio_claims.py -v
+          python3 -B test/test_native_button_resume.py -v
+          python3 -B test/test_companion_rotary_navigation.py -v
           python3 -B test/test_rtttl_rollover.py -v
           python3 -B test/test_rtttl_rollover_recipes.py -v
           python3 -B test/test_companion_ui_deadlines.py -v
@@ -1460,6 +1570,9 @@ jobs:
           MESH_VOICE_TEST_SANITIZERS=1 python3 -B test/test_voice_prefixes.py -v
           python3 -B test/test_nimble_companion.py
           python3 -B test/test_esp32_ble_power.py -v
+          python3 -B test/test_bluedroid_bond_policy.py
+          python3 -B test/test_bluedroid_bond_archive.py
+          python3 -B test/test_bluedroid_bond_selection.py
           python3 -B test/test_esp32_native_ble_stop.py -v
           python3 -B test/test_esp32_ble_lifecycle_fix.py -v
           python3 -B test/test_esp32_nimble_timer_fix.py -v
@@ -1522,13 +1635,247 @@ jobs:
           MESHCORE_REQUIRE_ROOM_BROWSER=1 python3 -B test/test_room_web_ui.py -v
           MESHCORE_REQUIRE_ROOM_BROWSER=1 python3 -B test/test_room_mail_web_ui.py -v
 
-      - name: Upload Test Results
-        # Upload test results even if the test step failed.
-        if: always()
-        uses: actions/upload-artifact@v7
+
+  test-build-profiles:
+    name: Build profiles (${{ matrix.suite }})
+    runs-on: ubuntu-26.04
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        suite: [esp32-release, companion-transport, nrf52-storage]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+      # These assertions use project metadata, not firmware compilation or native libraries.
+      - name: Verify profile-suite coverage and isolation
+        run: python3 -B test/test_build_profile_suites.py -v
+      - name: Verify independent build-profile family
+        run: bash test/test_build_profiles.sh --suite "${{ matrix.suite }}"
+
+  test-build-ota:
+    name: Build, OTA and release packaging
+    runs-on: ubuntu-26.04
+    steps:
+
+      - name: Clone Repo
+        uses: actions/checkout@v6
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Install signed-package verification dependency
+        run: |
+          python3 -m pip install cryptography
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev
+          mkdir -p .pio/libdeps/room-mail-test
+          bash tools/ci/pio_retry.sh pkg install --global --library 'rweather/Crypto@0.4.0' --storage-dir .pio/libdeps/room-mail-test
+
+      # Each job has its own checkout. Install the native libraries that the
+      # former shared job obtained before these tests; do not run PlatformIO
+      # processes concurrently in this checkout.
+      - name: Install native test dependencies
+        run: bash tools/ci/pio_retry.sh pkg install -e native
+
+      - name: Set up Node.js for host tests
+        uses: actions/setup-node@v6
         with:
-          name: test-results
-          path: .pio/build/native/
+          node-version: '22'
+          package-manager-cache: false
+
+      # In the previous single job these were installed by the nRF52 BLE
+      # step before the later tests. Keep them available on this runner too.
+      - name: Install ARM compiler and emulator for host tests
+        run: |
+          bash tools/ci/pio_retry.sh pkg install --global --tool 'platformio/toolchain-gccarmnoneeabi@1.140201.0'
+          python3 -m pip install unicorn==2.1.4
+
+      - name: Verify build-size diagnostics and nRF52 optimizer recipes
+        run: |
+          bash test/test_build_size_detection.sh
+          python3 -B test/test_nrf52_size_profile.py -v
+          python3 -B test/test_rak_combined_build_config.py -v
+          python3 -B test/test_rak_bsec_libdeps.py -v
+
+      - name: Verify OTA channel persistence and published image tags
+        run: |
+          python3 -B test/test_ota_channel_persistence.py -v
+          python3 -B test/test_observer_ota_channel.py -v
+          python3 -B test/test_observer_build_channels.py -v
+          python3 -B scripts/verify_ota_channel.py --self-test
+
+      - name: Verify build output cleanup safety
+        run: |
+          python3 -B test/test_build_output_safety.py -v
+          python3 -B test/test_pio_transient_retry.py -v
+          python3 -B test/test_esp32_core_fallback.py -v
+          python3 -B test/test_fetch_pinned_esp32_c6.py -v
+
+      - name: Verify serial mOTA response deadlines and RX fairness
+        run: |
+          python3 -B test/test_mota_serial_deadline.py -v
+          python3 -B test/test_mota_folder_deadline.py -v
+          python3 -B test/test_ota_folder_resume.py -v
+          python3 -B test/test_ota_direct_manager.py -v
+          python3 -B test/test_mota_kiss_direct.py -v
+          python3 -B test/test_ota_kiss_direct.py -v
+          python3 -B test/test_companion_foreign_hooks.py -v
+
+      - name: Verify ESP32 static DRAM budget
+        run: |
+          python3 -B test/test_esp32_dram.py
+          python3 -B test/test_battery_charge_cli.py -v
+          python3 -B test/test_tbeam_charge_target.py -v
+          python3 -B test/test_elrs_power.py
+          python3 -B test/test_ota_heap_context.py
+          python3 -B test/test_ota_self_serve_policy.py -v
+          python3 -B test/test_ota_self_metadata_cache.py -v
+          python3 -B test/test_ota_nrf52_display_cache.py -v
+          python3 -B test/test_ota_device_deflate_encoder.py -v
+          python3 -B test/test_ota_device_deflate_role.py -v
+          python3 -B test/test_client_acl_spiffs.py
+          python3 -B test/test_client_acl_role.py -v
+          python3 -B test/test_client_acl_metadata.py -v
+          python3 -B test/test_client_acl_cli.py -v
+          python3 -B test/test_guest_cli.py -v
+          python3 -B test/test_login_history.py -v
+          python3 -B test/test_guest_login_settings.py -v
+          python3 -B test/test_repeater_guest_access.py -v
+          python3 -B test/test_client_acl_response.py -v
+
+      - name: Verify Full logging compiler flags and packaged capabilities
+        run: |
+          python3 -B test/test_t114_autodisplay_recipes.py -v
+          python3 -B test/test_station_g3_radio_pins.py -v
+          python3 -B test/test_station_g3_cli_dispatch.py -v
+          python3 -B test/test_station_g3_fem_control.py -v
+          python3 -B test/test_tbeam_1w_fem.py -v
+          python3 -B test/test_station_g3_slot_settings.py -v
+          python3 -B test/test_station_g3_slot_detection.py -v
+          python3 -B test/test_station_g3_boot_recovery.py -v
+          python3 -B test/test_kiss_radio_slot.py -v
+          python3 -B test/test_station_g3_release_profiles.py -v
+          node test/test_station_g3_picker.js
+          python3 -B test/test_upstream_observer_recipes.py -v
+          python3 -B test/test_station_g3_sensor_recipes.py -v
+          python3 -B test/test_full_build_flag_dedup.py
+          python3 -B test/test_full_logging_compile.py
+          python3 -B test/test_full_logging_resume.py
+          python3 -B test/test_xiao_canonical_logging.py -v
+          python3 -B test/test_firmware_build_recipe.py -v
+          python3 -B test/test_firmware_capabilities.py
+          MESHCORE_TEST_REAL_PIO_PATHS=1 python3 -B test/test_esp32_partition_migration_build_dir.py -v
+          python3 -B test/test_esp32_migration_assets.py -v
+          python3 -B test/test_esp32_migration_expanders.py -v
+          python3 -B test/test_esp32_partition_migration_usb.py -v
+          python3 -B test/test_esp32_partition_migration_preservation.py -v
+          python3 -B test/test_esp32_partition_calibration_migration.py -v
+          python3 -B test/test_esp32_partition_migrator_ap_password.py -v
+          python3 -B test/test_waveshare_partition_migration.py -v
+          python3 -B test/test_usb_partition_bridge_set.py -v
+          python3 -B test/test_onboard_qspi_profiles.py -v
+          bash test/test_full_infrastructure_selection.sh
+          bash test/test_nrf52_ota_profiles.sh
+          bash test/test_xiao_qspi_combined.sh
+
+      - name: Verify nRF52 UF2-reset CLI coverage
+        run: python3 -B test/test_nrf52_uf2reset_cli.py
+
+      - name: Verify CLI setting dispatch and get-set coverage
+        run: |
+          python3 -B test/test_path_hash_cli.py
+          python3 -B test/test_cli_settings_contract.py
+          python3 -B test/test_local_cli_access.py
+          python3 -B test/test_remote_cli_command_identity.py -v
+          python3 -B test/test_replay_reset_integration.py -v
+
+      - name: Verify firmware memory budgets and nRF52 Bluetooth startup
+        env:
+          MESHCORE_REQUIRE_ARM_COMPILER: '1'
+        run: |
+          python3 -B test/test_firmware_ram.py
+          python3 -B test/test_sh1106_memory.py -v
+          python3 -B test/test_recent_repeater_storage.py -v
+          python3 -B test/test_ota_cold_buffers.py -v
+          python3 -B test/test_ota_source_proofs.py -v
+          python3 -B test/test_neighbor_scope_storage.py
+          python3 -B test/test_ed25519_compact.py
+          python3 -B test/test_cascade_release_package.py
+          python3 -B test/test_release_publication.py
+          python3 -B test/test_local_release_full_selection.py
+          python3 -B test/test_local_release_capacity_archive.py
+          python3 -B test/test_parallel_release_workers.py
+          python3 -B test/test_release_target_shards.py
+          python3 -B test/test_t190_full_psram.py
+          python3 -B test/test_sensirion_integer_type_fix.py
+          python3 -B test/test_nrf52_bootloader_release_catalog.py
+          python3 -B test/test_t096_full_memory.py
+          python3 -B test/test_st7735_framebuffer.py -v
+          python3 -B test/test_nrf52_ble_startup.py
+          python3 -B test/test_nrf52_ble_backpressure.py
+          python3 -B test/test_nrf52_ble_rx_queue.py -v
+          python3 -B test/test_nrf52_ble_tx_session.py -v
+          python3 -B test/test_nrf52_ble_trace.py
+          python3 -B test/test_nrf52_ble_debug_tools.py
+          python3 -B test/test_nrf52_usb_power.py
+          python3 -B test/test_nrf52_shutdown_leds.py -v
+          python3 -B test/test_shared_mota_queue.py
+
+      - name: Verify opt-in RAK4631 combined Ethernet and OTA modes
+        run: |
+          python3 -B test/test_rak_combined_ota.py -v
+          python3 -B test/test_rak_ethernet_transmit.py -v
+          python3 -B test/test_rak4631_ethernet_runtime.py -v
+          python3 -B test/test_ethernet_mode_settings.py -v
+          python3 -B test/test_ethernet_terminal_shutdown.py -v
+          python3 -B test/test_rak_sd_receiver.py -v
+          python3 -B test/test_rak15002_shared_spi.py -v
+          python3 -B test/test_ota_sd_auth_ownership.py -v
+          python3 -B test/test_nrf52_internal_bootloader_link.py -v
+          python3 -B test/test_rak_nor_gpio_reservations.py -v
+          python3 -B test/test_rak_companion_ethernet_worker.py -v
+          python3 -B test/test_rak_sd_context_handoff.py -v
+          python3 -B test/test_rak_sd_room_ethernet.py -v
+
+      - name: Verify nRF52 infrastructure trims and unchanged Companion scope
+        run: |
+          python3 -B test/test_nrf52_flash_trim.py -v
+          python3 -B test/test_nrf52_ota_pacing_size.py -v
+          python3 -B test/test_nrf52_vl53l0x_const.py -v
+          python3 -B test/test_nrf52_gnss_version_trim.py -v
+          python3 -B test/test_nrf52_program_lifetime.py -v
+          python3 -B test/test_nrf52_tft_font_trim.py -v
+          python3 -B test/test_ota_sd_cache.py -v
+          python3 -B test/test_rak15002_sd_seeder.py -v
+          python3 -B test/test_rak4631_rak15002_sd_recipes.py -v
+          python3 -B test/test_ota_target_names.py -v
+          python3 -B test/test_ota_cli_listing.py -v
+
+
+  # Preserve the existing required-check name while exposing failures by group.
+  test:
+    name: test
+    if: ${{ always() }}
+    needs: [test-core, test-bridges-telemetry, test-radio-power, test-companion, test-client-compat, test-display, test-build-ota, test-build-profiles, test-companion-routing, universal-lora-smoke]
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Require every test group to pass
+        env:
+          TEST_GROUP_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os, sys
+          results = json.loads(os.environ["TEST_GROUP_RESULTS"])
+          failed = {name: info["result"] for name, info in results.items()
+                    if info["result"] != "success"}
+          if failed:
+              for name, result in sorted(failed.items()):
+                  print(f"::error::{name}: {result}")
+              sys.exit(1)
+          print(f"All {len(results)} test groups passed.")
+          PYCODE
 
   hosted-doc-links:
     runs-on: ubuntu-26.04
@@ -1543,5 +1890,7 @@ jobs:
         run: python3 -B test/test_hosted_doc_links.py -v
       - name: Verify hosted-link visibility and navigation
         run: node test/test_hosted_doc_links.js
+      - name: Verify browser LoRa updater on the published site
+        run: MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_mkdocs_runtime.py -v
       - name: Release feature link behavior
         run: node test/test_release_features.js

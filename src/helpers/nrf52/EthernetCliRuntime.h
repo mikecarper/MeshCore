@@ -581,7 +581,9 @@ static bool ethernet_request_start(char* reply, bool persist) {
     ethernet_worker_active.store(false);
     (void)ethernet_complete_release();
     ethernet_state.store(EthernetCliState::StartFailed);
-    strcpy(reply, "Error: Ethernet task allocation failed");
+    strcpy(reply, persist && ethernet_hooks.save
+        ? "Error: Ethernet task allocation failed; enabled setting saved"
+        : "Error: Ethernet task allocation failed");
     return false;
   }
   strcpy(reply, ethernet_hooks.save
