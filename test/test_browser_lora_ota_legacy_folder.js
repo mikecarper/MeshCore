@@ -94,6 +94,9 @@ class OldFullPort {
       this.sourceRequest(2, [0], 38, describe => {
         this.mid = describe.slice(0, 4);
         this.events.push('folder:attached');
+        if (this.options.deliverLatePullReply && this.latePullReply) {
+          this.inbox.push(this.latePullReply); this.latePullReply = null;
+        }
         if (!this.options.dropAttach) this.emit(enc.encode('\r\nOK folder attached (serial): advertising 1/1 host mOTAs\r\n'));
         if (this.pulling && !this.options.suppressFileReads) this.readManifestPart(0);
       });
@@ -179,10 +182,18 @@ class OldFullPort {
       if (command ==='get public.key') reply = '> ' +TARGET;
       if (command ==='get tempradio') reply = this.options.temporaryRadio ||'TempRadio active: 910.525,62.5,7,5 7200s left,preamble=128';
       if (command ==='ota config') reply = 'autofetch=off autoinstall=off hops=0';
-      if (command.startsWith('ota pull ')) { this.pulling = true; this.pendingLateInbox = true; }
+      if (command.startsWith('ota pull ')) {
+        this.pulling = !this.options.rejectPull; this.pendingLateInbox = true;
+        reply = 'OK pulling mid=' + command.split(' ')[2] + ' -> flash (primary traffic)';
+      }
       if (command ==='ota cancel') this.pulling = false;
       reply=this.options.remoteReply?.(command,this)??reply;
-      this.inbox.push(cat([16, 0, 0, 0], Buffer.from(TARGET, 'hex').subarray(0, 6), [255, 1], le32(1), enc.encode(tag +reply)));
+      const remoteFrame = cat([16, 0, 0, 0], Buffer.from(TARGET, 'hex').subarray(0, 6), [255, 1], le32(1), enc.encode(tag +reply));
+      if (command.startsWith('ota pull ') && this.options.injectWrongSourcePullReply)
+        this.inbox.push(cat([16, 0, 0, 0], Buffer.from('cc'.repeat(32), 'hex').subarray(0, 6), [255, 1], le32(1), enc.encode(tag +'OK')));
+      if (command.startsWith('ota pull ') && this.options.lostPullReply) {
+        this.latePullReply = remoteFrame;
+      } else this.inbox.push(remoteFrame);
       answer = Uint8Array.of(6);
     } else if (frame[0] ===10) {
       answer = this.inbox.shift() || Uint8Array.of(10);
@@ -258,6 +269,235 @@ test('status briefly hands USB back to binary and resumes the same folder withou
     assert.ok(events.indexOf('remote:ota status') <events.indexOf('ota folder on'));
     assert.equal(f.port.remoteCommands.filter(cmd =>cmd.startsWith('ota pull ')).length, 1);
     assert.equal(f.port.binaryFrames.filter(frame =>frame[0] ===65 &&frame.length >32).length, 0);
+  } finally { await f.cleanup(); }
+});
+
+test('a lost pull acknowledgement yields uncertainty and starts native serving promptly', async () => {
+  const f = await source({lostPullReply:true}), info = await packageInfo();
+  try {
+    await f.link.serve(info, info.blob, null);
+    const started = Date.now();
+    await assert.rejects(f.link.remoteCommand(TARGET, '', 'ota pull ' + hex(info.merkleRoot) + ' flash'), /result is unknown/);
+    assert.ok(Date.now() - started < 1000, 'Do not wait the full remote ACK timeout before attaching');
+    await wait(() =>f.port.manifestParts.length ===2);
+    assert.equal(f.port.mode, 'folder');
+    assert.equal(f.port.remoteCommands.filter(command => command.startsWith('ota pull ')).length, 1);
+    assert.ok(!f.port.remoteCommands.includes('ota cancel'));
+    // The old tagged ACK must be correlated to the pull, never used as the status.
+    f.port.inbox.push(f.port.latePullReply);
+    assert.match(await f.link.remoteCommand(TARGET, '', 'ota status'), /fetch=C/);
+    assert.equal(f.link.getPreservedMessages().length, 0);
+    assert.equal(f.port.remoteCommands.filter(command => command.startsWith('ota pull ')).length, 1);
+  } finally { await f.cleanup(); }
+});
+
+test('an immediate tagged pull rejection is reported, not confused with other queued messages', async () => {
+  const f = await source({rejectPull:true, remoteReply:command => command.startsWith('ota pull ') ? 'ERR no storage' : undefined});
+  const info = await packageInfo();
+  try {
+    await f.link.serve(info, info.blob, null);
+    f.port.inbox.push(cat([16, 0, 0, 0], Buffer.from('cc'.repeat(32), 'hex').subarray(0, 6), [255, 0], le32(1), enc.encode('Keep unrelated')));
+    const session = new DirectSession(f.link, TARGET, '', info);
+    await assert.rejects(session.remote('ota pull ' + hex(info.merkleRoot) + ' flash'), /ERR no storage/);
+    assert.equal(f.link.getPreservedMessages().length, 1);
+    assert.equal(f.link.getPreservedMessages()[0].text, 'Keep unrelated');
+    assert.equal(f.port.remoteCommands.filter(command => command.startsWith('ota pull ')).length, 1);
+    assert.ok(!f.port.remoteCommands.includes('ota cancel'));
+  } finally { await f.cleanup(); }
+});
+
+test('a matching tag from a different contact is not accepted as the pull acknowledgement', async () => {
+  const f = await source({lostPullReply:true, injectWrongSourcePullReply:true}), info = await packageInfo();
+  try {
+    await f.link.serve(info, info.blob, null);
+    await assert.rejects(f.link.remoteCommand(TARGET, '', 'ota pull ' + hex(info.merkleRoot) + ' flash'), /result is unknown/);
+    assert.equal(f.link.getPreservedMessages().length, 1);
+    assert.equal(f.port.remoteCommands.filter(command => command.startsWith('ota pull ')).length, 1);
+    assert.ok(!f.port.remoteCommands.includes('ota cancel'));
+  } finally { await f.cleanup(); }
+});
+
+test('target pull acknowledgement requires matching target, recognized action and exact MID', async () => {
+  for (const kind of ['pulling', 'resuming', 'paused', 'late', 'wrong-source', 'negative', 'malformed', 'generic-ok', 'unrelated-ok', 'wrong-mid']) {
+    const info=await packageInfo();
+    const f=await source({lostPullReply:kind==='late'||kind==='wrong-source',
+      injectWrongSourcePullReply:kind==='wrong-source', rejectPull:kind==='negative',
+      remoteReply:command => command.startsWith('ota pull ') ?
+        kind==='negative' ? 'ERR no storage' : kind==='malformed' ? 'unrecognized response' :
+        kind==='generic-ok' ? 'OK' : kind==='unrelated-ok' ? 'OK unrelated' :
+        kind==='wrong-mid' ? 'OK pulling mid=12345678 -> flash' :
+        'OK '+(kind==='resuming'?'resuming':kind==='paused'?'paused (folder I/O error; reconnect to resume)':'pulling')+
+          ' mid='+hex(info.merkleRoot)+' -> flash (primary traffic)' : undefined});
+    try {
+      await f.link.serve(info, info.blob, null);
+      assert.equal(f.link.pullTargetAcknowledged, false, kind);
+      const pull=f.link.remoteCommand(TARGET, '', 'ota pull '+hex(info.merkleRoot)+' flash');
+      if(['pulling','resuming','paused'].includes(kind)) assert.match(await pull, /^OK/);
+      else await assert.rejects(pull, kind==='negative' ? /ERR no storage/ : /result is unknown/);
+      assert.equal(f.link.pullTargetAcknowledged, ['pulling','resuming','paused'].includes(kind), kind);
+      if(kind==='late') {
+        f.port.inbox.push(f.port.latePullReply);
+        await f.link.remoteCommand(TARGET, '', 'ota status');
+        assert.equal(f.link.pullTargetAcknowledged, true, 'only the target-tagged late OK sets the flag');
+      }
+      assert.equal(f.port.remoteCommands.filter(c=>c.startsWith('ota pull ')).length,1,kind);
+      await f.link.stopServing();
+      assert.equal(f.link.pullTargetAcknowledged, false, kind+' cleanup');
+    } finally { await f.cleanup(); }
+  }
+});
+
+test('an uncertain pull is accepted only after the target reports the selected manifest', async () => {
+  for (const state of ['ready','idle','different','failed']) {
+    const info = await packageInfo(), id=hex(info.merkleRoot);
+    const f = await source({lostPullReply:true, remoteReply:(command,port) => {
+      if (command ==='ota ls') return id;
+      if (command ==='ota status') {
+        if (!port.pulling) return 'OTA | no download';
+        if (state ==='idle') return 'OTA | no download';
+        return 'OTA | download: ' + (state ==='ready' ? 'ready to install' : state ==='failed' ? 'failed (manifest timeout) 0/0' : 'fetching') + ' id=' + (state ==='different' ? '12345678' : id);
+      }
+    }});
+    try {
+      const session = new DirectSession(f.link, TARGET, '', info, {pollMs:1});
+      session.inspect = async () => ({download:'idle'});
+      if (state ==='ready') await session.start();
+      else await assert.rejects(session.start(), /result is unknown|failed download|does not match/i);
+      assert.equal(f.port.remoteCommands.filter(command => command.startsWith('ota pull ')).length, 1, state);
+      assert.ok(!f.port.remoteCommands.includes('ota cancel'), state);
+      assert.equal(f.port.mode, 'binary', 'owned source is detached on completion');
+    } finally { await f.cleanup(); }
+  }
+});
+
+test('idle immediately after an unconfirmed pull may be in flight; verify again without replay', async () => {
+  const info = await packageInfo(), id=hex(info.merkleRoot); let polls=0;
+  const f = await source({lostPullReply:true, remoteReply:(command,port) => {
+    if (command ==='ota ls') return id;
+    if (command ==='ota status') {
+      if (!port.pulling || ++polls === 1) return 'OTA | no download';
+      return 'OTA | download: ready to install 3/3 id=' + id;
+    }
+  }});
+  try {
+    const session = new DirectSession(f.link, TARGET, '', info, {pollMs:1});
+    session.inspect = async () => ({download:'idle'});
+    await session.start();
+    assert.ok(polls >= 2, 'An initially idle target must be checked again');
+    assert.equal(f.port.remoteCommands.filter(command => command.startsWith('ota pull ')).length, 1);
+    assert.ok(!f.port.remoteCommands.includes('ota cancel'));
+  } finally { await f.cleanup(); }
+});
+
+test('a delayed tagged pull rejection is not silently replaced by an unknown result', async () => {
+  const info = await packageInfo(), id=hex(info.merkleRoot);
+  const f = await source({lostPullReply:true, rejectPull:true, deliverLatePullReply:true,
+    remoteReply:command => command ==='ota ls' ? id : command ==='ota status' ? 'OTA | no download' :
+      command.startsWith('ota pull ') ? 'ERR no storage' : undefined});
+  try {
+    const session = new DirectSession(f.link, TARGET, '', info, {pollMs:1});
+    session.inspect = async () => ({download:'idle'});
+    await assert.rejects(session.start(), /ERR no storage/);
+    assert.equal(f.port.remoteCommands.filter(command => command.startsWith('ota pull ')).length, 1);
+    assert.ok(!f.port.remoteCommands.includes('ota cancel'));
+  } finally { await f.cleanup(); }
+});
+
+test('same-MID failure after uncertain pull preserves the target failure detail', async () => {
+  const info = await packageInfo(), id=hex(info.merkleRoot);
+  const f = await source({lostPullReply:true, remoteReply:(command,port) => command ==='ota ls' ? id :
+    command ==='ota status' ? (!port.pulling ? 'OTA | no download' : 'OTA | download: failed (manifest timeout) 0/0 id='+id) : undefined});
+  try {
+    const session = new DirectSession(f.link, TARGET, '', info, {pollMs:1});
+    session.inspect = async () => ({download:'idle'});
+    await assert.rejects(session.start(), /failed download.*manifest timeout/);
+    assert.equal(f.port.remoteCommands.filter(command => command.startsWith('ota pull ')).length, 1);
+    assert.ok(!f.port.remoteCommands.includes('ota cancel'));
+  } finally { await f.cleanup(); }
+});
+
+test('Stop during the initial uncertain-pull handoff detaches and sends no retry or cancel', async () => {
+  const info = await packageInfo(), id=hex(info.merkleRoot);
+  const f = await source({lostPullReply:true, dropAttach:true, remoteReply:command =>
+    command ==='ota ls' ? id : command ==='ota status' ? 'OTA | no download' : undefined});
+  try {
+    const session = new DirectSession(f.link, TARGET, '', info, {pollMs:1});
+    session.inspect = async () => ({download:'idle'});
+    const active = session.start(); active.catch(()=>{});
+    await wait(() => f.link.usbFolderSource?.mode ==='starting' && f.port.events.includes('folder:attached'));
+    const stop = session.stop();
+    f.port.emit(enc.encode('\r\nOK folder attached (serial): advertising 1/1 host mOTAs\r\n'));
+    await stop; await assert.rejects(active, /Stopped|result is unknown/i);
+    assert.equal(f.port.mode, 'binary');
+    assert.equal(f.port.remoteCommands.filter(command => command.startsWith('ota pull ')).length, 1);
+    assert.ok(!f.port.remoteCommands.includes('ota cancel'));
+  } finally { await f.cleanup(); }
+});
+
+test('USB loss during the initial pull handoff is not treated as a target success', async () => {
+  const info = await packageInfo(), id=hex(info.merkleRoot);
+  const f = await source({lostPullReply:true, dropAttach:true, remoteReply:command =>
+    command ==='ota ls' ? id : command ==='ota status' ? 'OTA | no download' : undefined});
+  try {
+    const session = new DirectSession(f.link, TARGET, '', info, {pollMs:1});
+    session.inspect = async () => ({download:'idle'});
+    const active = session.start(); active.catch(()=>{});
+    await wait(() => f.link.usbFolderSource?.mode ==='starting' && f.port.events.includes('folder:attached'));
+    f.link.failure = Error('USB disconnected'); f.link.usbFolderSource.fail(f.link.failure);
+    await assert.rejects(active, /USB disconnected/);
+    assert.equal(f.port.remoteCommands.filter(command => command.startsWith('ota pull ')).length, 1);
+    assert.ok(!f.port.remoteCommands.includes('ota cancel'));
+  } finally { await f.cleanup(); }
+});
+
+test('read-only retries resume the source between timeouts and never repeat the pull', async () => {
+  const f = await source(), info = await packageInfo();
+  try {
+    await f.link.serve(info, info.blob, null);
+    await f.link.remoteCommand(TARGET, '', 'ota pull ' + hex(info.merkleRoot) + ' flash');
+    await wait(() => f.port.manifestParts.length === 2);
+    const before = f.port.events.length, sourceReads = f.port.msResponses.length; let attempts = 0;
+    f.link.standardReply = async command => {
+      assert.equal(command, 'ota status');
+      assert.equal(f.port.mode, 'binary');
+      if (++attempts < 3) {
+        f.port.inbox.push(cat([16, 0, 0, 0], Buffer.from('cc'.repeat(32), 'hex').subarray(0, 6),
+          [255, 0], le32(1), enc.encode('Late unrelated message ' + attempts)));
+        const error = Error('Remote command timed out; result is unknown');
+        error.loraReplyTimeout = true; throw error;
+      }
+      return 'download: downloading';
+    };
+    assert.equal(await f.link.remoteCommand(TARGET, '', 'ota status'), 'download: downloading');
+    const transitions = f.port.events.slice(before).filter(e => e === 'ota folder on' || e === 'ota folder off');
+    assert.deepEqual(transitions, ['ota folder off','ota folder on','ota folder off','ota folder on','ota folder off','ota folder on']);
+    assert.equal(f.port.remoteCommands.filter(command => command.startsWith('ota pull ')).length, 1);
+    assert.equal(f.port.mode, 'folder');
+    assert.equal(f.link.getPreservedMessages().length, 2, 'late inbox messages are saved before each reattach');
+    assert.ok(f.port.msResponses.length > sourceReads, 'native source serves file reads between retry attempts');
+  } finally { await f.cleanup(); }
+});
+
+test('a failed inbox preservation prevents reattachment and does not repeat a status request', async () => {
+  const f = await source(), info = await packageInfo();
+  try {
+    await f.link.serve(info, info.blob, null);
+    await f.link.remoteCommand(TARGET, '', 'ota pull ' + hex(info.merkleRoot) + ' flash');
+    await wait(() => f.port.manifestParts.length === 2);
+    let attempts = 0;
+    f.link.standardReply = async () => {
+      attempts++;
+      const error = Error('Remote command timed out; result is unknown');
+      error.loraReplyTimeout = true; throw error;
+    };
+    f.link.preserveFolderInbox = async () => { throw Error('Could not preserve inbox'); };
+    const attached = f.port.attachCount;
+    await assert.rejects(f.link.remoteCommand(TARGET, '', 'ota status'), /Could not preserve inbox/);
+    assert.equal(attempts, 1);
+    assert.equal(f.port.attachCount, attached);
+    assert.equal(f.port.mode, 'binary');
+    assert.equal(f.port.remoteCommands.filter(command => command.startsWith('ota pull ')).length, 1);
+    assert.ok(!f.port.remoteCommands.includes('ota cancel'));
   } finally { await f.cleanup(); }
 });
 

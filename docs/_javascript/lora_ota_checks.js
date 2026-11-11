@@ -7,6 +7,35 @@
   'use strict';
   const keyPattern = /^[0-9a-f]{64}$/i;
   function hex(bytes) { return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join(''); }
+  // Only offer a diagnosis when the receiver reported that exact reason.
+  // Older targets may report only "failed", so leave unknown reasons alone.
+  function failureAdvice(detail) {
+    const text = String(detail || '').replace(/[^\x20-\x7e]/g, ' ').replace(/\s+/g, ' ').trim();
+    const match = /^failed\s*(?:\(([^)]*)\)|:\s*(.*?)(?=\s+\d+\/\d+\b|\s+id=|$))/i.exec(text);
+    const reason = (match?.[1] || match?.[2] || '').trim().toLowerCase();
+    switch (reason) {
+      case 'storage error':
+        return 'Check target storage with get storage.layout and ota self; staging space or storage may be unavailable.';
+      case 'manifest timeout':
+      case 'leaves timeout':
+        return 'Check the LoRa path and keep both radios on the update channel. Retry the same package; saved blocks may be reused.';
+      case 'radio session changed':
+        return 'Check that both radios stay on the same update channel, including temporary-radio settings, before retrying.';
+      case 'unsupported codec':
+      case 'unsupported hash':
+      case 'invalid geometry':
+        return 'Check the target firmware and select a compatible update package before trying again.';
+      case 'not a newer version':
+        return 'Check the target firmware version and select a newer compatible package.';
+      case 'image too large':
+        return 'Check target storage and select a smaller compatible package.';
+      case 'invalid manifest':
+      case 'integrity check':
+        return 'Check the package and source connection before retrying; do not install an unverified update.';
+      default:
+        return '';
+    }
+  }
   function route(target, relays, source, width = 3) {
     if (!keyPattern.test(target) || !keyPattern.test(source) || !Array.isArray(relays) || relays.length > 8 || ![1, 2, 3].includes(width)) throw Error('Invalid route or public key');
     const ids = [source, ...relays, target].map(k => { if (!keyPattern.test(k)) throw Error('A full public key is required'); return k.toLowerCase(); });
@@ -168,5 +197,5 @@
         plan.memorySize + Math.ceil(info.blob.length / 4096) * 4096 > ceiling - plan.app)
       throw Error('The current nRF52 staging space no longer fits this differential');
   }
-  return { route, destination, availability, readReceiver, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, needsHybridRam, confirmHybridRam, readHybridRam, validateInternalPlan, version, hex };
+  return { route, destination, availability, readReceiver, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, needsHybridRam, confirmHybridRam, readHybridRam, validateInternalPlan, version, hex, failureAdvice };
 });

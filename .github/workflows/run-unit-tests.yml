@@ -60,6 +60,8 @@ jobs:
           MESHCORE_REQUIRE_OTA_BROWSER=1 MESHCORE_REQUIRE_DETOOLS=1 python3 -B test/test_browser_lora_ota_delta.py -v
           python3 -B test/test_browser_lora_ota_nrf_c_decoder.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_failure_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_native_folder_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_workflow_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_staged_recovery_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_usb_mtu_runtime.py -v

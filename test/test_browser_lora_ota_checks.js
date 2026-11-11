@@ -37,4 +37,24 @@ for (const invalid of ['', undefined, 'Unknown OTA command. Type `ota help`.', '
   assert.throws(()=>checks.validateInternalPlan(hybridPlan,hybridInfo,'bl:internal','bootloader: apply OK (stage=ED000)',internal,null,invalid),/RAM capability/);
 checks.validateInternalPlan(hybridPlan,{blob:new Uint8Array(4096)},'bl:internal','bootloader: apply OK (stage=ED000)',internal);
 assert.throws(() => checks.validateInternalPlan({app:0x26000, layoutCeiling:0xED000, memorySize:0xAE000}, {blob:new Uint8Array(4096)}, 'bl:internal', 'bootloader: apply OK', internal), /space/);
+const recovery = [
+  ['storage error', /get storage\.layout and ota self/],
+  ['manifest timeout', /LoRa path.*update channel/],
+  ['leaves timeout', /LoRa path.*update channel/],
+  ['radio session changed', /temporary-radio settings/],
+  ['unsupported codec', /compatible update package/],
+  ['unsupported hash', /compatible update package/],
+  ['invalid geometry', /compatible update package/],
+  ['not a newer version', /newer compatible package/],
+  ['image too large', /smaller compatible package/],
+  ['invalid manifest', /package and source connection/],
+  ['integrity check', /package and source connection/],
+];
+for (const [reason, expected] of recovery) {
+  assert.match(checks.failureAdvice(`failed (${reason}) 4/32 id=12345678`), expected);
+  assert.match(checks.failureAdvice(`failed:${reason} 4/32 id=12345678`), expected);
+}
+for (const detail of ['', 'failed 0/0 id=12345678', 'failed (none) 0/0 id=12345678',
+  'failed (storage errorish) 0/0 id=12345678', 'not failed (storage error)',
+  'failed:unknown 0/0 id=12345678']) assert.equal(checks.failureAdvice(detail), '');
 console.log('Browser OTA safety checks passed');

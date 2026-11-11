@@ -122,6 +122,7 @@
       this.otaSupported=false;this.localCliSupported=false;this.otaMode='legacy';this.rawPacketSupport='unverified';
       this.usbRawFrameMax=176;this.radioProbeNextRequestAt=0;
       this.usbFolderSupported=false;this.usbFolderProbePending=false;this.usbFolderSource=null;this.usbFolderAttached=false;
+      this.pendingPullTag=null;this.pendingPullReply=null;this.pendingPullMid=null;this.pullTargetAcknowledged=false;
       this.folderQueue=Promise.resolve();this.stopServingOperation=null;
       this.otaRadioProfile=0;this.otaTargetProfile=0;this.supportsOtaRadio2=false;
       this.sourceUpdateRequired=null;
@@ -318,7 +319,13 @@
         try{return await fn();}
         finally{
           await this.queue;
-          if(this.serving&&this.usbFolderAttached&&!this.failure)await this.startUsbFolder();
+          if(this.serving&&this.usbFolderAttached&&!this.failure){
+            // A late reply or unrelated message may have arrived while the
+            // folder was paused. Old firmware can drain its offline queue to
+            // allocate the OTA context, so save the inbox before every resume.
+            await this.preserveFolderInbox();
+            if(this.serving&&!this.failure)await this.startUsbFolder();
+          }
         }
       });
       this.folderQueue=run.catch(()=>{});return run;
@@ -353,19 +360,38 @@
       this.decoder=new Decoder();return owned.key;
     }
     get usesUsbFolderFallback(){return this.usbRawFrameMax<188&&this.usbFolderSupported;}
-    async preserveFolderInbox(){
+    async preserveFolderInbox(expectedTag=null){
+      let reply;
       for(let count=0;count<256;++count){
         const idle=await navigator.locks.request(INBOX_KEY,{mode:'exclusive',ifAvailable:true},async lock=>{
           if(!lock)throw Error('Saved inbox is in use by another tab; try again after it finishes');
           const reservation=this.reserveInbox();
           const frame=await this.commandAny(Uint8Array.of(10),[],true,this.options.inboxTimeout??30000);
           const idle=frame[0]===10;
-          this.finishInbox(reservation,frame,!idle);
+          const offset=frame[0]===16?4:frame[0]===7?1:-1;
+          const tag=expectedTag||this.pendingPullTag;
+          const text=tag&&offset>=0&&frame.length>=offset+12&&
+            hex(frame.slice(offset,offset+6))===this.knownRepeater.slice(0,12)&&frame[offset+7]===1
+            ? dec.decode(frame.slice(offset+12)) : '';
+          const matched=reply===undefined&&tag&&text.startsWith(tag);
+          if(matched){
+            reply=text.slice(tag.length);
+            if(this.pendingPullTag===tag){this.pendingPullReply=reply;this.pendingPullTag=null;}
+          }
+          this.finishInbox(reservation,frame,!idle&&!matched);
           return idle;
         });
-        if(idle)return;
+        if(idle)return reply;
       }
       throw Error('The Companion inbox is still busy; no USB folder was attached');
+    }
+    checkPendingPullReply(){
+      if(this.pendingPullReply===null)return;
+      const reply=this.pendingPullReply;this.pendingPullReply=null;
+      if(/^(?:>\s*)?(?:err(?:or)?\b|unknown\b|unsupported\b)/i.test(reply.trim()))
+        throw Error('Target rejected OTA pull: '+reply.replace(/[^\x20-\x7e]/g,' ').slice(0,160));
+      const match=/^(?:>\s*)?OK\s+(?:pulling|resuming|paused)\b.*\bmid=([0-9a-f]{8})\b/i.exec(reply.trim());
+      if(match&&match[1].toLowerCase()===this.pendingPullMid)this.pullTargetAcknowledged=true;
     }
     async ensureUsbFolderReady(){
       if(!this.usesUsbFolderFallback||!this.usbFolderProbePending)return;
@@ -490,6 +516,7 @@
       if(!this.investigationEnabled||!(otaControl?legacyOtaCommand(text):isReadOnly(text)))throw Error('Only approved OTA commands are allowed');
       if(!this.investigationAuthenticated&&!(text==='get public.key'&&this.investigationProofPending))throw Error('Verify the target before running investigation commands');
       if(otaControl&&!this.investigationVerified)throw Error('Verify the target full public key before updating');
+      if(otaControl&&text==='ota status')this.checkPendingPullReply();
       this.assertInvestigationRunning();
       this.investigationProgress('refreshing-contacts',text,this.options.contactsTimeout??60000);
       await this.contacts();this.assertInvestigationRunning();this.assertStandardTarget();
@@ -501,6 +528,19 @@
       await this.command(join(Uint8Array.of(2,1,0),u32(this.timestamp),unhex(this.knownRepeater).slice(0,6),enc.encode(tag+text)),6);
       this.investigationProgress('command-sent',text);
       this.assertInvestigationRunning();
+      if(otaControl&&/^ota pull [a-f0-9]{8} flash$/i.test(text)&&this.usbFolderSource&&this.serving){
+        // Do not leave the firmware source detached while waiting for a slow
+        // remote acknowledgement. Consume an already queued matching reply;
+        // otherwise the outcome is uncertain and the caller must read back
+        // the target's exact manifest ID and state without repeating the pull.
+        this.pendingPullTag=tag;this.pendingPullReply=null;this.pendingPullMid=text.match(/^ota pull ([a-f0-9]{8}) flash$/i)[1].toLowerCase();this.pullTargetAcknowledged=false;
+        const reply=await this.preserveFolderInbox(tag);
+        if(reply!==undefined){
+          this.checkPendingPullReply();
+          if(this.pullTargetAcknowledged){this.investigationProgress('command-result',text);return reply;}
+        }
+        const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;throw error;
+      }
       const replyTimeout=isReadOnly(text)?this.investigationReplyTimeout():(this.options.investigationTimeout??20000);
       const deadline=Date.now()+replyTimeout;
       this.investigationProgress('waiting-reply',text,replyTimeout);
@@ -523,10 +563,15 @@
           if(offset>=0&&frame.length>=offset+12&&hex(frame.slice(offset,offset+6))===this.knownRepeater.slice(0,12)&&frame[offset+7]===1){
             const reply=dec.decode(frame.slice(offset+12));
             if(reply.startsWith(tag)){this.finishInbox(reservation,frame,false);return {reply:reply.slice(tag.length)};}
+            if(this.pendingPullTag&&reply.startsWith(this.pendingPullTag)){
+              this.pendingPullReply=reply.slice(this.pendingPullTag.length);this.pendingPullTag=null;
+              this.finishInbox(reservation,frame,false);return {pullReply:true};
+            }
           }
           this.finishInbox(reservation,frame,true);return {};
         });
         this.assertInvestigationRunning();
+        if(result.pullReply)this.checkPendingPullReply();
         if(result.reply!==undefined){this.investigationProgress('command-result',text);return result.reply;}
         if(result.idle)await sleep(500);
       }
@@ -748,11 +793,16 @@
       if(!this.otaSupported){
         if(!this.investigationAuthenticated||!this.investigationVerified)throw Error('Verify the target full public key before updating');
         if(password!==this.investigationPassword)throw Error('Disconnect and reconnect before changing the admin password');
+        // Each read-only retry must release the USB folder separately so the
+        // firmware source can serve the receiver between unanswered polls.
+        if(isReadOnly(text))return this.withAdmin(()=>this.retryInvestigation(text,async()=>{
+          const reply=await this.withFolderPaused(()=>this.standardReply(text,true));
+          if(text==='ota status')this.checkPendingPullReply();
+          return reply;
+        }));
         return this.withAdmin(()=>this.withFolderPaused(async()=>{
           const pull=/^ota pull [a-f0-9]{8} flash$/i.test(text);
-          try{return await (isReadOnly(text)
-            ?this.retryInvestigation(text,()=>this.standardReply(text,true))
-            :this.standardReply(text,true));}
+          try{return await this.standardReply(text,true);}
           finally{
             // Catalog discovery and the authenticated pull use small app
             // commands first. Once the pull has been attempted, hand the
@@ -976,6 +1026,7 @@
       await this.folderQueue;
       if(this.usbFolderSource?.ownsStream())await this.stopUsbFolder();
       this.usbFolderSource=null;this.usbFolderAttached=false;
+      this.pendingPullTag=null;this.pendingPullReply=null;this.pendingPullMid=null;this.pullTargetAcknowledged=false;
       this.seeder=null;
     }
     async close(){

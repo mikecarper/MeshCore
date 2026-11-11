@@ -420,6 +420,199 @@ test('a different target download cannot be reported as the selected transfer', 
   assert.ok(!stages.includes('transferring'));
 });
 
+test('target failure preserves its reason and fallback diagnostics without another pull or cancellation', async () => {
+  for (const legacy of [false, true]) {
+    const f = await recoveryFixture({state:'idle', pull:api=>{api.setState('failed'); return 'OK';}});
+    f.setRecord(null);
+    const original = f.link.remoteCommand;
+    f.link.remoteCommand = async (key, password, command) => {
+      if (f.calls.some(c=>c.startsWith('ota pull ')) && command === 'ota status') {
+        f.calls.push(command);
+        return legacy ? 'OTA | status unavailable' :
+          'OTA | download: failed (manifest timeout) 0/0 id=' + f.id;
+      }
+      if (f.calls.some(c=>c.startsWith('ota pull ')) && command === 'ota stats') {
+        f.calls.push(command);
+        return 'OTA stats | fetch failed:manifest timeout 0/0 id=' + f.id;
+      }
+      return original(key, password, command);
+    };
+    await assert.rejects(f.session.start(), /Target reported a failed download: failed.*manifest timeout/);
+    assert.ok(f.progress.some(line=>line.startsWith('Target OTA status: OTA |')));
+    assert.equal(f.progress.some(line=>line.includes('Target OTA stats: OTA stats | fetch failed:manifest timeout')), legacy);
+    assert.ok(f.progress.some(line=>/Next step:.*LoRa path.*update channel/.test(line)));
+    assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length, 1);
+    assert.ok(f.calls.includes('stopServing'));
+    assert.ok(!f.calls.includes('ota cancel'));
+    assert.equal(f.record.phase, 'pull attempted');
+  }
+});
+
+test('failure diagnostics extract reasons after long status prefixes and sanitize controls', async () => {
+  const f = await recoveryFixture({state:'idle', pull:api=>{api.setState('failed'); return 'OK';}});
+  f.setRecord(null);
+  const original = f.link.remoteCommand;
+  f.link.remoteCommand = async (key, password, command) => {
+    if (f.calls.some(c=>c.startsWith('ota pull ')) && command === 'ota status')
+      return 'OTA | ' + 'x'.repeat(300) + ' | download: failed (storage\nerror) 0/0 id=' + f.id;
+    return original(key, password, command);
+  };
+  await assert.rejects(f.session.start(), /failed \(storage error\)/);
+  assert.ok(f.progress.some(line=>/Next step:.*get storage\.layout and ota self/.test(line)));
+  assert.ok(!f.calls.includes('get storage.layout'));
+  assert.ok(!f.calls.includes('ota stats'));
+});
+
+test('reason-less failure can use same-ID stats but never hide failure on stats error', async () => {
+  for (const result of ['same', 'other', 'timeout', 'disconnect']) {
+    const f = await recoveryFixture({state:'idle', pull:api=>{api.setState('failed'); return 'OK';}});
+    f.setRecord(null);
+    if (result === 'disconnect') f.link.stopServing = async () => { throw Error('detach failed'); };
+    const original = f.link.remoteCommand;
+    f.link.remoteCommand = async (key, password, command) => {
+      if (f.calls.some(c=>c.startsWith('ota pull ')) && command === 'ota status')
+        return 'OTA | download: failed 0/0 id=' + f.id;
+      if (f.calls.some(c=>c.startsWith('ota pull ')) && command === 'ota stats') {
+        f.calls.push(command);
+        if (result === 'timeout' || result === 'disconnect') {
+          f.link.failure = Error(result === 'timeout' ? 'Remote timed out' : 'USB disconnected');
+          throw f.link.failure;
+        }
+        return 'fetch failed:manifest timeout 0/0 id=' + (result === 'same' ? f.id : '1234abcd');
+      }
+      return original(key, password, command);
+    };
+    await assert.rejects(f.session.start(), error => {
+      assert.match(error.message, /^Target reported a failed download: failed/);
+      assert.equal(error.message.includes('manifest timeout'), result === 'same');
+      assert.equal(error.message.includes('Run ota stats on the target for details.'), result !== 'same');
+      return true;
+    });
+    assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length, 1);
+    assert.ok(!f.calls.includes('ota cancel'));
+    if (result === 'timeout' || result === 'disconnect')
+      assert.ok(f.progress.some(line=>line.startsWith('Target OTA stats unavailable:')));
+    if (result === 'disconnect') assert.ok(f.progress.some(line=>line.includes('Could not detach the package: detach failed')));
+  }
+});
+
+test('reason-less failure on legacy Companion reports immediately without optional retrying stats', async () => {
+  const f = await recoveryFixture({state:'idle', pull:api=>{api.setState('failed'); return 'OK';}});
+  f.setRecord(null);
+  const original = f.link.remoteCommand;
+  f.link.remoteCommand = async (key, password, command) => {
+    if (f.calls.some(c=>c.startsWith('ota pull ')) && command === 'ota status') {
+      f.link.browserRawSource = true; f.link.otaSupported = false;
+      return 'OTA | download: failed 0/0 id=' + f.id;
+    }
+    if (command === 'ota stats') throw Error('optional stats should not be requested');
+    return original(key, password, command);
+  };
+  await assert.rejects(f.session.start(), /Target reported a failed download: failed 0\/0.*Run ota stats on the target for details/);
+  assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length, 1);
+  assert.ok(!f.calls.includes('ota cancel'));
+});
+
+test('uncertain pull reports the same-ID failed state without retrying or canceling', async () => {
+  const f = await recoveryFixture({state:'idle', pull:api=>{
+    api.setState('failed');
+    throw Error('Remote command timed out; result is unknown');
+  }});
+  f.setRecord(null);
+  await assert.rejects(f.session.start(), /Target reported a failed download: failed \(manifest timeout\)/);
+  assert.ok(f.progress.some(line=>line.includes('Target OTA status:') && line.includes('manifest timeout')));
+  assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length, 1);
+  assert.ok(!f.calls.includes('ota cancel'));
+  assert.equal(f.record.phase, 'pull attempted');
+});
+
+test('uncertain retry waits for active state instead of treating its previous failure as new', async () => {
+  let reads = 0;
+  const f = await recoveryFixture({pull:()=>{throw Error('Remote command timed out; result is unknown');},
+    status:api=>{
+      if (api.calls.some(c=>c.startsWith('ota pull '))) {
+        if (++reads === 2) api.setState('active');
+        if (reads === 4) api.setState('ready');
+      }
+    }});
+  await f.session.start({resume:true});
+  assert.equal(f.record.phase, 'ready');
+  assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length, 1);
+  assert.ok(!f.calls.includes('ota cancel'));
+  assert.equal(reads, 4);
+});
+
+test('uncertain retry with only its prior failed state reports unknown, not a new failure', async () => {
+  const f = await recoveryFixture({pull:()=>{throw Error('Remote command timed out; result is unknown');}});
+  await assert.rejects(f.session.start({resume:true}), /Target has not confirmed the update; result is unknown/);
+  assert.ok(!f.progress.some(line=>line.startsWith('Target OTA status:')));
+  assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length, 1);
+  assert.ok(!f.calls.includes('ota cancel'));
+});
+
+test('uncertain retry reports failed reason after a matching target acknowledgement', async () => {
+  const f = await recoveryFixture({pull:()=>{throw Error('Remote command timed out; result is unknown');},
+    status:api=>{if (api.calls.some(c=>c.startsWith('ota pull '))) api.link.pullTargetAcknowledged = true;}});
+  await assert.rejects(f.session.start({resume:true}), /Target reported a failed download: failed \(manifest timeout\)/);
+  assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length, 1);
+  assert.ok(!f.calls.includes('ota cancel'));
+});
+
+test('an acknowledgement arriving during a stale status read does not turn the old failure into a new one', async () => {
+  let reads = 0;
+  const f = await recoveryFixture({pull:()=>{throw Error('Remote command timed out; result is unknown');},
+    status:api=>{
+      if (!api.calls.some(c=>c.startsWith('ota pull '))) return;
+      if (++reads === 1) api.link.pullTargetAcknowledged = true; // After this status request began.
+      if (reads === 2) api.setState('active');
+      if (reads === 3) api.setState('ready');
+    }});
+  await f.session.start({resume:true});
+  assert.equal(f.record.phase, 'ready');
+  assert.equal(reads, 3);
+  assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length, 1);
+  assert.ok(!f.calls.includes('ota cancel'));
+});
+
+test('acknowledgement arriving during the last allowed stale read permits one fresh failure check', async () => {
+  let reads = 0;
+  const f = await recoveryFixture({pull:()=>{throw Error('Remote command timed out; result is unknown');},
+    status:api=>{
+      if (api.calls.some(c=>c.startsWith('ota pull ')) && ++reads === 3)
+        api.link.pullTargetAcknowledged = true;
+    }});
+  await assert.rejects(f.session.start({resume:true}), /Target reported a failed download: failed \(manifest timeout\)/);
+  assert.equal(reads, 4);
+  assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length, 1);
+  assert.ok(!f.calls.includes('ota cancel'));
+});
+
+test('uncertain pull polls idle read-only with a bound and never repeats the pull', async () => {
+  for (const eventuallyReady of [true, false]) {
+    const f = await recoveryFixture({state:'idle', pull:()=>{throw Error('Remote command timed out; result is unknown');}});
+    f.setRecord(null);
+    const original = f.link.remoteCommand; let checks = 0;
+    f.link.remoteCommand = async (key, password, command) => {
+      if (command === 'ota status' && f.calls.some(c=>c.startsWith('ota pull ')) && ++checks === 2 && eventuallyReady)
+        f.setState('ready');
+      return original(key, password, command);
+    };
+    if (eventuallyReady) await f.session.start();
+    else await assert.rejects(f.session.start(), /Target has not confirmed the update; result is unknown/);
+    assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length, 1);
+    assert.ok(!f.calls.includes('ota cancel'));
+    assert.equal(checks, 3); // Ready is read once more in the normal poll.
+  }
+});
+
+test('explicit pull rejection containing timeout is not treated as uncertain', async () => {
+  const f = await recoveryFixture({state:'idle', pull:()=>{throw Error('ERR manifest timeout');}});
+  f.setRecord(null);
+  await assert.rejects(f.session.start(), /^Error: ERR manifest timeout$/);
+  assert.equal(f.calls.filter(c=>c.startsWith('ota pull ')).length, 1);
+  assert.ok(!f.calls.includes('ota cancel'));
+});
+
 test('same-package failed download is offered for recovery and explicitly pulled once without cancellation', async () => {
   for (const options of [{}, {legacyInstall:true, statsFallback:true}]) {
     const f = await recoveryFixture(options);

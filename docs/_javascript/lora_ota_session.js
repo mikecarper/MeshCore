@@ -11,9 +11,9 @@
   const formatRadio = tuple => [Number(tuple[0]).toFixed(3), ...tuple.slice(1)].join(',');
   function setupRequired(message) { const error = Error(message); error.radioSetupRequired = true; return error; }
   function value(text) { const s = String(text).trim().replace(/^>\s*/, ''); if (!s || /^(error|err\b|unknown\b|unsupported\b)/i.test(s)) throw Error(s || 'Empty response'); return s; }
-  function diagnostic(text) {
+  function diagnostic(text, limit = 160) {
     const clean = String(text).replace(/[^\x20-\x7e]/g, ' ').replace(/\s+/g, ' ').trim();
-    return clean.length > 160 ? clean.slice(0, 160) + '...' : clean;
+    return clean.length > limit ? clean.slice(0, limit) + '...' : clean;
   }
   function leaseExpiry(reply, now) {
     const text=String(reply), seconds=/\b(\d+)s left\b/i.exec(text), minutes=/\((\d+) min\) left\b/i.exec(text);
@@ -137,9 +137,40 @@
     }
     async readDownload() {
       const status = await this.remote('ota status');
-      let parsed;
-      try { parsed = download(status); } catch (_) { parsed = download(status, await this.remote('ota stats')); }
-      return { ...parsed, status };
+      let parsed, stats = '', statsError = '';
+      try { parsed = download(status); } catch (_) { stats = await this.remote('ota stats'); parsed = download(status, stats); }
+      // Preserve the target's reason, including on older firmware whose
+      // download identity and state must be read from ota stats instead.
+      const failureIn = text => {
+        const section = /\b(?:download:|fetch)\s*(failed\b[^|]*)/i.exec(text)?.[1];
+        const id = section && /\bid=([0-9a-f]{8})\b/i.exec(section)?.[1];
+        return id?.toLowerCase() === parsed.id ? section : null;
+      };
+      const hasReason = section => /^failed\s*(?:\((?!none\))[^)]+\)|:(?!none\b)[^\s|]+)/i.test(section || '');
+      const statusFailure = parsed.state === 'failed' ? failureIn(status) : null;
+      const optionalProbeMayRetry = this.link.browserRawSource && this.link.otaSupported !== true;
+      if (parsed.state === 'failed' && !hasReason(statusFailure) && !stats && !optionalProbeMayRetry && !this.cancelled && !this.link.failure) {
+        // A reason-less status can be supplemented by stats; failure to read
+        // it must not hide the already confirmed failed state. Legacy
+        // Companion reads retry internally, so do not start that optional
+        // probe and delay the failure report by several minutes.
+        try { stats = await this.remote('ota stats'); }
+        catch (error) { statsError = diagnostic(error?.message || error); }
+      }
+      const statsFailure = parsed.state === 'failed' ? failureIn(stats) : null;
+      const failure = hasReason(statusFailure) ? statusFailure : hasReason(statsFailure) ? statsFailure : statusFailure || statsFailure;
+      return { ...parsed, status, ...(stats ? {stats} : {}), ...(statsError ? {statsError} : {}),
+        ...(failure ? {failureDetail:diagnostic(failure), failureHasReason:hasReason(failure)} : {}) };
+    }
+    reportFailedDownload(current) {
+      this.progress('Target OTA status: ' + diagnostic(current.status, 512));
+      if (current.stats) this.progress('Target OTA stats: ' + diagnostic(current.stats, 512));
+      if (current.statsError) this.progress('Target OTA stats unavailable: ' + current.statsError);
+      const advice = current.failureHasReason && checks.failureAdvice(current.failureDetail);
+      if (advice) this.progress('Next step: ' + advice);
+      throw Error('Target reported a failed download' +
+        (current.failureDetail ? ': ' + current.failureDetail : '') +
+        (current.failureHasReason ? '' : '. Run ota stats on the target for details.'));
     }
     validateRecovery(state, options = {}) {
       if (state.state === 'idle') return;
@@ -438,9 +469,36 @@
           try { await this.remote('ota pull ' + id.toUpperCase() + ' flash'); }
           catch (error) {
             // Never repeat a pull after an uncertain response.
+            if (/^(?:err(?:or)?\b|target rejected ota pull:)/i.test(String(error.message))) throw error;
             if (!/timeout|timed out|disconnect|result is unknown/i.test(String(error.message))) throw error;
-            const current = await this.readDownload();
-            if (current.id !== id || current.state === 'failed') throw error;
+            // The locally queued command can still be in flight. Allow a
+            // bounded number of read-only checks; never send the pull again.
+            let confirmed = false, maxChecks = 3, addedAckCheck = false;
+            for (let attempt = 0; attempt < maxChecks; attempt++) {
+              // A tagged ACK can arrive while the status call is in flight;
+              // that status might still be the pre-ACK failure snapshot.
+              const acknowledgedBeforeRead = this.link.pullTargetAcknowledged === true;
+              const current = await this.readDownload();
+              if (current.id === id) {
+                if (current.state === 'failed') {
+                  // A failed download existed before a recovery pull. Until
+                  // this request is confirmed, the target may still be
+                  // reporting that earlier failure rather than a new one.
+                  if (!restartFailed || acknowledgedBeforeRead)
+                    this.reportFailedDownload(current);
+                } else { confirmed = true; break; }
+              } else if (current.state !== 'idle') {
+                throw error;
+              }
+              // An ACK observed during the last bounded read requires one
+              // additional read taken after the acknowledgement.
+              if (restartFailed && !acknowledgedBeforeRead && this.link.pullTargetAcknowledged === true &&
+                  attempt === maxChecks - 1 && !addedAckCheck) {
+                maxChecks++; addedAckCheck = true;
+              }
+              if (attempt < maxChecks - 1) { await this.waitForPoll(this.pollMs); this.requireActive(); }
+            }
+            if (!confirmed) throw Error('Target has not confirmed the update; result is unknown. No second pull was sent.');
           }
         }
         const deadline = Date.now() + this.transferTimeoutMs;
@@ -450,9 +508,10 @@
             try { current = await this.readDownload(); break; }
             catch (error) { this.requireActive(); if (attempt === 2 || !/timeout|timed out|disconnect|result is unknown/i.test(String(error.message))) throw error; await this.waitForPoll(2000); }
           }
-          this.requireActive();
+          if (this.cancelled) this.requireActive();
           if (current.id !== id) throw Error('Target download does not match the selected package');
-          if (current.state === 'failed') throw Error('Target reported a failed download');
+          if (current.state === 'failed') this.reportFailedDownload(current);
+          this.requireActive();
           if (current.state === 'ready') { this.progress(current.status); this.recordJournal({phase: 'ready', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, before, bodyHash: this.bodyHash}); return; }
           this.onStage('transferring');
           this.progress(current.status);
