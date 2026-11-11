@@ -299,6 +299,31 @@ Current MQTT observer artifacts use the expanded FULL partition profile so
 WebConfig and the complete role CLI are retained. Install the matching merged
 image over USB once when moving a device from the legacy partition layout.
 
+## Save WiFi on or off
+
+`set wifi off` and `set wifi.enabled 0` save the same WiFi setting. Both survive
+a reboot. Use `on` or `1` to enable WiFi again; either command name accepts
+`on`, `off`, `1`, and `0`.
+
+```text
+set wifi off
+reboot
+get wifi.enabled
+> 0
+```
+
+This master setting covers infrastructure WiFi on ESP32 repeaters, room servers
+and WiFi-capable Companions. Saved Off prevents automatic WebUI, MQTT and UDP
+WiFi startup. It keeps their individual settings and WiFi credentials, so
+enabling WiFi again can restore the configured services. ESP-NOW has its own
+control.
+
+`get wifi.enabled` reports the saved setting; `get wifi` reports live WiFi
+activity. `set webui off` remains separate: it saves the web interface's startup
+choice without disabling MQTT or UDP. The normal management-connection check
+also applies to `wifi.enabled`; use USB, LoRa or another surviving connection
+when turning WiFi off.
+
 ## WiFi companion setup
 
 Full and Bluetooth/wired-capable Companions default to infrastructure WiFi off.
@@ -879,8 +904,8 @@ WPA2-Personal with AES, 20 MHz channel width and a locally permitted channel
 such as 1, 6 or 11. This is a diagnostic baseline, not a required downgrade of
 the main network. [Espressif documents WPA3 and PMF support here](https://docs.espressif.com/projects/esp-idf/en/v4.4.7/esp32s3/api-guides/wifi-security.html).
 
-`set wifi on` allows WiFi for this boot; it is not a confirmation that the
-station has connected or that the MQTT observer is running. On a build with
+`set wifi on` saves WiFi enabled; it is not a confirmation that the station has
+connected or that the MQTT observer is running. On a build with
 MQTT, check `get mqtt.enabled` and `get mqtt.running`. Enable the observer with
 `set mqtt.enabled on` after configuring its WiFi and broker settings. An
 unsupported response to those MQTT commands indicates that the installed
@@ -897,7 +922,7 @@ The `auto-start: on|off` label in `get webui` describes saved WebConfig
 
 ```text
 set wifi on
-OK - WiFi enabled for this boot; use get wifi.status to check connection
+OK - WiFi enabled (saved); use get wifi.status to check connection
 get wifi.status
 > WiFi: connecting to 'iot'
 get webui

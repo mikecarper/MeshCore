@@ -1765,6 +1765,7 @@ public:
     && (defined(WITH_MQTT_BRIDGE) || defined(WITH_RS232_BRIDGE))
 #ifdef WITH_MQTT_BRIDGE
   bool setMqttBridgeState(bool enable) override {
+    if (enable && mesh::wireless::control().blocked(mesh::wireless::WiFi)) return false;
     if (!enable) {
       if (mqtt_bridge) mqtt_bridge->end();
       _alerter.setBridge(nullptr);
@@ -1840,6 +1841,7 @@ public:
 
 #ifdef WITH_MQTT_BRIDGE
   bool restartMqttBridge() override {
+    if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) return true;
 #ifdef WITH_WEBCONFIG
     if (_wc_batch_active) {
       _wc_restart_pending = true;
@@ -1862,6 +1864,9 @@ public:
 #endif
 
   bool setBridgeState(bool enable) override {
+#if defined(WITH_MQTT_BRIDGE) && !defined(WITH_ESPNOW_BRIDGE)
+    if (enable && mesh::wireless::control().blocked(mesh::wireless::WiFi)) return false;
+#endif
 #ifdef WITH_MQTT_BRIDGE
     if (!enable && mqtt_bridge && mqtt_bridge->isStartPending()) mqtt_bridge->end();
     if (enable && mqtt_bridge && mqtt_bridge->isStopping()) {
@@ -1976,6 +1981,9 @@ public:
   }
 
   bool restartBridge() override {
+#if defined(WITH_MQTT_BRIDGE) && !defined(WITH_ESPNOW_BRIDGE)
+    if (mesh::wireless::control().blocked(mesh::wireless::WiFi)) return true;
+#endif
 #if defined(WITH_MQTT_BRIDGE) && defined(WITH_ESPNOW_BRIDGE)
 #ifdef WITH_WEBCONFIG
     if (_wc_batch_active) {

@@ -2959,6 +2959,9 @@ advertising and leave it off once connected, following
 get wifi
 set wifi off
 set wifi on
+get wifi.enabled
+set wifi.enabled 0
+set wifi.enabled 1
 get espnow
 set espnow off
 set espnow on
@@ -2970,15 +2973,19 @@ set 2.4ghz on all
 
 | Control | Effect |
 | --- | --- |
-| `wifi` | Infrastructure WiFi, setup AP, TCP/WebUI, and WiFi MQTT services. ESP-NOW remains available. |
+| `wifi` / `wifi.enabled` | One saved WiFi setting for infrastructure WiFi, setup AP, TCP/WebUI, MQTT and UDP. Both setters accept `on`, `off`, `1`, `0` and survive reboot. ESP-NOW remains available. |
 | `espnow` | The ESP-NOW bridge or primary ESP-NOW mesh transport in this build. Infrastructure WiFi remains available. |
 | `2.4ghz off` | Stop WiFi, Bluetooth, and ESP-NOW; remember which were enabled. LoRa and wired transports remain available. |
 | `2.4ghz on` | Restore the states saved by the first `off`. Repeated `off` preserves that snapshot. With no previous `off`, keep the current states. |
 | `2.4ghz on all` | Enable every service available in this build and boot. `2.4ghz on force` is an alias. |
 
 These commands work in Companion, repeater, and room-server firmware where the
-services are available. Changes last until reboot; saved WiFi credentials,
-Bluetooth preferences, and bridge settings stay intact. `get 2.4ghz` lists each
+services are available. `wifi` and `wifi.enabled` save the same preference;
+`get wifi.enabled` returns the saved `0|1`, while `get wifi` reports live WiFi
+activity. Saved Off prevents background WebUI, MQTT and UDP startup after reboot.
+`set webui off` only changes the web interface's automatic-start preference.
+The `espnow` and `2.4ghz` controls remain temporary until reboot. Saved WiFi
+credentials, Bluetooth preferences, and bridge settings stay intact. `get 2.4ghz` lists each
 service as `on`, `off`, or `unavailable`. An nRF52 Companion controls its Bluetooth
 and reports WiFi/ESP-NOW as unavailable. Exclusive WiFi/Bluetooth builds retain
 their boot transport restriction; `on all` cannot reclaim a released Bluetooth stack.

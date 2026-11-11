@@ -315,6 +315,13 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
     strcpy(reply, "ERR: wireless change pending; retry start ota");
     return false;
   }
+  struct WiFiOTAAttempt {
+    ESP32Board* owner;
+    ~WiFiOTAAttempt() {
+      if (!owner->ota_server || !lightweight_ota_server.isRunning())
+        mesh::wireless::control().finishWiFiForOTA();
+    }
+  } attempt{this};
   inhibit_sleep = true;
 
   IPAddress ip;
@@ -382,6 +389,7 @@ bool ESP32Board::stopOTAUpdate(char reply[]) {
     mesh::wifi::stopTemporaryAccessPointRadio(ota_started_radio);
     ota_started_radio = false;
     inhibit_sleep = false;
+    mesh::wireless::control().finishWiFiForOTA();
     strcpy(reply, "OK - OTA not running");
     return true;
   }
@@ -397,6 +405,7 @@ bool ESP32Board::stopOTAUpdate(char reply[]) {
   mesh::wifi::stopTemporaryAccessPointRadio(ota_started_radio);
   ota_started_radio = false;
   inhibit_sleep = false;
+  mesh::wireless::control().finishWiFiForOTA();
   strcpy(reply, "OK - OTA stopped");
   MESH_DEBUG_PRINTLN("stopOTAUpdate: %s", reply);
   return true;
@@ -427,6 +436,13 @@ bool ESP32Board::startOTAUpdate(const char* id, char reply[], bool force_ap) {
     strcpy(reply, "ERR: wireless change pending; retry start ota");
     return false;
   }
+  struct WiFiOTAAttempt {
+    ESP32Board* owner;
+    ~WiFiOTAAttempt() {
+      if (!owner->ota_server || owner->ota_server->state() != LISTEN)
+        mesh::wireless::control().finishWiFiForOTA();
+    }
+  } attempt{this};
   inhibit_sleep = true;   // prevent sleep during OTA
 
   // If the device is already on a WiFi network (e.g. an observer joined in STA
@@ -541,6 +557,7 @@ bool ESP32Board::stopOTAUpdate(char reply[]) {
     mesh::wifi::stopTemporaryAccessPointRadio(ota_started_radio);
     ota_started_radio = false;
     inhibit_sleep = false;
+    mesh::wireless::control().finishWiFiForOTA();
     strcpy(reply, "OK - OTA not running");
     return true;
   }
@@ -557,6 +574,7 @@ bool ESP32Board::stopOTAUpdate(char reply[]) {
   mesh::wifi::stopTemporaryAccessPointRadio(ota_started_radio);
   ota_started_radio = false;
   inhibit_sleep = false;
+  mesh::wireless::control().finishWiFiForOTA();
 
   strcpy(reply, "OK - OTA stopped");
   MESH_DEBUG_PRINTLN("stopOTAUpdate: %s", reply);

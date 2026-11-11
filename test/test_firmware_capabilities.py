@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -111,16 +112,17 @@ class FirmwareCapabilityCheckerTest(unittest.TestCase):
         self.assertEqual(manifest["verification"][0]["source"], "packaged application")
 
     def test_full_app_wifi_gate_rejects_missing_read_or_save_operation(self):
-        operations = {
-            "get_enabled": "get wifi.enabled",
-            "set_enabled": "set wifi.enabled ",
-            "get_ssid": "> (not set)",
-            "set_ssid": "OK - WiFi SSID saved",
-            "get_password": "get wifi.pwd",
-            "set_password": "OK - WiFi password saved",
-            "get_status": "wifi.status",
-            "get_ip": "get wifi.ip",
-        }
+        # Exercise exactly what release packaging promises, so parser
+        # refactors cannot silently leave this fixture testing an old contract.
+        operations = dict(re.findall(
+            r'record_application_expectation\s+"companion\.app_wifi\.([^"\s]+)"\s+"([^"]+)"',
+            (ROOT / "build_legacy.sh").read_text()))
+        self.assertEqual(set(operations), {
+            "get_enabled", "set_enabled", "get_ssid", "set_ssid",
+            "get_password", "set_password", "get_status", "get_ip",
+        })
+        self.assertEqual(operations["get_enabled"], "wifi.enabled")
+        self.assertEqual(operations["set_enabled"], "Error: WiFi setting could not be saved")
         arguments = []
         for operation, marker in operations.items():
             arguments += ["--expect-application", f"companion.app_wifi.{operation}={marker}"]
@@ -134,6 +136,28 @@ class FirmwareCapabilityCheckerTest(unittest.TestCase):
                     linked, *arguments, artifacts={"firmware-bin": application})
                 self.assertEqual(result.returncode, 0 if missing is None else 1, result.stderr)
                 self.assertEqual(manifest["verified"], missing is None)
+
+    def test_wifi_alias_requires_shared_parser_and_persistent_save_path(self):
+        expectations = [
+            "--expect-application", "companion.app_wifi.get_enabled=wifi.enabled",
+            "--expect-application",
+            "companion.app_wifi.set_enabled=Error: WiFi setting could not be saved",
+        ]
+        # Linked status/help text, or the alias parser alone, cannot qualify
+        # an application whose persistent write path has been compiled out.
+        for application, accepted in [
+            (b"get wifi\0set wifi\0start webconfig\0wifi.status", False),
+            (b"get wifi.enabled\0set wifi.enabled ", False),
+            (b"wifi.enabled", False),
+            (b"Error: WiFi setting could not be saved", False),
+            (b"wifi.enabled\0Error: WiFi setting could not be saved", True),
+        ]:
+            with self.subTest(application=application):
+                result, manifest = self.run_checker(
+                    b"wifi.enabled\0Error: WiFi setting could not be saved",
+                    *expectations, artifacts={"firmware-bin": application})
+                self.assertEqual(result.returncode, 0 if accepted else 1, result.stderr)
+                self.assertEqual(manifest["verified"], accepted)
 
     def test_full_logging_requires_packet_code_as_well_as_the_setting(self):
         expectations = ["--expect-application", "logging.usb.control=usb.logging",

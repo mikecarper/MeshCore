@@ -42,8 +42,8 @@ enum class CompanionWiFiPowerSaveResult : uint8_t {
   StorageError,
 };
 
-// The requested state is persisted immediately. Network services transition
-// from the main loop so a button callback never tears down an active server.
+// UI changes use the same saved preference and deferred transition as the
+// wifi/wifi.enabled CLI aliases. Exclusive transports apply on the next boot.
 bool toggleCompanionWiFi();
 bool setCompanionWiFiEnabled(bool enabled);
 bool isCompanionWiFiEnabled();

@@ -3812,8 +3812,10 @@ declare_build_capability_contract() {
       # WiFi/WebConfig alone does not prove the official app can configure it.
       # Require every read/save operation in the uploadable application, so a
       # Full build fails qualification if its app command handler is omitted.
-      record_application_expectation "companion.app_wifi.get_enabled" "get wifi.enabled"
-      record_application_expectation "companion.app_wifi.set_enabled" "set wifi.enabled "
+      # The shared parser composes get/set with the alias key; the save-path
+      # error proves the persistent setter is linked, not just WiFi status.
+      record_application_expectation "companion.app_wifi.get_enabled" "wifi.enabled"
+      record_application_expectation "companion.app_wifi.set_enabled" "Error: WiFi setting could not be saved"
       record_application_expectation "companion.app_wifi.get_ssid" "> (not set)"
       record_application_expectation "companion.app_wifi.set_ssid" "OK - WiFi SSID saved"
       record_application_expectation "companion.app_wifi.get_password" "get wifi.pwd"

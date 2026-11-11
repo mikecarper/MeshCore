@@ -4190,7 +4190,11 @@ void MyMesh::begin(FILESYSTEM *fs) {
 #endif
   mesh::hilStartupTrace("mesh_bridge_begin");
 #if defined(WITH_BRIDGE)
-  if (_prefs.bridge_enabled) {
+  if (_prefs.bridge_enabled
+#ifdef WITH_MQTT_BRIDGE
+      && !mesh::wireless::control().blocked(mesh::wireless::WiFi)
+#endif
+      ) {
 #ifdef WITH_MQTT_BRIDGE
     // Defer construction to avoid static init crashes on ESP32 classic
     MQTTNodeInfo node_info;
@@ -4297,7 +4301,8 @@ void MyMesh::begin(FILESYSTEM *fs) {
   start_webui = _prefs.bridge_enabled
       && !WebConfigServer::hasConfiguredWiFi(_cli.getObserverPrefs());
 #endif
-  start_webui = WebConfigServer::loadEnabled(start_webui);
+  start_webui = WebConfigServer::loadEnabled(start_webui)
+      && !mesh::wireless::control().blocked(mesh::wireless::WiFi);
 #ifdef WITH_MQTT_BRIDGE
   if (start_webui && !WebConfigServer::hasConfiguredWiFi(_cli.getObserverPrefs())) {
   #if defined(WITH_ESPNOW_BRIDGE)
@@ -12034,7 +12039,10 @@ bool MyMesh::setWebUIEnabled(bool enabled, char* reply) {
     return true;
   }
   if (enabled) {
-    if (_webconfig && _webconfig->isRunning()) {
+    if (mesh::wireless::control().blocked(mesh::wireless::WiFi)
+        || mesh::wireless::control().pendingDisable(mesh::wireless::WiFi)) {
+      strcpy(reply, "OK - webui on saved; WiFi is off");
+    } else if (_webconfig && _webconfig->isRunning()) {
       strcpy(reply, "OK - webui on (already active)");
     } else {
       startWebConfig(false, reply);

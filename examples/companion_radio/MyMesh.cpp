@@ -5242,28 +5242,8 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
         ? WiFi.localIP().toString().c_str() : "(not connected)");
     return true;
   }
-  if (strcmp(command, "get wifi.enabled") == 0) {
-    snprintf(reply, reply_size, "> %u", (unsigned)_prefs.wifi_enabled);
-    return true;
-  }
   if (strcmp(command, "get wifi.tcp") == 0) {
     formatCompanionWiFiTcpStatus(reply, reply_size);
-    return true;
-  }
-  if (strncmp(command, "set wifi.enabled ", 17) == 0) {
-    int32_t enabled;
-    if (!mesh::cli::parseIntegerStrict(command + 17, enabled)
-        || enabled < 0 || enabled > 1) {
-      mesh::cli::formatError(reply, reply_size, "WiFi enabled must be 0 or 1");
-    } else if (!setCompanionWiFiEnabled(enabled != 0)) {
-      mesh::cli::formatError(reply, reply_size, "WiFi setting could not be saved");
-    } else {
-#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
-      snprintf(reply, reply_size, "OK - reboot to apply WiFi settings");
-#else
-      snprintf(reply, reply_size, "OK - WiFi setting saved");
-#endif
-    }
     return true;
   }
   if (strcmp(command, "get display.wifi") == 0) {
@@ -5293,11 +5273,9 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
       mesh::cli::formatError(reply, reply_size, "use set companion.transport <wifi|ble>");
       return true;
     }
-    if (!selectCompanionTransportMode(selected)) {
+    if (!handleCompanionWirelessCommand(selected == CompanionTransportMode::WiFi
+            ? "set wifi on" : "set wifi off", reply, reply_size)) {
       mesh::cli::formatError(reply, reply_size, "failed to save companion transport");
-    } else {
-      snprintf(reply, reply_size,
-               "OK - companion transport %s saved; reboot required", value);
     }
     return true;
   }
@@ -5466,6 +5444,9 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     } else if (!enabled) {
       if (_webconfig) _webconfig->requestStop();
       snprintf(reply, reply_size, "OK - webui off");
+    } else if (mesh::wireless::control().blocked(mesh::wireless::WiFi)
+               || mesh::wireless::control().pendingDisable(mesh::wireless::WiFi)) {
+      snprintf(reply, reply_size, "OK - webui on saved; WiFi is off");
     } else if (_webconfig
                && _webconfig->isRunning()) {
       snprintf(reply, reply_size, "OK - webui on (already active)");
@@ -12155,10 +12136,6 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     snprintf(reply, reply_capacity, "> %s", *ssid ? ssid : "(not set)");
     return true;
   }
-  if (strcmp(command, "get wifi.enabled") == 0) {
-    snprintf(reply, reply_capacity, "> %d", _prefs.wifi_enabled);
-    return true;
-  }
   if (strcmp(command, "get wifi.status") == 0 || strcmp(command, "get wifi.ip") == 0) {
     const bool connected = WiFi.status() == WL_CONNECTED;
     if (strcmp(command, "get wifi.status") == 0) {
@@ -12170,30 +12147,24 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
   }
   const bool set_ssid = strncmp(command, "set wifi.ssid ", 14) == 0;
   const bool set_pwd = strncmp(command, "set wifi.pwd ", 13) == 0;
-  const bool set_enabled = strncmp(command, "set wifi.enabled ", 17) == 0;
   const bool clear_wifi = strcmp(command, "set wifi.clear") == 0;
-  if (set_ssid || set_pwd || set_enabled || clear_wifi) {
+  if (set_ssid || set_pwd || clear_wifi) {
     char old_ssid[sizeof(_prefs.wifi_ssid)], old_pwd[sizeof(_prefs.wifi_pwd)];
     memcpy(old_ssid, _prefs.wifi_ssid, sizeof(old_ssid));
     memcpy(old_pwd, _prefs.wifi_pwd, sizeof(old_pwd));
-    const uint8_t old_enabled = _prefs.wifi_enabled;
-    const char* value = command + (set_ssid ? 14 : set_pwd ? 13 : set_enabled ? 17 : 0);
-    int32_t enabled = 0;
+    const char* value = command + (set_ssid ? 14 : set_pwd ? 13 : 0);
     if ((set_ssid && strlen(value) >= sizeof(_prefs.wifi_ssid))
-        || (set_pwd && strlen(value) >= sizeof(_prefs.wifi_pwd))
-        || (set_enabled && (!mesh::cli::parseIntegerStrict(value, enabled) || enabled < 0 || enabled > 1))) {
+        || (set_pwd && strlen(value) >= sizeof(_prefs.wifi_pwd))) {
       mesh::cli::formatError(reply, reply_capacity, "invalid WiFi setting");
       return true;
     }
     if (set_ssid) strcpy(_prefs.wifi_ssid, value);
     if (set_pwd) strcpy(_prefs.wifi_pwd, value);
-    if (set_enabled) _prefs.wifi_enabled = enabled;
     if (clear_wifi) { _prefs.wifi_ssid[0] = 0; _prefs.wifi_pwd[0] = 0; }
     if (savePrefs()) strcpy(reply, "OK - reboot to apply WiFi settings");
     else {
       memcpy(_prefs.wifi_ssid, old_ssid, sizeof(old_ssid));
       memcpy(_prefs.wifi_pwd, old_pwd, sizeof(old_pwd));
-      _prefs.wifi_enabled = old_enabled;
       mesh::cli::formatError(reply, reply_capacity, "WiFi setting could not be saved");
     }
     memset(old_pwd, 0, sizeof(old_pwd));

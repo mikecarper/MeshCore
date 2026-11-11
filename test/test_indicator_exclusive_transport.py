@@ -38,15 +38,20 @@ selector_end = main.index(
 )
 selector = main[selector_start:selector_end]
 assert "the_mesh.getNodePrefs()->wifi_enabled != 0" in selector
-assert "const uint8_t previous = prefs->wifi_enabled;" in selector
-assert "if (the_mesh.savePrefs()) return true;" in selector
-assert "prefs->wifi_enabled = previous;" in selector
+saved_start = main.index("static bool saveCompanionWiFiPreference(")
+# The shared controller owns admission and deferred lifecycle; its backend
+# writes the existing byte through this rollback-safe helper.
+saved = main[saved_start:main.index("\n}\n", saved_start) + 3]
+assert "const uint8_t previous = prefs->wifi_enabled;" in saved
+assert "if (the_mesh.savePrefs()) return true;" in saved
+assert "prefs->wifi_enabled = previous;" in saved
 assert "companion_wifi_requested = companionTransportWiFiActiveAtBoot();" in selector
 setter = selector[
     selector.index("bool selectCompanionTransportMode(") :
     selector.index("static bool companionTransportWiFiActiveAtBoot()")
 ]
 assert "companion_wifi_requested" not in setter
+assert "setCompanionWiFiEnabled(mode == CompanionTransportMode::WiFi)" in setter
 
 
 # A BLE-selected boot must not spend memory on dormant infrastructure-WiFi
@@ -143,7 +148,7 @@ local_end = mesh.index("\n#if COMPANION_FEATURE_TEMP_RADIO\nvoid MyMesh::service
 local = mesh[local_start:local_end]
 assert 'strcmp(command, "get companion.transport") == 0' in local
 assert 'strncmp(command, "set companion.transport", 23) == 0' in local
-assert '"OK - companion transport %s saved; reboot required"' in local
+assert 'handleCompanionWirelessCommand(selected == CompanionTransportMode::WiFi' in local
 assert 'mesh::cli::formatError(reply, reply_size, "failed to save companion transport")' in local
 help_start = mesh.index('  } else if (strcmp(command, "help") == 0) {')
 help_end = mesh.index('  } else if (handleCommand(command, 0, local_reply))', help_start)

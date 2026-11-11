@@ -163,6 +163,7 @@ bool companionIsBluetoothRoute(BaseSerialInterface* route) {
     SerialWifiInterface wifi_interface;
     static uint32_t last_wifi_reconnect_attempt = 0;
     static bool pico_wifi_active = false;
+    static bool pico_wifi_interface_registered = false;
     static char pico_wifi_ssid[33] = {};
     static char pico_wifi_pwd[64] = {};
     #ifndef WIFI_RETRY_INTERVAL
@@ -1729,6 +1730,27 @@ void halt() {
 }
 
 /* WIFI RECONNECT TRACKERS */
+#if (defined(ESP32) && defined(WIFI_SSID)) \
+    || (defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE))
+// The existing Companion prefs byte is the only persistent WiFi policy.
+// Runtime transitions are owned by WirelessControl after its reply drains.
+static bool saveCompanionWiFiPreference(bool enabled) {
+#if !defined(BLE_PIN_CODE) && !defined(ENABLE_USB_INTERFACE) \
+    && !defined(SERIAL_RX) && !defined(ETHERNET_ENABLED)
+  // A WiFi-only image has no independent management transport to restore it.
+  if (!enabled) return false;
+#endif
+  CompanionNodePrefs* prefs = the_mesh.getNodePrefs();
+  const uint8_t previous = prefs->wifi_enabled;
+  const uint8_t selected = enabled ? 1 : 0;
+  if (previous == selected) return true;
+  prefs->wifi_enabled = selected;
+  if (the_mesh.savePrefs()) return true;
+  prefs->wifi_enabled = previous;
+  return false;
+}
+#endif
+
 #if defined(ESP32) && defined(WIFI_SSID)
   static const unsigned long WIFI_SETUP_FALLBACK_MS = 120000UL;
   static const char COMPANION_WIFI_SETUP_AP[] = "MeshCore-Setup";
@@ -1777,15 +1799,7 @@ void halt() {
       return false;
     }
 
-    CompanionNodePrefs* prefs = the_mesh.getNodePrefs();
-    const uint8_t previous = prefs->wifi_enabled;
-    const uint8_t selected = mode == CompanionTransportMode::WiFi ? 1 : 0;
-    if (previous == selected) return true;
-
-    prefs->wifi_enabled = selected;
-    if (the_mesh.savePrefs()) return true;
-    prefs->wifi_enabled = previous;
-    return false;
+    return setCompanionWiFiEnabled(mode == CompanionTransportMode::WiFi);
   }
 
   static bool companionTransportWiFiActiveAtBoot() {
@@ -2327,24 +2341,13 @@ void halt() {
   }
 
   bool setCompanionWiFiEnabled(bool enabled) {
-    if (enabled && mesh::wireless::control().blocked(mesh::wireless::WiFi)) return false;
-#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
-    return selectCompanionTransportMode(enabled ? CompanionTransportMode::WiFi
-                                               : CompanionTransportMode::Bluetooth);
-#else
-    CompanionNodePrefs* prefs = the_mesh.getNodePrefs();
-    const uint8_t previous = prefs->wifi_enabled;
-    prefs->wifi_enabled = enabled ? 1 : 0;
-    if (!the_mesh.savePrefs()) {
-      prefs->wifi_enabled = previous;
-      return false;
-    }
-    companion_wifi_requested = enabled;
-    if (!companion_wifi_requested && companion_wifi_active) {
-      companion_wifi_disable_in_progress = true;
-    }
-    return true;
-#endif
+    // Buttons are a physical management path. Use the same admission, save and
+    // deferred lifecycle as either CLI alias, without restarting a UI task's
+    // server or changing a second copy of the preference.
+    char reply[160];
+    return mesh::wireless::control().handle(enabled ? "set wifi on" : "set wifi off",
+        reply, sizeof(reply), millis(), mesh::wireless::Independent)
+        && strncmp(reply, "OK", 2) == 0;
   }
 
   bool toggleCompanionWiFi() {
@@ -3463,6 +3466,23 @@ bool handleCompanionBluetoothCommand(const char* command, char* reply,
 
 class CompanionWirelessBackend : public mesh::wireless::Backend {
 public:
+#if (defined(ESP32) && defined(WIFI_SSID)) \
+    || (defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE))
+  bool hasWiFiPreference() const override { return true; }
+  bool wifiPreference() const override {
+    return the_mesh.getNodePrefs()->wifi_enabled != 0;
+  }
+  bool saveWiFiPreference(bool enabled) override {
+    return saveCompanionWiFiPreference(enabled);
+  }
+  bool wifiRequiresReboot() const override {
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE) || defined(RP2040_PLATFORM)
+    return true;
+#else
+    return false;
+#endif
+  }
+#endif
   uint8_t available() const override {
     uint8_t mask = 0;
 #if defined(ESP32) && defined(WIFI_SSID)
@@ -3470,6 +3490,8 @@ public:
     if (companionTransportWiFiActiveAtBoot())
 #endif
       mask |= mesh::wireless::WiFi;
+#elif defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
+    mask |= mesh::wireless::WiFi;
 #endif
 #if defined(BLE_PIN_CODE)
     if (companion_bluetooth_initialized) mask |= mesh::wireless::Bluetooth;
@@ -3489,6 +3511,9 @@ public:
 #ifdef WITH_WEBCONFIG
     if (the_mesh.isWebConfigActiveOrStopping()) mask |= mesh::wireless::WiFi;
 #endif
+#endif
+#if defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
+    if (pico_wifi_active) mask |= mesh::wireless::WiFi;
 #endif
 #if defined(BLE_PIN_CODE)
     if (interface_manager.isBluetoothEnabled()) mask |= mesh::wireless::Bluetooth;
@@ -3562,6 +3587,29 @@ public:
       return companion_wifi_active == on ? Result::Done : Result::Failed;
     }
 #endif
+#if defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
+    if (service == mesh::wireless::WiFi) {
+      if (!on) {
+        pico_wifi_active = false;
+        wifi_interface.disable();
+        ::WiFi.disconnect();
+        return Result::Done;
+      }
+      if (!pico_wifi_ssid[0]) return Result::Failed;
+      if (!pico_wifi_interface_registered) {
+        pico_wifi_interface_registered =
+            interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
+        if (!pico_wifi_interface_registered) return Result::Failed;
+      }
+      pico_wifi_active = true;
+      ::WiFi.setTimeout(WIFI_RETRY_TIMEOUT);
+      ::WiFi.beginNoBlock(pico_wifi_ssid, pico_wifi_pwd);
+      last_wifi_reconnect_attempt = millis();
+      wifi_interface.begin(TCP_PORT);
+      wifi_interface.enable();
+      return Result::Done;
+    }
+#endif
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
     if (service == EspNow) {
       if (on) radio_driver.init();
@@ -3600,6 +3648,17 @@ static bool companionNativeUsbLightSleepReady() {
 
 bool handleCompanionWirelessCommand(const char* command, char* reply, size_t size,
                                    CompanionWirelessSource source) {
+#if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
+  // This legacy name selects the same saved WiFi byte. Normalize before
+  // requester admission so a network CLI cannot inherit a physical UI route.
+  if (command && strncmp(command, "set companion.transport", 23) == 0
+      && (command[23] == 0 || command[23] == ' ' || command[23] == '\t')) {
+    const char* value = command + 23;
+    while (*value == ' ' || *value == '\t') ++value;
+    if (strcmp(value, "wifi") == 0) command = "set wifi on";
+    else if (strcmp(value, "ble") == 0) command = "set wifi off";
+  }
+#endif
 #if defined(STM32_PLATFORM) && !defined(BLE_PIN_CODE) && !defined(WIFI_SSID) \
     && !defined(WITH_BRIDGE) && !defined(WITH_MQTT_BRIDGE) \
     && !defined(WITH_UDP_BRIDGE) && !defined(WITH_ESPNOW_BRIDGE) \
@@ -3630,7 +3689,8 @@ bool handleCompanionWirelessCommand(const char* command, char* reply, size_t siz
       if (route == &bluetooth_interface) requester = mesh::wireless::Bluetooth;
       else
 #endif
-#if defined(ESP32) && defined(WIFI_SSID)
+#if (defined(ESP32) && defined(WIFI_SSID)) \
+    || (defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE))
       if (route == &wifi_interface) requester = mesh::wireless::WiFi;
       else
 #endif
@@ -3668,7 +3728,6 @@ void setup() {
   // enables the SoftDevice; a late first Serial.begin() can leave that enable
   // path in an invalid state on native-USB boards such as the T1000-E.
   Serial.begin(115200);
-  mesh::wireless::control().begin(companion_wireless);
 #if !MESH_ESP32_HWCDC_SESSION_GUARD
   mesh::prepareUsbLoggingPort();
 #endif
@@ -3980,6 +4039,10 @@ void setup() {
   #error "need to define filesystem"
 #endif
 
+  // Bind the saved policy only after MyMesh has loaded the persisted prefs,
+  // and before any WiFi interface or automatic service can start.
+  mesh::wireless::control().begin(companion_wireless);
+
 #if COMPANION_FEATURE_BLE_MOTA_SOURCE
   the_mesh.setMotaSourceControl(&ble_mota_source_control);
 #endif
@@ -4167,7 +4230,9 @@ void setup() {
     WiFi.setTimeout(WIFI_RETRY_TIMEOUT);
     WiFi.beginNoBlock(pico_wifi_ssid, pico_wifi_pwd);
     last_wifi_reconnect_attempt = millis();
-    if (interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface)) {
+    pico_wifi_interface_registered =
+        interface_manager.addInterface(InterfaceType::WiFi, &wifi_interface);
+    if (pico_wifi_interface_registered) {
       wifi_interface.begin(TCP_PORT);
     }
   }
@@ -4374,7 +4439,8 @@ void loop() {
   board.prepareSleepCycle();
 #endif
 #if defined(RP2040_PLATFORM) && defined(ENABLE_WIFI_INTERFACE)
-  if (pico_wifi_active && WiFi.status() != WL_CONNECTED
+  if (pico_wifi_active && !mesh::wireless::control().blocked(mesh::wireless::WiFi)
+      && WiFi.status() != WL_CONNECTED
       && static_cast<uint32_t>(millis() - last_wifi_reconnect_attempt)
           >= WIFI_RETRY_INTERVAL) {
     WiFi.setTimeout(WIFI_RETRY_TIMEOUT);
