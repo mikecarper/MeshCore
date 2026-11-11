@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <iostream>
+#include <string>
 #include "helpers/CLIReplyText.h"
 #include "helpers/ota/OtaTargets.h"
 
@@ -248,6 +250,9 @@ int main() {
   mesh::ota::dispatch_tests();
   mesh::ota::listing_tests();
   mesh::ota::direct_status_tests();
-  unsigned id; char name[68];
-  while (scanf("%x %67s", &id, name) == 2) mesh::ota::name_tests(id, name);
+  unsigned id;
+  std::string name;
+  // Exercise the complete generated name, including names longer than the
+  // fixture's historical 67-character input field.
+  while (std::cin >> std::hex >> id >> name) mesh::ota::name_tests(id, name.c_str());
 }

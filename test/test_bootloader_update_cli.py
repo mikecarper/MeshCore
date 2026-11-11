@@ -34,11 +34,17 @@ namespace mesh { struct Utils {
 }; }
 struct OtaBootloaderIdentity {
   bool present = true, crc_ok = true;
+  bool allowed_for_build = true;
   uint32_t board_id = 0x12345678, crc32 = 0;
   const char* device_name = "TEST_DFU";
 };
 struct OtaBlCaps { unsigned apply_abi = 3, storage_flags = 1; };
 static uint32_t ota_bootloader_target_id(const OtaBootloaderIdentity& id) { return id.board_id; }
+// Board-specific identity matching is exercised by the real-helper profile
+// tests. Keep its result configurable here to verify the CLI's rejection path.
+static bool ota_bootloader_identity_allowed_for_build(const OtaBootloaderIdentity& id) {
+  return id.allowed_for_build;
+}
 static bool ota_bootloader_self_update_caps_valid(const OtaBlCaps&) { return true; }
 struct MotaManifest {
   uint8_t image_hash[8] = {};
@@ -150,6 +156,21 @@ int main() {
   assert(requests == 0);
 #endif
 #if defined(NRF52_PLATFORM) && !defined(OTA_SEEDER_ONLY) && defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+  const unsigned embedded_requests = requests;
+  expect("bootloader status",
+         "BL board=12345678 target=12345678 name=TEST_DFU crc=00000000 abi=3 caps=01 | staged:none mid=- hash=-", c);
+  c.identity.present = false;
+  expect("bootloader status", "Bootloader update unavailable: installed embedded manifest/CRC is invalid", c);
+  c.identity.present = true;
+  c.identity.crc_ok = false;
+  expect("bootloader status", "Bootloader update unavailable: installed embedded manifest/CRC is invalid", c);
+  c.identity.crc_ok = true;
+  c.identity.allowed_for_build = false;
+  expect("bootloader status", "Bootloader update unavailable: installed identity does not match this board", c);
+  c.identity.allowed_for_build = true;
+  expect("bootloader status",
+         "BL board=12345678 target=12345678 name=TEST_DFU crc=00000000 abi=3 caps=01 | staged:none mid=- hash=-", c);
+  assert(c.staged_installs == 0 && requests == embedded_requests);
   expect("bootloader updatejunk", "ERR usage: ota bootloader install <MID8> <HASH16>", c);
   expect("bootloader install", "ERR usage: ota bootloader install <MID8> <HASH16>", c);
   c.manager.state = OtaManager::COMPLETE;
