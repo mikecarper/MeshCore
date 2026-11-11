@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class XiaoBootloaderRemoteGuardTest(unittest.TestCase):
-    def test_confirmation_gate_and_both_apply_paths(self):
+    def test_confirmation_gate_and_manifest_bound_candidates(self):
         source = r'''
 #include <cassert>
 #include <cstring>
@@ -38,16 +38,37 @@ int main() {
     candidate.image_start = id.image_start = OTA_BOOT_IMAGE_START;
     candidate.image_size = id.image_size = OTA_BOOT_IMAGE_SIZE;
     assert(ota_bootloader_identity_matches(id, candidate));
+    assert(ota_bootloader_update_identity_matches(id, candidate, m));
     candidate.board_id = board == OTA_XIAO_BOARD_ID_BASE
         ? OTA_XIAO_BOARD_ID_SENSE : OTA_XIAO_BOARD_ID_BASE;
     assert(!ota_bootloader_identity_matches(id, candidate));
     m.target_id = candidate.board_id;
-    assert(ota_bootloader_confirmation_gate(m, id, mid, mid, zero)
-           == OTA_BOOT_CONFIRM_TARGET);
-    m.target_id = board;
-    assert(ota_xiao_bootloader_hw_id(candidate.board_id, hw));
+    // A compatible target still needs that target's own signed hardware tag.
     assert(ota_bootloader_confirmation_gate(m, id, mid, mid, zero)
            == OTA_BOOT_CONFIRM_HW_ID);
+    assert(!ota_bootloader_update_identity_matches(id, candidate, m));
+    assert(ota_xiao_bootloader_hw_id(candidate.board_id, hw));
+    assert(ota_bootloader_confirmation_gate(m, id, mid, mid, zero)
+           == OTA_BOOT_CONFIRM_OK);
+    assert(ota_bootloader_update_identity_matches(id, candidate, m));
+    m.target_id = board;
+    assert(ota_bootloader_confirmation_gate(m, id, mid, mid, zero)
+           == OTA_BOOT_CONFIRM_HW_ID);
+    assert(!ota_bootloader_update_identity_matches(id, candidate, m));
+    assert(ota_xiao_bootloader_hw_id(board, hw));
+    assert(ota_bootloader_confirmation_gate(m, id, mid, mid, zero)
+           == OTA_BOOT_CONFIRM_OK);
+    // Valid outer identity cannot authorize a payload bearing the other ID.
+    assert(!ota_bootloader_update_identity_matches(id, candidate, m));
+    candidate = id;
+    candidate.crc_ok = false;
+    assert(!ota_bootloader_update_identity_matches(id, candidate, m));
+    candidate = id;
+    memcpy(candidate.device_name, OTA_SENSECAP_BOOT_DEVICE_NAME, 16);
+    assert(!ota_bootloader_update_identity_matches(id, candidate, m));
+    m.target_id = 0x239A0029;
+    assert(ota_bootloader_confirmation_gate(m, id, mid, mid, zero)
+           == OTA_BOOT_CONFIRM_TARGET);
   }
   // The Solar P1 shares the base ID but has a distinct device name.
   id.board_id = OTA_XIAO_BOARD_ID_BASE;
@@ -56,6 +77,17 @@ int main() {
   m.target_id = ota_bootloader_target_id(id);
   assert(ota_bootloader_confirmation_gate(m, id, mid, mid, zero)
          == OTA_BOOT_CONFIRM_OK);
+  const OtaBootloaderIdentity solar = id;
+  OtaBootloaderIdentity xiao = id;
+  memcpy(xiao.device_name, OTA_XIAO_BOOT_DEVICE_NAME, 16);
+  assert(ota_bootloader_confirmation_gate(m, xiao, mid, mid, zero)
+         == OTA_BOOT_CONFIRM_TARGET);
+  assert(!ota_bootloader_update_identity_matches(xiao, solar, m));
+  m.target_id = OTA_XIAO_BOARD_ID_BASE;
+  assert(ota_xiao_bootloader_hw_id(m.target_id, hw));
+  assert(ota_bootloader_confirmation_gate(m, solar, mid, mid, zero)
+         == OTA_BOOT_CONFIRM_TARGET);
+  assert(!ota_bootloader_update_identity_matches(solar, xiao, m));
   // A generic board using a shared ID must remain eligible too.
   id.board_id = 0x239A0029;
   memset(id.device_name, 0, sizeof(id.device_name));
