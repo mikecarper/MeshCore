@@ -47,16 +47,17 @@ class UniversalRadioLtoTests(unittest.TestCase):
                 self.assertFalse(POLICY.install(Environment(board=board, target=target.replace("repeater", "room_server"))))
                 self.assertFalse(POLICY.install(Environment(board=board, target=target.replace("repeater_observer_mqtt", "companion_radio_full"))))
 
-    def test_ebyte_observer_compile_base_has_lto_link_support(self):
-        env = Environment(board="ebyte_eora-s3", target="Ebyte_EoRa-S3_repeater_observer_mqtt")
-        self.assertTrue(POLICY.install(env))
-        for flag in POLICY.LINK_FLAGS:
-            self.assertIn(flag, env["LINKFLAGS"])
-        for target in ("Ebyte_EoRa-S3_room_server_observer_mqtt", "Ebyte_EoRa-S3_Repeater"):
+    def test_ebyte_observer_compile_bases_have_lto_link_support(self):
+        for target in ("Ebyte_EoRa-S3_repeater_observer_mqtt", "Ebyte_EoRa-S3_room_server_observer_mqtt"):
+            env = Environment(board="ebyte_eora-s3", target=target)
+            self.assertTrue(POLICY.install(env))
+            for flag in POLICY.LINK_FLAGS:
+                self.assertIn(flag, env["LINKFLAGS"])
+        for target in ("Ebyte_EoRa-S3_room_server", "Ebyte_EoRa-S3_Repeater"):
             with self.subTest(target=target):
                 self.assertFalse(POLICY.install(Environment(board="ebyte_eora-s3", target=target)))
 
-    def test_ebyte_lto_is_selected_only_for_its_exact_full_repeater(self):
+    def test_ebyte_lto_is_selected_for_exact_full_observers_and_repeater(self):
         source = (ROOT / "build_legacy.sh").read_text()
         start = source.index("apply_esp32_full_size_profile() {")
         function = source[start:source.index("\n}\n", start) + 2]
@@ -86,7 +87,10 @@ printf '%s\n%s\n' "$PLATFORMIO_BUILD_FLAGS" "$PLATFORMIO_EXTRA_SCRIPTS"
                                        ("1", "Heltec_WSL3_room_server", False),
                                        ("0", "Ebyte_EoRa-S3_Repeater", False),
                                        ("1", "Ebyte_EoRa-S3_room_server", False),
-                                       ("1", "Ebyte_EoRa-S3_repeater_observer_mqtt", False)):
+                                       ("1", "Ebyte_EoRa-S3_repeater_observer_mqtt", True),
+                                       ("1", "Ebyte_EoRa-S3_room_server_observer_mqtt", True),
+                                       ("0", "Ebyte_EoRa-S3_repeater_observer_mqtt", False),
+                                       ("0", "Ebyte_EoRa-S3_room_server_observer_mqtt", False)):
             with self.subTest(full=full, target=target):
                 result = subprocess.run(["bash", "-c", script, "test", full, target],
                                         capture_output=True, text=True, check=True)

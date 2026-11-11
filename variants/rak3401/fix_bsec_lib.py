@@ -7,8 +7,7 @@ import os
 # Workaround to prepend the hard-float path so the linker finds it before the
 # soft-float one.
 bsec_hard = os.path.join(
-    env.subst('$PROJECT_DIR'),
-    '.pio', 'libdeps', env.subst('$PIOENV'),
+    env.subst('$PROJECT_LIBDEPS_DIR'), env.subst('$PIOENV'),
     'BSEC Software Library', 'src',
     'cortex-m4', 'fpv4-sp-d16-hard'
 )

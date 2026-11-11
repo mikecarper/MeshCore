@@ -3978,10 +3978,11 @@ apply_esp32_full_size_profile() {
   fi
 
   case "${env_name,,}" in
-    ebyte_eora-s3_repeater)
-      # Keep the complete Full repeater inside its existing dual-OTA slots.
-      # The observer is the compile base, while the requested target keeps its
-      # own OTA identity. Use the qualified S3 LTO linker and codegen flags.
+    ebyte_eora-s3_repeater|ebyte_eora-s3_repeater_observer_mqtt|\
+    ebyte_eora-s3_room_server_observer_mqtt)
+      # Keep Full observer images inside the existing dual-OTA slots. The
+      # plain repeater uses the same observer compile base but keeps its own
+      # OTA identity. Apply the same S3 LTO codegen to both direct observers.
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -flto -flto-partition=one -DMESH_UNIVERSAL_LTO=1 -ffunction-sections -fdata-sections -mtext-section-literals -mlongcalls"
       append_platformio_extra_script "post:scripts/esp32_universal_radio_lto.py"
       ;;
@@ -3997,7 +3998,11 @@ apply_esp32_full_size_profile() {
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_RECENT_REPEATERS_RTC_SLOW=1 -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048"
       record_build_reduction "web.terminal initial scrollback 2048 bytes; grows up to 32768 bytes when memory permits"
       ;;
-    lilygo_tlora_v2_1_1_6_room_server_observer_mqtt_)
+    lilygo_tlora_v2_1_1_6_room_server|lilygo_tlora_v2_1_1_6_room_server_|\
+    lilygo_tlora_v2_1_1_6_room_server_observer_mqtt|lilygo_tlora_v2_1_1_6_room_server_observer_mqtt_)
+      # The canonical room identity uses this same observer feature base.
+      # Keep the dynamically growing browser terminal at its qualified
+      # observer startup allocation so the Full build retains runtime heap.
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048"
       record_build_reduction "web.terminal initial scrollback 2048 bytes; grows up to 32768 bytes when memory permits"
       ;;

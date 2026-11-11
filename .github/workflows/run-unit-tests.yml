@@ -717,6 +717,9 @@ jobs:
           python3 -B test/test_room_web_http.py -v
           python3 -B test/test_room_web_gzip.py -v
           python3 -B test/test_esp32_full_size.py -v
+          python3 -B test/test_tlora_full_room_ota_dependency.py -v
+          python3 -B test/test_tlora_room_terminal_budget.py -v
+          python3 -B test/test_universal_radio_lto.py -v
           python3 -B test/test_room_web_service.py -v
           python3 -B test/test_contact_clock_bootstrap.py -v
           python3 -B test/test_rtc_discovery.py -v
@@ -1683,6 +1686,7 @@ jobs:
           bash test/test_build_size_detection.sh
           python3 -B test/test_nrf52_size_profile.py -v
           python3 -B test/test_rak_combined_build_config.py -v
+          python3 -B test/test_rak_bsec_libdeps.py -v
 
       - name: Verify OTA channel persistence and published image tags
         run: |
