@@ -18,7 +18,7 @@ from ota_wizard_session import Destination, Package, full_package, validate_pack
 
 OFFICIAL_BOOT_KEY = "272564CC588D3D122285A15E6E2566D2ABE7177BB7EA1D1E41B23B29F0F85D2D"
 BOOT_REPOSITORY = "mikecarper/Adafruit_nRF52_Bootloader_OTAFIX"
-MOTATOOL_REV = "8c38369e7d35ad50cf74261869676d52dd24adf7"
+MOTATOOL_REV = "5d9646cb08105245fb96c28450669c58763224bb"
 
 
 def small_host() -> bool:

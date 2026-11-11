@@ -170,6 +170,7 @@ jobs:
       - name: Verify nRF52 HEX packaging with installed build dependencies
         run: |
           python3 -B test/test_nrf52_endf_hex.py -v
+          python3 -B test/test_qspi_bootloader_profiles.py -v
           python3 -B test/test_endf_restamp.py -v
       - name: Compile GPS Sensor tracker on nRF52 boards
         run: bash tools/ci/pio_retry.sh run -e t1000e_sensor -e RAK_WisMesh_Tag_sensor

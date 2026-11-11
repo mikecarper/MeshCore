@@ -323,9 +323,19 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
         raise RuntimeError("raw QSPI OTA staging cannot share a chip with QSPIFLASH")
     if qspi_bootloader_update:
         xiao_module = _cppdef("XIAO_NRF52") is not None or _cppdef("IKOKA_NRF52") is not None
-        sensecap_p1 = (_cppdef("SENSECAP_SOLAR_P1") is not None and
-                       env.get("BOARD") == "seeed_sensecap_solar")
-        if not qspi_backed or sd_backed or not (xiao_module or sensecap_p1):
+        expected_boards = {
+            "SENSECAP_SOLAR_P1": "seeed_sensecap_solar",
+            "OTA_QSPI_BOOT_WIO_L1": "seeed-wio-tracker-l1",
+            "OTA_QSPI_BOOT_TECHO": "t-echo",
+            "OTA_QSPI_BOOT_TECHO_LITE": "t-echo",
+            "OTA_QSPI_BOOT_THINKNODE_M1": "thinknode_m1",
+            "OTA_QSPI_BOOT_THINKNODE_M6": "thinknode_m6",
+        }
+        profiles = [name for name in expected_boards if _cppdef(name) is not None]
+        exact_profile = (len(profiles) == 1 and env.get("BOARD") == expected_boards[profiles[0]])
+        if profiles and (not exact_profile or xiao_module):
+            raise RuntimeError("bootloader update requires a qualified nRF52840 board profile")
+        if not qspi_backed or sd_backed or not (xiao_module or exact_profile):
             raise RuntimeError("bootloader update requires a qualified nRF52840 raw-QSPI OTA build")
         if linked_app_end != ml.NRF52_BOOT_SCRATCH_START:
             raise RuntimeError("bootloader-update build must link exactly below scratch at 0xE0000")

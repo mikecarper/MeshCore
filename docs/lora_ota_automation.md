@@ -152,7 +152,7 @@ installation.** Noninteractive runs stop and print a copyable manual installatio
 command plus the `--motatool` argument to use afterward.
 
 The motatool repair builds the [mikecarper/motatool](https://github.com/mikecarper/motatool)
-fork at pinned revision `8c38369e7d35ad50cf74261869676d52dd24adf7`, with Cargo's
+fork at pinned revision `5d9646cb08105245fb96c28450669c58763224bb`, with Cargo's
 `--locked` dependencies, in a separate per-user cache directory. It needs
 matching stable Cargo and rustc **1.86.0 or newer** and a native linker already
 installed; otherwise it points to
@@ -334,7 +334,7 @@ python3 -m pipx ensurepath
 pipx install meshcore-cli
 
 cargo install --git https://github.com/mikecarper/motatool.git \
-  --rev 8c38369e7d35ad50cf74261869676d52dd24adf7 --locked --bin motatool
+  --rev 5d9646cb08105245fb96c28450669c58763224bb --locked --bin motatool
 
 meshcli -v
 motatool --version
@@ -348,7 +348,7 @@ py -m pipx ensurepath
 pipx install meshcore-cli
 
 cargo install --git https://github.com/mikecarper/motatool.git `
-  --rev 8c38369e7d35ad50cf74261869676d52dd24adf7 --locked --bin motatool
+  --rev 5d9646cb08105245fb96c28450669c58763224bb --locked --bin motatool
 
 meshcli -v
 motatool --version

@@ -2,8 +2,10 @@
 """Build-wiring and memory-map contracts for the nRF52840 hybrid mOTA linkers."""
 
 import ast
+import configparser
 import contextlib
 import io
+import json
 import os
 from pathlib import Path
 import re
@@ -253,6 +255,121 @@ class Nrf52InternalBootloaderSelectorTest(unittest.TestCase):
         )
         self.assertIn("OTA_HYBRID_RAM_STORE", environment.cppdefines)
         self.assertTrue(environment.replacements["LDSCRIPT_PATH"].endswith("_v6_mota64.ld"))
+
+    @unittest.skipUnless(shutil.which("bash"), "bash is required to exercise build aliases")
+    def test_internal_receiver_aliases_select_bootloader_without_changing_board(self):
+        roles = {
+            "RAK_3401": ("room_server", "sensor"),
+            "Heltec_t096": ("room_server", "sensor"),
+            "Heltec_t1": ("room_server",),
+            "Heltec_t114": ("room_server", "sensor"),
+            "Heltec_t114_without_display": ("room_server",),
+            "Mesh_pocket": ("room_server",),
+            "KeepteenLT1": ("room_server",),
+            "Minewsemi_me25ls01": ("room_server",),
+            "ProMicro": ("room_server", "sensor"),
+            "ProMicro_m33s": ("room_server", "sensor"),
+            "ProMicro_400m33s": ("room_server", "sensor"),
+            "t1000e": ("room_server", "sensor"),
+            "ThinkNode_M3": ("room_server",),
+            "RAK_WisMesh_Tag": ("room_server", "sensor"),
+            "R1Neo": ("room_server", "sensor"),
+            "GAT562_30S_Mesh_Kit": ("room_server",),
+            "GAT562_Mesh_Tracker_Pro": ("room_server",),
+            "GAT562_Mesh_EVB_Pro": ("room_server",),
+        }
+        configs = []
+        for path in (ROOT / "variants").glob("*/platformio.ini"):
+            config = configparser.ConfigParser(interpolation=None, strict=False,
+                                                inline_comment_prefixes=(";",))
+            config.read(path, encoding="utf-8")
+            configs.append(config)
+
+        def hardware_ancestor(config, section):
+            seen = set()
+            while section.startswith("env:"):
+                self.assertNotIn(section, seen)
+                seen.add(section)
+                self.assertTrue(config.has_section(section), section)
+                # A receiver-specific storage override is not an internal slot.
+                flags = config.get(section, "build_flags", fallback="")
+                for excluded in ("OTA_QSPI_STORE", "OTA_SD_STORE", "OTA_RAK_AUTO_STORE"):
+                    self.assertNotIn(excluded, flags)
+                section = config.get(section, "extends", fallback="")
+            self.assertTrue(section)
+            return section
+
+        aliases, bases = [], []
+        inventory = (ROOT / "tools/mota/nrf52_internal_bootloader_targets.txt").read_text().splitlines()
+        for board, board_roles in roles.items():
+            for role in board_roles:
+                base = f"{board}_{role}"
+                alias = f"{base}_lora_ota_no_external_sensors"
+                repeater = f"env:{board}_repeater"
+                configs_with_base = [config for config in configs if config.has_section(f"env:{base}")]
+                self.assertEqual(len(configs_with_base), 1, base)
+                config = configs_with_base[0]
+                self.assertEqual(hardware_ancestor(config, f"env:{base}"),
+                                 hardware_ancestor(config, repeater), alias)
+                self.assertIn(f"{board}_repeater_lora_ota_no_external_sensors", inventory)
+                self.assertIn(alias, inventory)
+                aliases.append(alias)
+                bases.append(base)
+
+        # Drive real synthetic-alias registration with a minimal resolved
+        # config fixture. PIO is forbidden so this remains a host-only test.
+        fixture = [[f"env:{base}", [["board", "nrf52840"],
+                    ["build_flags", ["-DNRF52_PLATFORM=1"]]]] for base in bases]
+        build_script = (ROOT / "build_legacy.sh").read_text(encoding="utf-8")
+        for name in ("qualified_esp32_full_companion_bases",
+                     "qualified_nrf52_full_companion_bases",
+                     "qualified_esp32_named_full_companion_specs"):
+            match = re.search(r"local -a " + name + r"=\((.*?)\n\s*\)", build_script, re.S)
+            self.assertIsNotNone(match, name)
+            for entry in match.group(1).splitlines():
+                entry = entry.strip().strip("'")
+                if not entry or entry.startswith("#"):
+                    continue
+                full = (entry.split("|", 1)[1] if "|" in entry else
+                        entry.replace("companion_radio_ble", "companion_radio_full"))
+                fixture.append([f"env:{full}", [["board", "fixture"],
+                                ["build_flags", ["-DESP32_PLATFORM=1"]]]])
+        script = r'''
+set -eu
+source build.sh
+pio() { echo 'unexpected PlatformIO' >&2; return 99; }
+ALL_PIO_ENVS=(fixture)
+PIO_CONFIG_JSON=$TEST_PIO_CONFIG
+init_project_context >/dev/null
+for alias in "$@"; do
+  base=${alias%_lora_ota_no_external_sensors}
+  is_supported_build_env "$alias"
+  [ "$(get_pio_build_env "$alias")" = "$base" ]
+  BUILD_PROFILE_FOR_TARGET=standard
+  supports_nrf52_internal_bootloader_update "$alias"
+  PLATFORMIO_BUILD_SRC_FILTER=""
+  PLATFORMIO_EXTRA_SCRIPTS=""
+  apply_nrf52_lora_ota_build_recipe "$alias" "$base"
+  [ "${MESHCORE_NRF52_INTERNAL_BOOTLOADER_UPDATE:-}" = 1 ]
+  [[ "$PLATFORMIO_BUILD_SRC_FILTER" == *'helpers/ota/*.cpp'* ]]
+  [[ "$PLATFORMIO_EXTRA_SCRIPTS" == *'tools/mota/pio_endf.py'* ]]
+done
+'''
+        result = subprocess.run(["bash", "-c", script, "test", *aliases], cwd=ROOT,
+                                env={**os.environ, "TEST_PIO_CONFIG": json.dumps(fixture)},
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for alias, base in zip(aliases, bases):
+            with self.subTest(alias=alias):
+                version = "v7" if base.startswith(("t1000e_", "Minewsemi_me25ls01_")) else "v6"
+                environment, _ = run_selector(
+                    pioenv=base, requested=True,
+                    board_values={"build.mcu": "nrf52840",
+                                  "build.ldscript": f"boards/nrf52840_s140_{version}.ld"},
+                )
+                self.assertIn("OTA_INTERNAL_BOOTLOADER_UPDATE", environment.cppdefines)
+                self.assertIn("OTA_HYBRID_RAM_STORE", environment.cppdefines)
+                self.assertTrue(environment.replacements["LDSCRIPT_PATH"].endswith(f"_{version}_mota64.ld"))
 
     def test_unselected_nrf52_environment_is_untouched(self):
         environment, output = run_selector(

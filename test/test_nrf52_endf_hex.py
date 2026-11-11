@@ -74,6 +74,51 @@ def stamp(action, path, env):
 
 
 class Nrf52EndfHexTests(unittest.TestCase):
+    def test_board_qspi_bootloader_profiles_require_exact_board_and_scratch(self):
+        cases = (
+            ("OTA_QSPI_BOOT_WIO_L1", "seeed-wio-tracker-l1", ml.NRF52_APP_BASE_S140_V7,
+             "boards/nrf52840_s140_v7_xiao_bootloader_ota.ld"),
+            ("OTA_QSPI_BOOT_TECHO", "t-echo", ml.NRF52_APP_BASE_S140_V6,
+             "boards/nrf52840_s140_v6_qspi_bootloader_ota.ld"),
+            ("OTA_QSPI_BOOT_TECHO_LITE", "t-echo", ml.NRF52_APP_BASE_S140_V6,
+             "boards/nrf52840_s140_v6_qspi_bootloader_ota.ld"),
+            ("OTA_QSPI_BOOT_THINKNODE_M1", "thinknode_m1", ml.NRF52_APP_BASE_S140_V6,
+             "boards/nrf52840_s140_v6_qspi_bootloader_ota.ld"),
+            ("OTA_QSPI_BOOT_THINKNODE_M6", "thinknode_m6", ml.NRF52_APP_BASE_S140_V6,
+             "boards/nrf52840_s140_v6_qspi_bootloader_ota.ld"),
+        )
+        for marker, board, base, linker in cases:
+            for scenario in ("valid", "wrong_board", "two_profiles", "qspi_filesystem", "wrong_end"):
+                with self.subTest(marker=marker, scenario=scenario), tempfile.TemporaryDirectory() as directory:
+                    env = BuildEnvironment(base)
+                    env["BOARD"] = "wrong-board" if scenario == "wrong_board" else board
+                    env["CPPDEFINES"].extend([marker, "OTA_QSPI_STORE", "OTA_FLASH_STORE",
+                                              "OTA_QSPI_BOOTLOADER_UPDATE"])
+                    if scenario == "two_profiles":
+                        env["CPPDEFINES"].append("SENSECAP_SOLAR_P1")
+                    if scenario == "qspi_filesystem":
+                        env["CPPDEFINES"].append("QSPIFLASH")
+                    env.maximum_size = (ml.NRF52_APP_END if scenario == "wrong_end" else
+                                        ml.NRF52_BOOT_SCRATCH_START) - base
+                    env.linker = str(ROOT / linker)
+                    env["LDSCRIPT_PATH"] = env.linker
+                    load_post_script(env)
+                    path = Path(directory) / "test.hex"
+                    image = IntelHex()
+                    image.frombytes(bytes(range(256)), offset=base)
+                    image.write_hex_file(str(path))
+                    action = env.post_actions["$BUILD_DIR/${PROGNAME}.hex"]
+                    if scenario != "valid":
+                        with self.assertRaises(RuntimeError):
+                            stamp(action, path, env)
+                        continue
+                    stamp(action, path, env)
+                    layout = ml.parse_nrf52_layout(read_application(path))
+                    self.assertEqual(layout.app_base, base)
+                    self.assertEqual(layout.linked_app_end, ml.NRF52_BOOT_SCRATCH_START)
+                    self.assertEqual(layout.flags, ml.NRF52_LAYOUT_FLAG_QSPI |
+                                     ml.NRF52_LAYOUT_FLAG_BOOTLOADER_SCRATCH)
+
     def test_sensecap_p1_scratch_profile_keeps_legacy_target_and_checks_board(self):
         for board, accepted in (("seeed_sensecap_solar", True), ("seeed_xiao_nrf52840", False)):
             with self.subTest(board=board), tempfile.TemporaryDirectory() as directory:

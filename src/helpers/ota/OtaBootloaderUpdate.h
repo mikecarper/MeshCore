@@ -24,10 +24,18 @@
 #endif
 
 #if defined(OTA_QSPI_BOOTLOADER_UPDATE)
+  #if (defined(OTA_QSPI_BOOT_WIO_L1) + defined(OTA_QSPI_BOOT_TECHO) + \
+       defined(OTA_QSPI_BOOT_TECHO_LITE) + defined(OTA_QSPI_BOOT_THINKNODE_M1) + \
+       defined(OTA_QSPI_BOOT_THINKNODE_M6) + defined(SENSECAP_SOLAR_P1)) > 1
+    #error "bootloader-update board profiles must be unambiguous"
+  #endif
   #if !defined(NRF52_PLATFORM) || !defined(OTA_QSPI_STORE)
     #error "OTA_QSPI_BOOTLOADER_UPDATE requires nRF52 raw-QSPI staging"
   #endif
-  #if !defined(XIAO_NRF52) && !defined(IKOKA_NRF52) && !defined(SENSECAP_SOLAR_P1)
+  #if !defined(XIAO_NRF52) && !defined(IKOKA_NRF52) && !defined(SENSECAP_SOLAR_P1) && \
+      !defined(OTA_QSPI_BOOT_WIO_L1) && !defined(OTA_QSPI_BOOT_TECHO) && \
+      !defined(OTA_QSPI_BOOT_TECHO_LITE) && !defined(OTA_QSPI_BOOT_THINKNODE_M1) && \
+      !defined(OTA_QSPI_BOOT_THINKNODE_M6)
     #error "OTA_QSPI_BOOTLOADER_UPDATE requires a qualified nRF52840 module build"
   #endif
   #if defined(QSPIFLASH) || defined(OTA_SD_STORE)
@@ -185,6 +193,29 @@ inline bool ota_bootloader_identity_allowed_for_build(const OtaBootloaderIdentit
 #if defined(SENSECAP_SOLAR_P1)
   return identity.present && identity.crc_ok && identity.board_id == OTA_XIAO_BOARD_ID_BASE &&
          memcmp(identity.device_name, OTA_SENSECAP_BOOT_DEVICE_NAME, OTA_BOOT_DEVICE_NAME_SIZE) == 0;
+#elif defined(OTA_QSPI_BOOT_WIO_L1) || defined(OTA_QSPI_BOOT_TECHO) || \
+      defined(OTA_QSPI_BOOT_TECHO_LITE) || defined(OTA_QSPI_BOOT_THINKNODE_M1) || \
+      defined(OTA_QSPI_BOOT_THINKNODE_M6)
+  // The full embedded name is as important as the board ID: several boards
+  // reuse a UF2 family ID while requiring different bootloader hardware.
+  #if defined(OTA_QSPI_BOOT_WIO_L1)
+    static const char expected[OTA_BOOT_DEVICE_NAME_SIZE] = "WTL1_DFU";
+    static const uint32_t board_id = 0x28861667UL;
+  #elif defined(OTA_QSPI_BOOT_TECHO)
+    static const char expected[OTA_BOOT_DEVICE_NAME_SIZE] = "LGTE_DFU";
+    static const uint32_t board_id = 0x239A0029UL;
+  #elif defined(OTA_QSPI_BOOT_TECHO_LITE)
+    static const char expected[OTA_BOOT_DEVICE_NAME_SIZE] = "LTEL_DFU";
+    static const uint32_t board_id = 0x239A00DAUL;
+  #elif defined(OTA_QSPI_BOOT_THINKNODE_M1)
+    static const char expected[OTA_BOOT_DEVICE_NAME_SIZE] = "TNM1_DFU";
+    static const uint32_t board_id = 0x239A00DAUL;
+  #else
+    static const char expected[OTA_BOOT_DEVICE_NAME_SIZE] = "TNM6_DFU";
+    static const uint32_t board_id = 0x239A00DAUL;
+  #endif
+  return identity.present && identity.crc_ok && identity.board_id == board_id &&
+         memcmp(identity.device_name, expected, OTA_BOOT_DEVICE_NAME_SIZE) == 0;
 #else
   (void)identity;
   return true;
