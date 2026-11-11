@@ -57,11 +57,7 @@ static void prepareUsbLoggingPort() {}
 static void beginUsbLoggingPort() {}
 static Console& usbConsolePort() { return serial; }
 static void hilStartupTrace(const char*) {}
-namespace wireless {
-struct Control { void begin(int) {} };
-static Control& control() { static Control value; return value; }
-}}
-static int infrastructure_wireless = 0;
+}
 struct Board { void begin() { ++board_starts; } } board;
 '''
 SCENARIOS = r'''
