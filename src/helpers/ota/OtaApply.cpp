@@ -1130,7 +1130,7 @@ static bool ota_prepare_bootloader_update_external(Store& store,
           0
 #endif
           ) ||
-      !ota_bootloader_identity_matches(installed, candidate)) {
+      !ota_bootloader_update_identity_matches(installed, candidate, m)) {
     strcpy(msg, "candidate bootloader identity/capability/CRC mismatch"); return false;
   }
 #if defined(OTA_TOWER_AUTO_STORE)

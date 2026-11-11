@@ -622,6 +622,115 @@ TEST(OtaBootPackage, EmbeddedIdentityVectorCapsAndExplicitConfirmationGate) {
             OTA_BOOT_CONFIRM_IMAGE_HASH);
 }
 
+TEST(OtaBootPackage, XiaoSuccessorsAllowBothVariantsButBindOuterAndEmbeddedIdentity) {
+  const uint32_t boards[] = {OTA_XIAO_BOARD_ID_BASE, OTA_XIAO_BOARD_ID_SENSE};
+  auto raw = boot_manifest_bytes();
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse_manifest(raw.data(), raw.size(), manifest));
+  const uint8_t mid[4] = {0x11, 0x22, 0x33, 0x44};
+  uint8_t hash8[8];
+  memcpy(hash8, manifest.image_hash, sizeof(hash8));
+  uint8_t package_hw[32], other_hw[32];
+  manifest.hw_id = package_hw;
+  for (uint32_t source : boards) {
+    for (uint32_t target : boards) {
+      OtaBootloaderIdentity installed;
+      installed.present = installed.crc_ok = true;
+      installed.image_start = OTA_BOOT_IMAGE_START;
+      installed.image_size = OTA_BOOT_IMAGE_SIZE;
+      installed.board_id = source;
+      memcpy(installed.device_name, OTA_XIAO_BOOT_DEVICE_NAME, OTA_BOOT_DEVICE_NAME_SIZE);
+      OtaBootloaderIdentity candidate = installed;
+      candidate.board_id = target;
+      manifest.target_id = target;
+      ASSERT_TRUE(ota_xiao_bootloader_hw_id(target, package_hw));
+      EXPECT_TRUE(ota_bootloader_target_compatible(installed, target));
+      EXPECT_EQ(ota_bootloader_confirmation_gate(manifest, installed, mid, mid, hash8),
+                OTA_BOOT_CONFIRM_OK);
+      EXPECT_TRUE(ota_bootloader_update_identity_matches(installed, candidate, manifest));
+      EXPECT_EQ(ota_bootloader_identity_matches(installed, candidate), source == target);
+
+      // An allowed outer target cannot authorize the other embedded identity.
+      candidate.board_id = target ^ 1u;
+      EXPECT_FALSE(ota_bootloader_update_identity_matches(installed, candidate, manifest));
+      candidate.board_id = target;
+      ASSERT_TRUE(ota_xiao_bootloader_hw_id(target ^ 1u, other_hw));
+      manifest.hw_id = other_hw;
+      EXPECT_EQ(ota_bootloader_confirmation_gate(manifest, installed, mid, mid, hash8),
+                OTA_BOOT_CONFIRM_HW_ID);
+      EXPECT_FALSE(ota_bootloader_update_identity_matches(installed, candidate, manifest));
+      manifest.hw_id = package_hw;
+      candidate.image_start -= 4096u;
+      EXPECT_FALSE(ota_bootloader_update_identity_matches(installed, candidate, manifest));
+      candidate.image_start = installed.image_start;
+      candidate.crc_ok = false;
+      EXPECT_FALSE(ota_bootloader_update_identity_matches(installed, candidate, manifest));
+    }
+  }
+  OtaBootloaderIdentity installed;
+  installed.present = installed.crc_ok = true;
+  installed.board_id = OTA_XIAO_BOARD_ID_SENSE;
+  memcpy(installed.device_name, OTA_XIAO_BOOT_DEVICE_NAME, OTA_BOOT_DEVICE_NAME_SIZE);
+  manifest.target_id = OTA_XIAO_BOARD_ID_BASE;
+  ASSERT_TRUE(ota_xiao_bootloader_hw_id(manifest.target_id, package_hw));
+  manifest.flags &= ~MFLAG_SIGNED;
+  EXPECT_EQ(ota_bootloader_confirmation_gate(manifest, installed, mid, mid, hash8),
+            OTA_BOOT_CONFIRM_NOT_BOOT_PACKAGE);
+}
+
+TEST(OtaBootPackage, XiaoSuccessorCompatibilityDoesNotIncludeOtherNamesOrSharedUsbIds) {
+  auto raw = boot_manifest_bytes();
+  MotaManifest manifest;
+  ASSERT_TRUE(mota_parse_manifest(raw.data(), raw.size(), manifest));
+  const uint8_t mid[4] = {0x11, 0x22, 0x33, 0x44};
+  uint8_t hash8[8], package_hw[32];
+  memcpy(hash8, manifest.image_hash, sizeof(hash8));
+  OtaBootloaderIdentity xiao;
+  xiao.present = xiao.crc_ok = true;
+  xiao.image_start = OTA_BOOT_IMAGE_START;
+  xiao.image_size = OTA_BOOT_IMAGE_SIZE;
+  xiao.board_id = OTA_XIAO_BOARD_ID_BASE;
+  memcpy(xiao.device_name, OTA_XIAO_BOOT_DEVICE_NAME, OTA_BOOT_DEVICE_NAME_SIZE);
+  OtaBootloaderIdentity solar = xiao;
+  memcpy(solar.device_name, OTA_SENSECAP_BOOT_DEVICE_NAME, OTA_BOOT_DEVICE_NAME_SIZE);
+  manifest.target_id = ota_bootloader_target_id(solar);
+  ASSERT_TRUE(ota_bootloader_hw_id(solar, package_hw));
+  manifest.hw_id = package_hw;
+  EXPECT_EQ(ota_bootloader_confirmation_gate(manifest, solar, mid, mid, hash8),
+            OTA_BOOT_CONFIRM_OK);
+  EXPECT_TRUE(ota_bootloader_target_compatible(solar, manifest.target_id));
+  EXPECT_FALSE(ota_bootloader_target_compatible(xiao, manifest.target_id));
+  EXPECT_EQ(ota_bootloader_confirmation_gate(manifest, xiao, mid, mid, hash8),
+            OTA_BOOT_CONFIRM_TARGET);
+  EXPECT_FALSE(ota_bootloader_update_identity_matches(xiao, solar, manifest));
+  manifest.target_id = ota_bootloader_target_id(xiao);
+  EXPECT_FALSE(ota_bootloader_target_compatible(solar, manifest.target_id));
+  ASSERT_TRUE(ota_bootloader_hw_id(xiao, package_hw));
+  EXPECT_EQ(ota_bootloader_confirmation_gate(manifest, solar, mid, mid, hash8),
+            OTA_BOOT_CONFIRM_TARGET);
+  EXPECT_FALSE(ota_bootloader_update_identity_matches(solar, xiao, manifest));
+
+  OtaBootloaderIdentity corrupted = xiao;
+  corrupted.device_name[15] = 'X';
+  EXPECT_FALSE(ota_bootloader_target_compatible(corrupted, manifest.target_id));
+  EXPECT_FALSE(ota_bootloader_update_identity_matches(xiao, corrupted, manifest));
+
+  OtaBootloaderIdentity t096 = xiao;
+  t096.board_id = 0x239A0071u;
+  memset(t096.device_name, 0, sizeof(t096.device_name));
+  memcpy(t096.device_name, "T096_DFU", 8u);
+  OtaBootloaderIdentity t114 = t096;
+  memcpy(t114.device_name, "T114_DFU", 8u);
+  manifest.target_id = ota_bootloader_target_id(t114);
+  EXPECT_FALSE(ota_bootloader_target_compatible(t096, manifest.target_id));
+  EXPECT_TRUE(ota_bootloader_target_compatible(t114, manifest.target_id));
+  ASSERT_TRUE(ota_bootloader_hw_id(t114, package_hw));
+  EXPECT_EQ(ota_bootloader_confirmation_gate(manifest, t096, mid, mid, hash8),
+            OTA_BOOT_CONFIRM_TARGET);
+  EXPECT_FALSE(ota_bootloader_update_identity_matches(t096, t114, manifest));
+  EXPECT_TRUE(ota_bootloader_update_identity_matches(t114, t114, manifest));
+}
+
 TEST(OtaBootPackage, CapabilityScannerRejectsAnOtherwiseValidUnalignedMarker) {
   const uint8_t qspi_profile =
       OTA_BL_STORAGE_STAGE_CEILING | OTA_BL_STORAGE_QSPI |

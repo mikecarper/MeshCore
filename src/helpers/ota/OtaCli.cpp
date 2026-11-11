@@ -364,8 +364,8 @@ static __attribute__((noinline)) bool handle_neighbors(
      defined(OTA_SD_BOOTLOADER_UPDATE))
         const OtaBootloaderIdentity& bid = c.bootloaderIdentity();
         installable = h->flags == (MFLAG_FULL | MFLAG_SIGNED | MFLAG_BOOTLOADER) &&
-                      h->codec == CODEC_FULL && bid.present && bid.crc_ok &&
-                      h->target_id == ota_bootloader_target_id(bid) &&
+                      h->codec == CODEC_FULL &&
+                      ota_bootloader_target_compatible(bid, h->target_id) &&
                       ota_bootloader_self_update_caps_valid(list_bl_update);
 #if defined(OTA_SD_BOOTLOADER_UPDATE)
         installable = installable && list_sd_headroom;
@@ -682,7 +682,7 @@ static __attribute__((noinline)) bool handle_control_command(
           strcpy(reply, "ERR malformed bootloader catalog row; capture it to folder for inspection");
           return true;
         }
-        if (!bid.present || !bid.crc_ok || seltgt != ota_bootloader_target_id(bid)) {
+        if (!ota_bootloader_target_compatible(bid, seltgt)) {
           strcpy(reply, "ERR bootloader package does not match this installed bootloader identity");
           return true;
         }

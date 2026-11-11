@@ -2,6 +2,7 @@
 import hashlib
 import os
 from pathlib import Path
+import re
 import struct
 import subprocess
 import sys
@@ -12,6 +13,7 @@ import zlib
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools/mota'))
 from test_mota import _set_two_valid_xiao_manifest_crcs, _xiao_manifest_crc
+from cpp_source import body
 
 SIZE, OFFSET = 40960, 40960 - 76
 
@@ -35,18 +37,42 @@ SOURCE = r'''
 #include <iterator>
 #include <string>
 #include <vector>
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <bcrypt.h>
+#else
 #include <openssl/evp.h>
+#endif
 #include "helpers/ota/BootloaderMigrationPolicy.h"
 namespace mesh {
 void Utils::sha256(uint8_t *out,size_t count,const uint8_t *a,int alen,const uint8_t *b,int blen) {
   assert(count<=32 && alen>=0 && blen>=0);
-  uint8_t digest[32]; unsigned size=0;
+  uint8_t digest[32];
+#ifdef _WIN32
+  BCRYPT_ALG_HANDLE algorithm=nullptr; BCRYPT_HASH_HANDLE hash=nullptr;
+  assert(BCryptOpenAlgorithmProvider(&algorithm,BCRYPT_SHA256_ALGORITHM,nullptr,0)>=0);
+  assert(BCryptCreateHash(algorithm,&hash,nullptr,0,nullptr,0,0)>=0);
+  if (alen) assert(BCryptHashData(hash,const_cast<uint8_t*>(a),alen,0)>=0);
+  if (blen) assert(BCryptHashData(hash,const_cast<uint8_t*>(b),blen,0)>=0);
+  assert(BCryptFinishHash(hash,digest,sizeof(digest),0)>=0);
+  assert(BCryptDestroyHash(hash)>=0);
+  assert(BCryptCloseAlgorithmProvider(algorithm,0)>=0);
+  std::memcpy(out,digest,count);
+#else
+  unsigned size=0;
   EVP_MD_CTX *ctx=EVP_MD_CTX_new(); assert(ctx);
   assert(EVP_DigestInit_ex(ctx,EVP_sha256(),nullptr)==1);
   assert(EVP_DigestUpdate(ctx,a,alen)==1);
   if (blen) assert(EVP_DigestUpdate(ctx,b,blen)==1);
   assert(EVP_DigestFinal_ex(ctx,digest,&size)==1 && size==32);
   EVP_MD_CTX_free(ctx); std::memcpy(out,digest,count);
+#endif
 }
 void Utils::sha256(uint8_t *out,size_t count,const uint8_t *a,int length) {
   sha256(out,count,a,length,nullptr,0);
@@ -71,6 +97,7 @@ struct Store {
     std::memcpy(out,bytes.data()+offset,size); return true;
   }
 };
+@CLI_HELPERS@
 int main(int argc,char **argv) {
   assert(argc==3);
   const std::string directory=argv[1], scenario=argv[2];
@@ -135,6 +162,65 @@ int main(int argc,char **argv) {
     assert(!ota_bootloader_identity_from_image(image.data(),image.size(),id));
     Store store{image}; OtaBootloaderCapsMarker caps;
     assert(!ota_bootloader_external_image_metadata(store,0,0x0E,id,caps));
+  } else if (scenario=="xiao-cli") {
+    const uint8_t flags=MFLAG_FULL|MFLAG_SIGNED|MFLAG_BOOTLOADER;
+    CliContext context;
+    context.caps.present=true; context.caps.apply_abi=3;
+    context.caps.codec_mask=OTA_BL_REQUIRED_APP_CODEC_MASK;
+    context.caps.storage_flags=OTA_BL_PROFILE_QSPI_BOOT_UPDATE;
+    char reply[160]={};
+    for (const auto &installed:{base,sense}) {
+      context.identity=installed;
+      for (const auto &candidate:{base,sense}) {
+        assert(cli_list_fit(context,candidate.board_id,flags,CODEC_FULL));
+        assert(!cli_pull_rejected(context,candidate.board_id,flags,CODEC_FULL,reply));
+      }
+    }
+    context.identity=p1;
+    assert(!cli_list_fit(context,base.board_id,flags,CODEC_FULL));
+    assert(cli_pull_rejected(context,base.board_id,flags,CODEC_FULL,reply));
+    assert(std::strstr(reply,"does not match"));
+    context.identity=sense;
+    assert(!cli_list_fit(context,base.board_id,flags&~MFLAG_SIGNED,CODEC_FULL));
+    assert(cli_pull_rejected(context,base.board_id,flags&~MFLAG_SIGNED,CODEC_FULL,reply));
+    context.caps.present=false;
+    assert(!cli_list_fit(context,base.board_id,flags,CODEC_FULL));
+    assert(cli_pull_rejected(context,base.board_id,flags,CODEC_FULL,reply));
+    assert(std::strstr(reply,"lacks safe"));
+  } else if (scenario=="xiao-successor") {
+    uint8_t hw[32],wrong_hw[32],digest[32],zero[8]={},mid[4]={1,2,3,4};
+    mesh::Utils::sha256(digest,32,image.data(),image.size());
+    MotaManifest manifest;
+    manifest.format_ver=3; manifest.flags=MFLAG_FULL|MFLAG_SIGNED|MFLAG_BOOTLOADER;
+    manifest.codec_id=CODEC_FULL; manifest.image_size=manifest.payload_size=OTA_BOOT_IMAGE_SIZE;
+    manifest.block_size_log2=10; manifest.block_count=40; manifest.base_hash=zero;
+    manifest.merkle_root=mid; manifest.image_hash=digest; manifest.hw_id=hw;
+    for (const auto &installed:{base,sense}) {
+      for (const auto &candidate:{base,sense}) {
+        manifest.target_id=candidate.board_id;
+        assert(ota_bootloader_hw_id(candidate,hw));
+        assert(ota_bootloader_target_compatible(installed,manifest.target_id));
+        assert(ota_bootloader_confirmation_gate(manifest,installed,mid,mid,digest)==OTA_BOOT_CONFIRM_OK);
+        assert(ota_bootloader_update_identity_matches(installed,candidate,manifest));
+        assert(ota_bootloader_identity_matches(installed,candidate)==(installed.board_id==candidate.board_id));
+        manifest.target_id^=1;
+        assert(ota_xiao_bootloader_hw_id(manifest.target_id,hw));
+        assert(ota_bootloader_confirmation_gate(manifest,installed,mid,mid,digest)==OTA_BOOT_CONFIRM_OK);
+        assert(!ota_bootloader_update_identity_matches(installed,candidate,manifest));
+        assert(ota_bootloader_hw_id(candidate,wrong_hw));
+        manifest.hw_id=wrong_hw;
+        assert(ota_bootloader_confirmation_gate(manifest,installed,mid,mid,digest)==OTA_BOOT_CONFIRM_HW_ID);
+        manifest.hw_id=hw;
+      }
+    }
+    manifest.target_id=base.board_id;
+    assert(ota_bootloader_hw_id(base,hw));
+    assert(!ota_bootloader_target_compatible(p1,base.board_id));
+    assert(!ota_bootloader_target_compatible(base,ota_bootloader_target_id(p1)));
+    assert(!ota_bootloader_update_identity_matches(p1,base,manifest));
+    assert(!ota_bootloader_update_identity_matches(base,p1,manifest));
+    manifest.flags&=~MFLAG_SIGNED;
+    assert(ota_bootloader_confirmation_gate(manifest,sense,mid,mid,digest)==OTA_BOOT_CONFIRM_NOT_BOOT_PACKAGE);
   } else {
     uint8_t hw[32],xhw[32],digest[32],zero[8]={},mid[4]={1,2,3,4};
     assert(ota_bootloader_hw_id(p1,hw) && ota_bootloader_hw_id(base,xhw));
@@ -167,6 +253,40 @@ static void sha256(uint8_t*,size_t,const uint8_t*,int,const uint8_t*,int);
 }; }
 '''
 
+CLI_HELPERS = r'''
+struct CliContext {
+  OtaBootloaderIdentity identity;
+  OtaBlCaps caps;
+  const OtaBootloaderIdentity& bootloaderIdentity() const { return identity; }
+  const OtaBlCaps& bootloaderUpdateCaps() const { return caps; }
+};
+static bool cli_pull_rejected(CliContext& c,uint32_t seltgt,uint8_t selflags,
+                              uint8_t selcodec,char* reply) {
+  const bool selboot=true;
+  @PULL_BRANCH@
+  return false;
+}
+static bool cli_list_fit(CliContext& c,uint32_t target,uint8_t flags,uint8_t codec) {
+  struct Row { uint32_t target_id; uint8_t flags,codec; } row{target,flags,codec};
+  const Row* h=&row;
+  const OtaBootloaderIdentity& bid=c.bootloaderIdentity();
+  const OtaBlCaps& list_bl_update=c.bootloaderUpdateCaps();
+  bool installable=false;
+  @LIST_ASSIGNMENT@
+  return installable;
+}
+'''
+
+
+def runtime_source():
+    cli = (ROOT / 'src/helpers/ota/OtaCli.cpp').read_text()
+    assignment = re.search(r'installable = h->flags.*?;', cli, re.S)
+    if assignment is None:
+        raise AssertionError('production bootloader catalog fit assignment not found')
+    helpers = (CLI_HELPERS.replace('@PULL_BRANCH@', body(cli, 'if (selboot)'))
+               .replace('@LIST_ASSIGNMENT@', assignment.group()))
+    return SOURCE.replace('@CLI_HELPERS@', helpers)
+
 
 class SensecapBootloaderRuntimeTests(unittest.TestCase):
     @classmethod
@@ -175,7 +295,7 @@ class SensecapBootloaderRuntimeTests(unittest.TestCase):
         cls.addClassCleanup(cls.directory.cleanup)
         cls.path = Path(cls.directory.name)
         (cls.path / 'Utils.h').write_text(UTILS)
-        (cls.path / 'test.cpp').write_text(SOURCE)
+        (cls.path / 'test.cpp').write_text(runtime_source())
         for name, image in {
             'p1.bin': bootloader(), 'p1-old.bin': bootloader(version=0x02040BFF),
             'xiao-base.bin': bootloader('XIAO_DFU', version=0x02040BFF),
@@ -195,10 +315,13 @@ class SensecapBootloaderRuntimeTests(unittest.TestCase):
             '-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-fno-pie', '-no-pie']
         binary = path / 'runtime'
         command = [os.environ.get('CXX', 'g++'), '-std=c++17', '-O1', '-Wall', '-Wextra', '-Werror', *flags]
+        command += ['-DNRF52_PLATFORM=1', '-DOTA_QSPI_BOOTLOADER_UPDATE=1',
+                    '-DOTA_QSPI_STORE=1', '-DXIAO_NRF52=1']
         if include:
             command += ['-I', str(include)]
+        crypto_library = '-lbcrypt' if os.name == 'nt' else '-lcrypto'
         command += ['-I', str(path), '-I', str(ROOT / 'src'), '-I', str(ROOT / 'src/helpers/ota'),
-                    str(path / 'test.cpp'), '-lcrypto', '-o', str(binary)]
+                    str(path / 'test.cpp'), crypto_library, '-o', str(binary)]
         subprocess.run(command, capture_output=True, text=True, check=True)
         return binary
 
@@ -225,6 +348,12 @@ class SensecapBootloaderRuntimeTests(unittest.TestCase):
     def test_signed_package_confirmation_cannot_cross_xiao_and_p1(self):
         self.scenario('confirmation')
 
+    def test_xiao_successors_accept_both_variants_and_bind_the_signed_package_identity(self):
+        self.scenario('xiao-successor')
+
+    def test_real_cli_lists_and_admits_both_xiao_variants_without_weakening_other_guards(self):
+        self.scenario('xiao-cli')
+
     def test_negative_control_board_only_target_shortcut_is_caught(self):
         header = (ROOT / 'src/helpers/ota/OtaBootloaderUpdate.h').read_text()
         changed = header.replace('if (ota_xiao_bootloader_identity(board_id, device_name)) return board_id;',
@@ -238,7 +367,7 @@ class SensecapBootloaderRuntimeTests(unittest.TestCase):
             (headers / 'BootloaderMigrationPolicy.h').write_text(
                 (ROOT / 'src/helpers/ota/BootloaderMigrationPolicy.h').read_text())
             (path / 'Utils.h').write_text(UTILS)
-            (path / 'test.cpp').write_text(SOURCE)
+            (path / 'test.cpp').write_text(runtime_source())
             binary = self.compile(path, path)
             result = subprocess.run([str(binary), str(self.path), 'canonical'], capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)

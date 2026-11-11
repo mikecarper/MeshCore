@@ -388,6 +388,19 @@ inline uint32_t ota_bootloader_target_id(const OtaBootloaderIdentity& identity) 
                                  reinterpret_cast<const uint8_t*>(identity.device_name)) : 0;
 }
 
+// Catalog admission has no candidate image yet. Only the two complete XIAO
+// identities share targets; installation still binds the image to its package.
+inline bool ota_bootloader_target_compatible(const OtaBootloaderIdentity& installed,
+                                               uint32_t target_id) {
+  const uint8_t* name = reinterpret_cast<const uint8_t*>(installed.device_name);
+  if (!installed.present || !installed.crc_ok ||
+      !ota_bootloader_board_id_valid(installed.board_id) ||
+      !ota_bootloader_device_name_valid(installed.board_id, name)) return false;
+  return (ota_xiao_bootloader_identity(installed.board_id, name) &&
+          ota_xiao_bootloader_board_id(target_id)) ||
+         target_id == ota_bootloader_target_id(installed);
+}
+
 // Validate an installed memory-mapped bootloader and recover its exact identity. Scan on word
 // boundaries to mirror OTAFIX's self-update validator.
 inline bool ota_bootloader_identity_from_image(const uint8_t* image, size_t image_size,
@@ -429,6 +442,27 @@ inline bool ota_bootloader_identity_matches(const OtaBootloaderIdentity& a,
          a.image_start == b.image_start && a.image_size == b.image_size &&
          a.board_id == b.board_id &&
          memcmp(a.device_name, b.device_name, OTA_BOOT_DEVICE_NAME_SIZE) == 0;
+}
+
+// A signed successor may use either deployed XIAO identity on either XIAO
+// variant. Keep the embedded candidate tied to its own package, rather than
+// treating the two outer target/hardware IDs as interchangeable bytes.
+inline bool ota_bootloader_update_identity_matches(
+    const OtaBootloaderIdentity& installed, const OtaBootloaderIdentity& candidate,
+    const MotaManifest& manifest) {
+  const bool xiao_pair = installed.present && installed.crc_ok &&
+      candidate.present && candidate.crc_ok &&
+      installed.image_start == candidate.image_start &&
+      installed.image_size == candidate.image_size &&
+      ota_xiao_bootloader_identity(installed.board_id,
+          reinterpret_cast<const uint8_t*>(installed.device_name)) &&
+      ota_xiao_bootloader_identity(candidate.board_id,
+          reinterpret_cast<const uint8_t*>(candidate.device_name));
+  if (!xiao_pair && !ota_bootloader_identity_matches(installed, candidate)) return false;
+  uint8_t expected_hw[32];
+  return manifest.target_id == ota_bootloader_target_id(candidate) &&
+         ota_bootloader_hw_id(candidate, expected_hw) && manifest.hw_id &&
+         memcmp(manifest.hw_id, expected_hw, sizeof(expected_hw)) == 0;
 }
 
 enum OtaBootloaderContinuityGate : uint8_t {
@@ -694,9 +728,14 @@ inline OtaBootloaderConfirmGate ota_bootloader_confirmation_gate(
       !ota_bootloader_device_name_valid(
           installed.board_id, reinterpret_cast<const uint8_t*>(installed.device_name)))
     return OTA_BOOT_CONFIRM_LOCAL_IDENTITY;
-  if (m.target_id != ota_bootloader_target_id(installed)) return OTA_BOOT_CONFIRM_TARGET;
+  const uint8_t* installed_name = reinterpret_cast<const uint8_t*>(installed.device_name);
+  const bool xiao_target = ota_xiao_bootloader_identity(installed.board_id, installed_name) &&
+      ota_xiao_bootloader_board_id(m.target_id);
+  if (!ota_bootloader_target_compatible(installed, m.target_id))
+    return OTA_BOOT_CONFIRM_TARGET;
   uint8_t expected_hw[32];
-  if (!ota_bootloader_hw_id(installed, expected_hw) || !m.hw_id ||
+  if (!ota_bootloader_hw_id(xiao_target ? m.target_id : installed.board_id,
+                              installed_name, expected_hw) || !m.hw_id ||
       memcmp(m.hw_id, expected_hw, sizeof(expected_hw)) != 0)
     return OTA_BOOT_CONFIRM_HW_ID;
   if (!actual_mid || !operator_mid || memcmp(actual_mid, operator_mid, 4) != 0 ||
