@@ -9,6 +9,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   w12-pram-scanner:
     runs-on: ubuntu-26.04
@@ -656,13 +660,21 @@ jobs:
           python3 -B scripts/check_arduinojson_pin.py
 
       - name: Run Unit Tests
-        run: bash tools/ci/pio_retry.sh test -e native -e native_kiss_modem -e native_ota_channel -vv
+        id: native-tests
+        run: |
+          set -o pipefail
+          mkdir -p .pio/test-results
+          bash tools/ci/pio_retry.sh test -e native -e native_kiss_modem -e native_ota_channel -vv 2>&1 | tee .pio/test-results/native.log
 
       - name: Verify sensor reply bounds and duplicate counter saturation
         run: python3 -B test/test_upstream_cli_bounds.py -v
 
       - name: Verify real GPS NMEA parser and provider with address and undefined sanitizers
-        run: bash tools/ci/pio_retry.sh test -e native_gps -vv
+        id: native-gps
+        run: |
+          set -o pipefail
+          mkdir -p .pio/test-results
+          bash tools/ci/pio_retry.sh test -e native_gps -vv 2>&1 | tee .pio/test-results/native-gps.log
 
       - name: Verify parser, delivery, storage, permissions, clock and radio stability
         run: |
@@ -777,13 +789,48 @@ jobs:
       - name: Verify split test jobs and aggregate gate
         run: python3 -B test/test_unit_test_job_split.py -v
 
-      - name: Upload Test Results
-        # Upload test results even if the test step failed.
+      - name: Package Test Diagnostics
+        # Diagnostics remain available after test failure, but must not replace
+        # the required test result when storage service requests fail.
         if: always()
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          NATIVE_TEST_OUTCOME: ${{ steps.native-tests.outcome }}
+          NATIVE_GPS_OUTCOME: ${{ steps.native-gps.outcome }}
+        run: |
+          python3 - <<'PYCODE'
+          import json, os, pathlib, tarfile
+          results = pathlib.Path(".pio/test-results")
+          results.mkdir(parents=True, exist_ok=True)
+          (results / "summary.json").write_text(json.dumps({
+              "commit": os.environ["GITHUB_SHA"],
+              "run": os.environ["GITHUB_RUN_ID"],
+              "native": os.environ["NATIVE_TEST_OUTCOME"],
+              "native_gps": os.environ["NATIVE_GPS_OUTCOME"],
+          }, indent=2) + "\n")
+          output = pathlib.Path(os.environ["RUNNER_TEMP"]) / "meshcore-test-results.tar.gz"
+          temporary = output.with_suffix(".tmp")
+          paths = [results] + [pathlib.Path(".pio/build") / name for name in
+                   ("native", "native_kiss_modem", "native_ota_channel", "native_gps")]
+          with tarfile.open(temporary, "w:gz", compresslevel=6) as archive:
+              for path in paths:
+                  if path.exists():
+                      archive.add(path, arcname=path.as_posix())
+          temporary.replace(output)
+          print(f"Packaged diagnostics: {output.stat().st_size:,} bytes")
+          PYCODE
+
+      - name: Upload Test Results
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 2
         uses: actions/upload-artifact@v7
         with:
           name: test-results
-          path: .pio/build/native/
+          path: ${{ runner.temp }}/meshcore-test-results.tar.gz
+          compression-level: 0
+          if-no-files-found: warn
 
   test-bridges-telemetry:
     name: Bridges, networking and telemetry
