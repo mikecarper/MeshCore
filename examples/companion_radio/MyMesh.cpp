@@ -6620,16 +6620,92 @@ void MyMesh::clearPendingReqs() {
 }
 
 bool MyMesh::hasPendingReqs() const {
-  return _delayed_replies.hasRequest();
+  return _delayed_replies.hasRequest() || _delayed_replies.hasDeferredLogin();
 }
 
 bool MyMesh::beginPendingRequest(mesh::CompanionDelayedReplies::Kind kind,
-    const ContactInfo& contact, bool terminal, const char* login_password) {
+    const ContactInfo& contact, bool terminal, const char* login_password,
+    BaseSerialInterface* reply_route) {
   servicePendingSerialReply();
   _request_tag_rejected = false;
   return _delayed_replies.reserveRequest(kind, contact.id.pub_key,
-      terminal || _serial == NULL ? NULL : _serial->captureReplyRoute(),
+      terminal || _serial == NULL ? NULL
+          : (reply_route != NULL ? reply_route : _serial->captureReplyRoute()),
       terminal, _ms->getMillis(), login_password);
+}
+
+bool MyMesh::trySendBinaryLogin(const uint8_t* pub_key, const char* password,
+                                BaseSerialInterface* route) {
+  if (_serial == NULL || !_serial->isReplyRouteAvailable(route)) return true;
+  ContactInfo* recipient = lookupContactByPubKey(pub_key, PUB_KEY_SIZE);
+#if COMPANION_FEATURE_DIRECT_OTA_ADMIN
+  if (_ota_direct_radio_owned
+      && !memcmp(_ota_direct_contact.id.pub_key, pub_key, PUB_KEY_SIZE)) {
+    if (route != _ota_direct_usb_route
+        || !_ota_direct_admin.active(_ms->getMillis()) || !directOtaRadioCurrent()) {
+      writeErrFrame(ERR_CODE_BAD_STATE, route);
+      return true;
+    }
+    recipient = &_ota_direct_contact;
+  }
+#endif
+  if (recipient == NULL) {
+    writeErrFrame(ERR_CODE_NOT_FOUND, route);
+    return true;
+  }
+  const uint32_t now = _ms->getMillis();
+  if (!_delayed_replies.loginReady(now)) return false;
+  const bool retry = _delayed_replies.canRetryLogin(pub_key, password, route, now);
+  if (!retry && !beginPendingRequest(mesh::CompanionDelayedReplies::Login,
+                                    *recipient, false, password, route)) return false;
+  if (!retry) _delayed_replies.rememberLoginPassword(password);
+#if COMPANION_FEATURE_DIRECT_OTA_ADMIN
+  _ota_direct_admin.beginLogin(recipient->id, now);
+#endif
+  uint32_t tag, est_timeout = 0;
+  memcpy(&tag, recipient->id.pub_key, sizeof(tag));
+  const int result = sendLogin(*recipient, password, est_timeout);
+  if (result == MSG_SEND_FAILED) {
+    // A failed retransmission must preserve the original operation.
+    if (!retry) abandonPendingRequest();
+    writeErrFrame(ERR_CODE_TABLE_FULL, route);
+  } else {
+    _delayed_replies.noteLoginSent(now);
+    finishPendingRequest(result, tag, est_timeout);
+  }
+  return true;
+}
+
+void MyMesh::serviceDeferredLogin(uint32_t now) {
+  if (!_delayed_replies.hasDeferredLogin()) return;
+  const auto& queued = _delayed_replies.deferred_login;
+  BaseSerialInterface* route = queued.route;
+  if (_serial == NULL || !_serial->isReplyRouteAvailable(route)) {
+    _delayed_replies.clearDeferredLogin();
+    return;
+  }
+  // An identical retry becomes unnecessary if its original login finishes
+  // while waiting. Do not send an orphan second login after its final result.
+  if (queued.retry_history != mesh::CompanionDelayedReplies::NO_HISTORY
+      && (_delayed_replies.request.history != queued.retry_history
+          || _delayed_replies.request.phase
+              != mesh::CompanionDelayedReplies::AwaitRadio)) {
+    _delayed_replies.clearDeferredLogin();
+    return;
+  }
+  // The spacing timer and hold deadline can coincide. Allow one bounded
+  // service tick after that boundary, rather than failing a ready login
+  // because radio servicing occupied the loop at exactly three seconds.
+  if ((int32_t)(now - queued.deadline)
+          <= (int32_t)mesh::CompanionDelayedReplies::LOGIN_SERVICE_GRACE_MS
+      && trySendBinaryLogin(queued.peer, queued.password, route)) {
+    _delayed_replies.clearDeferredLogin();
+    return;
+  }
+  if ((int32_t)(now - queued.deadline) >= 0) {
+    _delayed_replies.clearDeferredLogin();
+    writeErrFrame(ERR_CODE_BAD_STATE, route);
+  }
 }
 
 bool MyMesh::allowRequestTag(uint32_t tag) {
@@ -6674,6 +6750,12 @@ void MyMesh::abandonPendingRequest() {
 
 bool MyMesh::hasFiniteDelayedReplyForRoute(BaseSerialInterface* route) const {
   if (route == NULL) return false;
+  if (_delayed_replies.hasDeferredLogin()
+      && _delayed_replies.deferred_login.route == route
+      && (int32_t)(_ms->getMillis() - _delayed_replies.deferred_login.deadline)
+          <= (int32_t)mesh::CompanionDelayedReplies::LOGIN_SERVICE_GRACE_MS) {
+    return true;
+  }
   if (_delayed_replies.hasReplyForRoute(route, _ms->getMillis())) {
     return true;
   }
@@ -7895,43 +7977,13 @@ void MyMesh::handleCmdFrame(size_t len) {
     }
   } else if (cmd_frame[0] == CMD_SEND_LOGIN && len >= 1 + PUB_KEY_SIZE) {
     uint8_t *pub_key = &cmd_frame[1];
-    ContactInfo *recipient = lookupContactByPubKey(pub_key, PUB_KEY_SIZE);
-#if COMPANION_FEATURE_DIRECT_OTA_ADMIN
-    if (_ota_direct_radio_owned && !memcmp(_ota_direct_contact.id.pub_key, pub_key, PUB_KEY_SIZE)) {
-      if (_serial->captureReplyRoute() != _ota_direct_usb_route
-          || !_ota_direct_admin.active(_ms->getMillis()) || !directOtaRadioCurrent()) {
-        writeErrFrame(ERR_CODE_BAD_STATE);
-        return;
-      }
-      recipient = &_ota_direct_contact;
-    }
-#endif
     char *password = (char *)&cmd_frame[1 + PUB_KEY_SIZE];
     cmd_frame[len] = 0; // ensure null terminator in password
-    if (recipient) {
-      const bool retry = _delayed_replies.canRetryLogin(pub_key, password,
-          _serial->captureReplyRoute(), _ms->getMillis());
-      if (!retry && !beginPendingRequest(mesh::CompanionDelayedReplies::Login,
-                                        *recipient, false, password)) {
-        writeErrFrame(ERR_CODE_BAD_STATE);
-        return;
-      }
-      if (!retry) _delayed_replies.rememberLoginPassword(password);
-#if COMPANION_FEATURE_DIRECT_OTA_ADMIN
-      _ota_direct_admin.beginLogin(recipient->id, _ms->getMillis());
-#endif
-      uint32_t tag, est_timeout = 0;
-      memcpy(&tag, recipient->id.pub_key, 4);
-      int result = sendLogin(*recipient, password, est_timeout);
-      if (retry && result == MSG_SEND_FAILED) {
-        // A failed retransmission must not discard the original request or
-        // prevent its eventual response from reaching the same app session.
-        writeErrFrame(ERR_CODE_TABLE_FULL);
-      } else {
-        finishPendingRequest(result, tag, est_timeout);
-      }
-    } else {
-      writeErrFrame(ERR_CODE_NOT_FOUND); // contact not found
+    BaseSerialInterface* route = _serial->captureReplyRoute();
+    if ((_delayed_replies.hasDeferredLogin()
+          || !trySendBinaryLogin(pub_key, password, route))
+        && !_delayed_replies.queueLogin(pub_key, password, route, _ms->getMillis())) {
+      writeErrFrame(ERR_CODE_BAD_STATE, route);
     }
   } else if (cmd_frame[0] == CMD_SEND_ANON_REQ && len > 1 + PUB_KEY_SIZE) {
     uint8_t *pub_key = &cmd_frame[1];
@@ -8056,6 +8108,11 @@ void MyMesh::handleCmdFrame(size_t len) {
     }
   } else if (cmd_frame[0] == CMD_LOGOUT && len >= 1 + PUB_KEY_SIZE) {
     uint8_t *pub_key = &cmd_frame[1];
+    if (_delayed_replies.hasDeferredLogin()
+        && _delayed_replies.deferred_login.route == _serial->captureReplyRoute()
+        && !memcmp(_delayed_replies.deferred_login.peer, pub_key, PUB_KEY_SIZE)) {
+      _delayed_replies.clearDeferredLogin();
+    }
     stopConnection(pub_key);
     writeOKFrame();
   } else if (cmd_frame[0] == CMD_GET_CHANNEL && len >= 2) {
@@ -12603,6 +12660,7 @@ void MyMesh::loop() {
   serviceMorseTerminal();
 #endif
   servicePendingSerialReply();
+  serviceDeferredLogin(_ms->getMillis());
 #if COMPANION_FEATURE_READER
   // Every verse chunk reinflates its 4 KiB flash block. Retain the cursor but
   // defer that optional decode/output work until envelope timing is finished.

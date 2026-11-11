@@ -119,6 +119,45 @@ void CompanionDelayedReplies::clearCompletedLogin() {
 
 void CompanionDelayedReplies::forgetLoginRoute(BaseSerialInterface* route) {
   if (completed_login_route == route) clearCompletedLogin();
+  if (deferred_login.route == route) clearDeferredLogin();
+}
+
+bool CompanionDelayedReplies::loginReady(uint32_t now) const {
+  return !login_interval_active
+      || (uint32_t)(now - last_login_send_at) >= LOGIN_INTERVAL_MS;
+}
+
+void CompanionDelayedReplies::noteLoginSent(uint32_t now) {
+  last_login_send_at = now;
+  login_interval_active = true;
+}
+
+bool CompanionDelayedReplies::queueLogin(const uint8_t peer[32],
+    const char* password, BaseSerialInterface* route, uint32_t now) {
+  if (peer == nullptr || password == nullptr || route == nullptr) return false;
+  if (hasDeferredLogin()) {
+    // Duplicate clicks share the original deadline, rather than holding the
+    // login indefinitely or replacing another host's queued operation.
+    return deferred_login.route == route
+        && memcmp(deferred_login.peer, peer, sizeof(deferred_login.peer)) == 0
+        && strncmp(deferred_login.password, password,
+                   sizeof(deferred_login.password) - 1) == 0;
+  }
+  deferred_login.route = route;
+  deferred_login.deadline = now + LOGIN_HOLD_MS;
+  memcpy(deferred_login.peer, peer, sizeof(deferred_login.peer));
+  strncpy(deferred_login.password, password, sizeof(deferred_login.password) - 1);
+  deferred_login.retry_history = matchesActiveLogin(peer, password, route, now)
+      ? request.history : NO_HISTORY;
+  return true;
+}
+
+void CompanionDelayedReplies::clearDeferredLogin() {
+  memset(deferred_login.peer, 0, sizeof(deferred_login.peer));
+  memset(deferred_login.password, 0, sizeof(deferred_login.password));
+  deferred_login.route = nullptr;
+  deferred_login.deadline = 0;
+  deferred_login.retry_history = NO_HISTORY;
 }
 
 bool CompanionDelayedReplies::canRepeatCompletedLogin(const uint8_t peer[32],
@@ -204,14 +243,20 @@ void CompanionDelayedReplies::rememberLoginPassword(const char* password) {
   }
 }
 
-bool CompanionDelayedReplies::canRetryLogin(const uint8_t peer[32],
+bool CompanionDelayedReplies::matchesActiveLogin(const uint8_t peer[32],
     const char* password, BaseSerialInterface* route, uint32_t now) const {
   return login_password_valid && password != nullptr && peer != nullptr
       && route != nullptr && request.route == route && !request.terminal
-      && request.kind == Login && request.phase == AwaitRadio
-      && !request.sent_pending && !expired(request, now)
+      && request.kind == Login && request.phase >= AwaitRadio
+      && !expired(request, now)
       && requestMatches(peer, 0)
       && strncmp(login_password, password, sizeof(login_password) - 1) == 0;
+}
+
+bool CompanionDelayedReplies::canRetryLogin(const uint8_t peer[32],
+    const char* password, BaseSerialInterface* route, uint32_t now) const {
+  return request.phase == AwaitRadio && !request.sent_pending
+      && matchesActiveLogin(peer, password, route, now);
 }
 
 void CompanionDelayedReplies::rememberLoginTag(uint32_t tag) {

@@ -732,9 +732,18 @@ at least ten seconds and through the original radio deadline plus ten seconds
 when longer. Cancelled, timed-out, or failed logins to the same peer have at
 least a thirty-second quarantine. After the Companion admits a successful
 binary login result to the original app connection, that connection can
-immediately log in again to the same peer with the same effective password
+log in again to the same peer with the same effective password
 (the protocol sends at most fifteen bytes). This sends a fresh login request;
 it does not return a cached success. Known old reply timestamps remain blocked.
+Binary login transmissions are spaced at least three seconds apart. One
+login can wait for up to three seconds for this timer or a busy request slot,
+without blocking radio reception. Identical repeated clicks keep the same
+queued operation and deadline. A small bounded service grace covers a loop
+that crosses the timer boundary; an overdue login is discarded. Its `SENT`
+estimate starts when it is dispatched. Disconnect, session cancellation, or
+logout from the original connection clears the queued login. If it still
+cannot proceed at the deadline, only that connection receives the error.
+
 The completed-login context stays only in RAM during its history window and
 is cleared when the connection ends, its session is cancelled, or that history
 expires. A different connection or changed password must wait for quarantine

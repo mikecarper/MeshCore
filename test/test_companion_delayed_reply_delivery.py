@@ -26,6 +26,7 @@ def production_methods(source, base, packet, dispatcher):
         "void MyMesh::onContactResponse(", "bool MyMesh::onContactPathRecv(",
         "void MyMesh::onTraceRecv(", "void MyMesh::clearPendingReqs(",
         "bool MyMesh::hasPendingReqs(", "bool MyMesh::beginPendingRequest(",
+        "bool MyMesh::trySendBinaryLogin(", "void MyMesh::serviceDeferredLogin(",
         "bool MyMesh::allowRequestTag(", "bool MyMesh::allocateRequestTag(",
         "void MyMesh::armPendingRequest(",
         "void MyMesh::finishPendingRequest(",
@@ -168,7 +169,7 @@ class CompanionDelayedReplyDeliveryTests(unittest.TestCase):
                         self.assertIn("same-route fresh trace must supersede a pending trace", checked.stderr)
                     elif legacy_login_quarantine:
                         self.assertNotEqual(checked.returncode, 0, "The old completed-login quarantine unexpectedly passed")
-                        self.assertIn("completed same-session login must transmit immediately", checked.stderr)
+                        self.assertIn("held login must transmit at the three-second boundary", checked.stderr)
                     else:
                         self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
                         self.assertIn("PASS: delayed production reply delivery", checked.stdout)

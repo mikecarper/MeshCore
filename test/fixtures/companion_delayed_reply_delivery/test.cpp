@@ -185,7 +185,8 @@ struct MyMesh : BaseChatMesh {
   void writeErrFrame(uint8_t, BaseSerialInterface* = nullptr);
   void writeOKFrame(BaseSerialInterface* = nullptr);
   size_t writePendingSerialFrame(const uint8_t*, size_t, uint32_t);
-  bool beginPendingRequest(Kind, const ContactInfo&, bool = false, const char* = nullptr);
+  bool beginPendingRequest(Kind, const ContactInfo&, bool = false, const char* = nullptr,
+                           BaseSerialInterface* = nullptr);
   bool allowRequestTag(uint32_t) override;
   bool allocateRequestTag(uint32_t&) override;
   void armPendingRequest(uint32_t, uint32_t, bool);
@@ -195,6 +196,8 @@ struct MyMesh : BaseChatMesh {
   bool hasPendingReqs() const;
   void servicePendingSerialReply();
   void servicePendingSerialReply(uint32_t);
+  bool trySendBinaryLogin(const uint8_t*, const char*, BaseSerialInterface*);
+  void serviceDeferredLogin(uint32_t);
   void clearBinaryTraceReply();
   void serviceBinaryTraceReply();
   void serviceBinaryTraceReply(uint32_t);
@@ -262,7 +265,11 @@ struct Fixture {
     while (target->writeFrame(required, sizeof(required)) == sizeof(required)) { assert(++count <= 4); }
     return count;
   }
-  void service() { mesh.servicePendingSerialReply(); mesh.serviceBinaryTraceReply(); }
+  void service() {
+    mesh.servicePendingSerialReply();
+    mesh.serviceDeferredLogin(millis());
+    mesh.serviceBinaryTraceReply();
+  }
   void drain() {
     usb_stream.write_capacity = other_stream.write_capacity = 4096;
     if (socket) socket->write_limit = 4096;
@@ -847,14 +854,14 @@ int main() {
     const uint32_t first_deadline = f.mesh._delayed_replies.request.radio_deadline;
     // More retries than history slots must still use the single live login.
     for (unsigned retry = 1; retry <= 10; ++retry) {
-      g_mock_millis += 2000;
+      g_mock_millis += Tracker::LOGIN_INTERVAL_MS;
       f.mesh.handleRequestFrame(blank ? 33 : 34); f.drain();
       assert(f.mesh.transmissions == sent + retry && "same-session login retry must transmit");
       assert(f.mesh._delayed_replies.request.history == history);
     }
     assert(f.mesh._delayed_replies.request.radio_deadline > first_deadline);
     f.mesh.recipient.out_path_len = OUT_PATH_UNKNOWN;
-    g_mock_millis += 1000;
+    g_mock_millis += Tracker::LOGIN_INTERVAL_MS;
     f.mesh.handleRequestFrame(blank ? 33 : 34);
     assert(f.mesh.transmissions == sent + 11);
     assert(f.mesh._delayed_replies.request.flood);
@@ -876,11 +883,13 @@ int main() {
     assert(!tracker.canRetryLogin(f.mesh.recipient.id.pub_key, "", f.owner, millis()));
     f.mesh.cmd_frame[33] = 'y'; f.mesh.handleRequestFrame(34); f.drain();
     assert(f.mesh.transmissions == 1 && tracker.hasRequest());
-    assert(count(f.wire(), RESP_CODE_ERR) == 1);
+    assert(count(f.wire(), RESP_CODE_ERR) == 0 && tracker.hasDeferredLogin());
     f.otherRequest(); f.command(Tracker::Login); f.drain();
     assert(f.mesh.transmissions == 1 && tracker.request.route == f.owner);
     assert(count(f.other_stream.output, RESP_CODE_ERR) == 1);
     reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    g_mock_millis += Tracker::LOGIN_HOLD_MS; f.service(); f.drain();
+    assert(count(f.wire(), RESP_CODE_ERR) == 1);
     assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1);
     assert(count(f.other_stream.output, PUSH_CODE_LOGIN_SUCCESS) == 0);
     assert(!tracker.canRetryLogin(f.mesh.recipient.id.pub_key, "x", f.owner, millis()));
@@ -891,7 +900,7 @@ int main() {
     const uint32_t original_deadline = f.mesh._delayed_replies.request.radio_deadline;
     const uint8_t history = f.mesh._delayed_replies.request.history;
     f.mesh.radio_accepts = false;
-    g_mock_millis += 1000; f.command(Tracker::Login); f.drain();
+    g_mock_millis += Tracker::LOGIN_INTERVAL_MS; f.command(Tracker::Login); f.drain();
     assert(f.mesh._delayed_replies.request.history == history);
     assert(f.mesh._delayed_replies.request.radio_deadline == original_deadline);
     reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
@@ -904,13 +913,17 @@ int main() {
     assert(!f.mesh._delayed_replies.canRetryLogin(f.mesh.recipient.id.pub_key, "x", f.owner, millis()));
     f.drain(); assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1); ++checks;
   }
-  {
-    Fixture f; assert(f.fill() == 4); f.command(Tracker::Login);
+  for (bool tcp : {false, true}) {
+    Fixture f(tcp); assert(f.fill() == 4); f.command(Tracker::Login);
     assert(f.mesh._delayed_replies.request.sent_pending);
     f.command(Tracker::Login);
     assert(f.mesh.transmissions == 1); // First SENT must be admitted first.
+    assert(f.mesh._delayed_replies.hasDeferredLogin());
+    assert(f.mesh._delayed_replies.deferred_login.retry_history == slot(f, Tracker::Login).history);
     f.drain(); reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
-    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1); ++checks;
+    assert(!f.mesh._delayed_replies.hasDeferredLogin());
+    g_mock_millis += Tracker::LOGIN_INTERVAL_MS; f.service();
+    assert(f.mesh.transmissions == 1 && count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1); ++checks;
   }
   for (bool cancel : {false, true}) {
     Fixture f; f.command(Tracker::Login); f.drain();
@@ -918,7 +931,171 @@ int main() {
     else { g_mock_millis = f.mesh._delayed_replies.request.radio_deadline; f.service(); }
     assert(!f.mesh._delayed_replies.canRetryLogin(f.mesh.recipient.id.pub_key, "x", f.owner, millis()));
     f.command(Tracker::Login); f.drain();
+    assert(f.mesh.transmissions == 1 && count(f.wire(), RESP_CODE_ERR) == 0);
+    g_mock_millis += Tracker::LOGIN_HOLD_MS; f.service(); f.drain();
     assert(f.mesh.transmissions == 1 && count(f.wire(), RESP_CODE_ERR) == 1); ++checks;
+  }
+  // A quick reopen is held without blocking the transport or returning an
+  // error. It sends at the exact three-second spacing boundary, including
+  // millis wrap; duplicate clicks cannot move its maximum-hold deadline.
+  for (bool tcp : {false, true}) for (uint32_t start : {0U, 100U, 0xfffffff0U}) {
+    Fixture f(tcp); g_mock_millis = start;
+    f.login("x"); reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    const size_t second_start = f.wire().size();
+    f.login("x");
+    assert(f.mesh.transmissions == 1 && f.mesh._delayed_replies.hasDeferredLogin());
+    assert(f.mesh.hasFiniteDelayedReplyForRoute(f.owner));
+    const uint32_t deadline = f.mesh._delayed_replies.deferred_login.deadline;
+    assert(deadline == start + Tracker::LOGIN_HOLD_MS);
+    g_mock_millis = start + Tracker::LOGIN_INTERVAL_MS - 1; f.service(); f.drain();
+    f.login("x"); f.drain();
+    assert(f.mesh.transmissions == 1 && count(f.wire(), RESP_CODE_ERR) == 0);
+    assert(f.mesh._delayed_replies.deferred_login.deadline == deadline);
+    g_mock_millis = start + Tracker::LOGIN_INTERVAL_MS; f.service();
+    assert(f.mesh.transmissions == 2 && !f.mesh._delayed_replies.hasDeferredLogin()
+        && "held login must transmit at the three-second boundary");
+    reply(f, Tracker::Login, nullptr, 0x11223344);
+    assert(slot(f, Tracker::Login).phase == Tracker::AwaitRadio);
+    reply(f, Tracker::Login, nullptr, 0x11223345); f.drain();
+    const Bytes current(f.wire().begin() + second_start, f.wire().end());
+    uint32_t tag = 0; memcpy(&tag, f.mesh.recipient.id.pub_key, sizeof(tag));
+    assertSentBeforeFinal(current, Tracker::Login, tag);
+    assert(count(f.wire(), RESP_CODE_ERR) == 0); ++checks;
+  }
+  // Main-loop scheduling can pass the nominal boundary by a small amount.
+  // Permit only the bounded service grace, never an arbitrarily late login.
+  for (bool tcp : {false, true}) for (uint32_t start : {100U, 0xfffffff0U})
+      for (uint32_t late : {1U, Tracker::LOGIN_SERVICE_GRACE_MS,
+                            Tracker::LOGIN_SERVICE_GRACE_MS + 1U, 300000U}) {
+    Fixture f(tcp); g_mock_millis = start;
+    f.login("x"); reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    f.login("x"); const uint32_t deadline = f.mesh._delayed_replies.deferred_login.deadline;
+    g_mock_millis = deadline + late;
+    const bool ready = late <= Tracker::LOGIN_SERVICE_GRACE_MS;
+    assert(f.mesh.hasFiniteDelayedReplyForRoute(f.owner) == ready);
+    f.service(); f.drain();
+    assert(!f.mesh._delayed_replies.hasDeferredLogin());
+    assert(f.mesh.transmissions == (ready ? 2U : 1U));
+    if (ready) {
+      reply(f, Tracker::Login, nullptr, 0x11223345); f.drain();
+      assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 2 && count(f.wire(), RESP_CODE_ERR) == 0);
+    } else {
+      assert(!f.mesh._delayed_replies.hasRequest());
+      assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1);
+      assert(frameWith(f.wire(), RESP_CODE_ERR) == Bytes({RESP_CODE_ERR, ERR_CODE_BAD_STATE}));
+    }
+    ++checks;
+  }
+  // Backing out while a login is held cancels that exact host/peer operation.
+  // A different client or another peer's logout cannot cancel its owner.
+  for (bool tcp : {false, true}) for (unsigned caller = 0; caller < 3; ++caller) {
+    Fixture f(tcp); const uint32_t start = millis();
+    f.login("x"); reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    f.login("x"); assert(f.mesh._delayed_replies.hasDeferredLogin());
+    if (caller == 1) f.otherRequest();
+    memset(f.mesh.cmd_frame, 0, sizeof(f.mesh.cmd_frame));
+    f.mesh.cmd_frame[0] = CMD_LOGOUT;
+    memcpy(f.mesh.cmd_frame + 1, f.mesh.recipient.id.pub_key, 32);
+    if (caller == 2) f.mesh.cmd_frame[32] ^= 1;
+    f.mesh.handleRequestFrame(33); f.drain();
+    assert(f.mesh._delayed_replies.hasDeferredLogin() == (caller != 0));
+    if (caller == 0)
+      for (char value : f.mesh._delayed_replies.deferred_login.password) assert(value == 0);
+    g_mock_millis = start + Tracker::LOGIN_INTERVAL_MS; f.service(); f.drain();
+    assert(f.mesh.transmissions == (caller == 0 ? 1U : 2U));
+    if (caller != 0) { reply(f, Tracker::Login, nullptr, 0x11223345); f.drain(); }
+    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == (caller == 0 ? 1U : 2U));
+    assert(count(f.other_stream.output, PUSH_CODE_LOGIN_SUCCESS) == 0); ++checks;
+  }
+  // The short rate timer cannot become a multiweek lockout after a node
+  // stays online without remote logins for more than the signed millis range.
+  for (bool tcp : {false, true}) for (uint32_t start : {100U, 0xfffffff0U})
+      for (uint32_t days : {31U, 40U}) {
+    Fixture f(tcp); g_mock_millis = start;
+    f.login("x"); reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    g_mock_millis = uint32_t(start + days * 24U * 60U * 60U * 1000U);
+    f.login("x");
+    assert(f.mesh.transmissions == 2 && !f.mesh._delayed_replies.hasDeferredLogin());
+    reply(f, Tracker::Login, nullptr, 0x11223345); f.drain();
+    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 2 && count(f.wire(), RESP_CODE_ERR) == 0);
+    ++checks;
+  }
+  // A held login keeps an identity key rather than a mutable contact pointer.
+  // Removing the contact during the wait fails only its original requester.
+  for (bool tcp : {false, true}) {
+    Fixture f(tcp); const uint32_t start = millis();
+    f.login("x"); reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    f.login("x"); assert(f.mesh._delayed_replies.hasDeferredLogin());
+    f.mesh.recipient.id.pub_key[31] ^= 1; f.otherRequest();
+    g_mock_millis = start + Tracker::LOGIN_INTERVAL_MS; f.service(); f.drain();
+    assert(!f.mesh._delayed_replies.hasDeferredLogin() && !f.mesh._delayed_replies.hasRequest());
+    assert(f.mesh.transmissions == 1);
+    assert(frameWith(f.wire(), RESP_CODE_ERR) == Bytes({RESP_CODE_ERR, ERR_CODE_NOT_FOUND}));
+    assert(f.other_stream.output.empty()); ++checks;
+  }
+  // A temporarily occupied request slot gets time to finish. The deferred
+  // login retains its original requester even after another transport speaks.
+  for (bool tcp : {false, true}) {
+    Fixture f(tcp); f.command(Tracker::Status); f.drain();
+    const uint32_t status_tag = slot(f, Tracker::Status).tag;
+    f.login("x");
+    assert(f.mesh.transmissions == 1 && f.mesh._delayed_replies.hasDeferredLogin());
+    assert(f.mesh._delayed_replies.deferred_login.route == f.owner);
+    f.otherRequest(); g_mock_millis += 1000;
+    reply(f, Tracker::Status, nullptr, status_tag); f.drain();
+    assert(f.mesh.transmissions == 2 && slot(f, Tracker::Login).route == f.owner);
+    reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    assert(count(f.wire(), PUSH_CODE_STATUS_RESPONSE) == 1);
+    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1);
+    assert(f.other_stream.output.empty() && count(f.wire(), RESP_CODE_ERR) == 0); ++checks;
+  }
+  // A duplicate retry that is waiting for the rate timer disappears if the
+  // original request succeeds first, rather than creating an orphan login.
+  for (bool tcp : {false, true}) {
+    Fixture f(tcp); const uint32_t start = millis(); f.login("x"); f.drain();
+    g_mock_millis = start + 1000; f.login("x");
+    assert(f.mesh._delayed_replies.hasDeferredLogin() && f.mesh.transmissions == 1);
+    assert(f.mesh._delayed_replies.deferred_login.retry_history == slot(f, Tracker::Login).history);
+    g_mock_millis = start + 2000; reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    assert(!f.mesh._delayed_replies.hasDeferredLogin());
+    g_mock_millis = start + Tracker::LOGIN_INTERVAL_MS; f.service(); f.drain();
+    assert(f.mesh.transmissions == 1 && count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1);
+    assert(count(f.wire(), RESP_CODE_ERR) == 0); ++checks;
+  }
+  // Queue pressure is bounded by the original deadline. Duplicate commands
+  // cannot extend it, and its eventual error belongs to the saved route.
+  for (bool tcp : {false, true}) for (uint32_t start : {100U, 0xfffffff0U}) {
+    Fixture f(tcp); g_mock_millis = start; f.command(Tracker::Status); f.drain();
+    const uint8_t history = slot(f, Tracker::Status).history;
+    f.login("x"); const uint32_t deadline = f.mesh._delayed_replies.deferred_login.deadline;
+    g_mock_millis = deadline - 1; f.login("x"); f.drain();
+    assert(f.mesh._delayed_replies.deferred_login.deadline == deadline);
+    assert(count(f.wire(), RESP_CODE_ERR) == 0);
+    f.otherRequest(); g_mock_millis = deadline; f.service(); f.drain();
+    assert(!f.mesh._delayed_replies.hasDeferredLogin() && f.mesh.transmissions == 1);
+    assert(slot(f, Tracker::Status).history == history && slot(f, Tracker::Status).route == f.owner);
+    assert(frameWith(f.wire(), RESP_CODE_ERR) == Bytes({RESP_CODE_ERR, ERR_CODE_BAD_STATE}));
+    assert(f.other_stream.output.empty()); ++checks;
+  }
+  // Only one queued login is retained. A different client or password cannot
+  // replace it, and disconnect/cancellation erases the pending credential.
+  for (bool tcp : {false, true}) for (bool disconnect : {false, true}) {
+    Fixture f(tcp); f.login("x"); reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    f.login("x");
+    assert(f.mesh._delayed_replies.hasDeferredLogin());
+    const uint32_t deadline = f.mesh._delayed_replies.deferred_login.deadline;
+    f.login("y"); f.drain();
+    assert(strcmp(f.mesh._delayed_replies.deferred_login.password, "x") == 0);
+    assert(f.mesh._delayed_replies.deferred_login.deadline == deadline);
+    f.otherRequest(); f.login("x"); f.drain();
+    assert(f.mesh._delayed_replies.deferred_login.route == f.owner);
+    assert(count(f.other_stream.output, RESP_CODE_ERR) == 1);
+    if (disconnect) { f.disconnect(); f.service(); }
+    else f.mesh.cancelSerialOperationsForRoute(f.owner);
+    assert(!f.mesh._delayed_replies.hasDeferredLogin());
+    for (char value : f.mesh._delayed_replies.deferred_login.password) assert(value == 0);
+    g_mock_millis = deadline; f.service();
+    assert(f.mesh.transmissions == 1); ++checks;
   }
   // Reopening a successfully authenticated repeater must not hit the
   // uncertain-login quarantine. Suppress every earlier completed result and
@@ -930,6 +1107,7 @@ int main() {
     memcpy(&login_tag, f.mesh.recipient.id.pub_key, sizeof(login_tag));
     std::vector<uint32_t> previous;
     for (unsigned cycle = 0; cycle < 3; ++cycle) {
+      if (cycle != 0) { g_mock_millis += Tracker::LOGIN_INTERVAL_MS; f.service(); }
       const size_t result_start = f.wire().size();
       f.login("x");
       assert(f.mesh.transmissions == cycle + 1
@@ -954,7 +1132,7 @@ int main() {
       memcpy(f.mesh.cmd_frame + 1, f.mesh.recipient.id.pub_key, 32);
       f.mesh.handleRequestFrame(33); f.drain();
       assert(f.mesh.connection_stops == cycle + 1);
-      previous.push_back(server_tag); g_mock_millis += 20;
+      previous.push_back(server_tag);
     }
     assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 3); ++checks;
   }
@@ -968,6 +1146,7 @@ int main() {
     assert(f.mesh.transmitted_payload.size() == offset + effective);
     assert(memcmp(f.mesh.transmitted_payload.data() + offset, password, effective) == 0);
     reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    g_mock_millis += Tracker::LOGIN_INTERVAL_MS;
     f.login(effective == 15 ? "123456789012345B" : "");
     assert(f.mesh.transmissions == 2 && slot(f, Tracker::Login).phase == Tracker::AwaitRadio);
     reply(f, Tracker::Login, nullptr, 0x11223345); f.drain();
@@ -979,13 +1158,16 @@ int main() {
   // remain unable to satisfy either rejected operation.
   for (bool tcp : {false, true}) for (bool changed_route : {false, true}) {
     Fixture f(tcp); f.login("x"); f.drain();
+    g_mock_millis += Tracker::LOGIN_INTERVAL_MS;
     f.login("x"); f.drain();
     assert(f.mesh.transmissions == 2);
     reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
     if (changed_route) f.otherRequest();
     f.login(changed_route ? "x" : "y");
-    assert(f.mesh.transmissions == 2 && !f.mesh.hasPendingReqs());
+    assert(f.mesh.transmissions == 2 && !f.mesh._delayed_replies.hasRequest());
+    assert(f.mesh._delayed_replies.hasDeferredLogin());
     reply(f, Tracker::Login, nullptr, 0x11223345); f.drain();
+    g_mock_millis += Tracker::LOGIN_HOLD_MS; f.service(); f.drain();
     const Bytes& rejected = changed_route ? f.other_stream.output : f.wire();
     assert(frameWith(rejected, RESP_CODE_ERR) == Bytes({RESP_CODE_ERR, ERR_CODE_BAD_STATE}));
     assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1);
@@ -999,8 +1181,12 @@ int main() {
     assert(slot(f, Tracker::Login).phase == Tracker::AwaitAdmission);
     f.login("x");
     assert(f.mesh.transmissions == 1 && slot(f, Tracker::Login).phase == Tracker::AwaitAdmission);
+    assert(f.mesh._delayed_replies.hasDeferredLogin());
+    assert(f.mesh._delayed_replies.deferred_login.retry_history == slot(f, Tracker::Login).history);
     f.drain();
-    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1);
+    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1 && !f.mesh._delayed_replies.hasDeferredLogin());
+    g_mock_millis += Tracker::LOGIN_INTERVAL_MS; f.service();
+    assert(f.mesh.transmissions == 1); // The queued duplicate has already completed.
     f.login("x");
     assert(f.mesh.transmissions == 2 && slot(f, Tracker::Login).phase == Tracker::AwaitRadio);
     reply(f, Tracker::Login, nullptr, 0x11223345); f.drain();
@@ -1013,8 +1199,10 @@ int main() {
     if (disconnect) { f.disconnect(); f.service(); f.reconnectOwner(); }
     else f.mesh.cancelSerialOperationsForRoute(f.owner);
     f.login("x");
-    assert(f.mesh.transmissions == 1 && !f.mesh.hasPendingReqs());
+    assert(f.mesh.transmissions == 1 && !f.mesh._delayed_replies.hasRequest());
+    assert(f.mesh._delayed_replies.hasDeferredLogin());
     reply(f, Tracker::Login, nullptr, 0x11223345); f.drain();
+    g_mock_millis += Tracker::LOGIN_HOLD_MS; f.service(); f.drain();
     assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == (tcp && disconnect ? 0U : 1U));
     assert(frameWith(f.wire(), RESP_CODE_ERR) == Bytes({RESP_CODE_ERR, ERR_CODE_BAD_STATE}));
     ++checks;
@@ -1023,6 +1211,7 @@ int main() {
   // retain broad quarantine rather than reviving an earlier success.
   for (bool tcp : {false, true}) for (unsigned reason = 0; reason < 3; ++reason) {
     Fixture f(tcp); f.login("x"); reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    g_mock_millis += Tracker::LOGIN_INTERVAL_MS;
     f.login("x"); f.drain(); assert(f.mesh.transmissions == 2);
     if (reason == 0) {
       uint8_t failure[6] = {}; const uint32_t tag = 0x11223345;
@@ -1033,8 +1222,10 @@ int main() {
       g_mock_millis = slot(f, Tracker::Login).radio_deadline; f.service();
     } else f.mesh.cancelSerialOperationsForRoute(f.owner);
     f.login("x");
-    assert(f.mesh.transmissions == 2 && !f.mesh.hasPendingReqs());
+    assert(f.mesh.transmissions == 2 && !f.mesh._delayed_replies.hasRequest());
+    assert(f.mesh._delayed_replies.hasDeferredLogin());
     reply(f, Tracker::Login, nullptr, 0x11223346); f.drain();
+    g_mock_millis += Tracker::LOGIN_HOLD_MS; f.service(); f.drain();
     assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1);
     assert(frameWith(f.wire(), RESP_CODE_ERR) == Bytes({RESP_CODE_ERR, ERR_CODE_BAD_STATE}));
     ++checks;
@@ -1044,12 +1235,16 @@ int main() {
   for (bool tcp : {false, true}) for (uint32_t start : {100U, 0xfffffff0U}) {
     Fixture f(tcp); g_mock_millis = start;
     for (unsigned i = 0; i < Tracker::HISTORY_SIZE; ++i) {
+      if (i != 0) g_mock_millis += Tracker::LOGIN_INTERVAL_MS;
       f.login("x"); assert(f.mesh.transmissions == i + 1);
       reply(f, Tracker::Login, nullptr, 0x11223344U + i); f.drain();
     }
-    f.login("x"); assert(f.mesh.transmissions == Tracker::HISTORY_SIZE && !f.mesh.hasPendingReqs());
+    f.login("x");
+    assert(f.mesh.transmissions == Tracker::HISTORY_SIZE && f.mesh._delayed_replies.hasDeferredLogin());
+    g_mock_millis += Tracker::LOGIN_HOLD_MS; f.service();
     f.drain(); assert(count(f.wire(), RESP_CODE_ERR) == 1);
-    g_mock_millis = start + Tracker::LOGIN_QUARANTINE_MS; f.service();
+    g_mock_millis = start + Tracker::LOGIN_QUARANTINE_MS
+        + (Tracker::HISTORY_SIZE - 1) * Tracker::LOGIN_INTERVAL_MS; f.service();
     f.login("different"); assert(f.mesh.transmissions == Tracker::HISTORY_SIZE + 1);
     reply(f, Tracker::Login, nullptr, 0x11224444); f.drain();
     assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == Tracker::HISTORY_SIZE + 1); ++checks;

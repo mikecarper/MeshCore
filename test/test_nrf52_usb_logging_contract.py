@@ -693,11 +693,15 @@ int main() {
                               ("TELEMETRY_REQ", "Telemetry"), ("BINARY_REQ", "Binary")):
             branch = extract_braced(mesh_source, "} else if (cmd_frame[0] == CMD_SEND_" + command)
             if command == "LOGIN":
-                self.assertRegex(branch, r"beginPendingRequest\(mesh::CompanionDelayedReplies::Login,\s*"
-                                        r"\*recipient, false, password\)")
+                self.assertIn("trySendBinaryLogin(pub_key, password, route)", branch)
+                self.assertIn("_delayed_replies.queueLogin(pub_key, password, route,", branch)
+                login = extract_braced(mesh_source, "bool MyMesh::trySendBinaryLogin(")
+                self.assertRegex(login, r"beginPendingRequest\(mesh::CompanionDelayedReplies::Login,\s*"
+                                       r"\*recipient, false, password, route\)")
+                self.assertIn("finishPendingRequest(result, tag, est_timeout);", login)
             else:
                 self.assertIn(f"beginPendingRequest(mesh::CompanionDelayedReplies::{kind}, *recipient)", branch)
-            self.assertIn("finishPendingRequest(result, tag, est_timeout);", branch)
+                self.assertIn("finishPendingRequest(result, tag, est_timeout);", branch)
         self.assertGreaterEqual(
             mesh_source.count("writePendingSerialFrame(out_frame, i, now)"), 5
         )
