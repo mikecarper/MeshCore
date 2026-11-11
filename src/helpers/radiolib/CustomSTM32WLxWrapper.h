@@ -32,7 +32,8 @@ public:
   // Enabling RXPS here requires restoring the virtual cached-policy query in
   // the compact ABI. Never silently enable it while that query is fixed false.
   static_assert(!SupportsRxPowerSaving, "Compact STM32WL must update its RXPS policy API before enabling RXPS");
-  bool supportsRxPowerSaving() const final override { return false; }
+  virtual bool supportsRxPowerSaving() const final { return false; }
+
 #endif
   ~CustomSTM32WLxWrapper() { unregisterInterruptAction(); }
   CustomSTM32WLxWrapper(CustomSTM32WLx& radio, mesh::MainBoard& board) : SX126xPulseWrapper<CustomSTM32WLx>(radio, board) { }

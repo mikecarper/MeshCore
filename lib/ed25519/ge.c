@@ -497,9 +497,9 @@ void ge_scalarmult_base(ge_p3 *h, const unsigned char *a) {
     int i;
     int j;
 
-    /* Bi[0] is B in precomputed form; add it to the identity to recover B. */
+    /* The compact public base point is B in precomputed form. */
     ge_p3_0(&base_point);
-    ge_madd(&r, &base_point, &Bi[0]);
+    ge_madd(&r, &base_point, &compact_basepoint);
     ge_p1p1_to_p3(&base_point, &r);
     ge_p3_to_cached(&base_cached, &base_point);
 

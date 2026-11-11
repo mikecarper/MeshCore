@@ -101,8 +101,10 @@ struct MyMesh:BaseChatMesh {
   ContactInfo _ota_direct_contact;
   ContactInfo* _ota_direct_transient=nullptr;
   ContactInfo* routed=nullptr;
+  BaseSerialInterface* error_route=nullptr;
   void writeOKFrame(){response=0;}
   void writeErrFrame(int value){response=value;}
+  void writeErrFrame(int value,BaseSerialInterface* route){assert(route);response=value;error_route=route;}
   void dispatch(size_t len){
     response=-1;
 #if FULL
@@ -149,13 +151,15 @@ struct MyMesh:BaseChatMesh {
     (void)txt_type;(void)pub_key_prefix;
 #endif
   }
-  void loginRoute(const uint8_t* pub_key){
+  bool loginRoute(const uint8_t* pub_key,BaseSerialInterface* route=nullptr){
 #if FULL
+    if(!route)route=_serial->captureReplyRoute();
     ContactInfo* recipient=&contact;
     @LOGIN_ROUTE@
     routed=recipient;
+    return true;
 #else
-    (void)pub_key;
+    (void)pub_key;(void)route;return false;
 #endif
   }
 };
@@ -214,7 +218,12 @@ int main(){
   BaseSerialInterface foreign;m.wire.route=&foreign;
   m.mode(1);assert(m.response==ERR_CODE_BAD_STATE);
   m.response=-1;m.routed=nullptr;m.cliRoute(TXT_TYPE_CLI_DATA,m.contact.id.pub_key);assert(m.response==ERR_CODE_BAD_STATE&&!m.routed);
-  m.response=-1;m.loginRoute(m.contact.id.pub_key);assert(m.response==ERR_CODE_BAD_STATE&&!m.routed);
+  m.response=-1;m.loginRoute(m.contact.id.pub_key);
+  assert(m.response==ERR_CODE_BAD_STATE&&!m.routed&&m.error_route==&foreign);
+  // A deferred request is checked against its captured reply route, not the
+  // currently selected route of another host.
+  m.response=-1;m.routed=nullptr;m.loginRoute(m.contact.id.pub_key,&m.wire);
+  assert(m.response==-1&&m.routed==&m._ota_direct_contact);
   assert(m.command("get ota.direct.reply 0",0,reply)&&strstr(reply,"physical USB"));
   m.wire.route=&m.wire;
 
@@ -419,7 +428,11 @@ class CompanionDirectAdminGuardTest(unittest.TestCase):
             "uint8_t MyMesh::getContactTxRadio(", "void MyMesh::onPeerDataRecv(", "bool MyMesh::onPeerPathRecv("))
         raw = extract_braced(source, "if (pkt->getPayloadType() == PAYLOAD_TYPE_OTA\n            && (_ota_direct_radio_owned || _ota_direct_radio_profile != 0))")
         cli_route = extract_braced(source, 'if ((txt_type == TXT_TYPE_CLI_DATA || txt_type == TXT_TYPE_CLI_COMMAND)')
-        login_route = extract_braced(source, 'if (_ota_direct_radio_owned && !memcmp(_ota_direct_contact.id.pub_key, pub_key, PUB_KEY_SIZE))')
+        login = extract_braced(source, 'bool MyMesh::trySendBinaryLogin(')
+        login_route = extract_braced(login, 'if (_ota_direct_radio_owned\n      && !memcmp(_ota_direct_contact.id.pub_key, pub_key, PUB_KEY_SIZE))')
+        self.assertIn('route != _ota_direct_usb_route', login_route)
+        self.assertIn('writeErrFrame(ERR_CODE_BAD_STATE, route)', login_route)
+        self.assertIn('!trySendBinaryLogin(pub_key, password, route)', source)
         self.assertIn("_ota_direct_admin.beginLogin(recipient->id", source)
         self.assertIn("if (handleDirectOtaCommand(command, sender_timestamp, reply, reply_capacity))", source)
         self.assertIn("closeDirectOtaAdmin();", extract_braced(source, "void MyMesh::resetUsbHostSessionInput("))

@@ -418,12 +418,12 @@ int main() {
         start = driver.index("#if MESH_COMPACT_STM32_RADIO\n")
         end = driver.index("#endif", start) + len("#endif")
         compact = driver[start:end]
-        # The compact ABI fixes the cached RXPS policy query to false. Its
-        # explicit capability override must remain false and reject an enabled
-        # parent capability; other integrated-driver controls remain inherited.
+        # The compact ABI fixes RXPS capability to false. The integrated
+        # driver must reject an enabled parent capability; other integrated
+        # driver controls remain inherited.
         self.assertIn("static_assert(!SupportsRxPowerSaving,", compact)
         self.assertRegex(extract_braced(compact, "bool supportsRxPowerSaving()"),
-                         r"^bool supportsRxPowerSaving\(\) const final override\s*\{\s*return false;\s*\}$")
+                         r"^bool supportsRxPowerSaving\(\) const final\s*\{\s*return false;\s*\}$")
         inherited = driver[:start] + driver[end:]
         self.assertNotRegex(inherited, r"\b(?:supportsRxBoostedGainMode|supportsRxPowerSavingRfRxDisable|supportsRxPowerSaving)\s*\(")
         self.assertNotRegex(inherited, r"\bSupportsRxPowerSaving\b")
@@ -433,12 +433,12 @@ int main() {
 #define MESH_COMPACT_STM32_RADIO 1
 struct Base {
   static constexpr bool SupportsRxPowerSaving = false;
-  virtual bool supportsRxPowerSaving() const { return SupportsRxPowerSaving; }
+  bool supportsRxPowerSaving() const { return false; }
 };
 struct Integrated : Base {
 ''' + compact + r'''
 };
-int main() { Integrated radio; Base& base = radio; assert(!base.supportsRxPowerSaving()); }
+int main() { Integrated radio; Base& base = radio; assert(!base.supportsRxPowerSaving() && !radio.supportsRxPowerSaving()); }
 '''
         self.compile_run(code)
         rejected = subprocess.run([

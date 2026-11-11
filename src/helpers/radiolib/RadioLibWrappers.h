@@ -658,7 +658,9 @@ public:
 #if !MESH_COMPACT_STM32_RADIO
   bool isRxPowerSavingEnabled() const override { return _rx_ps_enabled; }
 #endif
+#if !MESH_COMPACT_STM32_RADIO
   bool supportsRxPowerSaving() const override { return SupportsRxPowerSaving; }
+#endif
   RxPowerSavingStatus getRxPowerSavingStatus() const;
   virtual uint32_t rxPowerSavingTransitionUs() const { return rxPowerSavingDefaultTransitionUs(); }
 #if defined(MESH_RADIO_AUTO_LR1121) && MESH_RADIO_AUTO_LR1121
@@ -668,9 +670,11 @@ public:
     rx_us = _rx_ps_rx_us;
     sleep_us = _rx_ps_sleep_us;
   }
+#if !MESH_COMPACT_STM32_RADIO
   bool isRxPowerSavingContinuousFallback() const override {
     return _rx_ps_enabled && _rx_ps_continuous_fallback;
   }
+#endif
   virtual bool supportsRxPowerSavingRfRxDisable() const { return false; }
   virtual bool setRxPowerSavingRfRxDisabled(bool) { return false; }
   virtual mesh::RadioParamApplyResult trySetRxPowerSavingRfRxDisabled(bool) {

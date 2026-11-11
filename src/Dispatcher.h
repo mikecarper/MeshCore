@@ -476,8 +476,14 @@ public:
 #else
   virtual bool isRxPowerSavingEnabled() const { return false; }
 #endif
+#if MESH_COMPACT_STM32_RADIO
+  bool supportsRxPowerSaving() const { return false; }
+  bool isRxPowerSavingContinuousFallback() const { return false; }
+  bool supportsRxPowerSavingRfRxDisable() const { return false; }
+  bool setRxPowerSavingRfRxDisabled(bool) { return false; }
+  bool isRxPowerSavingRfRxDisabled() const { return false; }
+#else
   virtual bool supportsRxPowerSaving() const { return false; }
-  virtual bool setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) { return !enabled; }
   virtual bool isRxPowerSavingContinuousFallback() const { return false; }
   virtual bool supportsRxPowerSavingRfRxDisable() const { return false; }
   virtual bool setRxPowerSavingRfRxDisabled(bool disabled) {
@@ -485,6 +491,8 @@ public:
     return false;
   }
   virtual bool isRxPowerSavingRfRxDisabled() const { return false; }
+#endif
+  virtual bool setRxPowerSaving(bool enabled, uint32_t rx_us, uint32_t sleep_us) { return !enabled; }
 
   /**
    * \brief Attempts to change the radio modulation parameters without waiting.

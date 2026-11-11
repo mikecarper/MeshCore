@@ -4766,7 +4766,7 @@ apply_companion_radio_full_profile() {
       # independent; the saved WiFi/BLE selection applies on the next boot.
       # Only CPU-owned retained frames use RTC; the borrowed OTA context
       # stays in ordinary DRAM and keeps 128 receive frames while active.
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_EXCLUSIVE_WIFI_BLE=1 -DOTA_SHARED_COMPANION_QUEUE=1 -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_EXCLUSIVE_WIFI_BLE=1 -DOTA_SHARED_COMPANION_QUEUE=1 -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=36"
       record_build_reduction \
         "Cardputer Full: USB plus selected WiFi or Bluetooth; 256 offline frames normally, 128 during mOTA"
       ;;
@@ -4852,6 +4852,13 @@ apply_companion_radio_full_profile() {
     meshadventurer_sx1268_companion_radio_full)
       append_platformio_build_unflags "-DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=40 -DOFFLINE_QUEUE_SIZE=128"
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100 -DMAX_GROUP_CHANNELS=30 -DOFFLINE_QUEUE_SIZE=16"
+      # The universal Full BLE base already retains its notification settings
+      # in RTC slow RAM. Place four existing message slots there as well;
+      # preserve all 16 slots and leave the BLE-only recipe unchanged.
+      if [[ "${env_name,,}" == meshadventurer_companion_radio_full ||
+            "${env_name,,}" == meshadventurer_m33s_companion_radio_full ]]; then
+        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=4"
+      fi
       record_build_reduction \
         "companion.capacity limited to 100 contacts, 30 channels, and 16 queued frames by measured internal DRAM"
       ;;

@@ -94,7 +94,13 @@ int main(int argc,char**argv){assert(argc==2);const char*s=argv[1];
  }
  else if(!strcmp(s,"disabled_api")){Fixture f;assert(!f.r.supportsOldAGC()&&!f.r.setOldAGCInterval(600)&&f.r.getOldAGCInterval()==0);assert(f.r.periodicOldAGCMaintenance()==mesh::AGCMaintenanceResult::Deferred);f.d.primary_ms=16000;
 #if MESH_COMPACT_STM32_RADIO
- assert(!f.r.supportsRxPowerSaving()&&!f.r.setRxPowerSaving(true,1000,1000));assert(!f.r.isRxPowerSavingEnabled());f.begin();f.loop(16001);assert(f.r.primary_resets==1&&f.d.primary_ms==16000);
+ assert(!f.r.supportsRxPowerSaving()&&!f.r.setRxPowerSaving(true,1000,1000));assert(!f.r.isRxPowerSavingEnabled());
+ mesh::Radio& api=f.r;
+ assert(!api.supportsRxPowerSaving()&&!api.isRxPowerSavingEnabled());
+ assert(!api.isRxPowerSavingContinuousFallback());
+ assert(!api.supportsRxPowerSavingRfRxDisable()&&!api.isRxPowerSavingRfRxDisabled());
+ assert(!api.setRxPowerSavingRfRxDisabled(true)&&!api.setRxPowerSavingRfRxDisabled(false));
+ f.begin();f.loop(16001);assert(f.r.primary_resets==1&&f.d.primary_ms==16000);
 #else
  f.r.rxps=true;f.begin();f.loop(50000);assert(!f.r.primary_resets&&!f.r.checked_old);uint32_t delay=0;assert(!f.d.getNextQueueWakeDelay(delay));f.r.rxps=false;f.loop(50001);f.loop(66002);assert(f.r.primary_resets==1&&f.d.primary_ms==16000);
 #endif
@@ -110,7 +116,7 @@ class OldAGCAllRadios(unittest.TestCase):
   # A synthetic no-op backend stays unsupported independently of LR2021's
   # evolving hardware implementation. Concrete LR capability has its own tests.
   unsupported='bool supportsOldAGC() const override { return false; }'
-  compact_cap=body((ROOT/'src/helpers/radiolib/CustomSTM32WLxWrapper.h').read_text(),'bool supportsRxPowerSaving(')
+  compact_cap='virtual '+body((ROOT/'src/helpers/radiolib/CustomSTM32WLxWrapper.h').read_text(),'bool supportsRxPowerSaving(')
   methods='\n'.join(body(h,s).replace(' override','')for s in('bool supportsOldAGC(','bool setOldAGCInterval(','uint32_t getOldAGCInterval('))+'\n'+body(cpp,'mesh::AGCMaintenanceResult RadioLibWrapper::periodicOldAGCMaintenance(').replace('RadioLibWrapper::','')
   # Compile the production conditional around its actual field and methods;
   # the model must not bypass an incorrect compact capability guard.
