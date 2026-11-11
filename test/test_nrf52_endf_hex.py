@@ -74,6 +74,37 @@ def stamp(action, path, env):
 
 
 class Nrf52EndfHexTests(unittest.TestCase):
+    def test_sensecap_p1_scratch_profile_keeps_legacy_target_and_checks_board(self):
+        for board, accepted in (("seeed_sensecap_solar", True), ("seeed_xiao_nrf52840", False)):
+            with self.subTest(board=board), tempfile.TemporaryDirectory() as directory:
+                env = BuildEnvironment(ml.NRF52_APP_BASE_S140_V7)
+                env["BOARD"] = board
+                env["PIOENV"] = "SenseCap_Solar_repeater"
+                env["CPPDEFINES"] = [v for v in env["CPPDEFINES"]
+                                     if not isinstance(v, tuple) or v[0] not in ("MOTA_TARGET_ID", "MOTA_HW_ID")]
+                env["CPPDEFINES"].extend(["SENSECAP_SOLAR_P1", "OTA_QSPI_STORE", "OTA_FLASH_STORE",
+                                          "OTA_QSPI_BOOTLOADER_UPDATE"])
+                env.maximum_size = ml.NRF52_BOOT_SCRATCH_START - env.app_base
+                env.linker = str(ROOT / "boards/nrf52840_s140_v7_xiao_bootloader_ota.ld")
+                env["LDSCRIPT_PATH"] = env.linker
+                load_post_script(env)
+                path = Path(directory) / "p1.hex"
+                image = IntelHex()
+                image.frombytes(bytes(range(256)), offset=env.app_base)
+                image.write_hex_file(str(path))
+                action = env.post_actions["$BUILD_DIR/${PROGNAME}.hex"]
+                if not accepted:
+                    with self.assertRaisesRegex(RuntimeError, "qualified nRF52840"):
+                        stamp(action, path, env)
+                    continue
+                stamp(action, path, env)
+                application = read_application(path)
+                self.assertEqual(ml.parse_endf_ident(application).target_id, 0xDB73638B)
+                layout = ml.parse_nrf52_layout(application)
+                self.assertEqual(layout.app_base, env.app_base)
+                self.assertEqual(layout.linked_app_end, ml.NRF52_BOOT_SCRATCH_START)
+                self.assertEqual(layout.flags, ml.NRF52_LAYOUT_FLAG_QSPI | ml.NRF52_LAYOUT_FLAG_BOOTLOADER_SCRATCH)
+
     def test_explicit_legacy_rak_sd_stamps_actual_flash_only_adaptive_capability(self):
         with tempfile.TemporaryDirectory() as directory:
             env = BuildEnvironment(ml.NRF52_APP_BASE_S140_V6)

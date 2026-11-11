@@ -323,8 +323,10 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
         raise RuntimeError("raw QSPI OTA staging cannot share a chip with QSPIFLASH")
     if qspi_bootloader_update:
         xiao_module = _cppdef("XIAO_NRF52") is not None or _cppdef("IKOKA_NRF52") is not None
-        if not qspi_backed or sd_backed or not xiao_module:
-            raise RuntimeError("bootloader update requires a XIAO nRF52840 raw-QSPI OTA build")
+        sensecap_p1 = (_cppdef("SENSECAP_SOLAR_P1") is not None and
+                       env.get("BOARD") == "seeed_sensecap_solar")
+        if not qspi_backed or sd_backed or not (xiao_module or sensecap_p1):
+            raise RuntimeError("bootloader update requires a qualified nRF52840 raw-QSPI OTA build")
         if linked_app_end != ml.NRF52_BOOT_SCRATCH_START:
             raise RuntimeError("bootloader-update build must link exactly below scratch at 0xE0000")
     if internal_bootloader_update:

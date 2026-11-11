@@ -58,7 +58,7 @@ SUPPORTED = (
     Profile("WioTrackerL1_room_server", "seeed-wio-tracker-l1",
             "wio-tracker-l1", V7, 811008),
     Profile("SenseCap_Solar_room_server", "seeed_sensecap_solar",
-            "sensecap_solar", V7, 811008),
+            "sensecap_solar", XIAO, 757760),
     Profile("LilyGo_T-Echo-Lite_repeater", "t-echo", "lilygo_techo_lite"),
     Profile("LilyGo_T-Echo-Lite_room_server", "t-echo", "lilygo_techo_lite"),
 )

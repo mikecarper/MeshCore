@@ -16,7 +16,7 @@ class OtaSecurityTests(unittest.TestCase):
         self.assertIsNotNone(compiler)
         with tempfile.TemporaryDirectory(prefix="ota-security-") as directory:
             binary = Path(directory) / "security"
-            sources = ("OtaManager.cpp", "OtaProtocol.cpp", "MotaContainer.cpp", "MerkleTree.cpp")
+            sources = ("OtaManager.cpp", "OtaProtocol.cpp", "MotaContainer.cpp", "MerkleTree.cpp", "OtaVerify.cpp")
             flags = [] if os.name == "nt" else ["-fsanitize=address,undefined", "-fno-pie", "-no-pie"]
             compiled = subprocess.run([
                 compiler, "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror",

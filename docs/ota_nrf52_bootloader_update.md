@@ -40,11 +40,35 @@ image; select it from the separate `OTAFIX-2.4.12-R_recovery.zip` and follow the
 release's recovery instructions. Recovery images are migration tools, not the
 normal download.
 
+## SenseCAP Solar P1 (experimental)
+
+The P1 Repeater and LoRa-OTA Room builds support the signed QSPI bootloader
+workflow below, but an end-to-end bootloader update and recovery have **not yet
+been tested on P1 hardware**. Do not rely on this for an inaccessible device.
+The installed bootloader must report board `28860044`, name `SCAP_DFU` and
+self-update capability; a XIAO bootloader has a different identity even when
+the board ID matches. The running application must preserve the scratch area
+and its boot settings must not describe a CRC-bound bank overlapping it.
+
+Install the matching application first and check `ota bootloader status`. The
+official OTAFIX 2.4.12 bootloader signing key is built in for bootloader
+packages, so it does not need to be added with `ota key add`. Stage the exact
+signed P1 bootloader package and use `ota bootloader install <MID8> <HASH16>`
+to explicitly authorize it. Application OTA and bootloader OTA are separate.
+This path stages the package in onboard QSPI and uses application-flash scratch;
+it does not unlock protected bootloader pages or enable bootloader updates on
+an unsupported installed bootloader.
+
+The built-in key is used only for signed bootloader packages; it does not add a
+trusted application-firmware signer or change the saved user key list. Other
+bootloader signers still need to be added explicitly. Installation requires
+the separate administrator confirmation and all board and flash checks.
+
 ## Storage layouts
 
 | Layout | Application limit | Staged boot package | Work area | Handoff / capability |
 | --- | ---: | ---: | ---: | --- |
-| XIAO-module raw QSPI | below `0xE0000` | external QSPI offset 0 | dedicated internal `0xE0000..0xEA000` scratch | source `0x51`, flags `0x0E` |
+| XIAO-module or experimental SenseCAP Solar P1 raw QSPI | below `0xE0000` | external QSPI offset 0 | dedicated internal `0xE0000..0xEA000` scratch | source `0x51`, flags `0x0E` |
 | Qualified internal-flash target | normal `0xED000` flash limit; top 64 KiB SRAM reserved for application-delta staging | shared internal slot, exact start `0xE2000` | the same eleven-page slot; no second flash reservation | source `0xED`, flags `0x0A` |
 | MeshTower V2 microSD | normal `0xED000` limit | contiguous `/meshcore-ota.mota` | dynamic internal `0xE0000..0xEA000` scratch; live image must end by `0xE0000` | source `0x53`, flags `0x09` |
 

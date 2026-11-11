@@ -1059,6 +1059,10 @@ struct OtaContext {
 #elif defined(OTA_RAK_AUTO_STORE)
     manager.set_accept_bootloader(
         ota_bootloader_self_update_caps_valid(ota_bootloader_update_caps()));
+#elif defined(SENSECAP_SOLAR_P1)
+    manager.set_accept_bootloader(
+        ota_bootloader_identity_allowed_for_build(bootloaderIdentity()) &&
+        ota_bootloader_self_update_caps_valid(bootloaderUpdateCaps()));
 #else
     manager.set_accept_bootloader(true);
 #endif

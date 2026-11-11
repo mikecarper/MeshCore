@@ -80,6 +80,21 @@ int main(int argc,char **argv) {
   auto old=parse(load(directory,"p1-old.bin"));
   const uint8_t p1_name[16]={'S','C','A','P','_','D','F','U'};
   const uint8_t xiao_name[16]={'X','I','A','O','_','D','F','U'};
+  // Both SD and QSPI use this preflight before approving a bootloader copy.
+  const uint32_t app=0x27000, scratch=OTA_BOOT_SCRATCH_START, span=scratch-app;
+  assert(ota_bootloader_external_scratch_valid(true,app,span,scratch,0xffff,0xffff,0xffffffff));
+  assert(ota_bootloader_external_scratch_valid(true,app,span,scratch,1,0,0));
+  assert(ota_bootloader_external_scratch_valid(true,app,span,scratch,1,1,span));
+  assert(!ota_bootloader_external_scratch_valid(false,app,span,scratch,0xffff,0,0));
+  assert(!ota_bootloader_external_scratch_valid(true,app,span+1,scratch,0xffff,0,0));
+  assert(!ota_bootloader_external_scratch_valid(true,app,span,scratch,1,1,span+1));
+  assert(!ota_bootloader_external_scratch_valid(true,app,span,scratch,1,1,span-1));
+  assert(!ota_bootloader_external_scratch_valid(true,app,span,scratch,2,1,span));
+#if defined(SENSECAP_SOLAR_P1)
+  assert(ota_bootloader_identity_allowed_for_build(p1));
+  assert(!ota_bootloader_identity_allowed_for_build(base));
+  assert(!ota_bootloader_identity_allowed_for_build(sense));
+#endif
   if (scenario=="canonical") {
     assert(p1.board_id==0x28860044 && p1.crc_ok && p1.continuity_present);
     assert(p1.softdevice_fwid==0x123 && p1.app_base==0x27000 && p1.boot_version==0x02040CFF);
@@ -146,7 +161,11 @@ int main(int argc,char **argv) {
     manifest.target_id=ota_bootloader_target_id(p1); manifest.hw_id=hw;
     manifest.merkle_root=mid; manifest.image_hash=digest;
     assert(ota_bootloader_confirmation_gate(manifest,old,mid,mid,digest)==OTA_BOOT_CONFIRM_OK);
+#if defined(SENSECAP_SOLAR_P1)
+    assert(ota_bootloader_confirmation_gate(manifest,base,mid,mid,digest)==OTA_BOOT_CONFIRM_LOCAL_IDENTITY);
+#else
     assert(ota_bootloader_confirmation_gate(manifest,base,mid,mid,digest)==OTA_BOOT_CONFIRM_TARGET);
+#endif
     manifest.target_id=base.board_id;
     assert(ota_bootloader_confirmation_gate(manifest,old,mid,mid,digest)==OTA_BOOT_CONFIRM_TARGET);
     manifest.target_id=ota_bootloader_target_id(p1); manifest.hw_id=xhw;
@@ -188,13 +207,16 @@ class SensecapBootloaderRuntimeTests(unittest.TestCase):
         assert _xiao_manifest_crc(duplicate, 0x400) == struct.unpack_from('<I', duplicate, 0x428)[0]
         (cls.path / 'duplicate.bin').write_bytes(duplicate)
         cls.binary = cls.compile(cls.path)
+        cls.p1_binary = cls.compile(cls.path, p1=True)
 
     @staticmethod
-    def compile(path, include=None):
+    def compile(path, include=None, p1=False):
         flags = [] if os.name == 'nt' else [
             '-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-fno-pie', '-no-pie']
-        binary = path / 'runtime'
+        binary = path / ('runtime-p1' if p1 else 'runtime')
         command = [os.environ.get('CXX', 'g++'), '-std=c++17', '-O1', '-Wall', '-Wextra', '-Werror', *flags]
+        if p1:
+            command += ['-DSENSECAP_SOLAR_P1=1']
         if include:
             command += ['-I', str(include)]
         command += ['-I', str(path), '-I', str(ROOT / 'src'), '-I', str(ROOT / 'src/helpers/ota'),
@@ -204,6 +226,7 @@ class SensecapBootloaderRuntimeTests(unittest.TestCase):
 
     def scenario(self, name):
         subprocess.run([str(self.binary), str(self.path), name], check=True)
+        subprocess.run([str(self.p1_binary), str(self.path), name], check=True)
 
     def test_p1_canonical_signed_identity_uses_real_sha256(self):
         hw = b'NRF_BL_28860044_SCAP_DFU'.ljust(32, b'\0')

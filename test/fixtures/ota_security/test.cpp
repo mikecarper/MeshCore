@@ -1,5 +1,6 @@
 #include <helpers/ota/OtaManager.h>
 #include <helpers/ota/OtaManifestPolicy.h>
+#include <helpers/ota/OtaVerify.h>
 #include <helpers/ota/OtaByteIO.h>
 #include <helpers/ota/Multihash.h>
 #include "test_ota/mota_vectors.h"
@@ -116,6 +117,56 @@ static MotaManifest parse(const std::vector<uint8_t>& bytes) {
 static void retain_existing(Store& store) {
   assert(store.begin(SIM_MOTA_LEN) && store.write(0, SIM_MOTA, SIM_MOTA_LEN));
   store.plans = store.begins = store.writes = 0;
+}
+static void official_bootloader_signer() {
+  // Exact signed P1 manifest from the published OTAFIX 2.4.12 mOTA release.
+  static const char hex[] =
+      "03071272b477d6ff0c040200a0000000a000000aede29909d33c035c783e555049d2b41fe2f12367"
+      "c6a87ee30b041c627d19088a2a6d8855004e52465f424c5f32383836303034345f534341505f"
+      "44465500000000000000000000000000000000272564cc588d3d122285a15e6e2566d2abe717"
+      "7bb7ea1d1e41b23b29f0f85d2d3395ced0bc33637f5309552ff152fd30b2cd8426227ad901e9"
+      "bdf1bac4d3d8570e7548fdfeaf5ed80b118ff1d067a21fc821d0835355cfb37742280aa6d28509ffffffff";
+  static_assert(sizeof(hex) == MOTA_MFL * 2 + 1, "manifest vector length");
+  std::vector<uint8_t> bytes(MOTA_MFL);
+  for (size_t i = 0; i < bytes.size(); ++i) {
+    unsigned value;
+    assert(sscanf(hex + i * 2, "%2x", &value) == 1);
+    bytes[i] = uint8_t(value);
+  }
+  SignerAllowlist allow;
+  MotaManifest manifest = parse(bytes);
+  assert(ota_manifest_trusted(manifest, allow));
+  assert(allow.count() == 0);
+  for (unsigned i = 0; i < MAX_OTA_SIGNERS; ++i) {
+    uint8_t key[32]; memset(key, int(i + 1), sizeof(key)); assert(allow.add(key));
+  }
+  assert(ota_manifest_trusted(manifest, allow));
+  assert(allow.count() == MAX_OTA_SIGNERS);
+  MotaManifest app = manifest;
+  app.format_ver = MOTA_APP_FORMAT_VER; app.flags = MFLAG_FULL | MFLAG_SIGNED;
+  assert(!ota_signer_trusted_for_manifest(app, allow));
+  auto changed = bytes; changed[97] ^= 1;
+  assert(!ota_manifest_trusted(parse(changed), allow));
+  changed = bytes; changed[129] ^= 1;
+  assert(!ota_manifest_trusted(parse(changed), allow));
+
+  // Exercise both actual verifier paths. Zero payload/leaves intentionally do
+  // not match the signed hashes: trusted signature never implies integrity.
+  const uint32_t total = 8u + MOTA_MFL + 40u * 4u + 40960u + 5u;
+  std::vector<uint8_t> container(total, 0);
+  memcpy(container.data(), MOTA_MAGIC, 4); wr_u32le(container.data() + 4, total);
+  memcpy(container.data() + 8, bytes.data(), bytes.size());
+  memcpy(container.data() + total - 5, MOTA_TRAILER, 5);
+  const VerifyResult ram = ota_verify(container.data(), total, allow);
+  assert(ram.parsed && ram.sig_ok && ram.trusted && !ram.integrity_ok());
+  OtaStoreRam<50000> store;
+  assert(store.begin(total) && store.write(0, container.data(), total));
+  const VerifyResult streamed = ota_verify(static_cast<const OtaStore&>(store), allow);
+  assert(streamed.parsed && streamed.sig_ok && streamed.trusted && !streamed.integrity_ok());
+  container[8 + 129] ^= 1;
+  assert(!ota_verify(container.data(), total, allow).trusted);
+  assert(store.begin(total) && store.write(0, container.data(), total));
+  assert(!ota_verify(static_cast<const OtaStore&>(store), allow).trusted);
 }
 static void intact(const Store& store) {
   assert(store.plans == 0 && store.begins == 0 && store.writes == 0);
@@ -385,6 +436,7 @@ static void proof_noise() {
   assert(manager.blocksHave() == 1); // forged proof did not erase valid DATA
 }
 int main() {
+  official_bootloader_signer();
   signature_admission();
   failure_cooldown(false); failure_cooldown(true);
   leaf_pacing(false); leaf_pacing(true);

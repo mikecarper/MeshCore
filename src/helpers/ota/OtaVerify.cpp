@@ -3,6 +3,7 @@
 #include "Multihash.h"
 #include "Identity.h"
 #include "OtaByteIO.h"
+#include "OtaBootloaderTrust.h"
 #include <SHA256.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,7 +24,7 @@ VerifyResult ota_verify(const uint8_t* buf, uint32_t len, const SignerAllowlist&
   if (r.is_signed) {
     mesh::Identity signer(m.signer_pubkey);
     r.sig_ok = signer.verify(m.signature, m.manifest_start, (int)m.signed_len);
-    r.trusted = r.sig_ok && allow.contains(m.signer_pubkey);
+    r.trusted = r.sig_ok && ota_signer_trusted_for_manifest(m, allow);
   }
   return r;
 }
@@ -111,7 +112,7 @@ static VerifyResult ota_verify_store(const OtaStore& store,
   if (r.is_signed) {
     mesh::Identity signer(m.signer_pubkey);
     r.sig_ok = signer.verify(m.signature, m.manifest_start, (int)m.signed_len);
-    r.trusted = r.sig_ok && allow.contains(m.signer_pubkey);
+    r.trusted = r.sig_ok && ota_signer_trusted_for_manifest(m, allow);
   }
   free(leaves);
   free(block);

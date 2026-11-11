@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import re
 
+from nrf52_fork_bootloaders import reviewed_fork_bootloaders
+
 # Bind each physical target to its replacement, not a Cartesian product of
 # shared factory images. In particular RAK3401 never selects a 4631 successor.
 _PHYSICAL_PROFILES = {
@@ -20,11 +22,22 @@ _PHYSICAL_PROFILES = {
     "R1Neo": "wiscore_rak4631_auto",
     "Heltec_t114": "heltec_t114",
     "Heltec_t114_without_display": "heltec_t114",
+    "Heltec_t096": "heltec_t096",
+    "Heltec_t1": "heltec_t1",
     "LilyGo_T-Echo": "lilygo_techo",
     "LilyGo_T-Echo-Lite": "lilygo_techo_lite",
     "LilyGo_T-Echo-Lite_non_shell": "lilygo_techo_lite",
     "t1000e": "t1000_e",
+    "SenseCap_Solar": "sensecap_solar_p1",
+    "Minewsemi_me25ls01": "minewsemi_mx25le01",
+    "ProMicro": "promicro_nrf52840",
+    "ThinkNode_M1": "thinknode_m1",
+    "ThinkNode_M3": "thinknode_m3",
+    "ThinkNode_M6": "thinknode_m6",
+    "RAK_WisMesh_Tag": "wismesh_tag",
     "WioTrackerL1": "wio_tracker_l1",
+    "WioTrackerL1-1W": "wio_tracker_l1",
+    "WioTrackerL1Eink": "wio_tracker_l1",
     "Xiao_nrf52": "xiao_nrf52840_ble",
     "Xiao_nrf52_Sense": "xiao_nrf52840_ble_sense",
 }
@@ -300,7 +313,7 @@ def legacy_bootloaders_for(profile_id, source_hardware, app_base, softdevice_fwi
         return []
     result = []
     seen = set()
-    for record in _RECORDS:
+    for record in _RECORDS + reviewed_fork_bootloaders():
         if (profile_id not in record["profiles"]
                 or source_hardware not in record["hardware"]
                 or app_base != record["app_base"]
@@ -317,4 +330,6 @@ def legacy_bootloaders_for(profile_id, source_hardware, app_base, softdevice_fwi
             continue
         result.append({**record, "profiles": list(record["profiles"]),
                        "hardware": list(record["hardware"])})
+    if len(result) > 32:
+        raise ValueError("reviewed bootloader inventory exceeds the runtime limit")
     return result

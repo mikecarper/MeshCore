@@ -575,6 +575,7 @@ jobs:
           python3 -B test/test_nrf52_embedded_variant.py -v
           python3 -B test/test_nrf52_embedded_bootloader.py -v
           python3 -B test/test_nrf52_legacy_bootloaders.py -v
+          python3 -B test/test_nrf52_fork_bootloaders.py -v
           python3 -B test/test_embedded_bootloader_stock_qualification.py -v
           python3 -B test/test_sensecap_bootloader_identity.py -v
           python3 -B test/test_sensecap_bootloader_runtime.py -v

@@ -116,14 +116,18 @@ class LegacyBootloaderTests(unittest.TestCase):
         for hardware, profile in (("RAK_3401", "wiscore_rak3401_auto"),
                                   ("RAK_4631", "wiscore_rak4631_auto")):
             records = legacy_bootloaders_for(profile, hardware, 0x26000, 0xB6)
-            self.assertEqual(len(records), 5)
+            stock_records = [item for item in records if item in _RECORDS]
+            self.assertEqual(len(stock_records), 5)
             stock = next(item for item in records if item["version"] == "0.4.3")
             self.assertEqual(stock["image_sha256"],
                              "6cbfa569a05cbd232dabe4a654abe9c04b7a03ab457615028d28f2d1329e58d2")
         neo = legacy_bootloaders_for("wiscore_rak4631_auto", "R1Neo", 0x26000, 0xB6)
         self.assertEqual(len(neo), 1)
         self.assertIn("muzi-works", neo[0]["source_url"])
-        self.assertEqual(legacy_bootloaders_for("wismesh_tag", "RAK_WisMesh_Tag", 0x26000, 0xB6), [])
+        tag = legacy_bootloaders_for("wismesh_tag", "RAK_WisMesh_Tag", 0x26000, 0xB6)
+        self.assertTrue(tag)
+        self.assertTrue({item["image_sha256"] for item in tag}.isdisjoint(
+            item["image_sha256"] for item in records))
         self.assertEqual(legacy_bootloaders_for("wiscore_rak4631_auto", "RAK_3401", 0x26000, 0xB6), [])
         self.assertEqual(legacy_bootloaders_for("wiscore_rak3401_auto", "RAK_4631", 0x26000, 0xB6), [])
 
@@ -133,20 +137,24 @@ class LegacyBootloaderTests(unittest.TestCase):
             self.assertEqual(legacy_bootloaders_for(profile, hardware, record["app_base"] ^ 0x1000, record["softdevice_fwid"]), [])
             self.assertEqual(legacy_bootloaders_for(profile, hardware, record["app_base"], record["softdevice_fwid"] ^ 1), [])
             self.assertEqual(legacy_bootloaders_for(profile, "Unreviewed", record["app_base"], record["softdevice_fwid"]), [])
+        stock_hashes = {record["image_sha256"] for record in _RECORDS}
         for profile, hardware, base, fwid in (
                 ("heltec_t096", "Heltec_t096", 0x26000, 0xB6),
                 ("xiao_nrf52840_ble", "ikoka_stick_nrf_33dbm", 0x27000, 0x123),
                 ("wio_tracker_l1", "WioTrackerL1-1W", 0x27000, 0x123),
                 ("sensecap_solar_p1", "SenseCap_Solar", 0x27000, 0x123)):
-            self.assertEqual(legacy_bootloaders_for(profile, hardware, base, fwid), [])
+            result = legacy_bootloaders_for(profile, hardware, base, fwid)
+            self.assertTrue(stock_hashes.isdisjoint(item["image_sha256"] for item in result))
+        self.assertEqual(legacy_bootloaders_for("xiao_nrf52840_ble", "ikoka_stick_nrf_33dbm", 0x27000, 0x123), [])
 
     def test_xiao_factory_hashes_are_bound_to_the_matching_variant(self):
         base = legacy_bootloaders_for("xiao_nrf52840_ble", "Xiao_nrf52", 0x27000, 0x123)
         sense = legacy_bootloaders_for("xiao_nrf52840_ble_sense", "Xiao_nrf52_Sense", 0x27000, 0x123)
-        self.assertEqual(len(base), 1)
-        self.assertEqual(len(sense), 1)
-        self.assertNotIn("Plus", base[0]["name"])
-        self.assertNotIn("Plus", sense[0]["name"])
+        self.assertIn("77941feb9ea9d99acaeb1f815a905e23f618381390d40f38374a894505e6798f",
+                      {item["image_sha256"] for item in base})
+        self.assertIn("894f2e6df7663fcc5c398e210db7f2e7f21d3da53036e0a11576909c849f78fb",
+                      {item["image_sha256"] for item in sense})
+        self.assertTrue(all("Plus" not in item["name"] for item in base + sense))
         self.assertTrue({item["image_sha256"] for item in base}.isdisjoint(
             item["image_sha256"] for item in sense))
         self.assertEqual(legacy_bootloaders_for("xiao_nrf52840_ble", "Xiao_nrf52_Sense", 0x27000, 0x123), [])

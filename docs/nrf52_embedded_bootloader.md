@@ -95,6 +95,35 @@ USB ID or a matching version string is insufficient. A RAK3401 may legitimately
 have the factory RAK4631 loader; the selected build target determines its
 board-specific replacement. Related boards do not inherit representative
 module/SDK hashes automatically.
+
+The reviewed inventory also includes all 72 published OTAFIX 0.9.2 fork images
+from oltaco's six releases through 2.3-BP1.4 and vk496's `dev-latest` release.
+It records separate exact installed-region fingerprints for each published ZIP
+and UF2 because their flash padding can differ. Each is restricted to its
+matching board profile and S140 layout; XIAO and XIAO Sense are separate, and
+the RAK4631 image does not authorize a RAK3401 or R1 Neo transition. Future,
+modified or differently padded images remain unrecognized until reviewed.
+
+To use this route with an older application, first deliver a matching
+`with-bootloader-2.4.12` application image using an update method that the
+installed firmware and bootloader already support. A normal application image
+does not contain the embedded updater or this inventory. A legacy internal-only
+LoRa receiver may require a compatible delta from its exact installed image;
+if it cannot receive the larger application, use its supported local update
+route. After the application starts, the usual 70-second check or authenticated
+admin command described below applies. A recognized hash alone does not guarantee an
+update: flash protection, MBR geometry, persistence and space must still pass.
+The full fork-to-2.4.12 transitions have not been qualified on every board.
+
+The mikecarper OTAFIX 2.4 releases protect the bootloader and its settings from
+application writes. The embedded MBR route therefore stops at its protection
+check when that protection is active; identifying the old image cannot unlock
+it. Use the installed bootloader's own update capability when available. That
+capability depends on both release and board: for example, the published P1
+2.4.6 loader can apply application updates from QSPI but cannot replace itself,
+while some other 2.4.6 loaders include a bootloader-update handler. Inspect
+the installed capability and use a supported local DFU route if it is absent.
+
 Unknown or recovery images remain excluded, and flash protection, MBR geometry,
 watchdog and durable-state checks remain mandatory. These are source/image
 compatibility checks, not a claim that every transition or power interruption has

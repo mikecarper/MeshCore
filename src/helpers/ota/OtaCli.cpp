@@ -319,7 +319,7 @@ static __attribute__((noinline)) bool handle_neighbors(
     SelfFwInfo list_self;
     bool list_has_endf = ota_self_firmware(list_self) && list_self.valid;
 #endif
-#if defined(NRF52_PLATFORM) && defined(OTA_SD_BOOTLOADER_UPDATE)
+#if defined(NRF52_PLATFORM) && (defined(OTA_SD_BOOTLOADER_UPDATE) || defined(OTA_QSPI_BOOTLOADER_UPDATE))
     SelfFwInfo list_sd_self;
     const bool list_sd_headroom = ota_self_firmware(list_sd_self) &&
         ota_bootloader_scratch_headroom_valid(
@@ -365,10 +365,13 @@ static __attribute__((noinline)) bool handle_neighbors(
         const OtaBootloaderIdentity& bid = c.bootloaderIdentity();
         installable = h->flags == (MFLAG_FULL | MFLAG_SIGNED | MFLAG_BOOTLOADER) &&
                       h->codec == CODEC_FULL && bid.present && bid.crc_ok &&
+                      ota_bootloader_identity_allowed_for_build(bid) &&
                       h->target_id == ota_bootloader_target_id(bid) &&
                       ota_bootloader_self_update_caps_valid(list_bl_update);
-#if defined(OTA_SD_BOOTLOADER_UPDATE)
+#if defined(OTA_SD_BOOTLOADER_UPDATE) || defined(OTA_QSPI_BOOTLOADER_UPDATE)
         installable = installable && list_sd_headroom;
+#endif
+#if defined(OTA_SD_BOOTLOADER_UPDATE)
 #if defined(OTA_TOWER_AUTO_STORE)
         installable = installable && c.fetch_store.usesExternal();
 #endif
@@ -682,7 +685,8 @@ static __attribute__((noinline)) bool handle_control_command(
           strcpy(reply, "ERR malformed bootloader catalog row; capture it to folder for inspection");
           return true;
         }
-        if (!bid.present || !bid.crc_ok || seltgt != ota_bootloader_target_id(bid)) {
+        if (!bid.present || !bid.crc_ok || !ota_bootloader_identity_allowed_for_build(bid) ||
+            seltgt != ota_bootloader_target_id(bid)) {
           strcpy(reply, "ERR bootloader package does not match this installed bootloader identity");
           return true;
         }
@@ -690,7 +694,7 @@ static __attribute__((noinline)) bool handle_control_command(
           strcpy(reply, "ERR installed bootloader lacks safe LoRa bootloader-update support");
           return true;
         }
-#if defined(OTA_SD_BOOTLOADER_UPDATE)
+#if defined(OTA_SD_BOOTLOADER_UPDATE) || defined(OTA_QSPI_BOOTLOADER_UPDATE)
 #if defined(OTA_TOWER_AUTO_STORE)
         if (!c.fetch_store.usesExternal()) {
           strcpy(reply, "ERR bootloader packages require a usable SD card");
@@ -1144,6 +1148,10 @@ static __attribute__((noinline)) bool handle_control_command(
     if (*rest == 0 || strcmp(rest, "status") == 0) {
       if (!bid.present || !bid.crc_ok) {
         strcpy(reply, "Bootloader update unavailable: installed embedded manifest/CRC is invalid");
+        return true;
+      }
+      if (!ota_bootloader_identity_allowed_for_build(bid)) {
+        strcpy(reply, "Bootloader update unavailable: installed identity does not match this board");
         return true;
       }
       if (!ota_bootloader_self_update_caps_valid(bl)) {
