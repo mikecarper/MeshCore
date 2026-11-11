@@ -1515,13 +1515,16 @@ def _xiao_bootloader_image(board_id=ml.XIAO_BOOT_BOARD_ID_BASE,
 
 def _generic_bootloader_image(board_id=0x239A0029, device_name="3401_DFU",
                               storage=ml.BOOT_STORAGE_INTERNAL_UPDATE,
-                              boot_version=0x0117010D):
+                              boot_version=0x0117010D, hybrid_arena=False):
     import zlib
     image = bytearray(b"\xff" * ml.XIAO_BOOT_IMAGE_SIZE)
     struct.pack_into("<II", image, 0, 0x20040000, ml.XIAO_BOOT_IMAGE_START + 0x101)
     struct.pack_into("<8sHHB3x", image, 0x80, ml.XIAO_BOOT_CAPS_MAGIC,
                      ml.BOOT_FORMAT_VER, ml.BOOT_REQUIRED_APP_CODEC_MASK,
                      storage)
+    if hybrid_arena:
+        struct.pack_into("<I", image, 0, 0x20030000)
+        struct.pack_into("<8sHHI", image, 0x90, b"MOTARAMA", 1, 72, 65536)
     name = device_name.encode("ascii").ljust(16, b"\0")
     off = ml.BOOT_CANDIDATE_MANIFEST_OFFSET
     struct.pack_into("<8sHHIII16sI", image, off, ml.XIAO_BOOT_MANIFEST_MAGIC,
@@ -1847,6 +1850,7 @@ def test_bootloader_build_inventory_is_unique_and_disjoint_from_app_targets():
         (0x239A0029, "3401_DFU"): 0x23818A80,
         (0x239A0029, "4631_DFU"): 0x2D0DF000,
         (0x239A0029, "RTAG_DFU"): 0xC72E9C9C,
+        (0x28860057, "X1INT_DFU"): 0xCDDA9FF9,
     }
     assert set(ml.INTERNAL_BOOTLOADER_IDENTITIES) == set(expected)
     for identity, target in expected.items():
@@ -1899,7 +1903,8 @@ def test_qualified_bootloader_platform_and_storage_profiles_are_exact():
                 image = _xiao_bootloader_image(board_id)
             else:
                 image = bytearray(_generic_bootloader_image(
-                    board_id=board_id, device_name=device_name, storage=storage))
+                    board_id=board_id, device_name=device_name, storage=storage,
+                    hybrid_arena=(board_id, device_name) == ml.MESH_TRACKER_X1_BOOTLOADER_IDENTITY))
                 off = ml.BOOT_CANDIDATE_MANIFEST_OFFSET
                 _write_boot_continuity(image, off, fwid=fwid,
                                        app_base=app_base)

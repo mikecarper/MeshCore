@@ -582,6 +582,7 @@ jobs:
           python3 -B test/test_embedded_bootloader_stock_qualification.py -v
           python3 -B test/test_sensecap_bootloader_identity.py -v
           python3 -B test/test_sensecap_bootloader_runtime.py -v
+          python3 -B test/test_meshtracker_x1_bootloader_identity.py -v
           python3 -B test/test_xiao_bootloader_remote_guard.py -v
           python3 -B tools/mota/test_bootloader_migration.py -v
           python3 -B tools/mota/test_bootloader_migration_runtime.py -v

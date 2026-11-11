@@ -96,6 +96,7 @@ XIAO_BOOTLOADER_IDENTITIES = (
     (XIAO_BOOT_BOARD_ID_SENSE, "XIAO_DFU"),
 )
 SENSECAP_BOOTLOADER_IDENTITY = (XIAO_BOOT_BOARD_ID_BASE, "SCAP_DFU")
+MESH_TRACKER_X1_BOOTLOADER_IDENTITY = (0x28860057, "X1INT_DFU")
 QSPI_V7_BOOTLOADER_IDENTITIES = XIAO_BOOTLOADER_IDENTITIES + (
     SENSECAP_BOOTLOADER_IDENTITY,
     (0x28861667, "WTL1_DFU"),
@@ -159,6 +160,7 @@ INTERNAL_BOOTLOADER_IDENTITIES = (
     (0x239A0029, "3401_DFU"),
     (0x239A0029, "4631_DFU"),
     (0x239A0029, "RTAG_DFU"),
+    MESH_TRACKER_X1_BOOTLOADER_IDENTITY,
 )
 
 # MeshTower V2 has both a lean internal-store application and an exact SD-store
@@ -173,11 +175,12 @@ SD_BOOTLOADER_IDENTITIES = (
 # bootloaders. A CRC-valid BLM2 envelope is not sufficient for package
 # creation: signing the wrong SoftDevice/application layout only produces a
 # package every qualified device will refuse. XIAO/Sense, Solar P1, Wio L1, Minew
-# MX25LE01, and T1000-E run S140 v7; the remaining inventory (including both Tower storage
-# profiles) runs S140 v6.
+# MX25LE01, T1000-E and MeshTracker X1 run S140 v7; the remaining inventory
+# (including both Tower storage profiles) runs S140 v6.
 BOOTLOADER_S140_V7_IDENTITIES = QSPI_V7_BOOTLOADER_IDENTITIES + (
     (0x239A0029, "MX25_DFU"),
     (0x28860057, "T1KE_DFU"),
+    MESH_TRACKER_X1_BOOTLOADER_IDENTITY,
 )
 BOOTLOADER_S140_V6_FWID = 0x00B6
 BOOTLOADER_S140_V7_FWID = 0x0123
@@ -925,12 +928,13 @@ def validate_bootloader_image(image: bytes, target_id: Optional[int] = None,
     if optional_storage == 0x02 and (actual_storage != BOOT_STORAGE_SD_UPDATE or
             (identity.board_id, identity.device_name) != (0x239A0071, "TOWER_V2_OTA")):
         raise ValueError("optional internal storage requires the deployed MeshTower SD identity")
-    if actual_storage == BOOT_STORAGE_RAK_AUTO_UPDATE or optional_storage:
+    if (actual_storage == BOOT_STORAGE_RAK_AUTO_UPDATE or optional_storage or
+            (identity.board_id, identity.device_name) == MESH_TRACKER_X1_BOOTLOADER_IDENTITY):
         ram_marker = b"MOTARAMA" + struct.pack("<HHI", 1, 72, 65536)
         count = sum(image[off:off + 16] == ram_marker
                     for off in range(0, len(image) - 15, 4))
         if count != 1 or struct.unpack_from("<I", image)[0] > 0x20030000:
-            raise ValueError("adaptive bootloader must retain its 64 KiB hybrid RAM arena")
+            raise ValueError("bootloader must retain its 64 KiB hybrid RAM arena")
     expected_platform = bootloader_qualified_platform_profile(
         identity.board_id, identity.device_name)
     if expected_platform is not None:
