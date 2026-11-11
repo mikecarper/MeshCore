@@ -84,6 +84,7 @@ struct BaseChatMesh {
   mesh::Packet packet;
   Bytes transmitted_payload;
   unsigned allocations = 0, releases = 0, transmissions = 0, connection_starts = 0;
+  unsigned connection_stops = 0;
   uint32_t txt_send_timeout = 0;
   uint32_t direct_timeout = 5000;
   uint32_t trace_airtime = 100;
@@ -105,7 +106,10 @@ struct BaseChatMesh {
     return allocate();
   }
   mesh::Packet* createAnonDatagram(uint8_t, const Identity&, const Identity&,
-                                  const uint8_t*, const uint8_t*, size_t) { return allocate(); }
+                                  const uint8_t*, const uint8_t* data, size_t len) {
+    transmitted_payload.assign(data, data + len);
+    return allocate();
+  }
   mesh::Packet* createTrace(uint32_t tag, uint32_t auth, uint8_t flags) {
     auto* result = allocate();
     if (result) {
@@ -127,6 +131,7 @@ struct BaseChatMesh {
   uint32_t calcFloodTimeoutMillisFor(uint32_t) const { return 5000; }
   uint32_t calcDirectTimeoutMillisFor(uint32_t, uint8_t) const { return direct_timeout; }
   void startConnection(const ContactInfo&, uint16_t) { ++connection_starts; }
+  void stopConnection(const uint8_t*) { ++connection_stops; }
   int sendContactPacket(const ContactInfo&, mesh::Packet*, uint32_t&);
   int sendLogin(const ContactInfo&, const char*, uint32_t&);
   int sendAnonReq(const ContactInfo&, const uint8_t*, uint8_t, uint32_t&, uint32_t&);
@@ -178,8 +183,9 @@ struct MyMesh : BaseChatMesh {
   bool millisHasNowPassed(unsigned long) const;
   unsigned long futureMillis(int) const;
   void writeErrFrame(uint8_t, BaseSerialInterface* = nullptr);
+  void writeOKFrame(BaseSerialInterface* = nullptr);
   size_t writePendingSerialFrame(const uint8_t*, size_t, uint32_t);
-  bool beginPendingRequest(Kind, const ContactInfo&, bool = false);
+  bool beginPendingRequest(Kind, const ContactInfo&, bool = false, const char* = nullptr);
   bool allowRequestTag(uint32_t) override;
   bool allocateRequestTag(uint32_t&) override;
   void armPendingRequest(uint32_t, uint32_t, bool);
@@ -302,6 +308,28 @@ struct Fixture {
     }
     memcpy(mesh.cmd_frame + offset, mesh.recipient.id.pub_key, 32);
     mesh.handleRequestFrame(len);
+  }
+  void login(const char* password) {
+    memset(mesh.cmd_frame, 0, sizeof(mesh.cmd_frame));
+    mesh.cmd_frame[0] = CMD_SEND_LOGIN;
+    memcpy(mesh.cmd_frame + 1, mesh.recipient.id.pub_key, 32);
+    const size_t len = strlen(password);
+    assert(len < sizeof(mesh.cmd_frame) - 33);
+    memcpy(mesh.cmd_frame + 33, password, len);
+    mesh.handleRequestFrame(33 + len);
+  }
+  void reconnectOwner() {
+    if (socket) {
+      socket = std::make_shared<MockSocket>(IPAddress(192, 168, 1, 20));
+      socket->received = {'<', 1, 0, 1};
+      WiFiServer::incoming.push_back(WiFiClient(socket));
+      uint8_t command[MAX_FRAME_SIZE];
+      assert(manager.checkRecvFrame(command) == 1);
+    } else {
+      usb_connected = true;
+      select(usb_stream, &usb);
+    }
+    assert(manager.captureReplyRoute() == owner);
   }
   void aclCommand() {
     memset(mesh.cmd_frame, 0, sizeof(mesh.cmd_frame));
@@ -891,6 +919,140 @@ int main() {
     assert(!f.mesh._delayed_replies.canRetryLogin(f.mesh.recipient.id.pub_key, "x", f.owner, millis()));
     f.command(Tracker::Login); f.drain();
     assert(f.mesh.transmissions == 1 && count(f.wire(), RESP_CODE_ERR) == 1); ++checks;
+  }
+  // Reopening a successfully authenticated repeater must not hit the
+  // uncertain-login quarantine. Suppress every earlier completed result and
+  // deliver each fresh result, preserving its server timestamp and ACL role.
+  for (bool tcp : {false, true}) for (uint32_t start : {100U, 0xfffffff0U})
+      for (uint8_t type : {ADV_TYPE_REPEATER, ADV_TYPE_ROOM}) {
+    Fixture f(tcp); g_mock_millis = start; f.mesh.recipient.type = type;
+    uint32_t login_tag = 0;
+    memcpy(&login_tag, f.mesh.recipient.id.pub_key, sizeof(login_tag));
+    std::vector<uint32_t> previous;
+    for (unsigned cycle = 0; cycle < 3; ++cycle) {
+      const size_t result_start = f.wire().size();
+      f.login("x");
+      assert(f.mesh.transmissions == cycle + 1
+          && "completed same-session login must transmit immediately");
+      assert(slot(f, Tracker::Login).phase == Tracker::AwaitRadio);
+      for (uint32_t old : previous) {
+        reply(f, Tracker::Login, nullptr, old);
+        assert(slot(f, Tracker::Login).phase == Tracker::AwaitRadio);
+      }
+      const uint32_t server_tag = 0x11223344U + cycle;
+      const uint8_t acl = uint8_t(0x31U + cycle);
+      reply(f, Tracker::Login, nullptr, server_tag, acl); f.drain();
+      const Bytes current(f.wire().begin() + result_start, f.wire().end());
+      assertSentBeforeFinal(current, Tracker::Login, login_tag);
+      const Bytes result = frameWith(current, PUSH_CODE_LOGIN_SUCCESS);
+      assert(result.size() == 14 && result[1] == 1 && result[12] == acl && result[13] == 13);
+      assert(memcmp(result.data() + 2, f.mesh.recipient.id.pub_key, 6) == 0);
+      uint32_t actual = 0; memcpy(&actual, result.data() + 8, sizeof(actual));
+      assert(actual == server_tag && count(f.wire(), RESP_CODE_ERR) == 0);
+      assert(!f.mesh.hasPendingReqs());
+      f.mesh.cmd_frame[0] = CMD_LOGOUT;
+      memcpy(f.mesh.cmd_frame + 1, f.mesh.recipient.id.pub_key, 32);
+      f.mesh.handleRequestFrame(33); f.drain();
+      assert(f.mesh.connection_stops == cycle + 1);
+      previous.push_back(server_tag); g_mock_millis += 20;
+    }
+    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 3); ++checks;
+  }
+  // The compatibility shortcut compares exactly the effective wire password,
+  // including blank passwords and the existing fifteen-byte truncation.
+  for (bool tcp : {false, true}) for (const char* password : {"", "123456789012345A"})
+      for (uint8_t type : {ADV_TYPE_REPEATER, ADV_TYPE_ROOM}) {
+    Fixture f(tcp); f.mesh.recipient.type = type; f.login(password);
+    const size_t offset = f.mesh.recipient.type == ADV_TYPE_ROOM ? 8 : 4;
+    const size_t effective = std::min<size_t>(strlen(password), 15);
+    assert(f.mesh.transmitted_payload.size() == offset + effective);
+    assert(memcmp(f.mesh.transmitted_payload.data() + offset, password, effective) == 0);
+    reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    f.login(effective == 15 ? "123456789012345B" : "");
+    assert(f.mesh.transmissions == 2 && slot(f, Tracker::Login).phase == Tracker::AwaitRadio);
+    reply(f, Tracker::Login, nullptr, 0x11223345); f.drain();
+    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 2 && count(f.wire(), RESP_CODE_ERR) == 0);
+    ++checks;
+  }
+  // A completed login does not authorize changing credentials or migrating its
+  // replies to a different host. An unseen response to an earlier retry must
+  // remain unable to satisfy either rejected operation.
+  for (bool tcp : {false, true}) for (bool changed_route : {false, true}) {
+    Fixture f(tcp); f.login("x"); f.drain();
+    f.login("x"); f.drain();
+    assert(f.mesh.transmissions == 2);
+    reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    if (changed_route) f.otherRequest();
+    f.login(changed_route ? "x" : "y");
+    assert(f.mesh.transmissions == 2 && !f.mesh.hasPendingReqs());
+    reply(f, Tracker::Login, nullptr, 0x11223345); f.drain();
+    const Bytes& rejected = changed_route ? f.other_stream.output : f.wire();
+    assert(frameWith(rejected, RESP_CODE_ERR) == Bytes({RESP_CODE_ERR, ERR_CODE_BAD_STATE}));
+    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1);
+    assert(count(f.other_stream.output, PUSH_CODE_LOGIN_SUCCESS) == 0); ++checks;
+  }
+  // A queued success has not yet been delivered. Until the final result is
+  // admitted, another click cannot allocate or transmit a new login.
+  for (bool tcp : {false, true}) {
+    Fixture f(tcp); f.login("x"); assert(f.fill() == 3);
+    reply(f, Tracker::Login, nullptr, 0x11223344);
+    assert(slot(f, Tracker::Login).phase == Tracker::AwaitAdmission);
+    f.login("x");
+    assert(f.mesh.transmissions == 1 && slot(f, Tracker::Login).phase == Tracker::AwaitAdmission);
+    f.drain();
+    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1);
+    f.login("x");
+    assert(f.mesh.transmissions == 2 && slot(f, Tracker::Login).phase == Tracker::AwaitRadio);
+    reply(f, Tracker::Login, nullptr, 0x11223345); f.drain();
+    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 2); ++checks;
+  }
+  // Host cancellation or disconnect invalidates even a completed shortcut.
+  // Reusing the same transport object must not inherit its earlier session.
+  for (bool tcp : {false, true}) for (bool disconnect : {false, true}) {
+    Fixture f(tcp); f.login("x"); reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    if (disconnect) { f.disconnect(); f.service(); f.reconnectOwner(); }
+    else f.mesh.cancelSerialOperationsForRoute(f.owner);
+    f.login("x");
+    assert(f.mesh.transmissions == 1 && !f.mesh.hasPendingReqs());
+    reply(f, Tracker::Login, nullptr, 0x11223345); f.drain();
+    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == (tcp && disconnect ? 0U : 1U));
+    assert(frameWith(f.wire(), RESP_CODE_ERR) == Bytes({RESP_CODE_ERR, ERR_CODE_BAD_STATE}));
+    ++checks;
+  }
+  // Failed results, a timeout, and cancellation after a later request all
+  // retain broad quarantine rather than reviving an earlier success.
+  for (bool tcp : {false, true}) for (unsigned reason = 0; reason < 3; ++reason) {
+    Fixture f(tcp); f.login("x"); reply(f, Tracker::Login, nullptr, 0x11223344); f.drain();
+    f.login("x"); f.drain(); assert(f.mesh.transmissions == 2);
+    if (reason == 0) {
+      uint8_t failure[6] = {}; const uint32_t tag = 0x11223345;
+      memcpy(failure, &tag, sizeof(tag)); failure[4] = 'N'; failure[5] = 'O';
+      f.mesh.onContactResponse(f.mesh.recipient, failure, sizeof(failure)); f.drain();
+      assert(count(f.wire(), PUSH_CODE_LOGIN_FAIL) == 1);
+    } else if (reason == 1) {
+      g_mock_millis = slot(f, Tracker::Login).radio_deadline; f.service();
+    } else f.mesh.cancelSerialOperationsForRoute(f.owner);
+    f.login("x");
+    assert(f.mesh.transmissions == 2 && !f.mesh.hasPendingReqs());
+    reply(f, Tracker::Login, nullptr, 0x11223346); f.drain();
+    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == 1);
+    assert(frameWith(f.wire(), RESP_CODE_ERR) == Bytes({RESP_CODE_ERR, ERR_CODE_BAD_STATE}));
+    ++checks;
+  }
+  // Do not evict recent tags to admit another reopen. All bounded history
+  // slots remain protected, and ordinary expiry restores admission.
+  for (bool tcp : {false, true}) for (uint32_t start : {100U, 0xfffffff0U}) {
+    Fixture f(tcp); g_mock_millis = start;
+    for (unsigned i = 0; i < Tracker::HISTORY_SIZE; ++i) {
+      f.login("x"); assert(f.mesh.transmissions == i + 1);
+      reply(f, Tracker::Login, nullptr, 0x11223344U + i); f.drain();
+    }
+    f.login("x"); assert(f.mesh.transmissions == Tracker::HISTORY_SIZE && !f.mesh.hasPendingReqs());
+    f.drain(); assert(count(f.wire(), RESP_CODE_ERR) == 1);
+    g_mock_millis = start + Tracker::LOGIN_QUARANTINE_MS; f.service();
+    f.login("different"); assert(f.mesh.transmissions == Tracker::HISTORY_SIZE + 1);
+    reply(f, Tracker::Login, nullptr, 0x11224444); f.drain();
+    assert(count(f.wire(), PUSH_CODE_LOGIN_SUCCESS) == Tracker::HISTORY_SIZE + 1); ++checks;
   }
   // Other active request families still reject overlap before allocation/TX.
   for (Kind kind : {Tracker::Status, Tracker::Telemetry, Tracker::Binary, Tracker::Discovery, Tracker::Trace}) {

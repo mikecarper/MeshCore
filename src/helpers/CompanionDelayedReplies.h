@@ -29,6 +29,7 @@ public:
     Phase phase = Empty;
     uint8_t history = NO_HISTORY;
     bool terminal = false, sent_pending = false, flood = false;
+    bool repeat_login = false;
     uint8_t frame[MAX_FRAME_SIZE] = {};
   };
 
@@ -39,7 +40,7 @@ private:
     uint8_t peer[32] = {};
     uint32_t tag = 0, until = 0;
     Phase phase = Empty;
-    bool login = false;
+    bool login = false, completed_login = false;
   };
   struct TraceGuard {
     uint32_t tag = 0, auth = 0, until = 0;
@@ -47,10 +48,14 @@ private:
   };
   RequestGuard requests[HISTORY_SIZE] = {};
   TraceGuard traces[HISTORY_SIZE] = {};
-  // Only the active binary login may be retried. Keep the effective wire
-  // password in RAM, never history/storage, and erase it when the login ends.
+  // The effective wire password stays in volatile RAM only. A delivered
+  // success permits reopening the same login on the same live host route
+  // during its bounded history window. Never persist these credentials.
   char login_password[16] = {};
   bool login_password_valid = false;
+  char completed_login_password[16] = {};
+  BaseSerialInterface* completed_login_route = nullptr;
+  uint8_t completed_login_history = NO_HISTORY;
 
   static bool due(uint32_t now, uint32_t deadline);
   static uint32_t retirementDeadline(uint32_t now, uint32_t radio_deadline,
@@ -60,13 +65,19 @@ private:
   static void reset(Reply& reply);
   static void arm(Reply& reply, uint32_t timeout, bool flood, uint32_t now);
   static bool store(Reply& reply, const uint8_t* frame, size_t len, uint32_t now);
-  static bool service(Reply& reply, BaseSerialInterface* serial, uint32_t now);
+  static bool service(Reply& reply, BaseSerialInterface* serial, uint32_t now,
+                       bool* delivered = nullptr);
+  void clearCompletedLogin();
+  bool canRepeatCompletedLogin(const uint8_t peer[32], const char* password,
+                               BaseSerialInterface* route, uint32_t now) const;
   void prune(uint32_t now);
 
 public:
 
   bool reserveRequest(Kind kind, const uint8_t peer[32],
-                      BaseSerialInterface* route, bool terminal, uint32_t now);
+                      BaseSerialInterface* route, bool terminal, uint32_t now,
+                      const char* password = nullptr);
+  void forgetLoginRoute(BaseSerialInterface* route);
   void rememberLoginPassword(const char* password);
   bool canRetryLogin(const uint8_t peer[32], const char* password,
                      BaseSerialInterface* route, uint32_t now) const;

@@ -6624,12 +6624,12 @@ bool MyMesh::hasPendingReqs() const {
 }
 
 bool MyMesh::beginPendingRequest(mesh::CompanionDelayedReplies::Kind kind,
-                                  const ContactInfo& contact, bool terminal) {
+    const ContactInfo& contact, bool terminal, const char* login_password) {
   servicePendingSerialReply();
   _request_tag_rejected = false;
   return _delayed_replies.reserveRequest(kind, contact.id.pub_key,
       terminal || _serial == NULL ? NULL : _serial->captureReplyRoute(),
-      terminal, _ms->getMillis());
+      terminal, _ms->getMillis(), login_password);
 }
 
 bool MyMesh::allowRequestTag(uint32_t tag) {
@@ -6732,6 +6732,7 @@ void MyMesh::cancelSerialResponseStream(BaseSerialInterface* route) {
 
 void MyMesh::cancelSerialOperationsForRoute(BaseSerialInterface* route) {
   if (route == NULL) return;
+  _delayed_replies.forgetLoginRoute(route);
   if (private_key_backup_route == route) {
     private_key_backup_route = NULL;
     private_key_backup_deadline = 0;
@@ -7910,7 +7911,8 @@ void MyMesh::handleCmdFrame(size_t len) {
     if (recipient) {
       const bool retry = _delayed_replies.canRetryLogin(pub_key, password,
           _serial->captureReplyRoute(), _ms->getMillis());
-      if (!retry && !beginPendingRequest(mesh::CompanionDelayedReplies::Login, *recipient)) {
+      if (!retry && !beginPendingRequest(mesh::CompanionDelayedReplies::Login,
+                                        *recipient, false, password)) {
         writeErrFrame(ERR_CODE_BAD_STATE);
         return;
       }

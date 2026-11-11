@@ -30,6 +30,7 @@ void CompanionDelayedReplies::reset(Reply& reply) {
   reply.history = NO_HISTORY;
   reply.frame_len = 0;
   reply.sent_pending = false;
+  reply.repeat_login = false;
 }
 
 uint32_t CompanionDelayedReplies::radioBudget(const Reply& reply) {
@@ -85,7 +86,8 @@ bool CompanionDelayedReplies::expired(const Reply& reply, uint32_t now) {
 }
 
 bool CompanionDelayedReplies::service(Reply& reply,
-                                     BaseSerialInterface* serial, uint32_t now) {
+    BaseSerialInterface* serial, uint32_t now, bool* delivered) {
+  if (delivered != nullptr) *delivered = false;
   if (reply.phase == Empty || reply.phase == Reserved) return false;
   if (reply.terminal) return due(now, reply.radio_deadline);
   if (serial == nullptr || !serial->isReplyRouteAvailable(reply.route)
@@ -102,14 +104,39 @@ bool CompanionDelayedReplies::service(Reply& reply,
     reply.sent_pending = false;
     reply.radio_deadline = now + radioBudget(reply);
   }
-  return reply.phase == AwaitAdmission
+  const bool admitted = reply.phase == AwaitAdmission
       && serial->writeFrameToRoute(reply.route, reply.frame, reply.frame_len)
           == reply.frame_len;
+  if (delivered != nullptr) *delivered = admitted;
+  return admitted;
+}
+
+void CompanionDelayedReplies::clearCompletedLogin() {
+  memset(completed_login_password, 0, sizeof(completed_login_password));
+  completed_login_route = nullptr;
+  completed_login_history = NO_HISTORY;
+}
+
+void CompanionDelayedReplies::forgetLoginRoute(BaseSerialInterface* route) {
+  if (completed_login_route == route) clearCompletedLogin();
+}
+
+bool CompanionDelayedReplies::canRepeatCompletedLogin(const uint8_t peer[32],
+    const char* password, BaseSerialInterface* route, uint32_t now) const {
+  if (completed_login_history >= HISTORY_SIZE || peer == nullptr
+      || password == nullptr || route == nullptr
+      || route != completed_login_route) return false;
+  const RequestGuard& held = requests[completed_login_history];
+  return held.phase == AwaitAdmission && held.completed_login
+      && !due(now, held.until) && memcmp(held.peer, peer, 32) == 0
+      && strncmp(completed_login_password, password,
+                 sizeof(completed_login_password) - 1) == 0;
 }
 
 void CompanionDelayedReplies::prune(uint32_t now) {
   for (unsigned i = 0; i < HISTORY_SIZE; ++i) {
     if (requests[i].phase == AwaitAdmission && due(now, requests[i].until)) {
+      if (completed_login_history == i) clearCompletedLogin();
       requests[i].phase = Empty;
     }
     if (traces[i].phase == AwaitAdmission && due(now, traces[i].until)) {
@@ -119,17 +146,22 @@ void CompanionDelayedReplies::prune(uint32_t now) {
 }
 
 bool CompanionDelayedReplies::reserveRequest(Kind kind, const uint8_t peer[32],
-    BaseSerialInterface* route, bool terminal, uint32_t now) {
+    BaseSerialInterface* route, bool terminal, uint32_t now, const char* password) {
   prune(now);
   if (hasRequest() || kind == None || kind == Trace || peer == nullptr
       || (!terminal && route == nullptr)) return false;
+  const bool repeat_login = kind == Login && !terminal
+      && canRepeatCompletedLogin(peer, password, route, now);
   uint8_t free = NO_HISTORY;
   for (unsigned i = 0; i < HISTORY_SIZE; ++i) {
     const RequestGuard& held = requests[i];
     if (held.phase == Empty) {
       free = i;
     } else if (kind == Login && held.login && memcmp(held.peer, peer, 32) == 0) {
-      return false;
+      // A timed-out/cancelled login still has ambiguous replies in flight.
+      // Completed logins may repeat only on their original authenticated
+      // route with identical credentials; known old tags remain blocked.
+      if (!held.completed_login || !repeat_login) return false;
     }
   }
   if (free == NO_HISTORY) return false;
@@ -137,11 +169,13 @@ bool CompanionDelayedReplies::reserveRequest(Kind kind, const uint8_t peer[32],
   memcpy(held.peer, peer, 32);
   held.tag = 0;
   held.login = kind == Login;
+  held.completed_login = false;
   held.phase = Reserved;
   request.route = route;
   request.kind = kind;
   request.history = free;
   request.terminal = terminal;
+  request.repeat_login = repeat_login;
   request.radio_deadline = now;
   request.phase = Reserved;
   return true;
@@ -198,7 +232,10 @@ void CompanionDelayedReplies::armRequest(uint32_t tag, uint32_t timeout,
 void CompanionDelayedReplies::abandonRequest() {
   memset(login_password, 0, sizeof(login_password));
   login_password_valid = false;
-  if (request.history < HISTORY_SIZE) requests[request.history].phase = Empty;
+  if (request.history < HISTORY_SIZE) {
+    if (completed_login_history == request.history) clearCompletedLogin();
+    requests[request.history].phase = Empty;
+  }
   reset(request);
 }
 
@@ -239,21 +276,43 @@ bool CompanionDelayedReplies::blocksResponse(const uint8_t peer[32],
     if (held.phase == Empty || memcmp(held.peer, peer, 32) != 0) continue;
     if (held.phase == AwaitAdmission && due(now, held.until)) continue;
     if (i == request.history && request.phase == AwaitRadio) continue;
-    if (held.login || held.tag == tag) return true;
+    if (held.tag == tag) return true;
+    // A completed same-session re-login can receive a fresh server tag.
+    // Outside that exact case, login's nonce-free envelope stays quarantined.
+    if (held.login && !(held.completed_login && request.repeat_login
+        && requestMatches(peer, tag))) return true;
   }
   return false;
 }
 
 bool CompanionDelayedReplies::storeRequest(const uint8_t* frame, size_t len, uint32_t now) {
   if (!store(request, frame, len, now)) return false;
-  memset(login_password, 0, sizeof(login_password));
-  login_password_valid = false;
+  // Keep the active login credential until final admission so queue pressure,
+  // expiry or disconnect cannot turn a buffered reply into a completed login.
   return true;
 }
 
 void CompanionDelayedReplies::serviceRequest(BaseSerialInterface* serial, uint32_t now) {
   prune(now);
-  if (service(request, serial, now)) retireRequest(now);
+  if (completed_login_route != nullptr
+      && (serial == nullptr || !serial->isReplyRouteAvailable(completed_login_route))) {
+    clearCompletedLogin();
+  }
+  bool delivered = false;
+  if (service(request, serial, now, &delivered)) {
+    // 0x85 is PUSH_CODE_LOGIN_SUCCESS in the unchanged Companion protocol.
+    // SENT admission and terminal output do not establish this host context.
+    if (delivered && request.kind == Login && !request.terminal
+        && request.frame_len >= 8 && request.frame[0] == 0x85
+        && login_password_valid && request.history < HISTORY_SIZE) {
+      clearCompletedLogin();
+      completed_login_route = request.route;
+      completed_login_history = request.history;
+      memcpy(completed_login_password, login_password, sizeof(login_password));
+      requests[request.history].completed_login = true;
+    }
+    retireRequest(now);
+  }
 }
 
 uint8_t CompanionDelayedReplies::reserveTrace(uint32_t tag, uint32_t auth, uint32_t now) {

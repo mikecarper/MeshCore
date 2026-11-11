@@ -867,7 +867,8 @@ private:
   void servicePendingSerialReply();
   void servicePendingSerialReply(uint32_t now);
   bool beginPendingRequest(mesh::CompanionDelayedReplies::Kind kind,
-                           const ContactInfo& contact, bool terminal = false);
+                           const ContactInfo& contact, bool terminal = false,
+                           const char* login_password = nullptr);
   void armPendingRequest(uint32_t tag, uint32_t timeout, bool flood);
   void finishPendingRequest(int result, uint32_t tag, uint32_t timeout);
   void abandonPendingRequest();

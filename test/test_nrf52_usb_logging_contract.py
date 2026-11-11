@@ -692,7 +692,11 @@ int main() {
                               ("STATUS_REQ", "Status"), ("PATH_DISCOVERY_REQ", "Discovery"),
                               ("TELEMETRY_REQ", "Telemetry"), ("BINARY_REQ", "Binary")):
             branch = extract_braced(mesh_source, "} else if (cmd_frame[0] == CMD_SEND_" + command)
-            self.assertIn(f"beginPendingRequest(mesh::CompanionDelayedReplies::{kind}, *recipient)", branch)
+            if command == "LOGIN":
+                self.assertRegex(branch, r"beginPendingRequest\(mesh::CompanionDelayedReplies::Login,\s*"
+                                        r"\*recipient, false, password\)")
+            else:
+                self.assertIn(f"beginPendingRequest(mesh::CompanionDelayedReplies::{kind}, *recipient)", branch)
             self.assertIn("finishPendingRequest(result, tag, est_timeout);", branch)
         self.assertGreaterEqual(
             mesh_source.count("writePendingSerialFrame(out_frame, i, now)"), 5

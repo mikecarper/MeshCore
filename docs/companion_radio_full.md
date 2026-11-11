@@ -729,10 +729,19 @@ transmission; live entries are never evicted to accept a newer request. A full
 history or a quarantined identifier returns `ERR_BAD_STATE`, so clients must
 back off. Retired reflected tags and trace tag/auth tuples are suppressed for
 at least ten seconds and through the original radio deadline plus ten seconds
-when longer. Login retries to the same peer have at least a thirty-second
-quarantine. Positively matched newer status/telemetry/binary replies still work
-after login, but otherwise unsolicited responses from that login peer can be
-suppressed during the quarantine.
+when longer. Cancelled, timed-out, or failed logins to the same peer have at
+least a thirty-second quarantine. After the Companion admits a successful
+binary login result to the original app connection, that connection can
+immediately log in again to the same peer with the same effective password
+(the protocol sends at most fifteen bytes). This sends a fresh login request;
+it does not return a cached success. Known old reply timestamps remain blocked.
+The completed-login context stays only in RAM during its history window and
+is cleared when the connection ends, its session is cancelled, or that history
+expires. A different connection or changed password must wait for quarantine
+expiry. Reopening still needs a free history slot; completed logins do not
+evict recent replies. Positively matched newer status/telemetry/binary replies
+still work after login, but otherwise unsolicited responses from that login
+peer can be suppressed during the quarantine.
 
 These guards are finite and clear at reboot. Login replies carry a server
 timestamp, not an echoed request nonce; sufficiently late replies or a
