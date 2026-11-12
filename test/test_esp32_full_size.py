@@ -45,13 +45,13 @@ class FakeEnvironment(dict):
 
 
 class FullEsp32SizeTests(unittest.TestCase):
-    def test_eora_observer_preserves_cli_text_with_shared_copies(self):
+    def test_constrained_boards_preserve_cli_text_with_shared_copies(self):
         config = configparser.ConfigParser(interpolation=None)
-        config.read(ROOT / 'variants/ebyte_eora_s3/platformio.ini')
-        section = 'env:Ebyte_EoRa-S3_repeater_observer_mqtt'
+        config.read([ROOT / 'variants/ebyte_eora_s3/platformio.ini', ROOT / 'variants/xiao_c6/platformio.ini', ROOT / 'variants/lilygo_tlora_c6/platformio.ini'])
+        sections = {'env:Ebyte_EoRa-S3_repeater_observer_mqtt', 'env:Xiao_C6_repeater_', 'env:LilyGo_Tlora_C6_repeater_'}
         for name in config.sections():
             flags = config[name].get('build_flags', '')
-            if name == section:
+            if name in sections:
                 self.assertIn('-D MESH_CLI_SHARE_REPLY_COPIES=1', flags)
                 self.assertNotIn('MESH_CLI_COMPACT_REPLIES', flags)
             else:
