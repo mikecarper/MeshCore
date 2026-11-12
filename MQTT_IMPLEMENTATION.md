@@ -1060,6 +1060,14 @@ which the dispatcher calls just before its `TX` line. Other roles leave that
 weak function undefined, so Companion builds pay only a null test, and compact
 logging (`R`/`T` hex lines) is unchanged.
 
+**Companion observers (RemoteTerm, meshcore-packet-capture):** radio2 RX logs
+have a two-byte marker `[0x92, 0xA1]` immediately before the unchanged `0x88`
+SNR/RSSI/raw-packet frame. Existing apps can ignore the marker and keep receiving
+logs. Marker-aware apps can publish `rx_radio_id: radio2`; a MediaMesh-specific
+label also depends on the configured radio2 preset. No device setting is needed.
+Firmware keeps the marker and packet together through queuing and partial
+writes. See `docs/companion_protocol.md` for parsing and older-firmware behavior.
+
 ## Key Features
 
 ### Connection Handling

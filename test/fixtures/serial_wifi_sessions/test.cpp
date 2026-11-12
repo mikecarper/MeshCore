@@ -406,6 +406,60 @@ int main(int argc, char** argv) {
     assert(f.callbacks == 1 && !f.pending_operation);
     f.transport.disable();
     assert(f.callbacks == 1); // No second cancellation for an ended session.
+  } else if (scenario == 36) {
+    // Every possible split: inside marker, legacy header, opcode and raw data.
+    auto socket = f.connect(A);
+    Bytes tagged(MAX_FRAME_SIZE, 0x45);
+    tagged[0] = 0x92;
+    Bytes legacy = tagged;
+    legacy[0] = 0x88;
+    const Bytes group = framed({{0x92, 0xA1}, legacy});
+    for (size_t cut = 1; cut < group.size(); ++cut) {
+      socket->sent.clear();
+      f.enqueue(tagged);
+      socket->write_limit = cut;
+      f.tick();
+      assert(socket->sent == Bytes(group.begin(), group.begin() + cut));
+      f.enqueue(reply_a); // Cannot overtake the raw half after marker starts.
+      socket->write_limit = 0;
+      f.tick();
+      assert(socket->sent.size() == cut);
+      f.drain(socket);
+      assert(socket->sent == framed({{0x92, 0xA1}, legacy, reply_a}));
+    }
+  } else if (scenario == 37) {
+    auto socket = f.connect(A);
+    const Bytes primary{0x88, 0, 0, 0x11};
+    const Bytes tagged{0x92, 4, 0xC0, 0x22};
+    f.enqueue(primary);
+    f.enqueue(tagged);
+    f.enqueue(primary);
+    f.drain(socket);
+    assert(socket->sent == framed({primary, {0x92, 0xA1}, {0x88, 4, 0xC0, 0x22}, primary}));
+    // An unsent marker+packet can be evicted, but no orphan marker escapes.
+    socket->sent.clear();
+    f.enqueue(primary);
+    f.enqueue(primary);
+    f.enqueue(tagged);
+    f.enqueue(reply_a);
+    f.enqueue(reply_b);
+    f.drain(socket);
+    assert(socket->sent == framed({reply_a, reply_b, primary, primary}));
+  } else if (scenario == 38 || scenario == 39) {
+    auto old = f.connect(A);
+    const Bytes tagged{0x92, 4, 0xC0, 0x22};
+    f.enqueue(tagged);
+    old->write_limit = 5; // Marker delivered, raw half not started.
+    f.tick();
+    assert(old->sent == framed({{0x92, 0xA1}}));
+    if (scenario == 39) {
+      auto other = f.connect(B);
+      f.drain(other);
+      assert(other->sent.empty());
+    }
+    auto returned = f.connect(A);
+    f.drain(returned);
+    assert(returned->sent == framed({{0x92, 0xA1}, {0x88, 4, 0xC0, 0x22}}));
   } else {
     assert(false && "unknown scenario");
   }

@@ -13,6 +13,20 @@ static const uint8_t SERVICE_UUID[16]           = NUS_UUID(0x01);
 static const uint8_t CHARACTERISTIC_UUID_RX[16] = NUS_UUID(0x02);
 static const uint8_t CHARACTERISTIC_UUID_TX[16] = NUS_UUID(0x03);
 
+// Leave the pending opcode in the queue even inside synchronous SDK callbacks.
+// A separate non-inlined call retires this scratch before kickSend() can cause
+// another immediate callback, rather than growing scratch with callback depth.
+#if defined(__GNUC__)
+__attribute__((noinline))
+#endif
+static uint8_t notifyRadio2Log(uint16_t handle, uint16_t value_handle,
+                              const uint8_t* frame, size_t len) {
+  uint8_t wire[MAX_FRAME_SIZE];
+  memcpy(wire, frame, len);
+  wire[0] = mesh::COMPANION_LEGACY_RX_LOG;
+  return att_server_notify(handle, value_handle, wire, len);
+}
+
 // The BLE core lib's own setValue()/notify path reallocs the value buffer on every call,
 // so a second frame queued before the radio drained the first would corrupt it. We keep our
 // own frame queue and drive att_server_notify() from the can-send-now callback instead.
@@ -155,10 +169,26 @@ void SerialBLEInterface::sendNext() {
   Frame& f = send_queue[0];
   uint16_t mtu = att_server_get_mtu(h);
   const bool required = mesh::companionFrameRequiresDelivery(f.buf, f.len);
+  const bool radio_marker = mesh::companionRadioLogMarkerPending(f.buf, f.len);
   const bool ready = _tx.notifyEnabled() && mtu > 3 && f.len <= mtu - 3;
   // BTstack returns a status, not a byte count. Never submit an oversized
   // protocol frame: the app requires one complete frame per notification.
-  const bool sent = ready && att_server_notify(h, _tx.valueHandle(), f.buf, f.len) == ERROR_CODE_SUCCESS;
+  bool sent = false;
+  if (ready) {
+    if (radio_marker) f.buf[0] = mesh::COMPANION_RADIO2_LOG_PENDING;
+    _tx_pending = true; // Also excludes nested admission while notify runs.
+    const uint8_t result = radio_marker
+        ? att_server_notify(h, _tx.valueHandle(), mesh::COMPANION_RADIO2_LOG_MARKER,
+                            sizeof(mesh::COMPANION_RADIO2_LOG_MARKER))
+        : mesh::companionRadioLogDataPending(f.buf, f.len)
+            ? notifyRadio2Log(h, _tx.valueHandle(), f.buf, f.len)
+            : att_server_notify(h, _tx.valueHandle(), f.buf, f.len);
+    // SDK callbacks can synchronously reset the connection and queue.
+    if (!_device_connected || _tx.conHandle() != h || send_queue_len == 0) return;
+    _tx_pending = false;
+    sent = result == ERROR_CODE_SUCCESS;
+    if (!sent && radio_marker) f.buf[0] = mesh::COMPANION_RADIO2_LOG;
+  }
   if (!sent && required) {
     // Re-registering here can invoke this callback synchronously forever.
     // Retain the whole frame and let loop() perform a throttled retry.
@@ -169,8 +199,12 @@ void SerialBLEInterface::sendNext() {
   }
   _tx_retry_pending = false;
   _tx_stall_watchdog.reset();
-  send_queue_len--;
-  memmove(&send_queue[0], &send_queue[1], send_queue_len * sizeof(Frame));
+  if (sent && radio_marker) {
+    f.buf[0] = mesh::COMPANION_RADIO2_LOG_PENDING;
+  } else {
+    send_queue_len--;
+    memmove(&send_queue[0], &send_queue[1], send_queue_len * sizeof(Frame));
+  }
   if (send_queue_len > 0) kickSend();
 }
 

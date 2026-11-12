@@ -56,6 +56,10 @@ SCENARIOS = (
     "maximum-sized and consecutive legal frames parse intact",
     "incomplete payload deadline survives millis rollover",
     "physical disconnect cancels once even with incomplete input and queued reply",
+    "radio2 group survives every partial-write boundary without reply interleaving",
+    "radio2 FIFO attribution and whole-record pressure eviction",
+    "same-IP reconnect replays whole radio2 group after marker",
+    "parked owner return replays whole radio2 group after marker",
 )
 
 

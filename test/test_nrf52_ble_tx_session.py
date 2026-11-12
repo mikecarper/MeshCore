@@ -98,6 +98,14 @@ class Nrf52BleTxSessionTests(unittest.TestCase):
         result = self.run_case("production", "all")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_radio2_marker_and_legacy_raw_remain_one_session_owned_group(self):
+        result = self.run_case("production", "radio2")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_failed_marker_releases_reentrant_required_reply_and_its_watchdog(self):
+        result = self.run_case("production", "radio2-failed-marker")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_previous_reset_and_chunk_paths_reproduce_the_failures(self):
         for variant, scenario, assertion in (
                 ("legacy_enqueue", "enqueue", "writeFrame(interrupted"),

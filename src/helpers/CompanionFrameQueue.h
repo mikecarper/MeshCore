@@ -3,6 +3,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include "CompanionRadioLog.h"
+#include "CompanionTxFrame.h"
 
 namespace mesh {
 
@@ -34,7 +36,12 @@ inline CompanionFrameClass companionFrameClass(const uint8_t* frame,
     case 0x84:  // RAW_DATA
     case 0x88:  // LOG_RX_DATA
     case 0x8A:  // NEW_ADVERT
+    case 0x92:  // LOG_RX_RADIO2: complete SNR/RSSI/raw packet, not a marker
       return COMPANION_BEST_EFFORT_PUSH;
+    case 0x93:  // Internal raw half after its radio2 marker was accepted.
+      // It is already at the head. Response priority plus stable insertion
+      // keeps it there until sent, without separate pin bookkeeping.
+      return COMPANION_RESPONSE;
     default:
       return COMPANION_REQUIRED_PUSH;
   }
@@ -155,6 +162,20 @@ bool enqueueCompanionFrame(Frame queue[], QueueLength& queue_len, size_t capacit
   memcpy(queue[insert_at].buf, src, len);
   queue_len = static_cast<QueueLength>(count + 1);
   return true;
+}
+
+// nRF52 BLE and Ethernet use the same frame layout. Keep their substantial
+// admission/sort routine shared even under LTO on flash-constrained boards.
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((noinline, noclone))
+#elif defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline))
+#endif
+inline bool enqueueCompanionFrame(CompanionTxFrame queue[], uint8_t& queue_len,
+                                  size_t capacity, const uint8_t* src,
+                                  size_t len) {
+  return enqueueCompanionFrame<CompanionTxFrame, uint8_t>(
+      queue, queue_len, capacity, src, len);
 }
 
 }  // namespace mesh

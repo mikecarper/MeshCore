@@ -27,6 +27,7 @@ HARNESS = r'''
 #define COMPANION_FEATURE_DIRECT_OTA_ADMIN FULL
 #define MAX_FRAME_SIZE 512
 #define PUSH_CODE_LOG_RX_DATA 0x88
+#define PUSH_CODE_LOG_RX_RADIO 0x92
 #define CMD_SEND_PATH_DISCOVERY_REQ 52
 #define ERR_CODE_NOT_FOUND 1
 #define ERR_CODE_BAD_STATE 2
@@ -376,15 +377,16 @@ int main(){
   secondary_rx.radio_generation=profiles.generation[1];
   secondary.onPeerDataRecv(&secondary_rx,PAYLOAD_TYPE_RESPONSE,0,secret,data,13);assert(secondary.login_calls==1);
 
-  // Preserve the existing 0x88 envelope, but do not expose wrong-profile or
-  // stale-generation OTA requests to the selected USB seeder.
+  // Keep one self-contained raw envelope on the selected temporary OTA
+  // profile, without exposing wrong-profile or stale-generation requests.
   const uint8_t raw_ota[]={0x32,0,1},raw_other[]={0x0A,0,1};
   secondary.profile_radio.rx_profile=1;secondary.profile_radio.rx_generation=profiles.generation[1];
   secondary.logRxRaw(2,-90,raw_ota,3);assert(secondary.wire.frames.size()==1);
-  assert(secondary.wire.frames.back()==std::vector<uint8_t>({0x88,8,uint8_t(-90),0x32,0,1}));
+  assert(secondary.wire.frames.back()==std::vector<uint8_t>({0x92,8,uint8_t(-90),0x32,0,1}));
   secondary.profile_radio.rx_profile=0;
   secondary.logRxRaw(2,-90,raw_ota,3);assert(secondary.wire.frames.size()==1);
   secondary.logRxRaw(2,-90,raw_other,3);assert(secondary.wire.frames.size()==2);
+  assert(secondary.wire.frames.back()==std::vector<uint8_t>({0x88,8,uint8_t(-90),0x0A,0,1}));
   secondary.profile_radio.rx_profile=1;++secondary.profile_radio.rx_generation;
   secondary.logRxRaw(2,-90,raw_ota,3);assert(secondary.wire.frames.size()==2);
 

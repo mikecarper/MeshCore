@@ -8,6 +8,7 @@
 #include <vector>
 #include <memory>
 #include <cassert>
+#include <functional>
 
 #ifndef CONFIG_BT_NIMBLE_MAX_BONDS
 #define CONFIG_BT_NIMBLE_MAX_BONDS 15
@@ -76,6 +77,8 @@ inline bool bonding = false, mitm = false, sc = false;
 inline std::vector<std::vector<uint8_t>> transmitted;
 inline unsigned disconnects = 0;
 inline unsigned notification_attempts = 0;
+inline std::function<void()> after_notification;
+inline std::function<void()> failed_notification;
 struct ConnectionUpdate {
   uint16_t handle, minimum, maximum, latency, timeout;
 };
@@ -112,8 +115,20 @@ struct NimBLECharacteristic {
   bool notify(uint16_t handle = 0xffff) const {
     assert(handle == 7);
     ++fake_nimble::notification_attempts;
-    if (!fake_nimble::accept_notification) return false;
+    if (!fake_nimble::accept_notification) {
+      if (fake_nimble::failed_notification) {
+        auto operation = std::move(fake_nimble::failed_notification);
+        fake_nimble::failed_notification = nullptr;
+        operation();
+      }
+      return false;
+    }
     fake_nimble::transmitted.push_back(value);
+    if (fake_nimble::after_notification) {
+      auto operation = std::move(fake_nimble::after_notification);
+      fake_nimble::after_notification = nullptr;
+      operation();
+    }
     return true;
   }
 };

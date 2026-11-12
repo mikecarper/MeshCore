@@ -3,6 +3,7 @@
 #include "../BaseSerialInterface.h"
 #include "../BluetoothMac.h"
 #include "../BleTxStallWatchdog.h"
+#include "../CompanionTxFrame.h"
 #include "../UsbLogging.h"
 #include "SecuritySessionTimer.h"
 #include "BleRxFrameQueue.h"
@@ -96,10 +97,7 @@ class SerialBLEInterface : public BaseSerialInterface {
   mesh::BleTxStallWatchdog _tx_stall_watchdog;
   mesh::BleDisconnectRecovery _tx_disconnect_recovery;
 
-  struct Frame {
-    uint8_t len;
-    uint8_t buf[MAX_FRAME_SIZE];
-  };
+  using Frame = mesh::CompanionTxFrame;
 
   #define FRAME_QUEUE_SIZE  12
   

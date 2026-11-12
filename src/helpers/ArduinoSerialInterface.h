@@ -20,7 +20,7 @@ private:
 
   struct TxFrame {
     uint16_t len;
-    uint8_t buf[MAX_FRAME_SIZE + 3];
+    uint8_t buf[MAX_FRAME_SIZE];
   };
 
   bool _isEnabled;
@@ -129,6 +129,8 @@ public:
 
   // Optional: queue complete frames and drain one at a time according to the
   // stream's TX capacity, so short writes cannot discard or interleave bytes.
+  // Radio2 packet-log groups always queue, including without flow control;
+  // their marker and legacy raw frame must remain together on the wire.
   // Report busy while a frame remains queued so bulk streams get paced.
   // Defer input, including control lines, while a required reply cannot fit.
   // Only enable this for streams which really implement availableForWrite()

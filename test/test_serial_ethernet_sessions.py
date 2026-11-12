@@ -56,6 +56,10 @@ SCENARIOS = (
     "last budgeted read worker pause preserves deadline across rollover",
     "zero-available snapshot records worker pause immediately",
     "zero-available worker pause preserves deadline across rollover",
+    "radio2 group survives every partial-write boundary without reply interleaving",
+    "radio2 FIFO attribution and whole-record pressure eviction",
+    "same-IP reconnect replays whole radio2 group after marker",
+    "different-IP takeover clears entire radio2 group after marker",
 )
 
 

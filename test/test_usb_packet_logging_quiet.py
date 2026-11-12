@@ -23,6 +23,8 @@ struct PacketTransport {
  size_t writeFrame(const uint8_t*,size_t size){++frames;return size;}
 };
 struct MyMesh {
+ struct Radio {uint8_t receiveProfile() const{return 0;}} radio;
+ Radio* _radio=&radio;
  PacketTransport transport;
  PacketTransport* _serial=&transport;
  uint8_t out_frame[MAX_FRAME_SIZE]={};
@@ -183,8 +185,8 @@ class UsbPacketLoggingQuietTests(unittest.TestCase):
     def test_actual_usb_facade_timers_and_raw_emitter_output(self):
         prefix = (FIXTURE / "test_console.cpp").read_text().split("int main()")[0]
         source = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
-        cases = CASES.replace("@PUSH_CODE@", next(line for line in source.splitlines()
-            if line.startswith("#define PUSH_CODE_LOG_RX_DATA")))
+        cases = CASES.replace("@PUSH_CODE@", '\n'.join(line for line in source.splitlines()
+            if line.startswith(("#define PUSH_CODE_LOG_RX_DATA", "#define PUSH_CODE_LOG_RX_RADIO"))))
         cases = cases.replace("@RAW_EMITTER@", method(source, "void MyMesh::logRxRaw("))
         with tempfile.TemporaryDirectory(prefix="meshcore-packet-quiet-") as directory:
             work = Path(directory)

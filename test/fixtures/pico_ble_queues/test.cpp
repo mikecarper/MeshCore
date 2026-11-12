@@ -123,6 +123,59 @@ int main(int argc, char** argv) {
       f.rx->hostWrite(maximum); assert(f.receive(input + 1) == MAX_FRAME_SIZE);
       assert(input[0] == 0xa5 && input[MAX_FRAME_SIZE + 1] == 0xa5);
       assert(std::equal(maximum.begin(), maximum.end(), input + 1));
+    } else if (scenario == "radio2" || scenario == "radio2-sync-reset" || scenario == "radio2-reentrant") {
+      const Bytes marker{0x92, 0xA1};
+      Bytes radio2(MAX_FRAME_SIZE);
+      for (size_t i = 0; i < radio2.size(); ++i) radio2[i] = uint8_t(i);
+      radio2[0] = 0x92; radio2[1] = 12; radio2[2] = uint8_t(-100);
+      auto legacy = radio2; legacy[0] = 0x88;
+      const Bytes primary{0x88, 8, uint8_t(-90), 0x32, 0x88};
+      const Bytes reply{0x0D, 0x42};
+      if (scenario == "radio2-reentrant") {
+        const Bytes during_marker{0x0D, 0x51}, during_raw{0x0D, 0x52};
+        fake_pico::after_notify = [&]() {
+          assert(fake_pico::notified.back() == marker);
+          f.write(during_marker);
+          fake_pico::after_notify = [&]() {
+            assert(fake_pico::notified.back() == legacy);
+            f.write(during_raw);
+          };
+        };
+        f.write(radio2); f.drain();
+        assert((fake_pico::notified == std::vector<Bytes>{marker, legacy, during_marker, during_raw}));
+        assert(!f.node.hasPendingIO());
+      } else if (scenario == "radio2-sync-reset") {
+        fake_pico::after_notify = fake_pico::disconnect_event;
+        f.write(radio2);
+        assert(fake_pico::notified == std::vector<Bytes>{marker});
+        assert(!f.node.isConnected() && !f.node.hasPendingIO());
+        BLE.server()->connect(2); f.tx->setNotify(true);
+        f.write(primary); f.drain();
+        assert((fake_pico::notified == std::vector<Bytes>{marker, primary}));
+      } else {
+        fake_pico::mtu = 23;
+        f.write(radio2); f.tick();
+        assert(fake_pico::notified.empty() && fake_pico::disconnects == 0);
+        fake_pico::mtu = 247; fake_pico::synchronous = false;
+        f.write(radio2); fake_pico::fireOne();
+        assert(fake_pico::notified == std::vector<Bytes>{marker});
+        fake_pico::notify_errors.push_back(BTSTACK_ACL_BUFFERS_FULL);
+        fake_pico::fireOne();
+        assert(fake_pico::notified == std::vector<Bytes>{marker} && f.node.hasPendingIO());
+        f.write(primary); f.write(reply); f.drain();
+        assert((fake_pico::notified == std::vector<Bytes>{marker, legacy, reply, primary}));
+        assert(!f.node.hasPendingIO());
+        fake_pico::notified.clear();
+        f.write(radio2); f.write(reply); f.drain();
+        assert((fake_pico::notified == std::vector<Bytes>{reply, marker, legacy}));
+        fake_pico::notified.clear();
+        f.write(radio2); fake_pico::fireOne();
+        assert(fake_pico::notified == std::vector<Bytes>{marker});
+        BLE.server()->disconnectEvent();
+        BLE.server()->connect(2); f.tx->setNotify(true);
+        f.write(primary); f.drain();
+        assert((fake_pico::notified == std::vector<Bytes>{marker, primary}));
+      }
     } else if (scenario == "admission") {
       fake_pico::synchronous = false;
       for (unsigned i = 0; i < 8; ++i) f.write(Bytes{0x09, uint8_t(i)});

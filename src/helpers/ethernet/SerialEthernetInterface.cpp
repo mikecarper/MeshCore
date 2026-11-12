@@ -41,7 +41,7 @@ size_t SerialEthernetInterface::writeFrame(const uint8_t src[], size_t len) {
     // A partly written frame must remain at the head even if a new response
     // displaces or reorders lower-priority frames in the waiting tail.
     const int pinned = send_queue_len > 0 && (send_offset != 0 || hasInFlightFrame()) ? 1 : 0;
-    int tail_len = send_queue_len - pinned;
+    uint8_t tail_len = static_cast<uint8_t>(send_queue_len - pinned);
     if (!mesh::enqueueCompanionFrame(send_queue + pinned, tail_len, FRAME_QUEUE_SIZE - pinned,
                                      src, len)) {
       ETHERNET_DEBUG_PRINTLN("writeFrame(), send_queue is full!");
@@ -135,23 +135,24 @@ size_t SerialEthernetInterface::checkRecvFrame(uint8_t dest[]) {
       _last_write = millis();
       int len = send_queue[0].len;
 
-      uint8_t pkt[MAX_FRAME_SIZE + 3];
+      uint8_t pkt[MAX_FRAME_SIZE + 8];
 #if ETHERNET_RAW_LINE
+      const bool radio2_log = mesh::isCompanionRadio2Log(send_queue[0].buf, len);
       ETHERNET_DEBUG_PRINTLN("TX line len=%d", len);
-      memcpy(pkt, send_queue[0].buf, len);
-      pkt[len] = '\r';
-      pkt[len + 1] = '\n';
-      const size_t total = len + 2U;
+      const size_t prefix = radio2_log ? 4U : 0U;
+      if (radio2_log) {
+        const uint8_t marker[] = {0x92, 0xA1, '\r', '\n'};
+        memcpy(pkt, marker, sizeof(marker));
+      }
+      memcpy(pkt + prefix, send_queue[0].buf, len);
+      if (radio2_log) pkt[prefix] = mesh::COMPANION_LEGACY_RX_LOG;
+      pkt[prefix + len] = '\r';
+      pkt[prefix + len + 1] = '\n';
+      const size_t total = prefix + len + 2U;
 #else
-      pkt[0] = '>';
-      pkt[1] = (len & 0xFF);  // LSB
-      pkt[2] = (len >> 8);    // MSB
-      memcpy(&pkt[3], send_queue[0].buf, send_queue[0].len);
-      ETHERNET_DEBUG_PRINTLN("Sending frame len=%d", len);
-      #if ETHERNET_DEBUG_LOGGING && ARDUINO
-      ETHERNET_DEBUG_PRINTLN("TX frame len=%d", len);
-      #endif
-      const size_t total = len + 3U;
+      // Share the binary wire builder with USB/UART and WiFi. One queue
+      // record/byte cursor retains both frames through short writes.
+      const size_t total = mesh::buildCompanionWireFrame(pkt, send_queue[0].buf, len);
 #endif
       const size_t remaining = total - send_offset;
       const size_t written = write(pkt + send_offset, remaining);

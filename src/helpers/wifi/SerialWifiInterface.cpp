@@ -383,12 +383,12 @@ size_t SerialWifiInterface::checkRecvFrame(uint8_t dest[]) {
     }
     int len = send_queue[0].len;
 
-    uint8_t pkt[3 + MAX_FRAME_SIZE]; // serial-compatible framing
-    pkt[0] = '>';
-    pkt[1] = (len & 0xFF);  // LSB
-    pkt[2] = (len >> 8);    // MSB
-    memcpy(&pkt[3], send_queue[0].buf, send_queue[0].len);
-    const size_t total = 3U + len;
+    // One queued packet expands to two wire frames. Keep one byte offset
+    // across the entire group so responses/eviction cannot split the marker
+    // from its legacy raw log, even when the socket makes partial progress.
+    const bool radio2_log = mesh::isCompanionRadio2Log(send_queue[0].buf, len);
+    uint8_t pkt[MAX_FRAME_SIZE + 8];
+    const size_t total = mesh::buildCompanionWireFrame(pkt, send_queue[0].buf, len);
     const size_t remaining = total - send_offset;
     size_t written = 0;
 #if defined(ESP32)
@@ -422,8 +422,8 @@ size_t SerialWifiInterface::checkRecvFrame(uint8_t dest[]) {
       send_offset = 0;
       tx_waiting = false;
       tx_last_progress = 0;
-      ++tx_frames;
-      last_tx_opcode = send_queue[0].buf[0];
+      tx_frames += radio2_log ? 2U : 1U;
+      last_tx_opcode = radio2_log ? mesh::COMPANION_LEGACY_RX_LOG : send_queue[0].buf[0];
       send_queue_len--;
       for (int i = 0; i < send_queue_len; i++) {   // delete top item from queue
         send_queue[i] = send_queue[i + 1];

@@ -1065,6 +1065,22 @@ future pairings without a reboot; existing bonds continue to use their keys.
 | `0x8F` | `PUSH_CODE_CONTACT_DELETED` | Oldest contact was deleted while making room. |
 | `0x90` | `PUSH_CODE_CONTACTS_FULL` | Contact storage is full. |
 | `0x91` | `PUSH_CODE_ONE_KEY_DM_REJECTED` | One-key DM refused; bytes 1–32 contain the refusing contact's full public key. |
+| `0x92` | `PUSH_CODE_LOG_RX_RADIO` | Radio2 RX marker: `[0x92][0xA1]`, immediately followed by the ordinary `0x88` log for that packet. |
+
+Primary RX logs remain `[0x88][SNR × 4: int8][RSSI: int8][raw packet bytes]`.
+Radio2 logs use the same frame, preceded by `[0x92][0xA1]`. Existing clients
+can ignore the marker and keep receiving primary and radio2 logs without
+configuration changes. Marker-aware clients use it to set `rx_radio_id: radio2` on the next
+`0x88` log, then clear it. Clear any pending marker when the connection resets;
+unknown push codes should be skipped. Older firmware sends `0x88` for both
+profiles, so an unmarked log from older firmware has unknown radio attribution.
+
+The marker identifies the secondary radio profile, including temporary update
+channels. A MediaMesh-specific label also depends on the configured preset.
+
+Firmware queues each marker and packet as one best-effort record, then expands
+it to the two wire frames. Queue pressure can drop an unsent record as a whole;
+a partially sent record stays together. Maximum packet size is unchanged.
 
 ### Parsing Responses
 
