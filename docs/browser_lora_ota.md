@@ -70,6 +70,8 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
     <p>To make a smaller differential update, also select the exact firmware currently installed on the target.</p>
     <label>Installed firmware (optional)<input data-role="base" type="file" accept=".bin,.zip"></label>
     <p data-role="firmware-base-status" role="status"></p>
+    <label><input data-role="full-rebuild" type="checkbox"> Prepare a new full package instead of resuming</label>
+    <p>A staged update is discarded only if you choose Replace and install update.</p>
     </details>
     <p>Prepare update checks the firmware, sets up a temporary channel and tests the link. Your normal radio channels stay unchanged.</p>
     <p class="lora-ota-actions"><button type="button" data-role="inspect" disabled>Prepare update</button></p>

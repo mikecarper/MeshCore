@@ -13,7 +13,7 @@
   let preservedCount=0, preservedExportSnapshot=null, preservedExportToken=null, preservedExportInterrupted=false;
   let investigationTimer=null, investigationStage='', investigationStopping=false, investigationActive=false;
   let sourceOtaUnsupported=false, targetAvailability=null, preparedDownload=null, preparedReplacement=null, uiBusy=false, updatePhase='';
-  let sourceBytesRead=0, sourceActivityAt=0, lastTransferPercent=null, radioOverride=false, transferStage='';
+  let sourceBytesRead=0, sourceActivityAt=0, sourceManifestReadLogged=false, lastTransferPercent=null, radioOverride=false, transferStage='';
   let targetRadioHwId=null;
   let transferStopJob=null,transferStopTask=null;
   function refreshTransferStop(){
@@ -70,8 +70,16 @@
     if(messages[stage]) { status(messages[stage]); log(messages[stage]); }
   }
   function onFolderRead({op,args,status:result}) {
-    if(result!==0 || ![3,9].includes(op) || args?.length!==7 || updatePhase!=='transfer'||transferStage!=='transferring'||transferStopJob===session)return;
+    if(result!==0 || ![3,9].includes(op) || args?.length!==7 || updatePhase!=='transfer'||transferStopJob===session)return;
     const length=args[5]+256*args[6];if(!length)return;
+    if(op===3 && args[0]===0 && !sourceManifestReadLogged){
+      const offset=args[1]+args[2]*256+args[3]*65536+args[4]*16777216;
+      if(offset<205 && offset+length>8){
+        sourceManifestReadLogged=true;
+        log('USB source read firmware manifest metadata; this does not confirm radio delivery.');
+      }
+    }
+    if(transferStage!=='transferring')return;
     sourceBytesRead+=length;
     if(Date.now()-sourceActivityAt<1000)return;
     sourceActivityAt=Date.now();
@@ -79,6 +87,21 @@
     // Host-file reads show real source activity, not remote reception or
     // verification. Repeated metadata/proof reads can exceed the image size.
     status(confirmed+'The USB radio has read '+Math.ceil(sourceBytesRead/1024)+' KB of firmware data. Keep this page open.');
+  }
+  function onFolderBootstrap() {
+    if(updatePhase!=='transfer'||transferStopJob===session)return;
+    const text='Waiting for the target to request the firmware manifest. This can take a minute; keep this page open.';
+    status(text);log(text);
+  }
+  function onFolderAdmission({advertised,offered}) {
+    if(updatePhase!=='transfer'||transferStopJob===session)return;
+    if(advertised===0){
+      const message='USB source omitted the selected host package ('+advertised+'/'+offered+'). Another copy may be available; if the manifest times out, check source capacity or use a different source.';
+      log(message);status(message);
+    }else{
+      const message='USB source registered the host package. Waiting for the target to request its manifest.';
+      log(message);status(message);
+    }
   }
   function showSourceUpdate(kind) {
     if(kind==='companion' || kind==='repeater') {
@@ -139,7 +162,7 @@
   const writeChainJournal = state => localStorage.setItem('meshcore-browser-lora-ota-chain', JSON.stringify({...state, at:Date.now()}));
   const readChainJournal = () => { try { return JSON.parse(localStorage.getItem('meshcore-browser-lora-ota-chain')); } catch (_) { return null; } };
   const readChainMeta = () => { try { return JSON.parse(localStorage.getItem('meshcore-browser-lora-ota-chain-meta')); } catch (_) { return null; } };
-  const editable = ['source', 'key', 'acl', 'relays', 'candidates', 'snr', 'age', 'password', 'file', 'base', 'image', 'signer',
+  const editable = ['source', 'key', 'acl', 'relays', 'candidates', 'snr', 'age', 'password', 'file', 'base', 'full-rebuild', 'image', 'signer',
     'chain-files', 'chain-attest', 'chain-objective', 'chain-preamble', 'chain-minutes'];
   const radioFields=['radio-frequency','radio-bandwidth','radio-sf','radio-cr','radio-preamble','radio-minutes'];
   const radioDefaults=Object.fromEntries([...radioFields,'radio-region'].map(name=>[name,$(name).value]));
@@ -456,6 +479,7 @@
     return sourceKind()==='companion' && link?.otaSupported===false;
   }
   function clearInvestigation() {
+    $('full-rebuild').checked=false;
     targetRadioHwId=null;
     targetAvailability=null;
     showAvailability(sourceOtaUnsupported ? {state:'unsupported',message:'LoRa updates are unavailable with this USB Companion: its firmware cannot send OTA packets. Update the source Companion firmware first.'} : null);
@@ -506,7 +530,7 @@
   $('password').addEventListener('input',()=>{clearInvestigation();invalidate();busy(uiBusy);});
   $('acl').addEventListener('change',()=>busy(uiBusy));
   $('file').addEventListener('change',()=>{
-    catalogFile=null;
+    catalogFile=null;$('full-rebuild').checked=false;
     if($('file').files[0])$('firmware-catalog-status').textContent='Using your selected firmware file. Choose Prepare update.';
   });
   $('base').addEventListener('change',()=>{
@@ -597,7 +621,7 @@
       if (companion && relays.length) throw Error('Companion updates currently require a zero-hop connection.');
       const deferredTarget=!companion&&!key;
       const direct = companion
-        ? new LoraOtaCompanion.CompanionTransport(port, {...openOptions, remoteTimeout:75000, onPreserved:refreshPreservedMessages, onInvestigationProgress, onFolderRead})
+        ? new LoraOtaCompanion.CompanionTransport(port, {...openOptions, remoteTimeout:75000, onPreserved:refreshPreservedMessages, onInvestigationProgress, onFolderRead, onFolderBootstrap, onFolderAdmission})
         : new LoraOtaSerial.RepeaterTransport(port, {...openOptions, knownRepeater:key||null, deferredTarget, aclOnly:!!relays.length||!deferredTarget&&$('acl').checked, remoteTimeout:75000});
       link = relays.length ? new LoraOtaRoute.RoutedRepeaterTransport(direct, key, relays) : direct;
       await link.open();
@@ -665,7 +689,7 @@
   }
   async function loadCatalogCandidate(candidate, generation) {
     requireUpdatesAvailable();
-    catalogFile=null; invalidate();
+    catalogFile=null;$('full-rebuild').checked=false; invalidate();
     $('firmware-catalog-status').textContent='Downloading and checking firmware...';
     const result=await LoraOtaCatalog.load(candidate,catalogDest);
     if(generation!==catalogGeneration || !link)throw Error('Target changed while firmware was downloading');
@@ -873,6 +897,7 @@
       checkStopped();$('investigation-stop').hidden=true;
       if(verified && !updatesBlocked())try {
         catalogDest=LoraOtaChecks.destination(replies['ota status'],replies['ota self'],replies.ver);catalogVersion=replies.ver;
+        catalogDest.explicitMaxBlock=LoraOtaChecks.explicitMaxBlock(replies['ota status']+' '+replies['ota self']);
         if(catalogDest.nrf && !catalogDest.external && !catalogDest.sd)
           add('Update method: this target needs an in-place differential.');
         const contact=contacts.find(c=>String(c.publicKey).toLowerCase()===target);
@@ -977,7 +1002,12 @@
       // do that itself, including after reconnecting an older Companion.
       const recovered=await recoverUpdateChannel(targetKey);
       if(standard && !link.investigationEnabled)await link.enableStandardInvestigation();
-      const verify=async()=>{const result=await link.verifyPeer(targetKey,password);await confirmUpdateChannel(recovered,targetKey,password);return result;};
+      let peerVerified=false, liveTargetOtaStatus=null;
+      const verify=async()=>{
+        if(peerVerified)return;
+        const result=await link.verifyPeer(targetKey,password);await confirmUpdateChannel(recovered,targetKey,password);
+        peerVerified=true;return result;
+      };
       if(recovered)await verify();
       const remote=command=>standard ? link.investigateCommand(targetKey,password,command) : link.remoteCommand(targetKey,password,command);
       let file = catalogFile || $('file').files[0];
@@ -987,18 +1017,54 @@
       }
       if (!file) { openDetails($('file'));throw Error('Find matching firmware first, or choose a local firmware file.'); }
       const isFirmware = /\.(?:bin|zip)$/i.test(file.name);
-      const baseFile = $('base').files[0] || (isFirmware ? catalogBaseFile : null);
+      // Internal-stage nRF targets cannot install a full package. Keep their
+      // selected differential even if the full-package recovery option was set.
+      const forceFull = isFirmware && $('full-rebuild').checked && !(catalogDest?.nrf && !catalogDest.external);
+      const baseFile = forceFull ? null : ($('base').files[0] || (isFirmware ? catalogBaseFile : null));
       const input = isFirmware ? await firmwareBytes(file, baseFile ? 4 * 1024 * 1024 : undefined) : await bytes(file);
       checkConnected();
       const signerText = $('signer').value.trim();
       let expectedImage = null, inplacePlan = null;
       if (signerText && !/^[0-9a-f]{64}$/i.test(signerText)) throw Error('The trusted signing key must be 64 hexadecimal characters.');
       expectedSigner = signerText ? Uint8Array.from(signerText.match(/../g), h => parseInt(h, 16)) : null;
+      const buildCompatibleFull=async image=>{
+        const nativeFolder=link?.browserRawSource===true && link.usesUsbFolderFallback===true;
+        const ownership={sourceKey:link.sourceKey,targetKey,recovery:forceFull ? null : readJournal()};
+        if(ownership.recovery) {
+          const saved=await MeshCoreMotaPackage.buildFullForSource(image,ownership);
+          if(saved.recovered)return {...saved,nativeFolder,imageBytes:image.length};
+        }
+        let sourceMaxBlock=null,targetMaxBlock=null;
+        if(nativeFolder && image.length>1024*1024) {
+          // Both live applications must explicitly support the larger block;
+          // unknown replies never become an assumed capability.
+          if(liveTargetOtaStatus)targetMaxBlock=LoraOtaChecks.explicitMaxBlock(liveTargetOtaStatus);
+          else if(catalogDest)targetMaxBlock=catalogDest.explicitMaxBlock;
+          else { await verify();targetMaxBlock=LoraOtaChecks.explicitMaxBlock(await remote('ota status')); }
+          if(targetMaxBlock>=2048) {
+            try { sourceMaxBlock=LoraOtaChecks.explicitMaxBlock(await link.localCommand('ota status')); }
+            catch(error) { if(link.failure)throw error; }
+          }
+          checkConnected();
+        }
+        const built=await MeshCoreMotaPackage.buildFullForSource(image,{
+          nativeFolder,sourceMaxBlock,targetMaxBlock,sourceKey:link.sourceKey,targetKey
+        });
+        return {...built,nativeFolder,imageBytes:image.length};
+      };
+      const logFullSelection=built=>{
+        if(built.recovered)log('Keeping the original full package and block size for recovery. To prepare a new full package, open local firmware options and select “Prepare a new full package instead of resuming.”');
+        else if(built.blockSize===2048)log('Using 2 KiB blocks to reduce the source proof table.');
+        else if(built.reason==='unconfirmed')log('Could not confirm 2 KiB support on both radios; using the original 1 KiB blocks. Large packages may exceed an older source’s proof capacity.');
+        if(built.nativeFolder && Math.ceil(built.imageBytes/built.blockSize)>1024)
+          log('This package has more than 1024 blocks; older native sources may be unable to serve it. If transfer fails, update the source firmware or use a smaller compatible image.');
+      };
       if (isFirmware) {
         if (expectedSigner) throw Error('A package created here is unsigned. Select a signed .mota file instead.');
         if (baseFile) {
           await verify();
           const {status:receiverStatus,self} = await LoraOtaChecks.readReceiver(remote);
+          liveTargetOtaStatus=receiverStatus+' '+self;
           const version = await remote('ver');
           const destination = LoraOtaChecks.destination(receiverStatus, self, version);
           // After a successful differential, the old base is deliberately no
@@ -1037,15 +1103,26 @@
           const delta = await MeshCoreLoraDelta.buildInWorker(base, input, {...deltaOptions, signal:preparing.signal});
           if (inplacePlan) inplacePlan.memorySize = delta.memorySize;
           preparing = null;
-          const fullSize = input.length + 210 + Math.ceil(input.length / 1024) * 4;
-          if (delta.blob.length >= fullSize && (!destination.nrf || destination.external)) {
-            info = await MeshCoreMotaPackage.parseMota(await MeshCoreMotaPackage.buildFullMota(input));
-            log('The full package is smaller, so it will be used.');
+          const full = (!destination.nrf || destination.external) ? await buildCompatibleFull(input) : null;
+          const recovery={sourceKey:link.sourceKey,targetKey,recovery:forceFull ? null : readJournal()};
+          const matchingDelta=await MeshCoreMotaPackage.matchesRecovery(delta.blob,recovery);
+          let matchingStagedFull=false;
+          if(full?.recovered && !matchingDelta && delta.blob.length < full.blob.length) {
+            let staged;
+            try { staged=LoraOtaSession.download(receiverStatus); }
+            catch(_) { staged=LoraOtaSession.download(receiverStatus,await remote('ota stats')); }
+            matchingStagedFull=staged.id===String(recovery.recovery?.id||'').toLowerCase() && ['active','failed','ready'].includes(staged.state);
+          }
+          if (full && !matchingDelta && (matchingStagedFull || delta.blob.length >= full.blob.length)) {
+            info = await MeshCoreMotaPackage.parseMota(full.blob);logFullSelection(full);
+            if(!full.recovered)log('The full package is smaller, so it will be used.');
           } else {
             info = await MeshCoreMotaPackage.parseMota(delta.blob); expectedImage = input;
             log('Differential payload: ' + delta.payloadBytes + ' bytes.');
           }
-        } else info = await MeshCoreMotaPackage.parseMota(await MeshCoreMotaPackage.buildFullMota(input));
+        } else {
+          const full=await buildCompatibleFull(input);info=await MeshCoreMotaPackage.parseMota(full.blob);logFullSelection(full);
+        }
       } else {
         if (baseFile) throw Error('An installed firmware image is only used when creating a differential from a .bin.');
         info = await MeshCoreMotaPackage.parseMota(input, expectedSigner ? {expectedSigner} : {});
@@ -1105,7 +1182,7 @@
   async function transfer(resume) {
     const job=session;transferStopJob=transferStopTask=null;
     preparedDownload=null;
-    updatePhase='transfer';transferStage='';sourceBytesRead=0;sourceActivityAt=0;lastTransferPercent=null;
+    updatePhase='transfer';transferStage='';sourceBytesRead=0;sourceActivityAt=0;sourceManifestReadLogged=false;lastTransferPercent=null;
     $('transfer').disabled = true; $('resume').disabled = true; $('inspect').disabled = true; busy(true);
     try { await job.start({resume}); if(transferStopJob===job)return;preparedDownload='ready';log('Transfer complete. Check the target and select Install.'); $('install').disabled = false;status('Transfer complete. Select Install and verify update.', 'ready'); }
     catch (error) { if(transferStopJob!==job||link?.failure||link?.folderUnknown)fail(error); }
@@ -1120,7 +1197,7 @@
     try {
       if(download!=='ready') {
         updatePhase='transfer';
-        transferStage='';sourceBytesRead=0;sourceActivityAt=0;lastTransferPercent=null;
+        transferStage='';sourceBytesRead=0;sourceActivityAt=0;sourceManifestReadLogged=false;lastTransferPercent=null;
         status(link?.relays?.length ? 'Checking the route, target and radio settings...' : 'Checking the target and radio settings...');
         await job.start({resume:['active','failed'].includes(download),...(download==='replace' ? {replace:replacement} : {})});
         if(transferStopJob===job)return;

@@ -216,7 +216,7 @@ async function source(options = {}) {
   const restore = browserStorage(), port = new OldFullPort(options);
   const link = new CompanionTransport(port, {openSettle: 0, commandTimeout: 100,
     contactsTimeout: 100, inboxTimeout: 100, inboxPollDelay: 0,
-    investigationTimeout: 100, remoteTimeout: 100, folderPollDelayMs: 0,
+    investigationTimeout: 100, remoteTimeout: 100, folderPollDelayMs: 0, folderBootstrapMs: 0,
     folderTransitionTimeout: 150, folderTransitionTimeoutMs: 150});
   try {
     await link.open(); await link.contacts(); link.selectTarget(TARGET);
@@ -748,6 +748,72 @@ test('continuous file reads cannot postpone a progress check indefinitely', asyn
     await folder.waitServeWindow();
     assert.ok(Date.now() -begin <200, 'The absolute bound wins even while transfer reads continue');
   } finally { clearInterval(activity); }
+});
+
+test('native Companion gives the legacy manifest request an initial source-on window', async () => {
+  const f = await source(), info = await packageInfo();
+  try {
+    // The fixture uses short waits elsewhere; verify the real default here.
+    f.link.options.folderBootstrapMs = undefined;
+    await f.link.serve(info, info.blob, null);
+    assert.equal(f.link.usbFolderSource.options.bootstrapMs, 60000);
+  } finally { await f.cleanup(); }
+
+  // A scaled version of the old 32-second request delay: the ordinary quiet
+  // window ends at 16 ms, but the source must stay on through the request at
+  // 32 ms and the initial 60 ms window. No real radio or minute-long wait needed.
+  const folder = new CompanionFolderSource(async () => {}, info, info.blob,
+    {pollDelayMs: 16, bootstrapMs: 60, maxWaitMs: 200});
+  folder.mode = 'folder';
+  folder.firstStartedAt = folder.startedAt = folder.lastReadAt = Date.now();
+  let served = false;
+  const delayedRequest = setTimeout(() => {
+    served = folder.mode === 'folder';
+    folder.lastReadAt = Date.now();
+  }, 32);
+  try {
+    const begin = Date.now();
+    await folder.waitServeWindow();
+    assert.ok(served, 'Source stayed attached for the delayed manifest request');
+    assert.ok(Date.now() - begin >= 55, 'Initial status poll did not end the bootstrap early');
+  } finally { clearTimeout(delayedRequest); }
+});
+
+test('Stop interrupts the initial source-on window', async () => {
+  const info = await packageInfo();
+  let notices = 0;
+  const folder = new CompanionFolderSource(async () => {}, info, info.blob,
+    {pollDelayMs: 0, bootstrapMs: 60000, maxWaitMs: 120000, onBootstrap: () => { notices++; }});
+  folder.mode = 'folder';
+  folder.firstStartedAt = folder.startedAt = folder.lastReadAt = Date.now();
+  const begin = Date.now(), waiting = folder.waitServeWindow();
+  folder.interruptWait();
+  await waiting;
+  assert.ok(Date.now() - begin < 200);
+  assert.equal(notices, 1);
+});
+
+test('USB failure interrupts the initial source-on window with its cause', async () => {
+  const info = await packageInfo();
+  const folder = new CompanionFolderSource(async () => {}, info, info.blob,
+    {pollDelayMs: 0, bootstrapMs: 60000, maxWaitMs: 120000});
+  folder.mode = 'folder';
+  folder.firstStartedAt = folder.startedAt = folder.lastReadAt = Date.now();
+  const begin = Date.now(), waiting = folder.waitServeWindow();
+  folder.fail(Error('USB disconnected'));
+  await assert.rejects(waiting, /USB disconnected/);
+  assert.ok(Date.now() - begin < 200);
+});
+
+test('the absolute bound also limits the initial manifest window', async () => {
+  const info = await packageInfo();
+  const folder = new CompanionFolderSource(async () => {}, info, info.blob,
+    {pollDelayMs: 0, bootstrapMs: 1000, maxWaitMs: 25});
+  folder.mode = 'folder';
+  folder.firstStartedAt = folder.startedAt = folder.lastReadAt = Date.now();
+  const begin = Date.now();
+  await folder.waitServeWindow();
+  assert.ok(Date.now() - begin < 200);
 });
 
 test('stopping interrupts a quiet-window wait without waiting for another radio packet', async () => {

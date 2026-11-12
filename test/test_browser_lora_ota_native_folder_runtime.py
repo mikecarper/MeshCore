@@ -45,7 +45,10 @@ def native_folder_harness(drop_status=False):
           queueMicrotask(()=>{
             this.push(enc.encode('\r\nOK folder attached (serial): advertising 1/1 host mOTAs\r\n'));
             if(latePullAck){inbox.push(latePullAck);latePullAck=null;}
-            if(state==='fetching')this.push(request(3,[0,8,0,0,0,4,0]));
+            if(state==='fetching'){
+              this.push(request(3,[0,8,0,0,0,4,0]));
+              this.push(request(3,[0,8,0,0,0,4,0]));
+            }
           });
         }else if(op===3){
           if(hex(bytes.slice(4,8))!==hex(pkg.blob.slice(8,12)))throw Error('wrong native file bytes');
@@ -63,9 +66,9 @@ def native_folder_harness(drop_status=False):
       if(bytes.length!==3+bytes[1]+256*bytes[2])throw Error('invalid binary frame');'''
     script = replace_once(script, anchor, replacement)
     marker = "window.addEventListener('load',async()=>{try{"
-    inject = "const Transport=LoraOtaCompanion.CompanionTransport;LoraOtaCompanion.CompanionTransport=class extends Transport{constructor(port,options){super(port,{...options,investigationTimeout:500,folderPollDelayMs:10,folderMaxWaitMs:100});}};"
+    inject = "const Transport=LoraOtaCompanion.CompanionTransport;LoraOtaCompanion.CompanionTransport=class extends Transport{constructor(port,options){super(port,{...options,investigationTimeout:500,folderPollDelayMs:10,folderBootstrapMs:80,folderMaxWaitMs:100});}};"
     script = replace_once(script, marker, marker + inject)
-    script = replace_once(script, "await report({timeline,sourceRxps,", "await report({folderOns,folderOffs,folderReads,droppedStatus,timeline,sourceRxps,")
+    script = replace_once(script, "await report({timeline,sourceRxps,", "await report({bootstrapLog:el('status').textContent,folderOns,folderOffs,folderReads,droppedStatus,timeline,sourceRxps,")
     return script
 
 
@@ -83,14 +86,30 @@ class NativeFolderBrowserRuntime(unittest.TestCase):
                 self.assertNotIn('error', result, result)
                 self.assertTrue(result['installed'], result)
                 self.assertTrue(result['otaData'], result)
+                self.assertIn('Waiting for the target to request the firmware manifest', result['bootstrapLog'])
+                self.assertEqual(result['bootstrapLog'].count('USB source read firmware manifest metadata; this does not confirm radio delivery.'), 1)
                 self.assertGreaterEqual(result['folderOns'], 1, result)
-                self.assertGreaterEqual(result['folderReads'], 1, result)
+                self.assertGreaterEqual(result['folderReads'], 2, result)
                 self.assertEqual(result['folderOns'], result['folderOffs'], result)
                 self.assertEqual(result['droppedStatus'], drop_status, result)
                 if drop_status:
                     self.assertGreaterEqual(result['folderOns'], 2, 'The source must resume around a lost status reply')
                 self.assertEqual(sum(c.startswith('ota pull ') for c in result['cmds']), 1, result)
                 self.assertFalse(any(c == 'ota cancel' for c in result['cmds']), result)
+
+    def test_omitted_host_package_warns_but_other_source_can_still_serve(self):
+        script = native_folder_harness()
+        script = replace_once(script, 'advertising 1/1 host mOTAs',
+                              'advertising 0/1 host mOTAs (some omitted: serve cap/invalid/duplicate)')
+        script = replace_once(script, "await report({bootstrapLog:el('status').textContent,",
+                              "await report({admissionLog:el('status').textContent,bootstrapLog:el('status').textContent,")
+        result = run_harness(script, timeout=90)
+        self.assertNotIn('error', result, result)
+        self.assertIn('USB source omitted the selected host package (0/1)', result['admissionLog'])
+        self.assertIn('Another copy may be available', result['admissionLog'])
+        self.assertTrue(result['installed'], result)
+        self.assertEqual(sum(c.startswith('ota pull ') for c in result['cmds']), 1, result)
+        self.assertFalse(any(c == 'ota cancel' for c in result['cmds']), result)
 
 
 if __name__ == '__main__':
