@@ -1,6 +1,11 @@
 'use strict';
 const assert = require('assert');
 const checks = require('../docs/_javascript/lora_ota_checks.js');
+assert.equal(checks.explicitMaxBlock('OTA | maxblk:2048 |'),2048);
+assert.equal(checks.explicitMaxBlock('OTA | maxblk:1024 |'),1024);
+assert.equal(checks.explicitMaxBlock('ERR unsupported; maxblk:2048'),null);
+for (const missing of ['', 'Unknown command', 'maxblk:3000', 'maxblk:0', 'maxblk:2048.5', 'maxblk:2048,5', 'maxblk:2048x', 'maxblk:2048 maxblk:', 'maxblk:2048 maxblk:2048.5', 'maxblk:2048 maxblk:1024'])
+  assert.equal(checks.explicitMaxBlock(missing),null);
 const source = 'aa'.repeat(32), relay = 'bb'.repeat(32), target = 'cc'.repeat(32);
 assert.deepStrictEqual(checks.route(target, [relay], source), ['BBBBBB']);
 assert.throws(() => checks.route(target, [target], source), /prefixes/);

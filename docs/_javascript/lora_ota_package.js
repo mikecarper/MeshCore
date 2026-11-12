@@ -125,5 +125,40 @@
     blob.set(image, payloadOffset); blob.set([118, 107, 52, 57, 54], total - 5);
     return blob;
   }
-  return {parseMota, parseEndF, buildFullMota};
+  // Rebuilding a different block geometry changes the manifest ID and all
+  // recovery hashes. First reproduce a matching browser journal, if any.
+  // Only newly constructed full packages may use the larger geometry.
+  function recoveryOwner(options) {
+    const source = String(options.sourceKey || '').toLowerCase();
+    const target = String(options.targetKey || '').toLowerCase();
+    const prior = options.recovery;
+    const validKey = value => /^[0-9a-f]{64}$/.test(value);
+    return validKey(source) && validKey(target) && prior &&
+      String(prior.source || '').toLowerCase() === source && String(prior.target || '').toLowerCase() === target &&
+      /^[0-9a-f]{64}$/i.test(prior.packageHash || '') && /^[0-9a-f]{8}$/i.test(prior.id || '') &&
+      ['prepared', 'pull attempted', 'ready', 'install attempted', 'installed'].includes(prior.phase);
+  }
+  async function matchesRecovery(blob, options = {}) {
+    if (!recoveryOwner(options) || !(blob instanceof Uint8Array) || blob.length < 32) return false;
+    const hex = bytes => Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+    return hex(blob.subarray(28, 32)) === options.recovery.id.toLowerCase() &&
+      hex(await sha256(blob)) === options.recovery.packageHash.toLowerCase();
+  }
+  async function buildFullForSource(input, options = {}) {
+    const image = input instanceof Uint8Array ? input : new Uint8Array(input);
+    if (recoveryOwner(options)) {
+      for (const blockSize of [1024, 2048]) {
+        const blob = await buildFullMota(image, {blockSize});
+        if (await matchesRecovery(blob, options))
+          return {blob, blockSize, recovered:true, reason:'recovery'};
+      }
+    }
+    const large = image.length > 1024 * 1024;
+    const proven = options.nativeFolder === true && Number.isInteger(options.sourceMaxBlock) &&
+      options.sourceMaxBlock >= 2048 && Number.isInteger(options.targetMaxBlock) && options.targetMaxBlock >= 2048;
+    const blockSize = large && proven ? 2048 : 1024;
+    return {blob:await buildFullMota(image, {blockSize}), blockSize, recovered:false,
+      reason:large && options.nativeFolder === true && !proven ? 'unconfirmed' : blockSize === 2048 ? 'source-compatible' : 'default'};
+  }
+  return {parseMota, parseEndF, buildFullMota, buildFullForSource, matchesRecovery};
 });

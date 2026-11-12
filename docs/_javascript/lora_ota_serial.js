@@ -129,7 +129,7 @@
       this.seeder = new SeederData(info, blob, options.compress);
       this.decoder = new StreamDecoder(); this.mode = 'binary';
       this.responses = Promise.resolve(); this.transition = null;
-      this.failure = null; this.startedAt = 0; this.lastReadAt = 0;
+      this.failure = null; this.startedAt = 0; this.lastReadAt = 0; this.firstStartedAt = null; this.bootstrapNotified = false;
       this.waitVersion = 0; this.wakeWait = null;
       this.handoffDrain = null; this.binaryBarrierPending = false;
     }
@@ -137,6 +137,7 @@
     blocksAppCommands() { return this.ownsStream() || this.binaryBarrierPending; }
     fail(error) {
       this.failure = error;
+      this.interruptWait();
       if (this.transition) this.transition.finish(error);
       this.options.onFailure?.(error);
     }
@@ -193,7 +194,11 @@
           // A protocol barrier is recognized synchronously by feed(), before
           // the next byte in this same USB read reaches the binary decoder.
           this.mode = start ? 'folder' : 'binary';
-          if (start) { this.startedAt = this.lastReadAt = Date.now(); complete(value); return; }
+          if (start) {
+            this.startedAt = this.lastReadAt = Date.now();
+            if (this.firstStartedAt === null) this.firstStartedAt = this.startedAt;
+            complete(value); return;
+          }
           // Firmware quarantines an outstanding native reply across this
           // barrier. Do not let the next app command overtake its queued bytes.
           this.binaryBarrierPending = true;
@@ -223,14 +228,24 @@
     interruptWait() { ++this.waitVersion; this.wakeWait?.(); }
     async waitServeWindow() {
       const version=this.waitVersion, deadline=Date.now()+(this.options.maxWaitMs??120000);
+      const bootstrapEnd=(this.firstStartedAt??this.startedAt)+(this.options.bootstrapMs??0);
+      if(this.mode==='folder' && Date.now()<bootstrapEnd && !this.bootstrapNotified){
+        this.bootstrapNotified=true;
+        try { this.options.onBootstrap?.(); } catch (_) {}
+      }
       while(this.mode==='folder'&&version===this.waitVersion){
-        const remaining=Math.min(deadline,Math.max(this.startedAt,this.lastReadAt)+(this.options.pollDelayMs??10000))-Date.now();
+        // Legacy receivers may delay the first flooded manifest request for
+        // up to 32 seconds. Do not repeatedly detach the native source before
+        // that first request has had a chance to arrive. This initial window
+        // is bounded by the same maximum and remains interruptible by Stop.
+        const remaining=Math.min(deadline,Math.max(bootstrapEnd,Math.max(this.startedAt,this.lastReadAt)+(this.options.pollDelayMs??10000)))-Date.now();
         if(remaining<=0)return;
         await new Promise(resolve=>{
           const timer=setTimeout(()=>{this.wakeWait=null;resolve();},Math.min(remaining,250));
           this.wakeWait=()=>{clearTimeout(timer);this.wakeWait=null;resolve();};
         });
       }
+      if(this.failure)throw this.failure;
     }
   }
   class RepeaterTransport {

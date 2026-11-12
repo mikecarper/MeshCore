@@ -47,6 +47,18 @@
     if (!m || m.slice(1).some(v => v && Number(v) > 255)) throw Error('Cannot determine firmware version');
     return m.slice(1).reduce((n, v) => n * 256 + Number(v || 0), 0);
   }
+  // A missing, ambiguous or malformed capability is unknown, never a 2 KiB
+  // permission. These values are live application limits, not board guesses.
+  function explicitMaxBlock(text) {
+    if (/^\s*(?:>\s*)?(?:ERR(?:OR)?\b|unknown\b|unsupported\b)/i.test(String(text || ''))) return null;
+    const tokens = [...String(text || '').matchAll(/\bmaxblk:([^\s|]+)/gi)].map(m => m[1]);
+    const labels = [...String(text || '').matchAll(/\bmaxblk:/gi)];
+    if (!tokens.length || tokens.length !== labels.length || tokens.some(token => !/^\d+$/.test(token))) return null;
+    const values = tokens.map(Number);
+    if (new Set(values).size !== 1) return null;
+    const value = values[0];
+    return Number.isInteger(value) && value >= 1 && value <= 2048 && !(value & (value - 1)) ? value : null;
+  }
   function destination(status, self, ver) {
     const target = /\btarget:([0-9a-f]{8})\b/i.exec(status), hw = /\bhw=([^ |]+)/i.exec(status), body = /\bbase_hash=([0-9a-f]{16})\b/i.exec(self);
     if (!target || !hw || !body) throw Error('Target identity or installed firmware hash unavailable');
@@ -197,5 +209,5 @@
         plan.memorySize + Math.ceil(info.blob.length / 4096) * 4096 > ceiling - plan.app)
       throw Error('The current nRF52 staging space no longer fits this differential');
   }
-  return { route, destination, availability, readReceiver, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, needsHybridRam, confirmHybridRam, readHybridRam, validateInternalPlan, version, hex, failureAdvice };
+  return { route, destination, availability, readReceiver, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, needsHybridRam, confirmHybridRam, readHybridRam, validateInternalPlan, version, hex, failureAdvice, explicitMaxBlock };
 });

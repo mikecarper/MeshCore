@@ -122,6 +122,7 @@
       this.otaSupported=false;this.localCliSupported=false;this.otaMode='legacy';this.rawPacketSupport='unverified';
       this.usbRawFrameMax=176;this.radioProbeNextRequestAt=0;
       this.usbFolderSupported=false;this.usbFolderProbePending=false;this.usbFolderSource=null;this.usbFolderAttached=false;
+      this.folderAdmission=null;
       this.pendingPullTag=null;this.pendingPullReply=null;this.pendingPullMid=null;this.pullTargetAcknowledged=false;
       this.folderQueue=Promise.resolve();this.stopServingOperation=null;
       this.otaRadioProfile=0;this.otaTargetProfile=0;this.supportsOtaRadio2=false;
@@ -336,7 +337,19 @@
       // Every entry begins at a known binary command boundary. Any old
       // unsolicited decoder prefix must not survive a protocol handoff.
       this.decoder=new Decoder();
-      await this.usbFolderSource.start();
+      const reply=await this.usbFolderSource.start();
+      // The firmware may attach the host yet omit the selected file because
+      // its registry is full, the file is incompatible, or the MID already
+      // exists. A duplicate can still be served, so report rather than assume
+      // that zero host entries proves the manifest is unavailable.
+      const match=/\badvertising\s+(\d+)\/(\d+)\s+host mOTAs\b/i.exec(String(reply||''));
+      if(match){
+        const advertised=Number(match[1]),offered=Number(match[2]),key=advertised+'/'+offered;
+        if(Number.isSafeInteger(advertised)&&Number.isSafeInteger(offered)&&this.folderAdmission!==key){
+          this.folderAdmission=key;
+          try{this.options.onFolderAdmission?.({advertised,offered});}catch(_){}
+        }
+      }
     }
     async stopUsbFolder(){
       await this.usbFolderSource.stop();
@@ -933,6 +946,7 @@
       this.sourceSavedRadio=await this.savedSourceRadio();
       await this.checkSourceRadio();
       this.seeder=await globalThis.LoraOtaCompanionSource.Source.create(info,this.sourceKey,{compress});this.serving=true;
+      this.folderAdmission=null;
       if(this.usbRawFrameMax<188){
         const Folder=serialFolder()?.CompanionFolderSource;
         if(!this.usbFolderSupported||!Folder)throw Error('The legacy USB folder source is unavailable');
@@ -944,6 +958,8 @@
           compress,
           transitionTimeout:this.options.folderTransitionTimeout??this.options.folderTransitionTimeoutMs,
           pollDelayMs:this.options.folderPollDelayMs??this.folderServeWindowMs(info),
+          bootstrapMs:this.options.folderBootstrapMs??60000,
+          onBootstrap:()=>this.options.onFolderBootstrap?.(),
           maxWaitMs:this.options.folderMaxWaitMs,
           onFailure:error=>{this.failure=error;this.pending?.reject(error);this.loginWaiter?.reject(error);},
           onRead:(op,args,status)=>this.options.onFolderRead?.({op,args,status})
@@ -1026,6 +1042,7 @@
       await this.folderQueue;
       if(this.usbFolderSource?.ownsStream())await this.stopUsbFolder();
       this.usbFolderSource=null;this.usbFolderAttached=false;
+      this.folderAdmission=null;
       this.pendingPullTag=null;this.pendingPullReply=null;this.pendingPullMid=null;this.pullTargetAcknowledged=false;
       this.seeder=null;
     }

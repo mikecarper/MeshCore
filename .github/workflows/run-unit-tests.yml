@@ -49,7 +49,7 @@ jobs:
           node --test test/test_browser_lora_ota_companion_source.js
           node --test test/test_browser_lora_ota_contacts.js
           node --test test/test_browser_lora_ota_port_ownership.js
-          node --test test/test_browser_lora_ota_port_selection.js test/test_browser_lora_ota_source_detection.js test/test_browser_lora_ota_recovery.js test/test_browser_lora_ota_legacy_folder.js test/test_browser_lora_ota_lease.js test/test_browser_lora_ota_region_profiles.js
+          node --test test/test_browser_lora_ota_port_selection.js test/test_browser_lora_ota_source_detection.js test/test_browser_lora_ota_recovery.js test/test_browser_lora_ota_legacy_folder.js test/test_browser_lora_ota_folder_admission.js test/test_browser_lora_ota_lease.js test/test_browser_lora_ota_region_profiles.js
           node --test test/test_browser_lora_ota_catalog.js
           node --test test/test_browser_lora_ota_companion.js test/test_browser_lora_ota_companion_recovery.js
           node --test test/test_browser_lora_ota_legacy_source.js
@@ -66,6 +66,8 @@ jobs:
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_failure_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_native_folder_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_block_geometry_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_geometry_recovery_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_workflow_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_staged_recovery_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_usb_mtu_runtime.py -v

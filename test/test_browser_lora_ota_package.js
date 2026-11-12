@@ -6,13 +6,54 @@ const path = require('node:path');
 const ota = require('../docs/_javascript/lora_ota_package.js');
 
 const hash = data => crypto.createHash('sha256').update(data).digest();
-function firmware() {
-  const body = Buffer.alloc(2301);
+function firmware(size = 2301) {
+  const body = Buffer.alloc(size);
   for (let i = 0; i < body.length; i++) body[i] = (i * 13) & 255;
   const end = Buffer.alloc(56); end.write('EndF'); end.writeUInt32LE(body.length, 4);
   hash(body).copy(end, 8, 0, 8); end.writeUInt32LE(0x01120002, 16); end.writeUInt32LE(0x12345678, 20); end.write('test_board', 24);
   return Buffer.concat([body, end]);
 }
+
+test('large native-folder full images use larger blocks only with both explicit capabilities', async () => {
+  const image = firmware(2001 * 1024), nativeFolder = true;
+  for (const [sourceMaxBlock, targetMaxBlock, expected] of [
+    [2048,2048,2048], [2048,1024,1024], [1024,2048,1024],
+    [undefined,2048,1024], [2048,undefined,1024], ['2048',2048,1024]
+  ]) {
+    const result = await ota.buildFullForSource(image,{nativeFolder,sourceMaxBlock,targetMaxBlock});
+    const parsed = await ota.parseMota(result.blob);
+    assert.equal(parsed.blockSize,expected);
+    assert.equal(parsed.blockCount,Math.ceil(image.length/expected));
+    assert.deepEqual(Buffer.from(parsed.payload),image);
+  }
+  const large = await ota.buildFullForSource(image,{nativeFolder,sourceMaxBlock:2048,targetMaxBlock:2048});
+  assert.ok((await ota.parseMota(large.blob)).blockCount <= 1024);
+  const other = await ota.buildFullForSource(image,{nativeFolder:false,sourceMaxBlock:2048,targetMaxBlock:2048});
+  assert.equal(other.blockSize,1024);
+  const small = await ota.buildFullForSource(firmware(),{nativeFolder,sourceMaxBlock:2048,targetMaxBlock:2048});
+  assert.equal(small.blockSize,1024);
+  const huge = await ota.buildFullForSource(firmware(2*1024*1024),{nativeFolder,sourceMaxBlock:2048,targetMaxBlock:2048});
+  assert.ok((await ota.parseMota(huge.blob)).blockCount > 1024);
+});
+
+test('full package recovery preserves exact bytes for the original owner and geometry', async () => {
+  const image=firmware(1024*1024+5), sourceKey='a'.repeat(64), targetKey='b'.repeat(64);
+  for(const blockSize of [1024,2048]) {
+    const original=await ota.buildFullMota(image,{blockSize});
+    const id=Buffer.from(original.subarray(28,32)).toString('hex');
+    const packageHash=hash(original).toString('hex');
+    const recovery={source:sourceKey,target:targetKey,id,packageHash,phase:'pull attempted'};
+    const restored=await ota.buildFullForSource(image,{nativeFolder:true,sourceMaxBlock:2048,targetMaxBlock:2048,sourceKey,targetKey,recovery});
+    assert.equal(restored.recovered,true);assert.equal(restored.blockSize,blockSize);
+    assert.deepEqual(Buffer.from(restored.blob),Buffer.from(original));
+    for (const wrong of [
+      {...recovery,source:'c'.repeat(64)}, {...recovery,id:'12345678'},
+      {...recovery,packageHash:'0'.repeat(64)}, {...recovery,phase:'other'}
+    ]) assert.equal(await ota.matchesRecovery(original,{sourceKey,targetKey,recovery:wrong}),false);
+    const foreign=await ota.buildFullForSource(image,{nativeFolder:true,sourceMaxBlock:2048,targetMaxBlock:2048,sourceKey,targetKey,recovery:{...recovery,target:'c'.repeat(64)}});
+    assert.equal(foreign.recovered,false);assert.equal(foreign.blockSize,2048);
+  }
+});
 async function deltaFixture() {
   const full = Buffer.from(await ota.buildFullMota(firmware(), {blockSize: 1024}));
   // Preserve valid block geometry to test the delta parser independently of detools generation.
