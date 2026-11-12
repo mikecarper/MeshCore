@@ -135,9 +135,9 @@ size_t SerialEthernetInterface::checkRecvFrame(uint8_t dest[]) {
       _last_write = millis();
       int len = send_queue[0].len;
 
-      const bool radio2_log = mesh::companionRadioLogMarkerPending(send_queue[0].buf, len);
-      uint8_t pkt[MAX_FRAME_SIZE + 3 + 5];
+      uint8_t pkt[MAX_FRAME_SIZE + 8];
 #if ETHERNET_RAW_LINE
+      const bool radio2_log = mesh::isCompanionRadio2Log(send_queue[0].buf, len);
       ETHERNET_DEBUG_PRINTLN("TX line len=%d", len);
       const size_t prefix = radio2_log ? 4U : 0U;
       if (radio2_log) {
@@ -150,23 +150,9 @@ size_t SerialEthernetInterface::checkRecvFrame(uint8_t dest[]) {
       pkt[prefix + len + 1] = '\n';
       const size_t total = prefix + len + 2U;
 #else
-      // A radio2 log occupies one queue entry and one pinned TX cursor.
-      // Expand its marker and legacy log together, retaining partial writes.
-      const size_t prefix = radio2_log ? 5U : 0U;
-      if (radio2_log) {
-        const uint8_t marker[] = {'>', 2, 0, 0x92, 0xA1};
-        memcpy(pkt, marker, sizeof(marker));
-      }
-      pkt[prefix] = '>';
-      pkt[prefix + 1] = (len & 0xFF);  // LSB
-      pkt[prefix + 2] = (len >> 8);    // MSB
-      memcpy(&pkt[prefix + 3], send_queue[0].buf, len);
-      if (radio2_log) pkt[prefix + 3] = mesh::COMPANION_LEGACY_RX_LOG;
-      ETHERNET_DEBUG_PRINTLN("Sending frame len=%d", len);
-      #if ETHERNET_DEBUG_LOGGING && ARDUINO
-      ETHERNET_DEBUG_PRINTLN("TX frame len=%d", len);
-      #endif
-      const size_t total = prefix + len + 3U;
+      // Share the binary wire builder with USB/UART and WiFi. One queue
+      // record/byte cursor retains both frames through short writes.
+      const size_t total = mesh::buildCompanionWireFrame(pkt, send_queue[0].buf, len);
 #endif
       const size_t remaining = total - send_offset;
       const size_t written = write(pkt + send_offset, remaining);

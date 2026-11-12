@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 namespace mesh {
 
@@ -21,8 +22,31 @@ inline bool companionRadioLogDataPending(const uint8_t* frame, size_t len) {
 }
 
 inline bool isCompanionRadio2Log(const uint8_t* frame, size_t len) {
-  return companionRadioLogMarkerPending(frame, len)
-      || companionRadioLogDataPending(frame, len);
+  return frame != nullptr && len >= 3
+      && (frame[0] & 0xFE) == COMPANION_RADIO2_LOG;
+}
+
+// Callers validate their queued frame and provide len + 8 bytes of output.
+// Share wire framing across USB/UART and TCP without enlarging queue entries.
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((noinline, noclone))
+#elif defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline))
+#endif
+inline size_t buildCompanionWireFrame(uint8_t* output, const uint8_t* frame,
+                                     size_t len) {
+  const bool radio2_log = isCompanionRadio2Log(frame, len);
+  const size_t prefix = radio2_log ? 5U : 0U;
+  if (radio2_log) {
+    const uint8_t marker[] = {'>', 2, 0, COMPANION_RADIO2_LOG, 0xA1};
+    memcpy(output, marker, sizeof(marker));
+  }
+  output[prefix] = '>';
+  output[prefix + 1] = uint8_t(len);
+  output[prefix + 2] = uint8_t(len >> 8);
+  memcpy(output + prefix + 3, frame, len);
+  if (radio2_log) output[prefix + 3] = COMPANION_LEGACY_RX_LOG;
+  return prefix + 3U + len;
 }
 
 }  // namespace mesh

@@ -386,19 +386,9 @@ size_t SerialWifiInterface::checkRecvFrame(uint8_t dest[]) {
     // One queued packet expands to two wire frames. Keep one byte offset
     // across the entire group so responses/eviction cannot split the marker
     // from its legacy raw log, even when the socket makes partial progress.
-    const bool radio2_log = mesh::companionRadioLogMarkerPending(send_queue[0].buf, len);
-    const size_t prefix = radio2_log ? 5U : 0U;
-    uint8_t pkt[3 + MAX_FRAME_SIZE + 5];
-    if (radio2_log) {
-      const uint8_t marker[] = {'>', 2, 0, 0x92, 0xA1};
-      memcpy(pkt, marker, sizeof(marker));
-    }
-    pkt[prefix] = '>';
-    pkt[prefix + 1] = (len & 0xFF);  // LSB
-    pkt[prefix + 2] = (len >> 8);    // MSB
-    memcpy(&pkt[prefix + 3], send_queue[0].buf, len);
-    if (radio2_log) pkt[prefix + 3] = mesh::COMPANION_LEGACY_RX_LOG;
-    const size_t total = prefix + 3U + len;
+    const bool radio2_log = mesh::isCompanionRadio2Log(send_queue[0].buf, len);
+    uint8_t pkt[MAX_FRAME_SIZE + 8];
+    const size_t total = mesh::buildCompanionWireFrame(pkt, send_queue[0].buf, len);
     const size_t remaining = total - send_offset;
     size_t written = 0;
 #if defined(ESP32)

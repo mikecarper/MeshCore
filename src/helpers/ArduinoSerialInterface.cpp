@@ -136,28 +136,12 @@ void ArduinoSerialInterface::serviceTransmit() {
 
   while (_tx_queue_len > 0) {
     TxFrame& frame = _tx_queue[0];
-    const bool radio2_log = mesh::isCompanionRadio2Log(&frame.buf[3], frame.len - 3);
     // One queue entry expands to the compatible marker + legacy raw frame.
     // Offset spans both wire frames, pinning the entry from the first marker
-    // byte until its raw suffix is complete without another buffer or flag.
-    static constexpr uint8_t radio2_wire[] = {
-        '>', 2, 0, mesh::COMPANION_RADIO2_LOG, 0xA1, mesh::COMPANION_LEGACY_RX_LOG};
-    const size_t total = frame.len + (radio2_log ? 5 : 0);
-    const uint8_t* data;
-    size_t remaining;
-    if (radio2_log && _tx_offset < 5) {
-      data = radio2_wire + _tx_offset;
-      remaining = 5 - _tx_offset;
-    } else {
-      const size_t offset = _tx_offset - (radio2_log ? 5 : 0);
-      if (radio2_log && offset == 3) {
-        data = radio2_wire + 5;
-        remaining = 1;
-      } else {
-        data = &frame.buf[offset];
-        remaining = radio2_log && offset < 3 ? 3 - offset : frame.len - offset;
-      }
-    }
+    // byte until its raw suffix is complete without persistent state or RAM.
+    uint8_t wire[MAX_FRAME_SIZE + 8];
+    const size_t total = mesh::buildCompanionWireFrame(wire, &frame.buf[3], frame.len - 3);
+    const size_t remaining = total - _tx_offset;
     // Print's default availableForWrite() returns zero. Non-flow-controlled
     // streams retain a partially written group using actual write counts.
     const int available = _flow_ctl ? _serial->availableForWrite() : int(remaining);
@@ -168,7 +152,7 @@ void ArduinoSerialInterface::serviceTransmit() {
     // interleave until this header and body are complete.
     const size_t attempt = (size_t)available < remaining
         ? (size_t)available : remaining;
-    size_t written = _serial->write(data, attempt);
+    size_t written = _serial->write(wire + _tx_offset, attempt);
     if (written > attempt) written = attempt;
     _tx_offset += (uint16_t)written;
     if (written < attempt) return;
@@ -308,12 +292,9 @@ size_t ArduinoSerialInterface::writeFrame(const uint8_t src[], size_t len) {
     return len;
   }
 
-  uint8_t frame[MAX_FRAME_SIZE + 3];
-  frame[0] = '>';
-  frame[1] = (uint8_t)(len & 0xFF);  // LSB
-  frame[2] = (uint8_t)(len >> 8);    // MSB
-  memcpy(&frame[3], src, len);
-  return _serial->write(frame, len + 3) == len + 3 ? len : 0;
+  uint8_t frame[MAX_FRAME_SIZE + 8];
+  const size_t total = mesh::buildCompanionWireFrame(frame, src, len);
+  return _serial->write(frame, total) == total ? len : 0;
 }
 
 size_t ArduinoSerialInterface::checkRecvFrame(uint8_t dest[]) {
