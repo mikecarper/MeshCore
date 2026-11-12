@@ -1152,6 +1152,11 @@ void SerialBLEInterface::shiftSendQueueLeft() {
   }
 }
 
+// Keep the SDK send boundary out of the caller's large queue/session state.
+// LTO otherwise duplicates that live state and spills on constrained nRF52.
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((noinline, noclone))
+#endif
 size_t SerialBLEInterface::writeBleUartFrame(const Frame& frame) {
   const uint16_t handle = _conn_handle;
   uint32_t generation;
@@ -1508,11 +1513,7 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
           BLE_DEBUG_PRINTLN("writeBytes: sz=%u, hdr=%u", (unsigned)frame_to_send.len, (unsigned)frame_to_send.buf[0]);
           _last_retry_attempt = 0;
           _tx_stall_watchdog.reset();
-          if (radio_marker) {
-            send_queue[0].buf[0] = mesh::COMPANION_RADIO2_LOG_PENDING;
-          } else {
-            shiftSendQueueLeft();
-          }
+          if (!radio_marker) shiftSendQueueLeft();
         } else if (written > 0) {
           BLE_DEBUG_PRINTLN("writeBytes: partial write, sent=%u of %u",
                             (unsigned)written,

@@ -77,6 +77,10 @@ void ArduinoSerialInterface::resetTransmitState() {
   _tx_offset = 0;
 }
 
+#if defined(NRF52_PLATFORM) && defined(__GNUC__) && !defined(__clang__)
+// Preserve a shared admission boundary instead of growing the TX caller.
+__attribute__((noinline, noclone))
+#endif
 bool ArduinoSerialInterface::enqueueFrame(const uint8_t src[], size_t len) {
   if (src == nullptr || len == 0 || len > MAX_FRAME_SIZE) return false;
 
