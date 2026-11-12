@@ -97,7 +97,7 @@ const uint8_t* companionBluetoothAddress(const CompanionNodePrefs*, bool& clear)
 bool companion_bluetooth_initialized=false;
 uint32_t companion_bluetooth_start_at=0;
 constexpr uint32_t COMPANION_BLUETOOTH_RETRY_MS=5000;
-char companion_bluetooth_start_failure[96]="Bluetooth has not started";
+const char* companion_bluetooth_start_failure="Bluetooth has not started";
 uint8_t companion_bluetooth_session_stealth_mode=0;
 #define BLE_NAME_PREFIX "MeshCore "
 #define COMPANION_BT_MODEM_SLEEP_AVAILABLE 0

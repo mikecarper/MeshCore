@@ -201,12 +201,16 @@ struct AdvertPath {
 
 #if defined(DISPLAY_CLASS) && !(defined(UI_NO_DISCOVER_SCREEN) && (UI_NO_DISCOVER_SCREEN + 0 != 0))
 struct DiscoveredNode {
-  uint8_t pubkey_prefix[9];
+  // These rows are copied only within the Companion/UI, never serialized.
+  // Group the naturally aligned fields so both tables avoid per-row padding.
   float snr_in;
   float snr_out;
+  uint8_t pubkey_prefix[9];
   char name[32];
   uint8_t type;
 };
+static_assert(sizeof(DiscoveredNode) <= 52,
+              "Keep discovery rows compact without unaligned float access");
 #endif
 
 namespace mesh { namespace ui { class StartupScreen; } }

@@ -105,7 +105,7 @@ STARTUP_HARNESS = r'''
 uint32_t now_ms=100;
 uint32_t millis(){return now_ms;}
 bool companion_bluetooth_initialized=false;
-char companion_bluetooth_start_failure[96]={};
+@BLUETOOTH_FAILURE_DECLARATION@
 uint32_t companion_bluetooth_start_at=0;
 constexpr uint32_t COMPANION_BLUETOOTH_RETRY_MS=5000;
 uint8_t companion_bluetooth_session_stealth_mode=mesh::companion::BLUETOOTH_STEALTH_OFF;
@@ -126,9 +126,10 @@ Logger& usbLoggingPort(){static Logger logger;return logger;}
 }
 struct Transport : BaseSerialInterface {
  bool enabled=false,begin_succeeds=true;
+ char failure[96]="fixture startup failure";
  unsigned enables=0,begins=0;
  template<class... T> bool begin(T...){++begins;return begin_succeeds;}
- const char* beginFailure(){return "fixture startup failure";}
+ const char* beginFailure(){return failure;}
  void enable() override{enabled=true;++enables;}
  void disable() override{enabled=false;}
  bool isEnabled() const override{return enabled;}
@@ -150,6 +151,7 @@ void fresh(bool preference){
  interface_manager=MultiSerialInterface();bluetooth_interface=Transport();
  usb_serial_interface=Transport();companion_bluetooth_initialized=false;
  companion_bluetooth_start_at=0;identity_accepts=true;identity_preparations=0;
+ companion_bluetooth_start_failure="Bluetooth has not started";
  the_mesh.preference=preference;
  interface_manager.setBluetoothAutoEnable(preference);
  assert(interface_manager.addInterface(InterfaceType::USB,&usb_serial_interface));
@@ -174,12 +176,27 @@ int main(){
  // transport when the preference was changed before the retry became due.
  fresh(true);interface_manager.enable();identity_accepts=false;
  startCompanionBluetooth();assert(companion_bluetooth_start_at!=0);
+ assert(!strcmp(companion_bluetooth_start_failure,"Bluetooth identity preparation could not save"));
  assert(!companion_bluetooth_initialized&&bluetooth_interface.begins==0);
  the_mesh.preference=false;interface_manager.setBluetoothAutoEnable(false);
  identity_accepts=true;now_ms+=COMPANION_BLUETOOTH_RETRY_MS;
  serviceDeferredCompanionBluetooth();
  assert(companion_bluetooth_initialized&&bluetooth_interface.begins==1);
  assert(bluetooth_interface.enables==0&&!bluetooth_interface.enabled&&usb_serial_interface.enabled);
+ assert(!companion_bluetooth_start_failure[0]);
+ // SDK errors retain either the static platform reason or the global nRF
+ // interface's owned diagnostic after this startup function has returned.
+ fresh(true);bluetooth_interface.begin_succeeds=false;
+ startCompanionBluetooth();
+ assert(!companion_bluetooth_initialized);
+#if defined(NRF52_PLATFORM)
+ assert(companion_bluetooth_start_failure==bluetooth_interface.beginFailure());
+ assert(!strcmp(companion_bluetooth_start_failure,"fixture startup failure"));
+#else
+ assert(!strcmp(companion_bluetooth_start_failure,"Bluetooth initialization failed"));
+#endif
+ bluetooth_interface.begin_succeeds=true;startCompanionBluetooth();
+ assert(companion_bluetooth_initialized&&!companion_bluetooth_start_failure[0]);
  // Existing on/default preference still starts normally in either order.
  fresh(true);startCompanionBluetooth();interface_manager.enable();
  assert(bluetooth_interface.enabled&&bluetooth_interface.enables==1);
@@ -192,6 +209,8 @@ int main(){
 class BluetoothPersistenceTests(unittest.TestCase):
     def test_actual_startup_and_deferred_retry_do_not_advertise_saved_off(self):
         main = (ROOT/'examples/companion_radio/main.cpp').read_text()
+        diagnostic_start = main.index('  static const char* companion_bluetooth_start_failure')
+        diagnostic = main[diagnostic_start:main.index(';', diagnostic_start) + 1]
         methods = '\n'.join(method(main, signature) for signature in (
             'static void scheduleCompanionBluetoothRetry(',
             'static void serviceCompanionUsbBluetoothPriority(',
@@ -201,7 +220,8 @@ class BluetoothPersistenceTests(unittest.TestCase):
             work = Path(directory)
             (work/'Arduino.h').write_text('#pragma once\n#include <cstdint>\n#include <cstddef>\n')
             source = work/'startup.cpp'
-            source.write_text(STARTUP_HARNESS.replace('@METHODS@', methods))
+            source.write_text(STARTUP_HARNESS.replace('@METHODS@', methods).replace(
+                '@BLUETOOTH_FAILURE_DECLARATION@', diagnostic))
             for platform in ('NRF52_PLATFORM', 'ESP32'):
                 with self.subTest(platform=platform):
                     binary = work/'startup'

@@ -2920,7 +2920,9 @@ static bool saveCompanionWiFiPreference(bool enabled) {
   bool companionApplyBluetoothPin(uint32_t pin) {
     return !companion_bluetooth_initialized || bluetooth_interface.setPin(pin);
   }
-  static char companion_bluetooth_start_failure[96] =
+  // Failure literals and the global Bluetooth interface's retained diagnostic
+  // outlive every retry. Keep their address instead of a duplicate RAM buffer.
+  static const char* companion_bluetooth_start_failure =
       "Bluetooth has not started";
   static uint32_t companion_bluetooth_start_at = 0;
   static constexpr uint32_t COMPANION_BLUETOOTH_RETRY_MS = 5000UL;
@@ -3042,9 +3044,8 @@ static bool saveCompanionWiFiPreference(bool enabled) {
     && !defined(COMPANION_EXCLUSIVE_WIFI_BLE)
     if (mesh::wifi::activeCompanionMode()
         == mesh::wifi::CompanionMode::WiFiOnly) {
-      snprintf(companion_bluetooth_start_failure,
-               sizeof(companion_bluetooth_start_failure),
-               "wifi-only boot; set wifi.mode normal and reboot to enable Bluetooth");
+      companion_bluetooth_start_failure =
+          "wifi-only boot; set wifi.mode normal and reboot to enable Bluetooth";
       return;
     }
 #endif
@@ -3052,11 +3053,8 @@ static bool saveCompanionWiFiPreference(bool enabled) {
     mesh::usbLoggingPort().println("Companion: starting Bluetooth");
     CompanionNodePrefs* prefs = the_mesh.getNodePrefs();
     if (!prepareCompanionBluetoothIdentity(prefs)) {
-      strncpy(companion_bluetooth_start_failure,
-              "Bluetooth identity preparation could not save",
-              sizeof(companion_bluetooth_start_failure) - 1);
-      companion_bluetooth_start_failure[
-          sizeof(companion_bluetooth_start_failure) - 1] = 0;
+      companion_bluetooth_start_failure =
+          "Bluetooth identity preparation could not save";
       mesh::usbLoggingPort().println(
           "Companion: Bluetooth identity preparation failed; retrying");
       scheduleCompanionBluetoothRetry();
@@ -3064,11 +3062,7 @@ static bool saveCompanionWiFiPreference(bool enabled) {
     }
     if (!interface_manager.addInterface(InterfaceType::Bluetooth,
                                         &bluetooth_interface)) {
-      strncpy(companion_bluetooth_start_failure,
-              "no free Companion interface slot",
-              sizeof(companion_bluetooth_start_failure) - 1);
-      companion_bluetooth_start_failure[
-          sizeof(companion_bluetooth_start_failure) - 1] = 0;
+      companion_bluetooth_start_failure = "no free Companion interface slot";
       mesh::usbLoggingPort().println(
 #if defined(RAK_4631)
           "Bluetooth: no slot; retrying"
@@ -3106,15 +3100,12 @@ static bool saveCompanionWiFiPreference(bool enabled) {
                                    the_mesh.getBLEPin(), bluetooth_address,
                                    clear_bonds, stealth_pair_once,
                                    bonded_only_peer_ptr)) {
-      strncpy(companion_bluetooth_start_failure,
+      companion_bluetooth_start_failure =
 #if defined(NRF52_PLATFORM)
-              bluetooth_interface.beginFailure(),
+          bluetooth_interface.beginFailure();
 #else
-              "Bluetooth initialization failed",
+          "Bluetooth initialization failed";
 #endif
-              sizeof(companion_bluetooth_start_failure) - 1);
-      companion_bluetooth_start_failure[
-          sizeof(companion_bluetooth_start_failure) - 1] = 0;
       interface_manager.removeInterface(&bluetooth_interface);
 #if defined(NRF52_PLATFORM)
       // A partly initialized Bluefruit stack cannot be started again safely.
@@ -3139,7 +3130,7 @@ static bool saveCompanionWiFiPreference(bool enabled) {
         the_mesh.getNodePrefs()->powersaving_enabled != 0, false);
 #endif
     companion_bluetooth_initialized = true;
-    companion_bluetooth_start_failure[0] = 0;
+    companion_bluetooth_start_failure = "";
     serviceCompanionUsbBluetoothPriority();
     if (interface_manager.isEnabled() && the_mesh.isBluetoothEnabledPreference()
         && !mesh::wireless::control().blocked(mesh::wireless::Bluetooth)) {

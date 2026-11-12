@@ -11,6 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 class CompanionDiscoveryTests(unittest.TestCase):
     def test_bounded_responses_and_request_lifetime(self):
         source = (ROOT / 'examples/companion_radio/MyMesh.cpp').read_text()
+        header = (ROOT / 'examples/companion_radio/MyMesh.h').read_text()
+        row_start = header.index('struct DiscoveredNode {')
+        row = header[row_start:header.index('#endif', row_start)]
         parser = method(source, 'void MyMesh::checkControlDataForPendingDiscovery(')
         query = method(source, 'int MyMesh::getDiscoveredNodes(')
         code = r'''
@@ -24,7 +27,13 @@ class CompanionDiscoveryTests(unittest.TestCase):
 static uint32_t now=100;
 uint32_t millis(){return now;}
 struct StrHelper{static void strncpy(char* o,const char* i,size_t n){::strncpy(o,i,n-1);o[n-1]=0;}};
-struct DiscoveredNode{uint8_t pubkey_prefix[9];float snr_in,snr_out;char name[32];uint8_t type;};
+@DISCOVERED_NODE@
+struct PreviousDiscoveredNode{uint8_t pubkey_prefix[9];float snr_in,snr_out;char name[32];uint8_t type;};
+static_assert(sizeof(DiscoveredNode)==52,"Discovery fields must use natural compact alignment");
+static_assert(sizeof(DiscoveredNode[4])+16==sizeof(PreviousDiscoveredNode[4]),
+              "Keep all four discovery rows while freeing sixteen bytes per table");
+static_assert(offsetof(DiscoveredNode,snr_in)%alignof(float)==0);
+static_assert(offsetof(DiscoveredNode,snr_out)%alignof(float)==0);
 struct ContactInfo{char name[32];};
 struct Radio{float getLastSNR(){return 5.0f;}};
 struct MyMesh {
@@ -73,9 +82,12 @@ int main(){
   for(int i=0;i<10;i++)mesh.checkControlDataForPendingDiscovery(response,14);
   assert(mesh.disc_nodes_count==4);
   DiscoveredNode result[4];assert(mesh.getDiscoveredNodes(result,100)==4);
+  assert(result[0].type==2&&result[0].snr_in==5.0f&&result[0].snr_out==5.0f);
+  assert(!memcmp(result[0].pubkey_prefix,response+6,8));
+  assert(!strcmp(result[0].name,mesh.discovered_nodes[0].name));
   assert(mesh.getDiscoveredNodes(nullptr,4)==0&&mesh.getDiscoveredNodes(result,-1)==0);
 }
-'''.replace('@METHODS@', parser + '\n' + query)
+'''.replace('@DISCOVERED_NODE@', row).replace('@METHODS@', parser + '\n' + query)
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             (path / 'test.cpp').write_text(code)
