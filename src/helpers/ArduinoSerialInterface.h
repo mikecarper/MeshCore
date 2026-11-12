@@ -20,7 +20,7 @@ private:
 
   struct TxFrame {
     uint16_t len;
-    uint8_t buf[MAX_FRAME_SIZE + 3];
+    uint8_t buf[MAX_FRAME_SIZE];
   };
 
   bool _isEnabled;

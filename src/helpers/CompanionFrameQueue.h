@@ -40,7 +40,7 @@ inline CompanionFrameClass companionFrameClass(const uint8_t* frame,
     case 0x93:  // Internal raw half after its radio2 marker was accepted.
       // It is already at the head. Response priority plus stable insertion
       // keeps it there until sent, without separate pin bookkeeping.
-      return len >= 3 ? COMPANION_RESPONSE : COMPANION_REQUIRED_PUSH;
+      return COMPANION_RESPONSE;
     default:
       return COMPANION_REQUIRED_PUSH;
   }

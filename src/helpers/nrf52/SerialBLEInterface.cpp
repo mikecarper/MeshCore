@@ -1165,6 +1165,12 @@ size_t SerialBLEInterface::writeBleUartFrame(const Frame& frame) {
 
   const uint16_t mtu = conn->getMtu();
   if (mtu <= 3) return 0;
+  const bool radio_marker = mesh::companionRadioLogMarkerPending(frame.buf, frame.len);
+  // Project a full queued radio2 log to its marker only after the following
+  // legacy raw frame fits. Reuse this method's existing connection/MTU read.
+  if (radio_marker && frame.len > mtu - 3) return 0;
+  const uint8_t* bytes = radio_marker ? mesh::COMPANION_RADIO2_LOG_MARKER : frame.buf;
+  const size_t length = radio_marker ? sizeof(mesh::COMPANION_RADIO2_LOG_MARKER) : frame.len;
 #if defined(MESH_NRF52_BLE_TRACE) && MESH_NRF52_BLE_TRACE
   // Record only public framing metadata, never characteristic payload data.
   meshBleTrace(0xf036, handle, frame.buf[0] | (frame.len << 8), mtu);
@@ -1175,8 +1181,8 @@ size_t SerialBLEInterface::writeBleUartFrame(const Frame& frame) {
   // before a later fragment failed. Submit one ATT payload at a time so a
   // non-zero return accurately tells us that part of the protocol frame is
   // already on the stream and must never be followed by a whole-frame retry.
-  return mesh::writeBleFrameInChunks(
-      frame.buf, frame.len, mtu - 3,
+  const size_t written = mesh::writeBleFrameInChunks(
+      bytes, length, mtu - 3,
       [this, handle, generation](const uint8_t* data, size_t len) -> size_t {
         // Never continue an old frame on a replacement connection, including
         // when SoftDevice reuses the same numeric handle after a reconnect.
@@ -1185,6 +1191,9 @@ size_t SerialBLEInterface::writeBleUartFrame(const Frame& frame) {
         const size_t written = bleuart.write(handle, data, len);
         return recv_queue.current(handle, generation) ? written : 0;
       });
+  // The caller advances one logical queue entry. A partial marker must stay
+  // partial (not report completion), so its existing disconnect guard runs.
+  return radio_marker && written == length ? frame.len : written;
 }
 
 void SerialBLEInterface::serviceTxRecovery(uint32_t now) {
@@ -1473,27 +1482,17 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
             frame_to_send.buf, frame_to_send.len);
         const bool radio_marker = mesh::companionRadioLogMarkerPending(
             frame_to_send.buf, frame_to_send.len);
-        bool frame_ready = true;
-        if (radio_marker) {
-          // Do not expose a marker while the complete following raw frame
-          // cannot fit the client's negotiated notification payload.
-          BLEConnection* connection = Bluefruit.Connection(handle);
-          const uint16_t mtu = connection != nullptr ? connection->getMtu() : 0;
-          frame_ready = mtu > 3 && frame_to_send.len <= mtu - 3;
-          frame_to_send.len = sizeof(mesh::COMPANION_RADIO2_LOG_MARKER);
-          memcpy(frame_to_send.buf, mesh::COMPANION_RADIO2_LOG_MARKER,
-                 frame_to_send.len);
-        } else if (mesh::companionRadioLogDataPending(
+        if (mesh::companionRadioLogDataPending(
                        frame_to_send.buf, frame_to_send.len)) {
           frame_to_send.buf[0] = mesh::COMPANION_LEGACY_RX_LOG;
         }
 
         // Pin before entering the SDK: a synchronous callback must not let
         // another admitted response move or evict the marker's owner.
-        if (radio_marker && frame_ready) {
+        if (radio_marker) {
           send_queue[0].buf[0] = mesh::COMPANION_RADIO2_LOG_PENDING;
         }
-        size_t written = frame_ready ? writeBleUartFrame(frame_to_send) : 0;
+        size_t written = writeBleUartFrame(frame_to_send);
         // A callback may reset or replace the link while the SDK waits for a
         // notification slot. Discard only the old TX state; do not recover or
         // dequeue against the replacement session using the old write result.

@@ -94,7 +94,7 @@ struct SerialBLEInterface {
     std::vector<Chunk> chunks;
     std::vector<uint8_t> rx_bytes;
     std::function<void()> after_write;
-    unsigned attempts = 0, fail_on_attempt = 0;
+    unsigned attempts = 0, fail_on_attempt = 0, partial_on_attempt = 0;
     bool notifyEnabled(uint16_t) const { assert(!critical_depth); return true; }
     void flush() { assert(!critical_depth); rx_bytes.clear(); }
     int available() const { assert(!critical_depth); return rx_bytes.size(); }
@@ -107,6 +107,7 @@ struct SerialBLEInterface {
     size_t write(uint16_t handle, const uint8_t* data, size_t length) {
       assert(!critical_depth);
       if (++attempts == fail_on_attempt) return 0;
+      if (attempts == partial_on_attempt && length > 1) length = 1;
       chunks.push_back({handle, std::vector<uint8_t>(data, data + length)});
       if (after_write) {
         auto operation = std::move(after_write);
@@ -343,6 +344,29 @@ static void radio2_log_groups() {
   for (size_t i = 0; i < radio2.size(); ++i) radio2[i] = uint8_t(i);
   radio2[0] = 0x92; radio2[1] = 12; radio2[2] = uint8_t(-100);
   auto legacy = radio2; legacy[0] = 0x88;
+  {
+    SerialBLEInterface port;
+    Bluefruit.connection.mtu = 247;
+    assert(port.writeFrame(radio2.data(), radio2.size()) == radio2.size());
+    const auto logical = port.send_queue[0];
+    port.bleuart.fail_on_attempt = 1;
+    assert(port.writeBleUartFrame(logical) == 0 && port.bleuart.chunks.empty());
+    assert(port.writeBleUartFrame(logical) == logical.len);
+    assert(port.bleuart.chunks.size() == 1 && port.bleuart.chunks[0].bytes == marker);
+    assert(logical.len == MAX_FRAME_SIZE && logical.buf[0] == 0x92);
+  }
+  {
+    SerialBLEInterface port;
+    Bluefruit.connection.mtu = 247;
+    port.bleuart.partial_on_attempt = 1;
+    assert(port.writeFrame(radio2.data(), radio2.size()) == radio2.size());
+    port.checkRecvFrame(received);
+    assert(port.bleuart.chunks.size() == 1);
+    assert(port.bleuart.chunks[0].bytes == std::vector<uint8_t>{0x92});
+    assert(port._tx_disconnect_recovery.pending() && port.send_queue_len == 0);
+    now_ms += 251; port.checkRecvFrame(received);
+    assert(port.bleuart.chunks.size() == 1); // Never follow a partial marker with a raw frame.
+  }
   {
     SerialBLEInterface port;
     Bluefruit.connection.mtu = 23;

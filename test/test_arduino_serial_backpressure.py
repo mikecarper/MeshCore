@@ -79,7 +79,7 @@ class ArduinoSerialBackpressureTests(unittest.TestCase):
         controls = (
             ("  if (!responseCapacityAvailable()) return 0;\n", "", 0),
             ("      && !_receive_capacity_paused\n", "", 1),
-            ("const size_t total = mesh::buildCompanionWireFrame(wire, &frame.buf[3], frame.len - 3);",
+            ("const size_t total = mesh::buildCompanionWireFrame(wire, frame.buf, frame.len);",
              "const size_t total = frame.len; memcpy(wire, frame.buf, frame.len);", 8),
         )
         for old, new, scenario in controls:

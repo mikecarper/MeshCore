@@ -44,7 +44,7 @@ bool ArduinoSerialInterface::responseCapacityAvailable() const {
   // push, but the prefix of a partly sent frame must remain intact.
   for (uint8_t i = _tx_offset == 0 ? 0 : 1; i < _tx_queue_len; ++i) {
     const TxFrame& frame = _tx_queue[i];
-    if (!mesh::companionFrameRequiresDelivery(&frame.buf[3], frame.len - 3)) {
+    if (!mesh::companionFrameRequiresDelivery(frame.buf, frame.len)) {
       return true;
     }
   }
@@ -84,7 +84,7 @@ bool ArduinoSerialInterface::enqueueFrame(const uint8_t src[], size_t len) {
   // space away from command replies while a USB host is backpressuring us.
   if (src[0] == 0x83) {
     for (uint8_t i = 0; i < _tx_queue_len; ++i) {
-      if (_tx_queue[i].len > 3 && _tx_queue[i].buf[3] == 0x83) return true;
+      if (_tx_queue[i].len > 0 && _tx_queue[i].buf[0] == 0x83) return true;
     }
   }
 
@@ -103,7 +103,7 @@ bool ArduinoSerialInterface::enqueueFrame(const uint8_t src[], size_t len) {
     int evict = -1;
     for (int i = TX_QUEUE_SIZE - 1; i >= first_evictable; --i) {
       const TxFrame& queued = _tx_queue[i];
-      if (!mesh::companionFrameRequiresDelivery(&queued.buf[3], queued.len - 3)) {
+      if (!mesh::companionFrameRequiresDelivery(queued.buf, queued.len)) {
         evict = i;
         break;
       }
@@ -116,11 +116,8 @@ bool ArduinoSerialInterface::enqueueFrame(const uint8_t src[], size_t len) {
   }
 
   TxFrame& frame = _tx_queue[_tx_queue_len++];
-  frame.len = (uint16_t)(len + 3);
-  frame.buf[0] = '>';
-  frame.buf[1] = (uint8_t)(len & 0xFF);
-  frame.buf[2] = (uint8_t)(len >> 8);
-  memcpy(&frame.buf[3], src, len);
+  frame.len = (uint16_t)len;
+  memcpy(frame.buf, src, len);
   updateReceiveCapacityPause(millis());
   return true;
 }
@@ -140,7 +137,7 @@ void ArduinoSerialInterface::serviceTransmit() {
     // Offset spans both wire frames, pinning the entry from the first marker
     // byte until its raw suffix is complete without persistent state or RAM.
     uint8_t wire[MAX_FRAME_SIZE + 8];
-    const size_t total = mesh::buildCompanionWireFrame(wire, &frame.buf[3], frame.len - 3);
+    const size_t total = mesh::buildCompanionWireFrame(wire, frame.buf, frame.len);
     const size_t remaining = total - _tx_offset;
     // Print's default availableForWrite() returns zero. Non-flow-controlled
     // streams retain a partially written group using actual write counts.
