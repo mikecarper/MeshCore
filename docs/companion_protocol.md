@@ -1065,6 +1065,7 @@ future pairings without a reboot; existing bonds continue to use their keys.
 | `0x8F` | `PUSH_CODE_CONTACT_DELETED` | Oldest contact was deleted while making room. |
 | `0x90` | `PUSH_CODE_CONTACTS_FULL` | Contact storage is full. |
 | `0x91` | `PUSH_CODE_ONE_KEY_DM_REJECTED` | One-key DM refused; bytes 1–32 contain the refusing contact's full public key. |
+| `0x92` | `PUSH_CODE_LOG_RX_RADIO` | `[0x92][0xA1]`, sent just before a `PUSH_CODE_LOG_RX_DATA` (`0x88`) whose packet came in on radio2 (MediaMesh). It applies to that next `0x88` frame only, which is itself unchanged. Primary-radio packets, and every packet while radio2 is off, get no marker. Clients that don't know the code skip it. |
 
 ### Parsing Responses
 
