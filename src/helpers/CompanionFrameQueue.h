@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "CompanionRadioLog.h"
+#include "CompanionTxFrame.h"
 
 namespace mesh {
 
@@ -161,6 +162,20 @@ bool enqueueCompanionFrame(Frame queue[], QueueLength& queue_len, size_t capacit
   memcpy(queue[insert_at].buf, src, len);
   queue_len = static_cast<QueueLength>(count + 1);
   return true;
+}
+
+// nRF52 BLE and Ethernet use the same frame layout. Keep their substantial
+// admission/sort routine shared even under LTO on flash-constrained boards.
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((noinline, noclone))
+#elif defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline))
+#endif
+inline bool enqueueCompanionFrame(CompanionTxFrame queue[], uint8_t& queue_len,
+                                  size_t capacity, const uint8_t* src,
+                                  size_t len) {
+  return enqueueCompanionFrame<CompanionTxFrame, uint8_t>(
+      queue, queue_len, capacity, src, len);
 }
 
 }  // namespace mesh

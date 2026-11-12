@@ -1152,11 +1152,6 @@ void SerialBLEInterface::shiftSendQueueLeft() {
   }
 }
 
-// Keep the SDK send boundary out of the caller's large queue/session state.
-// LTO otherwise duplicates that live state and spills on constrained nRF52.
-#if defined(__GNUC__) && !defined(__clang__)
-__attribute__((noinline, noclone))
-#endif
 size_t SerialBLEInterface::writeBleUartFrame(const Frame& frame) {
   const uint16_t handle = _conn_handle;
   uint32_t generation;
@@ -1198,7 +1193,7 @@ size_t SerialBLEInterface::writeBleUartFrame(const Frame& frame) {
       });
   // The caller advances one logical queue entry. A partial marker must stay
   // partial (not report completion), so its existing disconnect guard runs.
-  return radio_marker && written == length ? frame.len : written;
+  return written == length ? frame.len : written;
 }
 
 void SerialBLEInterface::serviceTxRecovery(uint32_t now) {

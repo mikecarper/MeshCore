@@ -41,7 +41,7 @@ size_t SerialEthernetInterface::writeFrame(const uint8_t src[], size_t len) {
     // A partly written frame must remain at the head even if a new response
     // displaces or reorders lower-priority frames in the waiting tail.
     const int pinned = send_queue_len > 0 && (send_offset != 0 || hasInFlightFrame()) ? 1 : 0;
-    int tail_len = send_queue_len - pinned;
+    uint8_t tail_len = static_cast<uint8_t>(send_queue_len - pinned);
     if (!mesh::enqueueCompanionFrame(send_queue + pinned, tail_len, FRAME_QUEUE_SIZE - pinned,
                                      src, len)) {
       ETHERNET_DEBUG_PRINTLN("writeFrame(), send_queue is full!");

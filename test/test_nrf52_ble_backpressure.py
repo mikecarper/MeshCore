@@ -43,11 +43,11 @@ static struct {
 } Bluefruit;
 
 struct SerialBLEInterface {
-  struct Frame { uint8_t len = 0; uint8_t buf[MAX_FRAME_SIZE] = {}; };
+  using Frame = mesh::CompanionTxFrame;
   struct RxQueueGuard {};
   using RxQueue = mesh_nrf52::BleRxFrameQueue<Frame, FRAME_QUEUE_SIZE, RxQueueGuard>;
   uint8_t send_queue_len = 0;
-  Frame send_queue[FRAME_QUEUE_SIZE];
+  Frame send_queue[FRAME_QUEUE_SIZE] = {};
   uint16_t _conn_handle = 1;
   std::atomic<bool> _tx_reset_pending{false};
   std::atomic<bool> _companionDataSeen{true};
@@ -84,7 +84,7 @@ struct SerialBLEInterface {
     assert(size <= MAX_FRAME_SIZE);
     uint32_t generation;
     assert(recv_queue.snapshot(1, generation));
-    Frame frame;
+    Frame frame = {};
     frame.len = size;
     memcpy(frame.buf, bytes, size);
     assert(recv_queue.push(1, generation, frame) == RxQueue::PushResult::Accepted);

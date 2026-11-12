@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../BaseSerialInterface.h"
+#include "../CompanionTxFrame.h"
 #include "../UsbLogging.h"
 
 #ifndef ETHERNET_TCP_PORT
@@ -26,10 +27,7 @@ class SerialEthernetInterface : public BaseSerialInterface {
   void (*session_changed)(void*) = nullptr;
   void* session_context = nullptr;
 
-  struct Frame {
-    uint8_t len;
-    uint8_t buf[MAX_FRAME_SIZE];
-  };
+  using Frame = mesh::CompanionTxFrame;
 
   #define FRAME_QUEUE_SIZE 4
   int send_queue_len;

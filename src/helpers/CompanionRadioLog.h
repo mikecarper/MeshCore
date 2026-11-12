@@ -44,8 +44,8 @@ inline size_t buildCompanionWireFrame(uint8_t* output, const uint8_t* frame,
   output[prefix] = '>';
   output[prefix + 1] = uint8_t(len);
   output[prefix + 2] = uint8_t(len >> 8);
-  memcpy(output + prefix + 3, frame, len);
-  if (radio2_log) output[prefix + 3] = COMPANION_LEGACY_RX_LOG;
+  output[prefix + 3] = radio2_log ? COMPANION_LEGACY_RX_LOG : frame[0];
+  memcpy(output + prefix + 4, frame + 1, len - 1);
   return prefix + 3U + len;
 }
 

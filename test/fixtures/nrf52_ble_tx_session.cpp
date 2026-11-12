@@ -66,12 +66,12 @@ static struct {
 struct SerialBLEInterface;
 static SerialBLEInterface* instance;
 struct SerialBLEInterface {
-  struct Frame { uint8_t len = 0; uint8_t buf[MAX_FRAME_SIZE] = {}; };
+  using Frame = mesh::CompanionTxFrame;
   using RxQueueGuard = Guard;
   using RxQueue = mesh_nrf52::BleRxFrameQueue<Frame, FRAME_QUEUE_SIZE, Guard>;
   RxQueue recv_queue;
   uint8_t send_queue_len = 0;
-  Frame send_queue[FRAME_QUEUE_SIZE];
+  Frame send_queue[FRAME_QUEUE_SIZE] = {};
   std::atomic<bool> _tx_reset_pending{false};
   std::atomic<bool> _companionDataSeen{true};
   uint32_t _send_queue_generation = 0;
