@@ -1715,10 +1715,18 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
         return 0;
       }
 
-      if (notifySucceeded) {
-        BLE_DEBUG_PRINTLN("writeBytes: sz=%d, hdr=%d", (uint32_t)send_queue[0].len, (uint32_t) send_queue[0].buf[0]);
+      const bool rejected_marker = radio_marker && !notifySucceeded;
+      if (rejected_marker) send_queue[0].buf[0] = mesh::COMPANION_RADIO2_LOG;
+      // The SDK accepted no marker. Release a response admitted behind our
+      // temporary pin by dropping this whole unsent best-effort log.
+      const bool discard_log = rejected_marker && send_queue_len > 1
+          && mesh::companionFrameRequiresDelivery(send_queue[1].buf, send_queue[1].len);
+      if (notifySucceeded || discard_log) {
+        if (notifySucceeded) {
+          BLE_DEBUG_PRINTLN("writeBytes: sz=%d, hdr=%d", (uint32_t)send_queue[0].len, (uint32_t) send_queue[0].buf[0]);
+        }
 
-        if (radio_marker) {
+        if (radio_marker && !discard_log) {
           send_queue[0].buf[0] = mesh::COMPANION_RADIO2_LOG_PENDING;
         } else {
           send_queue_len--;
@@ -1728,7 +1736,6 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
         }
         _tx_stall_watchdog.reset();
       } else {
-        if (radio_marker) send_queue[0].buf[0] = mesh::COMPANION_RADIO2_LOG;
         if (delivery_required && _tx_stall_watchdog.noteBlocked(now)) {
           recoverStalledTx("command reply notification blocked for 10 seconds");
           return 0;

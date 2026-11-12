@@ -113,7 +113,9 @@ def radio_setup_harness(*, secondary_supported=True, pending_firmware=False, fac
     File.prototype.arrayBuffer=function(){fileReads++;timeline.push(['file-read']);return readFile.call(this);};
     expected=new Uint8Array(100);const v=new DataView(expected.buffer),at=44;expected.set(enc.encode('EndF'),at);v.setUint32(at+4,at,true);
     const bh=new Uint8Array(await crypto.subtle.digest('SHA-256',expected.slice(0,at))).slice(0,8);expected.set(bh,at+8);body=hex(bh);v.setUint32(at+16,0x01120001,true);v.setUint32(at+20,0x12345678,true);expected.set(enc.encode('board'),at+24);
-    for(const name of ['buildFullMota','buildSequentialMota'])if(typeof MeshCoreMotaPackage[name]==='function'){
+    // Count the page's public construction entry point. The source-compatible
+    // builder calls buildFullMota inside its module, bypassing exported hooks.
+    for(const name of ['buildFullForSource','buildFullMota','buildSequentialMota'])if(typeof MeshCoreMotaPackage[name]==='function'){
       const original=MeshCoreMotaPackage[name];MeshCoreMotaPackage[name]=function(...args){packageBuilds++;return original.apply(this,args);};
     }
     el('password').value='password';el('connect').click();

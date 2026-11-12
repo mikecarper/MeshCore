@@ -1526,6 +1526,14 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
             _last_retry_attempt = 0;
             _tx_stall_watchdog.reset();
             shiftSendQueueLeft();
+          } else if (radio_marker && send_queue_len > 1
+                     && mesh::companionFrameRequiresDelivery(send_queue[1].buf, send_queue[1].len)) {
+            // No marker bytes escaped. A callback admitted this response
+            // behind our temporary pin; drop the whole unsent log so that
+            // response can advance and run its normal stall watchdog.
+            _last_retry_attempt = 0;
+            _tx_stall_watchdog.reset();
+            shiftSendQueueLeft();
           } else {
             BLE_DEBUG_PRINTLN("writeBytes failed (buffer full), keeping frame for retry");
             _last_retry_attempt = now;

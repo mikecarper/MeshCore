@@ -14,6 +14,7 @@ static void reset() {
   connection_updates.clear();
   persisted = true; accept_notification = true; disconnects = 0; notification_attempts = 0;
   after_notification = nullptr;
+  failed_notification = nullptr;
   test_millis = 100;
 }
 
@@ -549,6 +550,59 @@ static void test_radio2_legacy_log_groups() {
   }
 }
 
+static void test_radio2_failed_marker_required_reply() {
+  const std::vector<uint8_t> radio2{0x92, 8, uint8_t(-90), 0x32, 0x88};
+  const std::vector<uint8_t> reply{0x0D, 0x42}, primary{0x88, 1, 2, 3}, next{0x88, 4, 5, 6};
+  for (bool stalled : {false, true}) {
+    reset(); SerialBLEInterface interface;
+    assert(interface.begin("MeshCore-", "marker-fail", 123456)); interface.enable();
+    NimBLEConnInfo info; authenticate(interface, info);
+    auto* tx = NimBLEDevice::server->service->characteristics[0].get();
+    tx->callbacks->onSubscribe(tx, info, 1);
+    mtu = 179; accept_notification = false;
+    uint8_t received[MAX_FRAME_SIZE] = {};
+    auto poll = [&]() { test_millis += 61; interface.checkRecvFrame(received); };
+    assert(interface.writeFrame(radio2.data(), radio2.size()) == radio2.size());
+    failed_notification = [&]() {
+      assert(interface.writeFrame(primary.data(), primary.size()) == primary.size());
+      assert(interface.writeFrame(next.data(), next.size()) == next.size());
+      assert(interface.writeFrame(reply.data(), reply.size()) == reply.size());
+    };
+    poll();
+    assert(transmitted.empty() && notification_attempts == 1);
+    if (stalled) {
+      for (unsigned i = 0; i < 190 && disconnects == 0; ++i) poll();
+      assert(disconnects == 1 && !interface.isConnected() && transmitted.empty());
+    } else {
+      accept_notification = true;
+      for (unsigned i = 0; i < 8 && interface.hasPendingIO(); ++i) poll();
+      assert((transmitted == std::vector<std::vector<uint8_t>>{reply, primary, next}));
+      assert(disconnects == 0 && !interface.hasPendingIO());
+    }
+    NimBLEDevice::deinit(true);
+  }
+  // A best-effort tail alone must not discard the normal marker retry.
+  reset(); SerialBLEInterface interface;
+  assert(interface.begin("MeshCore-", "marker-retry", 123456)); interface.enable();
+  NimBLEConnInfo info; authenticate(interface, info);
+  auto* tx = NimBLEDevice::server->service->characteristics[0].get();
+  tx->callbacks->onSubscribe(tx, info, 1);
+  mtu = 179; accept_notification = false;
+  uint8_t received[MAX_FRAME_SIZE] = {};
+  assert(interface.writeFrame(radio2.data(), radio2.size()) == radio2.size());
+  failed_notification = [&]() { assert(interface.writeFrame(primary.data(), primary.size()) == primary.size()); };
+  test_millis += 61; interface.checkRecvFrame(received);
+  assert(transmitted.empty() && interface.hasPendingIO());
+  accept_notification = true;
+  for (unsigned i = 0; i < 8 && interface.hasPendingIO(); ++i) {
+    test_millis += 61; interface.checkRecvFrame(received);
+  }
+  auto legacy = radio2; legacy[0] = 0x88;
+  assert((transmitted == std::vector<std::vector<uint8_t>>{{0x92, 0xA1}, legacy, primary}));
+  assert(disconnects == 0 && !interface.hasPendingIO());
+  NimBLEDevice::deinit(true);
+}
+
 static void test_128_contact_stream_under_queue_and_controller_pressure() {
 #if defined(MESH_HIL_BLE_INTERVAL_MS)
   constexpr uint32_t interval = MESH_HIL_BLE_INTERVAL_MS;
@@ -669,6 +723,7 @@ int main() {
   test_full_queue_best_effort_eviction_still_admits_rx();
   test_exact_notify_interval_failure_retention_and_rollover();
   test_radio2_legacy_log_groups();
+  test_radio2_failed_marker_required_reply();
   test_128_contact_stream_under_queue_and_controller_pressure();
   puts("NimBLE adapter: identity, faults, bonding, stealth and full frames PASS");
 }

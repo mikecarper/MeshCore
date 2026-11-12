@@ -94,6 +94,8 @@ struct SerialBLEInterface {
     std::vector<Chunk> chunks;
     std::vector<uint8_t> rx_bytes;
     std::function<void()> after_write;
+    std::function<void()> failed_write;
+    bool reject_writes = false;
     unsigned attempts = 0, fail_on_attempt = 0, partial_on_attempt = 0;
     bool notifyEnabled(uint16_t) const { assert(!critical_depth); return true; }
     void flush() { assert(!critical_depth); rx_bytes.clear(); }
@@ -106,7 +108,14 @@ struct SerialBLEInterface {
     }
     size_t write(uint16_t handle, const uint8_t* data, size_t length) {
       assert(!critical_depth);
-      if (++attempts == fail_on_attempt) return 0;
+      if (++attempts == fail_on_attempt || reject_writes) {
+        if (failed_write) {
+          auto operation = std::move(failed_write);
+          failed_write = nullptr;
+          operation();
+        }
+        return 0;
+      }
       if (attempts == partial_on_attempt && length > 1) length = 1;
       chunks.push_back({handle, std::vector<uint8_t>(data, data + length)});
       if (after_write) {
@@ -198,6 +207,60 @@ static void application_start() {
   assert(!port._companion_start_timer.pending());
   assert(port.checkRecvFrame(received) == 0 && port.send_queue_len == 0);
   assert(port.bleuart.chunks.size() == 1);
+  Bluefruit.connection.mtu = 23;
+}
+
+static void radio2_failed_marker_reply() {
+  const uint8_t radio2[] = {0x92, 8, uint8_t(-90), 0x32, 0x88};
+  const std::vector<uint8_t> reply{0x0D, 0x42}, primary{0x88, 1, 2, 3}, next{0x88, 4, 5, 6};
+  uint8_t received[MAX_FRAME_SIZE] = {};
+  for (bool stalled : {false, true}) {
+    SerialBLEInterface port;
+    Bluefruit.connection.mtu = 247;
+    const size_t disconnects = disconnect_requests.size();
+    port.bleuart.fail_on_attempt = 1;
+    port.bleuart.reject_writes = stalled;
+    assert(port.writeFrame(radio2, sizeof(radio2)) == sizeof(radio2));
+    port.bleuart.failed_write = [&]() {
+      assert(port.send_queue[0].buf[0] == 0x93);
+      assert(port.writeFrame(primary.data(), primary.size()) == primary.size());
+      assert(port.writeFrame(next.data(), next.size()) == next.size());
+      assert(port.writeFrame(reply.data(), reply.size()) == reply.size());
+    };
+    port.checkRecvFrame(received);
+    assert(port.bleuart.chunks.empty()); // A definitive zero-byte marker failure.
+    assert(port.send_queue_len == 3 && port.send_queue[0].buf[0] == reply[0]);
+    if (stalled) {
+      for (unsigned i = 0; i < 50 && !port._tx_disconnect_recovery.pending(); ++i) {
+        now_ms += 251; port.checkRecvFrame(received);
+      }
+      assert(port._tx_disconnect_recovery.pending() && port.send_queue_len == 0);
+      assert(port.bleuart.chunks.empty() && disconnect_requests.size() == disconnects + 1);
+    } else {
+      for (unsigned i = 0; i < 8 && port.send_queue_len; ++i) {
+        now_ms += 251; port.checkRecvFrame(received);
+      }
+      assert(port.send_queue_len == 0 && port.bleuart.chunks.size() == 3);
+      assert(port.bleuart.chunks[0].bytes == reply);
+      assert(port.bleuart.chunks[1].bytes == primary && port.bleuart.chunks[2].bytes == next);
+      assert(disconnect_requests.size() == disconnects);
+    }
+  }
+  // Without delivery-required traffic, retain the normal best-effort retry.
+  SerialBLEInterface port;
+  Bluefruit.connection.mtu = 247;
+  port.bleuart.fail_on_attempt = 1;
+  assert(port.writeFrame(radio2, sizeof(radio2)) == sizeof(radio2));
+  port.bleuart.failed_write = [&]() { assert(port.writeFrame(primary.data(), primary.size()) == primary.size()); };
+  port.checkRecvFrame(received);
+  assert(port.send_queue_len == 2 && port.send_queue[0].buf[0] == 0x92);
+  for (unsigned i = 0; i < 8 && port.send_queue_len; ++i) {
+    now_ms += 251; port.checkRecvFrame(received);
+  }
+  assert(port.bleuart.chunks.size() == 3);
+  assert(port.bleuart.chunks[0].bytes == std::vector<uint8_t>({0x92, 0xA1}));
+  assert(port.bleuart.chunks[1].bytes == std::vector<uint8_t>({0x88, 8, uint8_t(-90), 0x32, 0x88}));
+  assert(port.bleuart.chunks[2].bytes == primary);
   Bluefruit.connection.mtu = 23;
 }
 
@@ -463,6 +526,7 @@ int main(int argc, char** argv) {
   else if (!std::strcmp(argv[1], "application-start")) application_start();
   else if (!std::strcmp(argv[1], "prestart-partial")) previous_prestart_partial();
   else if (!std::strcmp(argv[1], "radio2")) radio2_log_groups();
+  else if (!std::strcmp(argv[1], "radio2-failed-marker")) radio2_failed_marker_reply();
   else {
     enqueue_reset(); callback_ownership(); connection_changes(); old_queue_and_recovery();
     recovery_connection_changes();
