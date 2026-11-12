@@ -567,6 +567,22 @@ class CompanionBrowserRuntimeTest(unittest.TestCase):
         self.assertFalse(result['guard'])
         self.assertEqual(len([c for c in result['cmds'] if c.startswith('ota installhash ')]),1)
 
+    def test_companion_radio2_log_full_update(self):
+        if not BROWSER:
+            if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')
+            self.skipTest('Chromium unavailable')
+        old='wire(Uint8Array.of(0x88,0,0,0x32,0,op,...unhex(mid),...rest))'
+        self.assertEqual(HARNESS.count(old),1)
+        harness=HARNESS.replace(old,old.replace('0x88','0x92'))
+        result=run_harness(harness,timeout=90)
+        self.assertNotIn('error',result,result)
+        self.assertIn('Installed and verified:',result['status'])
+        self.assertTrue(result['advertSeen'])
+        self.assertTrue(result['otaData'])
+        self.assertTrue(result['installed'])
+        self.assertFalse(result['guard'])
+        self.assertEqual(len([c for c in result['cmds'] if c.startswith('ota installhash ')]),1)
+
     def test_sensor_without_ota_is_rejected_before_transfer(self):
         if not BROWSER:
             if os.environ.get('MESHCORE_REQUIRE_OTA_BROWSER') == '1': self.fail('Chromium is required')

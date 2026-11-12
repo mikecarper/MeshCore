@@ -34,6 +34,7 @@ inline CompanionFrameClass companionFrameClass(const uint8_t* frame,
     case 0x84:  // RAW_DATA
     case 0x88:  // LOG_RX_DATA
     case 0x8A:  // NEW_ADVERT
+    case 0x92:  // LOG_RX_RADIO2: complete SNR/RSSI/raw packet, not a marker
       return COMPANION_BEST_EFFORT_PUSH;
     default:
       return COMPANION_REQUIRED_PUSH;

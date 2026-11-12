@@ -176,6 +176,7 @@ class MyMesh {public:mesh::RadioProbeObserver _radio_probe;Radio radio;Radio* _r
  void logRxRaw(float,float,const uint8_t*,int);bool handleCommand(const char*,uint32_t,char*);};
 #define MAX_FRAME_SIZE 176
 #define PUSH_CODE_LOG_RX_DATA 0x88
+#define PUSH_CODE_LOG_RX_RADIO 0x92
 class Dispatcher {public:Radio radio;Radio* _radio=&radio;bool tryParsePacket(mesh::Packet*,const uint8_t*,int);};
 using mesh::Packet;using mesh::FLOOD_RETRY_POLICY_DEFAULT;using mesh::RADIO_TX_AUTO;
 @CALLBACK@

@@ -293,6 +293,8 @@ public:
  unsigned year() const{return value.tm_year+1900;}
 };
 struct MyMesh {
+ struct Radio {uint8_t profile=0;uint8_t receiveProfile() const{return profile;}} radio;
+ Radio* _radio=&radio;
  Transport transport;Transport* _serial=&transport;
  Bridge bridge;Bridge* _mqtt_bridge=&bridge;
  uint8_t out_frame[MAX_FRAME_SIZE]={};
@@ -361,6 +363,45 @@ int main(){
  assert(log_port.output.empty()&&millis()==before);
  assert(node.transport.frames.size()==3); // A stalled host cannot block other sinks.
 #endif
+
+ // Every reception is self-contained across real profile switches: no
+ // separate marker may survive a drop or become attached to another log.
+ MyMesh switched;
+ for(uint8_t profile:{uint8_t(0),uint8_t(1),uint8_t(0),uint8_t(1)}){
+   switched.radio.profile=profile;
+   const size_t before=switched.transport.frames.size();
+   switched.logRxRaw(2.5f,-92,raw,sizeof(raw));
+   assert(switched.transport.frames.size()==before+1);
+   assert(switched.transport.frames.back()==std::vector<uint8_t>({
+       uint8_t(profile==1?PUSH_CODE_LOG_RX_RADIO:PUSH_CODE_LOG_RX_DATA),
+       10,uint8_t(-92),0x00,0xab,0xff}));
+ }
+ switched._radio=nullptr;
+ switched.logRxRaw(2.5f,-92,raw,sizeof(raw));
+ assert(switched.transport.frames.back()==frame);
+ const size_t connected_count=switched.transport.frames.size();
+ switched.transport.connected=false;
+ switched._radio=&switched.radio;
+ for(uint8_t profile:{uint8_t(0),uint8_t(1)}){
+   switched.radio.profile=profile;switched.logRxRaw(2.5f,-92,raw,sizeof(raw));
+ }
+ assert(switched.transport.frames.size()==connected_count);
+ switched.transport.connected=true;
+ for(uint8_t profile:{uint8_t(0),uint8_t(1)}){
+   switched.radio.profile=profile;
+   std::vector<uint8_t> boundary(MAX_FRAME_SIZE-3,0xa5);
+   const size_t before=switched.transport.frames.size();
+   switched.logRxRaw(0,-100,boundary.data(),boundary.size());
+   assert(switched.transport.frames.size()==before+1);
+   const auto& full=switched.transport.frames.back();
+   assert(full.size()==MAX_FRAME_SIZE);
+   assert(full[0]==(profile==1?PUSH_CODE_LOG_RX_RADIO:PUSH_CODE_LOG_RX_DATA));
+   assert(full[1]==0&&full[2]==uint8_t(-100));
+   assert(std::vector<uint8_t>(full.begin()+3,full.end())==boundary);
+   boundary.push_back(0xa5);
+   switched.logRxRaw(0,-100,boundary.data(),boundary.size());
+   assert(switched.transport.frames.size()==before+1);
+ }
 }
 '''
 
@@ -438,8 +479,8 @@ inline char* utoa(unsigned int value,char* output,int base){
 
     def test_real_raw_emitter_master_gate_compact_and_other_transports(self):
         source = (ROOT / 'examples/companion_radio/MyMesh.cpp').read_text()
-        code = next(line for line in source.splitlines()
-                    if line.startswith('#define PUSH_CODE_LOG_RX_DATA'))
+        code = '\n'.join(line for line in source.splitlines()
+                    if line.startswith(('#define PUSH_CODE_LOG_RX_DATA', '#define PUSH_CODE_LOG_RX_RADIO')))
         harness = PACKET_HARNESS.replace('@PUSH_CODE@', code)
         harness = harness.replace('@LOG_TIMESTAMP@',
             '#if MESH_PACKET_LOGGING && !MESH_PACKET_LOGGING_COMPACT\n' +

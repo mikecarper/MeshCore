@@ -217,7 +217,7 @@
       }}}
       catch(e){if(this.running){this.failure=e;this.usbFolderSource?.fail(e);this.pending?.reject(e);this.loginWaiter?.reject(e);}}}
     onFrame(frame){
-      if(frame[0]===0x88&&frame.length>5&&this.serving){if(this.radioQueue.length<64){this.radioQueue.push(frame.slice(3));this.pumpRadio();}return;}
+      if((frame[0]===0x88||frame[0]===0x92)&&frame.length>5&&this.serving){if(this.radioQueue.length<64){this.radioQueue.push(frame.slice(3));this.pumpRadio();}return;}
       if((frame[0]===0x85||frame[0]===0x86)&&this.loginWaiter&&frame.length>=8&&hex(frame.slice(2,8))===this.knownRepeater.slice(0,12)){
         const waiter=this.loginWaiter;this.loginWaiter=null;
         if(frame[0]!==0x85)waiter.reject(Error('Repeater rejected the login'));

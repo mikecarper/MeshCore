@@ -1065,7 +1065,19 @@ future pairings without a reboot; existing bonds continue to use their keys.
 | `0x8F` | `PUSH_CODE_CONTACT_DELETED` | Oldest contact was deleted while making room. |
 | `0x90` | `PUSH_CODE_CONTACTS_FULL` | Contact storage is full. |
 | `0x91` | `PUSH_CODE_ONE_KEY_DM_REJECTED` | One-key DM refused; bytes 1–32 contain the refusing contact's full public key. |
-| `0x92` | `PUSH_CODE_LOG_RX_RADIO` | `[0x92][0xA1]`, sent just before a `PUSH_CODE_LOG_RX_DATA` (`0x88`) whose packet came in on radio2 (MediaMesh). It applies to that next `0x88` frame only, which is itself unchanged. Primary-radio packets, and every packet while radio2 is off, get no marker. Clients that don't know the code skip it. |
+| `0x92` | `PUSH_CODE_LOG_RX_RADIO` | A complete radio2 RX log: `[0x92][SNR × 4: int8][RSSI: int8][raw packet bytes]`. Same layout and payload limit as `0x88`; the opcode identifies radio2. No separate marker or duplicate `0x88` is sent for this packet. |
+
+RX log clients should accept both `0x88` and `0x92`, read the packet from byte 3,
+and use `0x92` to set `rx_radio_id: radio2`. This identifies the secondary radio
+profile, including temporary update channels; it does not by itself identify a
+MediaMesh preset. Clients should apply any MediaMesh-specific label from the
+node's configured profile. Older firmware uses `0x88` for both profiles, so
+`0x88` alone cannot prove which radio profile received a packet. Older clients
+that ignore unknown push codes do not see radio2 logs from this firmware.
+
+Each log is a single best-effort frame. Queues may drop whole logs under load,
+but cannot detach radio attribution from the packet or carry it to the next
+log. Unknown push codes must be skipped without changing decoder state.
 
 ### Parsing Responses
 
