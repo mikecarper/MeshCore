@@ -29,7 +29,7 @@ class SerialBLEInterface : public BaseSerialInterface, BLEService, BLEServerCall
   bool _isEnabled;
   bool _device_connected;
   bool _advertising_start_pending;
-  bool _tx_pending;   // a can-send-now callback is registered
+  bool _tx_pending;   // a can-send-now callback is registered or sending
   bool _tx_retry_pending;
   uint32_t _tx_retry_started;
   mesh::BleTxStallWatchdog _tx_stall_watchdog;

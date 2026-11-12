@@ -573,7 +573,7 @@ class CompanionBrowserRuntimeTest(unittest.TestCase):
             self.skipTest('Chromium unavailable')
         old='wire(Uint8Array.of(0x88,0,0,0x32,0,op,...unhex(mid),...rest))'
         self.assertEqual(HARNESS.count(old),1)
-        harness=HARNESS.replace(old,old.replace('0x88','0x92'))
+        harness=HARNESS.replace(old, 'Uint8Array.of(...wire(Uint8Array.of(0x92,0xA1)),...'+old+')')
         result=run_harness(harness,timeout=90)
         self.assertNotIn('error',result,result)
         self.assertIn('Installed and verified:',result['status'])

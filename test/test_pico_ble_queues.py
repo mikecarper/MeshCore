@@ -18,7 +18,7 @@ SCENARIOS = ("set-pin", "normal", "admission", "priority", "mtu", "notify", "reg
              "deadline-progress", "best-effort", "locked", "stall-zero", "stall-wrap",
              "stall-cccd", "stall-register", "stall-notify", "stall-mtu",
              "disabled-reenable", "disabled-closed", "late-connect",
-             "synchronous-disconnect", "cccd", "pending-cccd")
+             "synchronous-disconnect", "cccd", "pending-cccd", "radio2", "radio2-sync-reset", "radio2-reentrant")
 
 
 class PicoBleQueueTests(unittest.TestCase):

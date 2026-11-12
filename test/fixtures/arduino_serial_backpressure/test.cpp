@@ -24,13 +24,14 @@ public:
   std::deque<uint8_t> input;
   Bytes output;
   int capacity = 0;
+  bool reports_capacity = true;
   size_t max_write = std::numeric_limits<size_t>::max();
   unsigned reads = 0;
 
   void push(const Bytes& bytes) { input.insert(input.end(), bytes.begin(), bytes.end()); }
   void push(const char* text) { while (*text) input.push_back(uint8_t(*text++)); }
   int available() override { return static_cast<int>(input.size()); }
-  int availableForWrite() override { return capacity; }
+  int availableForWrite() override { return reports_capacity ? capacity : 0; }
   int peek() override { return input.empty() ? -1 : input.front(); }
   int read() override {
     if (input.empty()) return -1;
@@ -346,6 +347,148 @@ static void independentRoute() {
   REQUIRE(f.manager.captureReplyRoute() == &f.usb);
 }
 
+static Bytes radio2Log() {
+  Bytes log(MAX_FRAME_SIZE);
+  log[0] = 0x92;
+  log[1] = 10;
+  log[2] = uint8_t(-92);
+  for (size_t i = 3; i < log.size(); ++i) log[i] = uint8_t(i);
+  return log;
+}
+
+static Bytes legacyLog(const Bytes& log) {
+  Bytes legacy = log;
+  legacy[0] = 0x88;
+  return legacy;
+}
+
+static void radio2WireSplits() {
+  const Bytes log = radio2Log(), reply{0};
+  const Bytes expected = framed({Bytes{0x92, 0xA1}, legacyLog(log), reply});
+  const size_t group_size = expected.size() - framed({reply}).size();
+  // Cover every stop point in the marker, both raw-frame header boundaries,
+  // SNR/RSSI and the complete maximum-size payload. A queued response may
+  // never appear between the marker and the legacy raw frame.
+  for (size_t split = 0; split <= group_size; ++split) {
+    Fixture f;
+    f.stream.capacity = int(split);
+    f.enqueue(log);
+    REQUIRE(f.stream.output == Bytes(expected.begin(), expected.begin() + split));
+    f.enqueue(reply);
+    f.flush();
+    REQUIRE(f.stream.output == expected);
+  }
+  // Short writes must obey their actual return count even when the stream
+  // reports enough capacity for the entire entry.
+  for (size_t limit : {1U, 2U, 3U, 5U, 8U, 31U}) {
+    Fixture f;
+    f.stream.capacity = 65536;
+    f.stream.max_write = limit;
+    f.enqueue(log);
+    f.enqueue(reply);
+    unsigned attempts = 0;
+    while (f.usb.hasPendingIO()) {
+      f.manager.loop();
+      REQUIRE(++attempts <= expected.size());
+    }
+    REQUIRE(f.stream.output == expected);
+  }
+}
+
+static void radio2QueuePressure() {
+  const Bytes log = radio2Log(), required{1, 0x70};
+  // A rejected group emits neither half, retaining the reserved reply slot.
+  {
+    Fixture f;
+    for (unsigned i = 0; i < 3; ++i) f.enqueue(Bytes{0x88, uint8_t(i)});
+    REQUIRE(f.usb.writeFrame(log.data(), log.size()) == 0);
+    f.enqueue(required);
+    f.flush();
+    REQUIRE(f.stream.output == framed({Bytes{0x88, 0}, Bytes{0x88, 1}, Bytes{0x88, 2}, required}));
+  }
+  // Before the marker starts, eviction removes the entire group atomically.
+  {
+    Fixture f;
+    f.enqueue(log);
+    for (unsigned i = 0; i < 4; ++i) f.enqueue(required);
+    f.flush();
+    REQUIRE(f.stream.output == framed({required, required, required, required}));
+  }
+  const Bytes group = framed({Bytes{0x92, 0xA1}, legacyLog(log)});
+  for (size_t split = 1; split < group.size(); ++split) {
+    Fixture f;
+    f.stream.capacity = int(split);
+    f.enqueue(log);
+    REQUIRE(f.stream.output.size() == split);
+    for (unsigned i = 0; i < 3; ++i) f.enqueue(required);
+    // Once any marker byte escaped, even a command reply cannot evict its
+    // raw packet. Keep that command unread until the group has drained.
+    REQUIRE(f.usb.writeFrame(required.data(), required.size()) == 0);
+    f.issue(0x42);
+    REQUIRE(f.tick() == 0 && f.stream.reads == 0);
+    f.flush();
+    REQUIRE(f.stream.output == framed({Bytes{0x92, 0xA1}, legacyLog(log), required, required, required}));
+    REQUIRE(f.tick() == 1 && f.command[0] == 0x42);
+    f.reply();
+    f.flush();
+    REQUIRE(f.stream.output == framed({Bytes{0x92, 0xA1}, legacyLog(log), required, required, required, Bytes{1, 0x42}}));
+  }
+  // Back-to-back primary/secondary/primary receptions retain the legacy wire
+  // format and never attach the radio2 marker to a primary packet.
+  {
+    Fixture f;
+    f.enqueue(Bytes{0x88, 1, 2, 3});
+    f.enqueue(log);
+    f.enqueue(Bytes{0x88, 4, 5, 6});
+    f.flush();
+    REQUIRE(f.stream.output == framed({Bytes{0x88, 1, 2, 3}, Bytes{0x92, 0xA1}, legacyLog(log), Bytes{0x88, 4, 5, 6}}));
+  }
+}
+
+static bool radio2Connected = true;
+static bool checkRadio2Connection() { return radio2Connected; }
+
+static void radio2Reconnect() {
+  const Bytes log = radio2Log();
+  const Bytes group = framed({Bytes{0x92, 0xA1}, legacyLog(log)});
+  for (size_t split : {1U, 4U, 5U, 6U, 8U, 9U, 31U}) {
+    Fixture f;
+    radio2Connected = true;
+    f.usb.setConnectedCheck(checkRadio2Connection);
+    f.stream.capacity = int(split);
+    f.enqueue(log);
+    REQUIRE(f.stream.output == Bytes(group.begin(), group.begin() + split));
+    radio2Connected = false;
+    f.manager.loop();
+    REQUIRE(!f.usb.hasPendingIO());
+    // The old host session's partial data is discarded by USB. A new session
+    // receives neither an old suffix nor a raw packet without its marker.
+    f.stream.output.clear();
+    radio2Connected = true;
+    f.enqueue(Bytes{0x88, 0, 0, 7});
+    f.enqueue(log);
+    f.flush();
+    REQUIRE(f.stream.output == framed({Bytes{0x88, 0, 0, 7}, Bytes{0x92, 0xA1}, legacyLog(log)}));
+  }
+}
+
+static void radio2UncontrolledStreams() {
+  const Bytes log = radio2Log(), reply{0};
+  const Bytes expected = framed({Bytes{0x92, 0xA1}, legacyLog(log), reply});
+  for (size_t split : {0U, 1U, 4U, 5U, 6U, 8U, 9U, 31U}) {
+    Fixture f;
+    f.usb.enableFlowControl(false);
+    f.stream.reports_capacity = false; // Print's default API returns zero.
+    f.stream.capacity = int(split);
+    f.enqueue(log);
+    REQUIRE(f.stream.output == Bytes(expected.begin(), expected.begin() + split));
+    f.enqueue(reply);
+    REQUIRE(f.usb.hasPendingIO() && f.usb.isWriteBusy());
+    f.flush();
+    REQUIRE(f.stream.output == expected);
+  }
+}
+
 int main(int argc, char** argv) {
   REQUIRE(argc == 2);
   const int scenario = std::atoi(argv[1]);
@@ -358,6 +501,10 @@ int main(int argc, char** argv) {
     case 5: resetsAndUncontrolledStreams(); break;
     case 6: expiredBeforeBackpressure(); break;
     case 7: independentRoute(); break;
+    case 8: radio2WireSplits(); break;
+    case 9: radio2QueuePressure(); break;
+    case 10: radio2Reconnect(); break;
+    case 11: radio2UncontrolledStreams(); break;
     default: REQUIRE(false);
   }
   std::printf("PASS: Arduino serial backpressure scenario %d\n", scenario);

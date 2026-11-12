@@ -1,5 +1,6 @@
 #include "ArduinoSerialInterface.h"
 #include "CompanionFrameQueue.h"
+#include "CompanionRadioLog.h"
 
 #define RECV_STATE_IDLE        0
 #define RECV_STATE_HDR_FOUND   1
@@ -38,7 +39,7 @@ void ArduinoSerialInterface::serviceReceiveTimeout() {
 }
 
 bool ArduinoSerialInterface::responseCapacityAvailable() const {
-  if (!_flow_ctl || _tx_queue_len < TX_QUEUE_SIZE) return true;
+  if (_tx_queue_len < TX_QUEUE_SIZE) return true;
   // Match enqueueFrame(): a required reply may replace an unsent best-effort
   // push, but the prefix of a partly sent frame must remain intact.
   for (uint8_t i = _tx_offset == 0 ? 0 : 1; i < _tx_queue_len; ++i) {
@@ -125,7 +126,7 @@ bool ArduinoSerialInterface::enqueueFrame(const uint8_t src[], size_t len) {
 }
 
 void ArduinoSerialInterface::serviceTransmit() {
-  if (!_flow_ctl || _passthroughMode || _serial == nullptr) return;
+  if (_passthroughMode || _serial == nullptr) return;
   if (!isConnected()) {
     // A disconnected USB endpoint cannot make progress. Its host also loses
     // any partial endpoint data on disconnect, so begin the next session clean.
@@ -135,8 +136,31 @@ void ArduinoSerialInterface::serviceTransmit() {
 
   while (_tx_queue_len > 0) {
     TxFrame& frame = _tx_queue[0];
-    const size_t remaining = frame.len - _tx_offset;
-    int available = _serial->availableForWrite();
+    const bool radio2_log = mesh::isCompanionRadio2Log(&frame.buf[3], frame.len - 3);
+    // One queue entry expands to the compatible marker + legacy raw frame.
+    // Offset spans both wire frames, pinning the entry from the first marker
+    // byte until its raw suffix is complete without another buffer or flag.
+    static constexpr uint8_t radio2_wire[] = {
+        '>', 2, 0, mesh::COMPANION_RADIO2_LOG, 0xA1, mesh::COMPANION_LEGACY_RX_LOG};
+    const size_t total = frame.len + (radio2_log ? 5 : 0);
+    const uint8_t* data;
+    size_t remaining;
+    if (radio2_log && _tx_offset < 5) {
+      data = radio2_wire + _tx_offset;
+      remaining = 5 - _tx_offset;
+    } else {
+      const size_t offset = _tx_offset - (radio2_log ? 5 : 0);
+      if (radio2_log && offset == 3) {
+        data = radio2_wire + 5;
+        remaining = 1;
+      } else {
+        data = &frame.buf[offset];
+        remaining = radio2_log && offset < 3 ? 3 - offset : frame.len - offset;
+      }
+    }
+    // Print's default availableForWrite() returns zero. Non-flow-controlled
+    // streams retain a partially written group using actual write counts.
+    const int available = _flow_ctl ? _serial->availableForWrite() : int(remaining);
     if (available <= 0) return;
 
     // A UART or CDC FIFO can be smaller than MAX_FRAME_SIZE. Drain the frame in
@@ -144,17 +168,17 @@ void ArduinoSerialInterface::serviceTransmit() {
     // interleave until this header and body are complete.
     const size_t attempt = (size_t)available < remaining
         ? (size_t)available : remaining;
-    size_t written = _serial->write(&frame.buf[_tx_offset], attempt);
+    size_t written = _serial->write(data, attempt);
     if (written > attempt) written = attempt;
     _tx_offset += (uint16_t)written;
-    if (_tx_offset < frame.len) return;
+    if (written < attempt) return;
+    if (_tx_offset < total) continue;
 
     for (uint8_t i = 0; i + 1 < _tx_queue_len; ++i) {
       _tx_queue[i] = _tx_queue[i + 1];
     }
     --_tx_queue_len;
     _tx_offset = 0;
-    if (written < attempt) return;
   }
 }
 
@@ -252,9 +276,9 @@ bool ArduinoSerialInterface::isReadBusy() const {
 
 bool ArduinoSerialInterface::isWriteBusy() const {
   if (_passthroughMode || _serial == nullptr) return false;
-  if (_flow_ctl && isConnected()) {
+  if (isConnected()) {
     if (_tx_queue_len > 0) return true;
-    return const_cast<Stream*>(_serial)->availableForWrite() <= 0;
+    if (_flow_ctl) return const_cast<Stream*>(_serial)->availableForWrite() <= 0;
   }
   // while nobody drains the port the TX buffer stays full, so never report
   // busy in that case: it would stall the paced streams on all interfaces
@@ -271,7 +295,7 @@ size_t ArduinoSerialInterface::writeFrame(const uint8_t src[], size_t len) {
     return 0;
   }
   if (_passthroughMode) return len;
-  if (_flow_ctl) {
+  if (_flow_ctl || _tx_queue_len > 0 || mesh::isCompanionRadio2Log(src, len)) {
     if (!isConnected()) {
       // Best-effort pushes may be discarded while nobody is listening. A
       // command response or required push must report failure so a multi-frame

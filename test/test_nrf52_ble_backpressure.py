@@ -33,6 +33,14 @@ HARNESS = r'''
 #define meshBleTrace(...) do {} while (0)
 static uint32_t current_millis = 100;
 uint32_t millis() { return current_millis; }
+struct BLEConnection {
+  bool connected() const { return true; }
+  uint16_t getMtu() const { return 247; }
+};
+static struct {
+  BLEConnection connection;
+  BLEConnection* Connection(uint16_t) { return &connection; }
+} Bluefruit;
 
 struct SerialBLEInterface {
   struct Frame { uint8_t len = 0; uint8_t buf[MAX_FRAME_SIZE] = {}; };
@@ -58,6 +66,7 @@ struct SerialBLEInterface {
   bool connected = true, allow_write = false, partial_write = false;
   unsigned write_attempts = 0, recovery_services = 0, recoveries = 0;
   std::vector<std::vector<uint8_t>> transmitted;
+  struct { bool notifyEnabled(uint16_t) const { return true; } } bleuart;
   bool isConnected() const { return connected && !_tx_disconnect_recovery.pending(); }
   void serviceBondedOnlyTransition() {}
   void serviceTxRecovery(uint32_t) { ++recovery_services; }

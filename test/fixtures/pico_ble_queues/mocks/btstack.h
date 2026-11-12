@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cassert>
 #include <deque>
+#include <functional>
 #include <vector>
 
 using bd_addr_t = uint8_t[6];
@@ -37,6 +38,7 @@ inline std::deque<uint8_t> notify_errors;
 inline std::vector<Bytes> notified;
 inline std::deque<btstack_context_callback_registration_t*> pending;
 inline void (*disconnect_event)() = nullptr;
+inline std::function<void()> after_notify;
 inline void require_context() { assert(lock_depth || callback_depth); }
 inline void fireOne() {
   if (pending.empty()) return;
@@ -80,6 +82,11 @@ inline uint8_t att_server_notify(uint16_t handle, uint16_t, const uint8_t* data,
     if (error) return error;
   }
   fake_pico::notified.emplace_back(data, data + length);
+  if (fake_pico::after_notify) {
+    auto operation = std::move(fake_pico::after_notify);
+    fake_pico::after_notify = nullptr;
+    operation();
+  }
   return ERROR_CODE_SUCCESS;
 }
 inline uint8_t gap_disconnect(uint16_t) {

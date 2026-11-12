@@ -13,6 +13,7 @@ static void reset() {
   failure.clear(); calls.clear(); transmitted.clear();
   connection_updates.clear();
   persisted = true; accept_notification = true; disconnects = 0; notification_attempts = 0;
+  after_notification = nullptr;
   test_millis = 100;
 }
 
@@ -481,6 +482,73 @@ static void test_exact_notify_interval_failure_retention_and_rollover() {
   NimBLEDevice::deinit(true);
 }
 
+static void test_radio2_legacy_log_groups() {
+  const std::vector<uint8_t> marker{0x92, 0xA1};
+  std::vector<uint8_t> radio2(MAX_FRAME_SIZE);
+  for (size_t i = 0; i < radio2.size(); ++i) radio2[i] = uint8_t(i);
+  radio2[0] = 0x92; radio2[1] = 12; radio2[2] = uint8_t(-100);
+  auto legacy = radio2; legacy[0] = 0x88;
+  const std::vector<uint8_t> primary{0x88, 8, uint8_t(-90), 0x32, 0x88};
+  const std::vector<uint8_t> reply{0x0D, 0x42};
+  for (unsigned scenario = 0; scenario < 4; ++scenario) {
+    reset(); SerialBLEInterface interface;
+    assert(interface.begin("MeshCore-", "radio2", 123456)); interface.enable();
+    NimBLEConnInfo info; authenticate(interface, info);
+    auto* server = NimBLEDevice::server.get();
+    auto* tx = server->service->characteristics[0].get();
+    tx->callbacks->onSubscribe(tx, info, 1);
+    uint8_t received[MAX_FRAME_SIZE] = {};
+    auto poll = [&]() { test_millis += 61; interface.checkRecvFrame(received); };
+    assert(interface.writeFrame(radio2.data(), radio2.size()) == radio2.size());
+    if (scenario == 0) {
+      mtu = 23; poll();
+      assert(transmitted.empty() && notification_attempts == 0); // No orphan marker at initial MTU.
+      mtu = 179;
+      after_notification = []() { accept_notification = false; };
+      poll();
+      assert(transmitted == std::vector<std::vector<uint8_t>>{marker});
+      assert(interface.hasPendingIO());
+      assert(interface.writeFrame(primary.data(), primary.size()) == primary.size());
+      assert(interface.writeFrame(reply.data(), reply.size()) == reply.size());
+      poll(); assert(transmitted.size() == 1); // Failed raw half is retained.
+      accept_notification = true;
+      for (unsigned i = 0; i < 8 && interface.hasPendingIO(); ++i) poll();
+      assert((transmitted == std::vector<std::vector<uint8_t>>{marker, legacy, reply, primary}));
+    } else if (scenario == 1) {
+      assert(interface.writeFrame(reply.data(), reply.size()) == reply.size());
+      for (unsigned i = 0; i < 8 && interface.hasPendingIO(); ++i) poll();
+      assert((transmitted == std::vector<std::vector<uint8_t>>{reply, marker, legacy}));
+    } else if (scenario == 2) {
+      after_notification = [&]() {
+        server->connected = false;
+        server->callbacks->onDisconnect(server, info, 0);
+      };
+      poll();
+      assert(transmitted == std::vector<std::vector<uint8_t>>{marker});
+      authenticate(interface, info);
+      tx->callbacks->onSubscribe(tx, info, 1);
+      assert(interface.writeFrame(primary.data(), primary.size()) == primary.size());
+      for (unsigned i = 0; i < 8 && interface.hasPendingIO(); ++i) poll();
+      assert((transmitted == std::vector<std::vector<uint8_t>>{marker, primary}));
+    } else {
+      const std::vector<uint8_t> during_marker{0x0D, 0x51};
+      const std::vector<uint8_t> during_raw{0x0D, 0x52};
+      after_notification = [&]() {
+        assert(transmitted.back() == marker);
+        assert(interface.writeFrame(during_marker.data(), during_marker.size()) == during_marker.size());
+        after_notification = [&]() {
+          assert(transmitted.back() == legacy);
+          assert(interface.writeFrame(during_raw.data(), during_raw.size()) == during_raw.size());
+        };
+      };
+      for (unsigned i = 0; i < 8 && interface.hasPendingIO(); ++i) poll();
+      assert((transmitted == std::vector<std::vector<uint8_t>>{marker, legacy, during_marker, during_raw}));
+    }
+    assert(!interface.hasPendingIO());
+    NimBLEDevice::deinit(true);
+  }
+}
+
 static void test_128_contact_stream_under_queue_and_controller_pressure() {
 #if defined(MESH_HIL_BLE_INTERVAL_MS)
   constexpr uint32_t interval = MESH_HIL_BLE_INTERVAL_MS;
@@ -600,6 +668,7 @@ int main() {
   test_required_reply_backpressure_services_tx_before_rx();
   test_full_queue_best_effort_eviction_still_admits_rx();
   test_exact_notify_interval_failure_retention_and_rollover();
+  test_radio2_legacy_log_groups();
   test_128_contact_stream_under_queue_and_controller_pressure();
   puts("NimBLE adapter: identity, faults, bonding, stealth and full frames PASS");
 }

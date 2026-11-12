@@ -333,12 +333,112 @@ static void recovery_connection_changes() {
     assert(disconnect_requests.size() == requests && port.isConnected());
   }
 }
+
+static void radio2_log_groups() {
+  const std::vector<uint8_t> marker{0x92, 0xA1};
+  const uint8_t primary[] = {0x88, 8, uint8_t(-90), 0x32, 0x88};
+  const uint8_t reply[] = {0x0D, 0x42};
+  uint8_t received[MAX_FRAME_SIZE] = {};
+  std::vector<uint8_t> radio2(MAX_FRAME_SIZE);
+  for (size_t i = 0; i < radio2.size(); ++i) radio2[i] = uint8_t(i);
+  radio2[0] = 0x92; radio2[1] = 12; radio2[2] = uint8_t(-100);
+  auto legacy = radio2; legacy[0] = 0x88;
+  {
+    SerialBLEInterface port;
+    Bluefruit.connection.mtu = 23;
+    assert(port.writeFrame(radio2.data(), radio2.size()) == radio2.size());
+    port.checkRecvFrame(received);
+    assert(port.bleuart.chunks.empty()); // Do not emit a marker before the raw frame fits.
+    assert(!port._tx_disconnect_recovery.pending());
+    Bluefruit.connection.mtu = 247;
+    for (unsigned i = 0; i < 8 && port.bleuart.chunks.size() < 2; ++i) {
+      now_ms += 251; port.checkRecvFrame(received);
+    }
+    assert(port.bleuart.chunks.size() == 2);
+    assert(port.bleuart.chunks[0].bytes == marker);
+    assert(port.bleuart.chunks[1].bytes == legacy);
+    assert(port.send_queue_len == 0);
+  }
+  {
+    SerialBLEInterface port;
+    Bluefruit.connection.mtu = 247;
+    port.bleuart.fail_on_attempt = 2; // Marker succeeds; first raw attempt cannot enter SDK.
+    assert(port.writeFrame(radio2.data(), radio2.size()) == radio2.size());
+    for (unsigned i = 0; i < 4 && port.bleuart.chunks.empty(); ++i) {
+      now_ms += 251; port.checkRecvFrame(received);
+    }
+    assert(port.bleuart.chunks.size() == 1 && port.bleuart.chunks[0].bytes == marker);
+    assert(port.send_queue_len == 1 && port.send_queue[0].buf[0] == 0x93);
+    assert(port.writeFrame(primary, sizeof(primary)) == sizeof(primary));
+    assert(port.writeFrame(reply, sizeof(reply)) == sizeof(reply));
+    assert(port.send_queue[0].buf[0] == 0x93); // Even a command response cannot strand its marker.
+    for (unsigned i = 0; i < 12 && port.send_queue_len; ++i) {
+      now_ms += 251; port.checkRecvFrame(received);
+    }
+    assert(port.bleuart.chunks.size() == 4 && port.send_queue_len == 0);
+    assert(port.bleuart.chunks[1].bytes == legacy);
+    assert(port.bleuart.chunks[2].bytes == std::vector<uint8_t>(reply, reply + sizeof(reply)));
+    assert(port.bleuart.chunks[3].bytes == std::vector<uint8_t>(primary, primary + sizeof(primary)));
+  }
+  {
+    SerialBLEInterface port;
+    Bluefruit.connection.mtu = 247;
+    assert(port.writeFrame(radio2.data(), radio2.size()) == radio2.size());
+    assert(port.writeFrame(reply, sizeof(reply)) == sizeof(reply));
+    for (unsigned i = 0; i < 8 && port.send_queue_len; ++i) {
+      now_ms += 251; port.checkRecvFrame(received);
+    }
+    assert(port.bleuart.chunks.size() == 3);
+    assert(port.bleuart.chunks[0].bytes == std::vector<uint8_t>(reply, reply + sizeof(reply)));
+    assert(port.bleuart.chunks[1].bytes == marker && port.bleuart.chunks[2].bytes == legacy);
+  }
+  {
+    SerialBLEInterface port;
+    Bluefruit.connection.mtu = 247;
+    const uint8_t during_marker[] = {0x0D, 0x51};
+    const uint8_t during_raw[] = {0x0D, 0x52};
+    assert(port.writeFrame(radio2.data(), radio2.size()) == radio2.size());
+    port.bleuart.after_write = [&]() {
+      assert(port.bleuart.chunks.back().bytes == marker);
+      assert(port.send_queue[0].buf[0] == 0x93);
+      assert(port.writeFrame(during_marker, sizeof(during_marker)) == sizeof(during_marker));
+      port.bleuart.after_write = [&]() {
+        assert(port.bleuart.chunks.back().bytes == legacy);
+        assert(port.send_queue[0].buf[0] == 0x93);
+        assert(port.writeFrame(during_raw, sizeof(during_raw)) == sizeof(during_raw));
+      };
+    };
+    for (unsigned i = 0; i < 8 && port.send_queue_len; ++i) {
+      now_ms += 251; port.checkRecvFrame(received);
+    }
+    assert(port.bleuart.chunks.size() == 4 && port.send_queue_len == 0);
+    assert(port.bleuart.chunks[0].bytes == marker && port.bleuart.chunks[1].bytes == legacy);
+    assert(port.bleuart.chunks[2].bytes == std::vector<uint8_t>(during_marker, during_marker + sizeof(during_marker)));
+    assert(port.bleuart.chunks[3].bytes == std::vector<uint8_t>(during_raw, during_raw + sizeof(during_raw)));
+  }
+  for (uint16_t replacement : {uint16_t(1), uint16_t(2)}) {
+    SerialBLEInterface port;
+    Bluefruit.connection.mtu = 247;
+    assert(port.writeFrame(radio2.data(), radio2.size()) == radio2.size());
+    port.bleuart.after_write = [&]() { port.reconnect(replacement); };
+    port.checkRecvFrame(received);
+    assert(port.bleuart.chunks.size() == 1 && port.bleuart.chunks[0].bytes == marker);
+    assert(port.send_queue_len == 0); // The old callback completion cannot arm raw on a new session.
+    assert(port.writeFrame(primary, sizeof(primary)) == sizeof(primary));
+    now_ms += 251; port.checkRecvFrame(received);
+    assert(port.bleuart.chunks.size() == 2);
+    assert(port.bleuart.chunks[1].handle == replacement);
+    assert(port.bleuart.chunks[1].bytes == std::vector<uint8_t>(primary, primary + sizeof(primary)));
+  }
+  Bluefruit.connection.mtu = 23;
+}
 int main(int argc, char** argv) {
   assert(argc == 2);
   if (!std::strcmp(argv[1], "enqueue")) enqueue_reset();
   else if (!std::strcmp(argv[1], "connection")) connection_changes();
   else if (!std::strcmp(argv[1], "application-start")) application_start();
   else if (!std::strcmp(argv[1], "prestart-partial")) previous_prestart_partial();
+  else if (!std::strcmp(argv[1], "radio2")) radio2_log_groups();
   else {
     enqueue_reset(); callback_ownership(); connection_changes(); old_queue_and_recovery();
     recovery_connection_changes();

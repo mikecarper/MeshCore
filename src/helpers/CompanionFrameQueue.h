@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include "CompanionRadioLog.h"
 
 namespace mesh {
 
@@ -87,6 +88,11 @@ bool enqueueCompanionFrame(Frame queue[], QueueLength& queue_len, size_t capacit
   if (count > capacity) return false;
 
   const CompanionFrameClass incoming_class = companionFrameClass(src, len);
+  // Once its marker has reached a BLE client, the legacy raw half must stay
+  // at the front until sent or the session is reset. This state lives in its
+  // existing opcode byte, not in another frame or per-client RAM field.
+  const size_t pinned = count && companionRadioLogDataPending(queue[0].buf, queue[0].len)
+      ? 1U : 0U;
 
   // MSG_WAITING is a level-triggered tickle: one queued copy is enough to tell
   // the app to fetch all pending messages. Coalescing it preserves space for
@@ -106,8 +112,9 @@ bool enqueueCompanionFrame(Frame queue[], QueueLength& queue_len, size_t capacit
     // A delivery-required frame may displace best-effort asynchronous traffic,
     // but never another delivery-required frame.
     if (incoming_class == COMPANION_BEST_EFFORT_PUSH) return false;
+    if (count == pinned) return false;
     size_t evict = count;
-    while (evict > 0) {
+    while (evict > pinned) {
       --evict;
       if (companionFrameClass(queue[evict].buf, queue[evict].len)
           == COMPANION_BEST_EFFORT_PUSH) {
@@ -127,12 +134,12 @@ bool enqueueCompanionFrame(Frame queue[], QueueLength& queue_len, size_t capacit
 
   // Stable insertion sort also repairs a queue populated by older admission
   // behavior before the next frame is added.
-  for (size_t i = 1; i < count; ++i) {
+  for (size_t i = pinned + 1; i < count; ++i) {
     Frame current = queue[i];
     CompanionFrameClass current_class =
         companionFrameClass(current.buf, current.len);
     size_t j = i;
-    while (j > 0
+    while (j > pinned
            && companionFrameClass(queue[j - 1].buf, queue[j - 1].len)
                   > current_class) {
       queue[j] = queue[j - 1];
@@ -142,7 +149,7 @@ bool enqueueCompanionFrame(Frame queue[], QueueLength& queue_len, size_t capacit
   }
 
   size_t insert_at = count;
-  for (size_t i = 0; i < count; ++i) {
+  for (size_t i = pinned; i < count; ++i) {
     if (companionFrameClass(queue[i].buf, queue[i].len) > incoming_class) {
       insert_at = i;
       break;

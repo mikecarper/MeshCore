@@ -28,6 +28,10 @@ SCENARIOS = (
     "session, passthrough and flow-control resets clear backpressure state",
     "full TX queue cannot revive an already expired inbound frame",
     "blocked USB input does not stop commands from another transport",
+    "atomic radio2 logs preserve every wire split and short write",
+    "radio2 log groups survive reply pressure or are evicted as a whole",
+    "reconnecting never replays a stale radio2 raw suffix",
+    "non-flow streams retain radio2 groups behind partial writes",
 )
 
 
@@ -75,6 +79,8 @@ class ArduinoSerialBackpressureTests(unittest.TestCase):
         controls = (
             ("  if (!responseCapacityAvailable()) return 0;\n", "", 0),
             ("      && !_receive_capacity_paused\n", "", 1),
+            ("const bool radio2_log = mesh::isCompanionRadio2Log(&frame.buf[3], frame.len - 3);",
+             "const bool radio2_log = false;", 8),
         )
         for old, new, scenario in controls:
             with self.subTest(removed=old.strip()):

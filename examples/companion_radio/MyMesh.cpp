@@ -412,7 +412,7 @@ static mesh::Packet* emergency_client_repeat_packet;
 #define PUSH_CODE_CONTACT_DELETED       0x8F // used to notify client app of deleted contact when overwriting oldest
 #define PUSH_CODE_CONTACTS_FULL         0x90 // used to notify client app that contacts storage is full
 #define PUSH_CODE_ONE_KEY_DM_REJECTED    0x91 // full sender key follows
-#define PUSH_CODE_LOG_RX_RADIO           0x92 // radio2 RX log: same [code][SNR x4][RSSI][raw] envelope as 0x88
+#define PUSH_CODE_LOG_RX_RADIO           0x92 // internal radio2 RX log; transports emit marker + legacy 0x88
 
 #define ERR_CODE_UNSUPPORTED_CMD        1
 #define ERR_CODE_NOT_FOUND              2
@@ -914,9 +914,9 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
             || _radio->receiveProfile() != _ota_direct_radio_profile
             || _radio->receiveProfileGeneration() != _ota_direct_radio_generation)) return;
 #endif
-    // Keep each raw packet and its origin together through queue reordering
-    // and best-effort drops. Radio2 uses the same envelope with a distinct
-    // code; primary packets retain the legacy 0x88 frame unchanged.
+    // Queue the packet and its origin as one record. Each transport expands
+    // radio2 to the compatibility marker followed by the unchanged 0x88 log,
+    // keeping them together through queue pressure and partial writes.
     int i = 0;
     out_frame[i++] = _radio && _radio->receiveProfile() == 1
         ? PUSH_CODE_LOG_RX_RADIO : PUSH_CODE_LOG_RX_DATA;

@@ -1065,19 +1065,22 @@ future pairings without a reboot; existing bonds continue to use their keys.
 | `0x8F` | `PUSH_CODE_CONTACT_DELETED` | Oldest contact was deleted while making room. |
 | `0x90` | `PUSH_CODE_CONTACTS_FULL` | Contact storage is full. |
 | `0x91` | `PUSH_CODE_ONE_KEY_DM_REJECTED` | One-key DM refused; bytes 1–32 contain the refusing contact's full public key. |
-| `0x92` | `PUSH_CODE_LOG_RX_RADIO` | A complete radio2 RX log: `[0x92][SNR × 4: int8][RSSI: int8][raw packet bytes]`. Same layout and payload limit as `0x88`; the opcode identifies radio2. No separate marker or duplicate `0x88` is sent for this packet. |
+| `0x92` | `PUSH_CODE_LOG_RX_RADIO` | Radio2 RX marker: `[0x92][0xA1]`, immediately followed by the ordinary `0x88` log for that packet. |
 
-RX log clients should accept both `0x88` and `0x92`, read the packet from byte 3,
-and use `0x92` to set `rx_radio_id: radio2`. This identifies the secondary radio
-profile, including temporary update channels; it does not by itself identify a
-MediaMesh preset. Clients should apply any MediaMesh-specific label from the
-node's configured profile. Older firmware uses `0x88` for both profiles, so
-`0x88` alone cannot prove which radio profile received a packet. Older clients
-that ignore unknown push codes do not see radio2 logs from this firmware.
+Primary RX logs remain `[0x88][SNR × 4: int8][RSSI: int8][raw packet bytes]`.
+Radio2 logs use the same frame, preceded by `[0x92][0xA1]`. Existing clients
+can ignore the marker and keep receiving primary and radio2 logs without
+configuration changes. Marker-aware clients use it to set `rx_radio_id: radio2` on the next
+`0x88` log, then clear it. Clear any pending marker when the connection resets;
+unknown push codes should be skipped. Older firmware sends `0x88` for both
+profiles, so an unmarked log from older firmware has unknown radio attribution.
 
-Each log is a single best-effort frame. Queues may drop whole logs under load,
-but cannot detach radio attribution from the packet or carry it to the next
-log. Unknown push codes must be skipped without changing decoder state.
+The marker identifies the secondary radio profile, including temporary update
+channels. A MediaMesh-specific label also depends on the configured preset.
+
+Firmware queues each marker and packet as one best-effort record, then expands
+it to the two wire frames. Queue pressure can drop an unsent record as a whole;
+a partially sent record stays together. Maximum packet size is unchanged.
 
 ### Parsing Responses
 

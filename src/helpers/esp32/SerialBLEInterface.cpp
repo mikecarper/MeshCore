@@ -1674,6 +1674,8 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
     const bool frame_fits = peer_mtu > 3 && send_queue[0].len <= peer_mtu - 3;
     const bool delivery_required = mesh::companionFrameRequiresDelivery(
         send_queue[0].buf, send_queue[0].len);
+    const bool radio_marker = mesh::companionRadioLogMarkerPending(
+        send_queue[0].buf, send_queue[0].len);
 
     // A fresh pairing can deliver the app's first command before its CCCD
     // subscription or MTU exchange completes. Keep the response queued until
@@ -1681,7 +1683,23 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
     if (notifications_ready && frame_fits) {
       _last_write = now;
       notifySucceeded = false;
-      pTxCharacteristic->setValue(send_queue[0].buf, send_queue[0].len);
+      if (radio_marker) {
+        // Admission from a synchronous SDK callback must see a pinned group.
+        send_queue[0].buf[0] = mesh::COMPANION_RADIO2_LOG_PENDING;
+        // Legacy Bluedroid's copying API takes a mutable pointer.
+        uint8_t marker[] = {mesh::COMPANION_RADIO2_LOG, 0xA1};
+        pTxCharacteristic->setValue(marker, sizeof(marker));
+      } else {
+        const uint8_t opcode = send_queue[0].buf[0];
+        if (mesh::companionRadioLogDataPending(send_queue[0].buf, send_queue[0].len)) {
+          send_queue[0].buf[0] = mesh::COMPANION_LEGACY_RX_LOG;
+        }
+        // setValue copies the bytes. Keep the pending state in the queue so
+        // callbacks/admission cannot evict its raw half after a sent marker.
+        pTxCharacteristic->setValue(send_queue[0].buf, send_queue[0].len);
+        send_queue[0].buf[0] = opcode;
+      }
+      const uint16_t tx_connection = last_conn_id;
 #if defined(MESH_USE_NIMBLE_ARDUINO)
       // NimBLE reports queue acceptance directly. Its status callback may run
       // later; do not retain or duplicate an already accepted frame awaiting it.
@@ -1689,19 +1707,32 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
 #else
       pTxCharacteristic->notify();
 #endif
+      // A synchronous SDK callback may close/reset the old session. Never
+      // advance a replacement session using that old notification's result.
+      if (_tx_reset_pending.load(std::memory_order_acquire)
+          || !isConnected() || last_conn_id != tx_connection) {
+        servicePendingTxReset();
+        return 0;
+      }
 
       if (notifySucceeded) {
         BLE_DEBUG_PRINTLN("writeBytes: sz=%d, hdr=%d", (uint32_t)send_queue[0].len, (uint32_t) send_queue[0].buf[0]);
 
-        send_queue_len--;
-        for (int i = 0; i < send_queue_len; i++) {   // delete top item from queue
-          send_queue[i] = send_queue[i + 1];
+        if (radio_marker) {
+          send_queue[0].buf[0] = mesh::COMPANION_RADIO2_LOG_PENDING;
+        } else {
+          send_queue_len--;
+          for (int i = 0; i < send_queue_len; i++) {   // delete top item from queue
+            send_queue[i] = send_queue[i + 1];
+          }
         }
         _tx_stall_watchdog.reset();
-      } else if (delivery_required
-                 && _tx_stall_watchdog.noteBlocked(now)) {
-        recoverStalledTx("command reply notification blocked for 10 seconds");
-        return 0;
+      } else {
+        if (radio_marker) send_queue[0].buf[0] = mesh::COMPANION_RADIO2_LOG;
+        if (delivery_required && _tx_stall_watchdog.noteBlocked(now)) {
+          recoverStalledTx("command reply notification blocked for 10 seconds");
+          return 0;
+        }
       }
     } else if (delivery_required
                && _tx_stall_watchdog.noteBlocked(now)) {

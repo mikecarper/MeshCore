@@ -1471,8 +1471,29 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
         Frame frame_to_send = send_queue[0];
         const bool delivery_required = mesh::companionFrameRequiresDelivery(
             frame_to_send.buf, frame_to_send.len);
+        const bool radio_marker = mesh::companionRadioLogMarkerPending(
+            frame_to_send.buf, frame_to_send.len);
+        bool frame_ready = true;
+        if (radio_marker) {
+          // Do not expose a marker while the complete following raw frame
+          // cannot fit the client's negotiated notification payload.
+          BLEConnection* connection = Bluefruit.Connection(handle);
+          const uint16_t mtu = connection != nullptr ? connection->getMtu() : 0;
+          frame_ready = mtu > 3 && frame_to_send.len <= mtu - 3;
+          frame_to_send.len = sizeof(mesh::COMPANION_RADIO2_LOG_MARKER);
+          memcpy(frame_to_send.buf, mesh::COMPANION_RADIO2_LOG_MARKER,
+                 frame_to_send.len);
+        } else if (mesh::companionRadioLogDataPending(
+                       frame_to_send.buf, frame_to_send.len)) {
+          frame_to_send.buf[0] = mesh::COMPANION_LEGACY_RX_LOG;
+        }
 
-        size_t written = writeBleUartFrame(frame_to_send);
+        // Pin before entering the SDK: a synchronous callback must not let
+        // another admitted response move or evict the marker's owner.
+        if (radio_marker && frame_ready) {
+          send_queue[0].buf[0] = mesh::COMPANION_RADIO2_LOG_PENDING;
+        }
+        size_t written = frame_ready ? writeBleUartFrame(frame_to_send) : 0;
         // A callback may reset or replace the link while the SDK waits for a
         // notification slot. Discard only the old TX state; do not recover or
         // dequeue against the replacement session using the old write result.
@@ -1488,7 +1509,11 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
           BLE_DEBUG_PRINTLN("writeBytes: sz=%u, hdr=%u", (unsigned)frame_to_send.len, (unsigned)frame_to_send.buf[0]);
           _last_retry_attempt = 0;
           _tx_stall_watchdog.reset();
-          shiftSendQueueLeft();
+          if (radio_marker) {
+            send_queue[0].buf[0] = mesh::COMPANION_RADIO2_LOG_PENDING;
+          } else {
+            shiftSendQueueLeft();
+          }
         } else if (written > 0) {
           BLE_DEBUG_PRINTLN("writeBytes: partial write, sent=%u of %u",
                             (unsigned)written,
@@ -1500,6 +1525,7 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
           recoverStalledTx("partial BLE UART frame", handle, generation);
           return 0;
         } else {
+          if (radio_marker) send_queue[0].buf[0] = mesh::COMPANION_RADIO2_LOG;
           if (!isConnected()) {
             BLE_DEBUG_PRINTLN("writeBytes failed: connection lost, dropping frame");
             _last_retry_attempt = 0;

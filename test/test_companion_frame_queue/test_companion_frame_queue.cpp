@@ -165,6 +165,49 @@ TEST(CompanionFrameQueue, MaximumRadio2LogKeepsExistingMtuAndCompletePayload) {
   EXPECT_EQ(0x55667788U, guarded.after);
 }
 
+TEST(CompanionFrameQueue, Radio2RawHalfStaysPinnedAfterItsMarkerWasSent) {
+  TestFrame queue[4] = {
+      {4, {mesh::COMPANION_RADIO2_LOG_PENDING, 24, uint8_t(-90), 0x02}},
+      {4, {0x88, 20, uint8_t(-80), 0x01}}};
+  const TestFrame pending = queue[0];
+  size_t count = 2;
+  EXPECT_TRUE(mesh::companionFrameRequiresDelivery(pending.buf, pending.len));
+  EXPECT_FALSE(mesh::companionFrameUsesRequesterRoute(pending.buf, pending.len));
+  ASSERT_TRUE(enqueue(queue, count, 4, 0x85));
+  ASSERT_TRUE(enqueue(queue, count, 4, 0x00));
+  ASSERT_TRUE(enqueue(queue, count, 4, 0x01));
+  ASSERT_EQ(4U, count);
+  ASSERT_EQ(pending.len, queue[0].len);
+  EXPECT_EQ(0, memcmp(pending.buf, queue[0].buf, pending.len));
+  EXPECT_EQ(0x00, queue[1].buf[0]);
+  EXPECT_EQ(0x01, queue[2].buf[0]);
+  EXPECT_EQ(0x85, queue[3].buf[0]);
+  EXPECT_FALSE(enqueue(queue, count, 4, 0x82));
+  EXPECT_FALSE(enqueue(queue, count, 4, 0x88));
+  EXPECT_FALSE(enqueue(queue, count, 4, mesh::COMPANION_RADIO2_LOG));
+}
+
+TEST(CompanionFrameQueue, AOneEntryPendingGroupCannotBeEvicted) {
+  TestFrame queue[1] = {{4, {mesh::COMPANION_RADIO2_LOG_PENDING, 24, 0xA0, 0x02}}};
+  size_t count = 1;
+  EXPECT_FALSE(enqueue(queue, count, 1, 0x00));
+  EXPECT_EQ(1U, count);
+  EXPECT_TRUE(mesh::companionRadioLogDataPending(queue[0].buf, queue[0].len));
+}
+
+TEST(CompanionFrameQueue, InternalLogStateIsNotAStandaloneWireMarker) {
+  const uint8_t marker[] = {mesh::COMPANION_RADIO2_LOG, 0xA1};
+  const uint8_t queued[] = {mesh::COMPANION_RADIO2_LOG, 0xA1, 0x88, 0x93};
+  EXPECT_FALSE(mesh::isCompanionRadio2Log(nullptr, sizeof(queued)));
+  EXPECT_FALSE(mesh::isCompanionRadio2Log(marker, sizeof(marker)));
+  EXPECT_TRUE(mesh::companionRadioLogMarkerPending(queued, sizeof(queued)));
+  EXPECT_FALSE(mesh::companionRadioLogDataPending(queued, sizeof(queued)));
+  const uint8_t pending[] = {mesh::COMPANION_RADIO2_LOG_PENDING, 0xA1, 0x88, 0x93};
+  EXPECT_TRUE(mesh::isCompanionRadio2Log(pending, sizeof(pending)));
+  EXPECT_TRUE(mesh::companionRadioLogDataPending(pending, sizeof(pending)));
+  EXPECT_FALSE(mesh::companionRadioLogMarkerPending(pending, sizeof(pending)));
+}
+
 TEST(CompanionFrameQueue, QueuePriorityDoesNotImplyRequesterOwnership) {
   uint8_t response = 0x05;
   uint8_t login_result = 0x85;

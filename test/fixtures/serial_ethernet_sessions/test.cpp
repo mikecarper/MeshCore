@@ -556,6 +556,57 @@ int main(int argc, char** argv) {
     socket->received.insert(socket->received.end(), request.begin() + 1, request.end());
     assert((f.tick() == 2 && socket->connected && f.input[0] == 'a' && f.input[1] == 'b'
         && f.callbacks == 0) && "worker handoff must preserve remaining frame deadline");
+  } else if (scenario >= 40 && scenario <= 43) {
+    const Bytes tagged{0x92, 4, 0xC0, 0x22};
+    const Bytes legacy{0x88, 4, 0xC0, 0x22};
+    if (scenario == 40) {
+      Bytes maximum(MAX_FRAME_SIZE, 0x45);
+      maximum[0] = 0x92;
+      Bytes raw = maximum;
+      raw[0] = 0x88;
+      const Bytes group = framed({{0x92, 0xA1}, raw});
+      for (size_t cut = 1; cut < group.size(); ++cut) {
+        socket->sent.clear();
+        f.enqueue(maximum);
+        socket->write_limit = cut;
+        f.tick();
+        assert(socket->sent == Bytes(group.begin(), group.begin() + cut));
+        f.enqueue(reply);
+        socket->write_limit = 0;
+        f.tick();
+        assert(socket->sent.size() == cut);
+        f.drain(socket);
+        assert(socket->sent == framed({{0x92, 0xA1}, raw, reply}));
+      }
+    } else if (scenario == 41) {
+      const Bytes primary{0x88, 0, 0, 0x11};
+      f.enqueue(primary);
+      f.enqueue(tagged);
+      f.enqueue(primary);
+      f.drain(socket);
+      assert(socket->sent == framed({primary, {0x92, 0xA1}, legacy, primary}));
+      socket->sent.clear();
+      f.enqueue(primary);
+      f.enqueue(primary);
+      f.enqueue(tagged);
+      f.enqueue(reply);
+      f.enqueue(other);
+      f.drain(socket);
+      assert(socket->sent == framed({reply, other, primary, primary}));
+    } else {
+      f.enqueue(tagged);
+      socket->write_limit = framed({{0x92, 0xA1}}).size();
+      f.tick();
+      assert(socket->sent == framed({{0x92, 0xA1}}));
+      auto replacement = f.transport.connect(scenario == 42 ? A : B);
+      f.drain(replacement);
+      assert(replacement->sent == (scenario == 42 ? framed({{0x92, 0xA1}, legacy}) : Bytes{}));
+      // New session always begins with a complete group, never a raw suffix.
+      replacement->sent.clear();
+      f.enqueue(tagged);
+      f.drain(replacement);
+      assert(replacement->sent == framed({{0x92, 0xA1}, legacy}));
+    }
   } else {
     assert(false && "unknown scenario");
   }

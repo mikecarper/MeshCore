@@ -37,12 +37,6 @@ class SplitRadioProbeTests(unittest.TestCase):
         self.assertIsNone(full["radio_profile"])
         self.assertEqual(full["configured_profile"], 1)
         self.assertEqual(full["path_hex"], "")
-        secondary = inspect_push(b"\x92\x18\x9c"+wire, expected_run=self.nonce,
-                                 configured_profile=0, observer="R2")
-        self.assertEqual(secondary["radio_profile"], 1)
-        self.assertEqual(secondary["configured_profile"], 0)
-        self.assertEqual(secondary["wire_hex"], full["wire_hex"])
-        self.assertEqual((secondary["snr_db"], secondary["rssi_dbm"]), (6.0, -100))
         for tag, profile in ((0xA0, 0), (0xA1, 1), (0xFF, None)):
             payload = inspect_push(bytes((0x84, 0, 0x9c, tag))+wire[2:])
             self.assertEqual(payload["radio_profile"], profile)

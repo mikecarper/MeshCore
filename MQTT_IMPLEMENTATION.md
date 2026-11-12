@@ -1061,13 +1061,12 @@ weak function undefined, so Companion builds pay only a null test, and compact
 logging (`R`/`T` hex lines) is unchanged.
 
 **Companion observers (RemoteTerm, meshcore-packet-capture):** radio2 RX logs
-use `PUSH_CODE_LOG_RX_RADIO` (`0x92`) with the same SNR, RSSI and raw-packet
-layout as the primary `PUSH_CODE_LOG_RX_DATA` (`0x88`) frame. Each packet and
-its radio attribution travel in one frame. Observer apps must decode `0x92`
-to publish `rx_radio_id: radio2`; a MediaMesh-specific label also depends on
-the configured radio2 preset. Clients that ignore unknown push codes skip
-these radio2 logs. See `docs/companion_protocol.md` for the wire layout and
-older-firmware behavior.
+have a two-byte marker `[0x92, 0xA1]` immediately before the unchanged `0x88`
+SNR/RSSI/raw-packet frame. Existing apps can ignore the marker and keep receiving
+logs. Marker-aware apps can publish `rx_radio_id: radio2`; a MediaMesh-specific
+label also depends on the configured radio2 preset. No device setting is needed.
+Firmware keeps the marker and packet together through queuing and partial
+writes. See `docs/companion_protocol.md` for parsing and older-firmware behavior.
 
 ## Key Features
 

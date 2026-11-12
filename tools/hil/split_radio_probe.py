@@ -97,20 +97,19 @@ def companion_send_command(wire, priority=0):
 
 def inspect_push(frame, *, expected_run=None, observer=None,
                  configured_profile=None, frequency_mhz=None):
-    """Decode push 88, 92 or 84. Configuration labels are never RF proof.
+    """Decode push 88 or 84. Configuration labels are never treated as RF proof.
 
-    Push 88 has full wire bytes but no receive-profile field on older firmware.
-    Push 92 uses the same envelope and explicitly identifies radio2. Push 84 reports
+    Push 88 has full wire bytes but no receive-profile field. Push 84 reports
     direct RAW_CUSTOM payload and may carry A0/A1, but has no path/wire bytes.
     """
     if configured_profile not in (None, 0, 1):
         raise ValueError("Configured profile must be primary 0 or radio2 1")
     frame = bytes(frame)
-    if len(frame) < 4 or frame[0] not in (0x88, 0x92, 0x84):
+    if len(frame) < 4 or frame[0] not in (0x88, 0x84):
         return None
-    if frame[0] in (0x88, 0x92):
+    if frame[0] == 0x88:
         probe = parse_probe(frame[3:], expected_run=expected_run)
-        profile = 1 if frame[0] == 0x92 else None
+        profile = None
     else:
         probe = _payload_probe(frame[4:], expected_run)
         profile = {0xA0: 0, 0xA1: 1}.get(frame[3])
