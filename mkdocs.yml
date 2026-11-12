@@ -45,6 +45,7 @@ nav:
   - Home: index.md
   - Updates Over LoRa: browser_lora_ota.md
   - Firmware and tools:
+      - USB firmware flasher: https://mikecarper.github.io/meshfirmware/
       - firmware_picker.md
       - notifications.md
       - preset_test.md

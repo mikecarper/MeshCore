@@ -13,6 +13,7 @@ Read what changed, which boards benefit and the known limitations in one place.
 | --- | --- |
 | See what is new or fixed | [1.18.0.1 release notes](releases/1.18.0.1.md) |
 | Download firmware for my board | [Firmware picker](firmware_picker.md) |
+| Flash firmware over USB | [Mesh Firmware USB flasher](https://mikecarper.github.io/meshfirmware/) |
 | Install an update | [Update guide](ota_user_guide.md) |
 | Turn a feature on or off | [Feature controls by role](role_feature_switches.md) |
 | Find a command | [CLI reference](cli_commands.md) |
