@@ -3989,10 +3989,10 @@ apply_esp32_full_size_profile() {
       append_platformio_extra_script "post:scripts/esp32_universal_radio_lto.py"
       ;;
     ebyte_eora-s3_repeater|ebyte_eora-s3_repeater_observer_mqtt|\
-    ebyte_eora-s3_room_server_observer_mqtt)
+    ebyte_eora-s3_room_server|ebyte_eora-s3_room_server_observer_mqtt)
       # Keep Full observer images inside the existing dual-OTA slots. The
-      # plain repeater uses the same observer compile base but keeps its own
-      # OTA identity. Apply the same S3 LTO codegen to both direct observers.
+      # Plain Repeater and Room use their observer compile bases while keeping
+      # their own OTA identities. Keep space for staged LoRa update metadata.
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -flto -flto-partition=one -DMESH_UNIVERSAL_LTO=1 -ffunction-sections -fdata-sections -mtext-section-literals -mlongcalls"
       append_platformio_extra_script "post:scripts/esp32_universal_radio_lto.py"
       ;;
