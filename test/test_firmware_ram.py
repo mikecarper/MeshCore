@@ -1481,6 +1481,11 @@ int main() {
             self.assertEqual(checked["components"]["allocation_and_transient_margin"], 4096)
             self.assertEqual(checked["required_contiguous_bytes"], base["required_contiguous_bytes"])
             self.assertEqual(run(available=required - 169)[0], 1)
+            status, unified = run(available=required - 168,
+                                  target="RAK_4631_repeater_unified_lora_ota")
+            self.assertEqual(status, 0)
+            self.assertEqual(unified["linked_display_driver_bytes"], 168)
+            self.assertEqual(unified["components"]["allocation_and_transient_margin"], 4096)
             for options in ({"writable": False}, {"section": 0xFFF1},
                             {"kind": 2}, {"duplicate": "display"},
                             {"display": (0x20001000, 513)},

@@ -710,7 +710,8 @@ def account_rak4631_linked_oled(elf, platform, mcu, defines, target, policy, reg
     conservative bound. Keep the original contiguous allocation bound too.
     """
     if (platform != "NRF52_PLATFORM" or str(mcu).lower() != "nrf52840"
-            or target != "RAK_4631_repeater" or "RAK_4631" not in defines
+            or target not in {"RAK_4631_repeater", "RAK_4631_repeater_unified_lora_ota"}
+            or "RAK_4631" not in defines
             or not integer(defines, "OTA_BOOTLOADER_MIGRATION", 0)
             or str(defines.get("DISPLAY_CLASS", "")).strip('"') != "SSD1306Display"):
         return
