@@ -1,6 +1,9 @@
 #pragma once
 
 #include <RadioLib.h>
+#ifdef SX126X_REGISTER_PATCH
+#include "SX126xAgcRetention.h"
+#endif
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
 #include "AGCTimingDiagnostics.h"
 #endif
@@ -13,8 +16,8 @@ inline void sx126xResetAGC(SX126x* radio, bool rx_boost_gain
     , AGCTimingDiagnostics* timing = nullptr
 #endif
 ) {
-  // Observe existing return values only. Preserve the command order and the
-  // original continue-on-error behavior for this comparison build.
+  // Record command failures in diagnostic builds. Never write a patch from
+  // an unsuccessful register read.
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
 #define MESH_AGC_COMMAND(step, command) do { \
   const int16_t result = (command); \
@@ -48,13 +51,25 @@ inline void sx126xResetAGC(SX126x* radio, bool rx_boost_gain
   MESH_AGC_COMMAND(Dio2, radio->setDio2AsRfSwitch(SX126X_DIO2_AS_RF_SWITCH));
 #endif
 #ifdef SX126X_RX_BOOSTED_GAIN
+  #ifdef SX126X_REGISTER_PATCH
+  // Preserve existing retention entries; the patch step merges RX gain too.
+  MESH_AGC_COMMAND(Gain, radio->setRxBoostedGainMode(rx_boost_gain, false));
+  #else
   MESH_AGC_COMMAND(Gain, radio->setRxBoostedGainMode(rx_boost_gain));
+  #endif
 #endif
 #ifdef SX126X_REGISTER_PATCH
   uint8_t r_data = 0;
-  MESH_AGC_COMMAND(ReadPatch, radio->readRegister(0x8B5, &r_data, 1));
-  r_data |= 0x01;
-  MESH_AGC_COMMAND(WritePatch, radio->writeRegister(0x8B5, &r_data, 1));
+  int16_t patch_status = RADIOLIB_ERR_NONE;
+  MESH_AGC_COMMAND(ReadPatch, (patch_status = radio->readRegister(0x8B5, &r_data, 1)));
+  if (patch_status == RADIOLIB_ERR_NONE) {
+  #ifdef SX126X_RX_BOOSTED_GAIN
+    constexpr bool retain_gain = true;
+  #else
+    constexpr bool retain_gain = false;
+  #endif
+    MESH_AGC_COMMAND(WritePatch, sx126xWriteRetainedAgcPatch(radio, r_data, retain_gain));
+  }
 #endif
 #undef MESH_AGC_COMMAND
 }

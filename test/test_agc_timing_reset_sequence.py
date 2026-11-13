@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Confirm lab observation leaves the existing SX126x command sequence intact."""
+"""Confirm timing diagnostics preserve the checked SX126x reset sequence."""
 
 from pathlib import Path
 import os
@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 STUB = r'''
 #pragma once
 #include <stdint.h>
+#include <cstring>
 #include <string>
 extern uint32_t clock_ms;
 extern bool errors, stuck;
@@ -21,6 +22,8 @@ inline uint32_t millis() { return clock_ms; }
 #define RADIOLIB_SX126X_CALIBRATE_ALL 0x7f
 #define RADIOLIB_SX126X_CMD_CALIBRATE 0x89
 #define RADIOLIB_SX126X_STANDBY_RC 0
+#define RADIOLIB_ERR_NONE 0
+#define RADIOLIB_ERR_UNKNOWN -1
 struct Hal {
   void delay(uint32_t n) { clock_ms += n; }
   int digitalRead(int) { return stuck; }
@@ -35,16 +38,26 @@ struct Module {
 };
 struct SX126x {
   Module storage; Module* mod = &storage; float freqMHz = 904.525f;
+  uint8_t patch = 0x24, retention[9] = {1, 8, 0xAC};
   int16_t sleep(bool) { calls += "sleep,"; ++clock_ms; return errors ? -1 : 0; }
   int16_t standby(uint8_t, bool) { calls += "standby,"; return errors ? -2 : 0; }
   int16_t calibrateImage(float) { calls += "image,"; return errors ? -4 : 0; }
   int16_t setDio2AsRfSwitch(bool) { calls += "dio2,"; return errors ? -5 : 0; }
-  int16_t setRxBoostedGainMode(bool) { calls += "gain,"; return errors ? -6 : 0; }
-  int16_t readRegister(int, uint8_t* data, int) {
-    calls += "readpatch,"; *data = 0x24; return errors ? -7 : 0;
+  int16_t setRxBoostedGainMode(bool, bool persist = true) {
+    assert(!persist); calls += "gain,"; return errors ? -6 : 0;
   }
-  int16_t writeRegister(int, uint8_t* data, int) {
-    calls += *data == 0x25 ? "writepatch," : "BADPATCH,";
+  int16_t readRegister(int address, uint8_t* data, int length) {
+    if (address == 0x029F) {
+      calls += "readretention,"; memcpy(data, retention, length);
+    } else { calls += "readpatch,"; *data = patch; }
+    return errors ? -7 : 0;
+  }
+  int16_t writeRegister(int address, uint8_t* data, int length) {
+    if (address == 0x029F) {
+      calls += "writeretention,"; memcpy(retention, data, length);
+    } else {
+      calls += *data == 0x25 ? "writepatch," : "BADPATCH,"; patch = *data;
+    }
     return errors ? -8 : 0;
   }
 };
@@ -68,7 +81,7 @@ int main(int argc, char** argv) {
   diagnostic.sequenceRequest(); diagnostic.admit(0);
   sx126xResetAGC(&radio, true, &diagnostic);
   diagnostic.helperFinished(clock_ms * 1000);
-  assert(diagnostic.command_failures == (errors ? 8U : 0U));
+  assert(diagnostic.command_failures == (errors ? 7U : 0U));
   assert(diagnostic.failed_sequences == ((errors || stuck) ? 1U : 0U));
   assert(diagnostic.poll_timeouts == (stuck ? 1U : 0U));
   assert(diagnostic.last_error == (errors ? -1 : 0));
@@ -114,14 +127,15 @@ class AGCTimingResetSequenceTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             outputs.append(result.stdout)
         self.assertEqual(outputs[0], outputs[1])
-        self.assertEqual(outputs[0],
-                         "sleep,standby,calibrate,image,dio2,gain,readpatch,writepatch,"
-                         + str(elapsed) + "\n")
+        expected = "sleep,standby,calibrate,image,dio2,gain,readpatch,"
+        if scenario != "errors":
+            expected += "readretention,writeretention,readretention,writepatch,readpatch,"
+        self.assertEqual(outputs[0], expected + str(elapsed) + "\n")
 
     def test_success_preserves_all_commands_and_delays(self):
         self.compare("success", 6)
 
-    def test_errors_are_observed_without_short_circuiting_commands(self):
+    def test_failed_patch_read_is_observed_and_never_followed_by_a_write(self):
         self.compare("errors", 6)
 
     def test_extra_poll_timeout_preserves_existing_delay_and_commands(self):

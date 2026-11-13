@@ -30,6 +30,12 @@ The old method remains available for comparison and existing recovery paths.
 Its "full reset" name refers to the receiver maintenance sequence above, not
 asserting the radio's hardware reset pin. Hard radio recovery is separate.
 
+On boards with `SX126X_REGISTER_PATCH`, the SX1262 AGC lockup protection is
+now retained through sleep. This covers ordinary RXPS and the new receive
+refresh, including when `radio.rxps` is off. Runtime gain changes and old AGC
+resets preserve the retention list too. See the
+[V4 sleep-retention hardware results](test-results/sx1262_agc_sleep_retention_2026-11-12.md).
+
 ## Automatic selection
 
 With the saved default `agc.old auto`, the primary interval selects the method

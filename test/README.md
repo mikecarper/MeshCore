@@ -14,6 +14,7 @@ pio test -e native                      # all suites except KISS modem
 pio test -e native_kiss_modem           # KISS modem suite
 pio test -e native -f test_webconfig_keys   # a single suite
 python3 test/test_radio_receive_contract.py # real CAD/re-arm/calibration/mode-watchdog methods
+python3 test/test_sx126x_agc_retention.py # AGC protection/gain sleep retention and SPI failure checks
 python3 test/test_agessaman_noise_floor.py # pinned sampler parity, V4 opt-in and fresh publication
 python3 -B test/test_browser_radio_defaults.py -v # patch ABI, CRC, fresh-only startup and checked seed/rollback
 python3 -B test/test_protocol_parser_bounds.py -v # malformed anonymous requests/adverts, ASan/UBSan
