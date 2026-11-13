@@ -867,7 +867,6 @@ def test_tbeam_1w_release_hardware_fixes_are_preserved():
     # build flag and header fallback aligned so every role uses 1700 us.
     for flag in (
         "-D USE_SX1262",
-        "-D SX126X_REGISTER_PATCH=1",
         "-D SX126X_PA_RAMP_TIME=0x06",
         "-D SX126X_CURRENT_LIMIT=140",
         "-D SX126X_RX_BOOSTED_GAIN=1",

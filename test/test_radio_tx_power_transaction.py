@@ -677,6 +677,7 @@ Logger& usbLoggingPort() { return logger; }
 }
 struct Chip {
   unsigned begins = 0;
+  unsigned patches = 0;
   uint32_t tcxoDelay = 1600, _rxDutyCycleTransitionUs = 0;
   int begin(float frequency, float, int, int, int, int power, int, float, bool = false) {
     ++begins;
@@ -692,11 +693,19 @@ struct Chip {
   void setCRC(int) {}
   void setCurrentLimit(int) {}
   void setDio2AsRfSwitch(bool) {}
-  void setRxBoostedGainMode(bool) {}
+  int setRxBoostedGainMode(bool) { return RADIOLIB_ERR_NONE; }
+  int applyAgcLockupFix() { ++patches; return RADIOLIB_ERR_NONE; }
   void setRfSwitchPins(int, int) {}
   @INIT@
 };
-int main() { SPIClass spi; Chip radio; assert(radio.std_init(&spi) && radio.begins == 1); }
+int main() {
+  SPIClass spi; Chip radio; assert(radio.std_init(&spi) && radio.begins == 1);
+#if TEST_CHIP == 1262
+  assert(radio.patches == 1);
+#else
+  assert(radio.patches == 0);
+#endif
+}
 '''
             flags = tuple("-D" + key + ("=" + value if value is not None else "")
                           for key, value in definitions)

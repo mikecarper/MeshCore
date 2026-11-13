@@ -89,8 +89,10 @@ struct Port { void print(const char*){} void println(int){} };
 namespace mesh { inline Port& usbLoggingPort(){static Port port;return port;} }
 struct Radio {
   uint32_t tcxoDelay=1600,_rxDutyCycleTransitionUs=0;
+  unsigned patch_calls=0;
   int begin(float,float,int,uint8_t,int,int,int,float,bool){return 0;}
   void setCRC(int){}
+  int applyAgcLockupFix(){++patch_calls;return RADIOLIB_ERR_NONE;}
   @INIT@
 };
 int main(){Radio radio;SPIClass spi;
@@ -112,6 +114,7 @@ int main(){Radio radio;SPIClass spi;
  assert(radio._rxDutyCycleTransitionUs==2600);
  const unsigned before=spi.calls;
  assert(radio.std_init(nullptr) && spi.calls==before);
+ assert(radio.patch_calls==before+1);
 }
 '''.replace("@INIT@", init)
         self.compile_run(harness)

@@ -4420,6 +4420,10 @@ bool MyMesh::handleTxRoutingCommand(const char* command, char* reply, size_t rep
   return true;
 }
 
+#if defined(NRF52_PLATFORM) && defined(MESH_CLI_SHARE_MEMORY_OPERATIONS) && MESH_CLI_SHARE_MEMORY_OPERATIONS
+// Avoid expanding one-use helpers in this cold settings parser on small images.
+__attribute__((optimize("no-inline-functions-called-once")))
+#endif
 bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
                                        size_t reply_size) {
   if (!command || !reply || reply_size == 0) return false;
@@ -11764,6 +11768,9 @@ bool MyMesh::handleDirectCommand(const char* command, char* reply, size_t reply_
   return false;
 }
 
+#if defined(NRF52_PLATFORM) && defined(MESH_CLI_SHARE_MEMORY_OPERATIONS) && MESH_CLI_SHARE_MEMORY_OPERATIONS
+__attribute__((optimize("no-inline-functions-called-once")))
+#endif
 bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
                            char* reply) {
   if (command == NULL || reply == NULL) return false;
