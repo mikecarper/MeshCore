@@ -30,10 +30,13 @@ class HeltecV4PartitionMigratorTest(unittest.TestCase):
         self.assertIn("board = heltec_v4_migrator", section)
         self.assertIn("board_build.partitions = default.csv", section)
         self.assertIn("+<../examples/esp32_partition_migrator>", section)
+        self.assertIn("-I src", section.split("\n[env:", 1)[0])
         self.assertIn("file://arch/esp32/AsyncElegantOTA", section)
 
         xiao_profile = XIAO_PROFILE.read_text(encoding="utf-8")
         self.assertIn("[env:xiao_s3_partition_migrator]", xiao_profile)
+        xiao_migrator = xiao_profile.split("[env:xiao_s3_partition_migrator]", 1)[1].split("[env:", 1)[0]
+        self.assertIn("-I src", xiao_migrator)
         self.assertIn("board = seeed_xiao_esp32s3_migrator", xiao_profile)
         self.assertIn("[env:xiao_s3_partition_legacy_seed]", xiao_profile)
         self.assertIn("board_build.partitions = default.csv", xiao_profile)
