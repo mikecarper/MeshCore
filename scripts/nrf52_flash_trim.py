@@ -326,6 +326,12 @@ def install(build_env):
     values = flag_defines(flags, cppdefines)
     rak_repeater = infrastructure and is_rak_repeater(
         mcu, build_env.get("SRC_FILTER", ()), values)
+    if _enabled(values.get("MESH_CLI_SHARE_ERROR_PREFIXES")):
+        hook_path = build_env.subst("$PROJECT_DIR/scripts/nrf52_cli_prefix_trim.py")
+        hook_spec = importlib.util.spec_from_file_location("mesh_nrf52_cli_prefix_trim", hook_path)
+        hook = importlib.util.module_from_spec(hook_spec)
+        hook_spec.loader.exec_module(hook)
+        hook.install(build_env)
     if rak_repeater and _enabled(values.get("MESH_CLI_SHARE_REPLIES",
                                             definitions.get("MESH_CLI_SHARE_REPLIES"))):
         build_env.AddBuildMiddleware(compile_shared_cli_replies, "*CommonCLI.cpp")
