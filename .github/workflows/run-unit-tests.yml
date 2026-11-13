@@ -1822,6 +1822,7 @@ jobs:
           MESHCORE_TEST_REAL_PIO_PATHS=1 python3 -B test/test_esp32_partition_migration_build_dir.py -v
           python3 -B test/test_esp32_migration_assets.py -v
           python3 -B test/test_esp32_migration_expanders.py -v
+          python3 -B test/test_esp32_migration_sha256.py -v
           python3 -B test/test_esp32_partition_migration_usb.py -v
           python3 -B test/test_esp32_partition_migration_preservation.py -v
           python3 -B test/test_esp32_partition_calibration_migration.py -v

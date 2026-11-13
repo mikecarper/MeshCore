@@ -13,7 +13,7 @@
 #include <esp_partition.h>
 #include <esp_heap_caps.h>
 #if defined(MESHCORE_MIGRATION_RESUME_OTA) || defined(MOTA_MIGRATION_TARGET_ID)
-#include <mbedtls/sha256.h>
+#include <helpers/ESP32MigrationSha256.h>
 #include <nvs.h>
 #endif
 
@@ -773,16 +773,16 @@ bool readVerifiedOtaIdentity(const esp_partition_t& source,
       }
       mbedtls_sha256_context hash;
       mbedtls_sha256_init(&hash);
-      bool valid = mbedtls_sha256_starts_ret(&hash, 0) == 0;
+      bool valid = migration::sha256Starts(&hash, 0) == 0;
       for (uint32_t offset = 0; valid && offset < marker;) {
         const uint32_t length = marker - offset < sizeof(copy_buffer)
             ? marker - offset : sizeof(copy_buffer);
         valid = esp_partition_read(&source, offset, copy_buffer, length) == ESP_OK
-            && mbedtls_sha256_update_ret(&hash, copy_buffer, length) == 0;
+            && migration::sha256Update(&hash, copy_buffer, length) == 0;
         offset += length;
       }
       uint8_t digest[32];
-      valid = valid && mbedtls_sha256_finish_ret(&hash, digest) == 0
+      valid = valid && migration::sha256Finish(&hash, digest) == 0
           && memcmp(digest, trailer + 8, 8) == 0;
       mbedtls_sha256_free(&hash);
       if (valid) {
