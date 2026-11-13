@@ -163,9 +163,13 @@ worker_source=$(declare -f build_firmware_one_profile)
   || fail "builder publication hash disagrees with canonical release prefix"
 
 calls=()
+call_log=$test_output/profile-calls.log
+: > "$call_log"
 failed_profile=""
 build_firmware_one_profile() {
-  calls+=("$1:$NRF52_OTA_SENSOR_PROFILE:$FIRMWARE_FILENAME_INFIX:$SKIP_DECLARED_REDUCTIONS:$COMPLETE_OTA_FIRST_PASS:$REQUIRE_OTA_UPDATES")
+  local call="$1:$NRF52_OTA_SENSOR_PROFILE:$FIRMWARE_FILENAME_INFIX:$SKIP_DECLARED_REDUCTIONS:$COMPLETE_OTA_FIRST_PASS:$REQUIRE_OTA_UPDATES"
+  calls+=("$call")
+  printf '%s\n' "$call" >> "$call_log"
   if [ -n "$failed_profile" ] && [ "$NRF52_OTA_SENSOR_PROFILE" = "$failed_profile" ]; then return 42; fi
   return 0
 }
@@ -207,8 +211,18 @@ run_resolved_build_targets nrf_repeater nrf_sensor Xiao_nrf52_repeater >/dev/nul
 OUTPUT_DIR=$test_output
 FIRMWARE_FILENAME_INFIX=""
 calls=()
+: > "$call_log"
 run_logged_build_targets nrf_room_server Xiao_nrf52_repeater >/dev/null
-[ "${#calls[@]}" -eq 4 ] || fail "logged matrix did not publish external/internal pairs"
+mapfile -t logged_calls < "$call_log"
+[ "${#logged_calls[@]}" -eq 4 ] || fail "logged matrix did not publish external/internal pairs"
+[[ "${logged_calls[0]}" == nrf_room_server_lora_ota_no_external_sensors:full:full-ota:1:1:1 ]] \
+  || fail "logged internal full profile lost its exact identity or OTA settings"
+[[ "${logged_calls[1]}" == nrf_room_server_lora_ota_no_external_sensors:reduced:reduced-ota:0:0:1 ]] \
+  || fail "logged internal reduced profile lost its exact identity or OTA settings"
+[[ "${logged_calls[2]}" == Xiao_nrf52_repeater:full:full-ota:1:1:1 ]] \
+  || fail "logged external full profile lost its exact identity or OTA settings"
+[[ "${logged_calls[3]}" == Xiao_nrf52_repeater:reduced:reduced-ota:0:0:1 ]] \
+  || fail "logged external reduced profile lost its exact identity or OTA settings"
 
 # KISS and Companion keep the original one-profile worker and do not gain an
 # application receiver merely because another target used the paired overlay.

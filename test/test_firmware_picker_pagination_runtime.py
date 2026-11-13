@@ -28,25 +28,44 @@ class PickerPaginationRuntime(unittest.TestCase):
                  'browser_download_url': 'https://github.com/mikecarper/MeshCore/releases/download/x/' + name}]}
         bootstrap = '''<script>
 const requests=[];
+const errors=[];
 const pages=%s;
+window.addEventListener('error', event => errors.push(String(event.message)));
+window.addEventListener('unhandledrejection', event => errors.push(String(event.reason)));
 window.fetch=async function(url) {
   requests.push(String(url));
-  if (String(url).includes('/releases?')) return {ok:true,json:async()=>String(url).endsWith('page=1')?pages[0]:pages[1]};
+  if (String(url).includes('/releases?')) {
+    const first=String(url).endsWith('page=1');
+    // A later page can be slower than the initial document load.
+    if (!first) await new Promise(resolve=>setTimeout(resolve, 1200));
+    return {ok:true,json:async()=>first?pages[0]:pages[1]};
+  }
   return {ok:false,status:404,json:async()=>null};
 };
-window.addEventListener('load',()=>setTimeout(()=>{
-  const root=document.querySelector('[data-firmware-picker]');
-  const result={requests,role:root.querySelector('[data-field="role"]').textContent,
-    status:root.querySelector('[data-role="release-set"]').textContent};
-  const xhr=new XMLHttpRequest(); xhr.open('POST','/result'); xhr.send(JSON.stringify(result));
-},500));
+window.addEventListener('DOMContentLoaded',()=>{
+  const deadline=Date.now()+20000;
+  function check() {
+    const root=document.querySelector('[data-firmware-picker]');
+    const role=root && root.querySelector('[data-field="role"]');
+    const status=root && root.querySelector('[data-role="release-set"]');
+    const result={requests,errors,role:role ? role.textContent : '',
+      status:status ? status.textContent : ''};
+    if ((requests.some(url=>url.endsWith('page=2')) && result.status.includes('Stable') &&
+         result.role.includes('Repeater')) || errors.length || Date.now()>=deadline) {
+      const xhr=new XMLHttpRequest(); xhr.open('POST','/result'); xhr.send(JSON.stringify(result));
+    } else setTimeout(check,50);
+  }
+  check();
+});
 </script>''' % json.dumps([previews, [main, chunk]])
         html = '<!doctype html><meta charset="utf-8">' + bootstrap + (ROOT / 'docs/firmware_picker.md').read_text(encoding='utf8') + '<script src="/picker.js"></script>'
         done = threading.Event()
         results = []
+        visits = []
         class Handler(http.server.BaseHTTPRequestHandler):
             def log_message(self, *_): pass
             def do_GET(self):
+                visits.append(self.path)
                 content = (ROOT/'docs/_javascript/firmware_picker.js').read_bytes() if self.path.startswith('/picker.js') else html.encode()
                 self.send_response(200); self.send_header('Content-Length', str(len(content)))
                 self.send_header('Content-Type', 'application/javascript' if self.path.startswith('/picker.js') else 'text/html')
@@ -61,10 +80,15 @@ window.addEventListener('load',()=>setTimeout(()=>{
                 cmd = [BROWSER, '--headless=new', '--disable-gpu', '--no-first-run', '--user-data-dir='+folder,
                        'http://127.0.0.1:%s/?s=1.hHeltec_t1' % server.server_port]
                 if os.name != 'nt' and hasattr(os, 'geteuid') and os.geteuid() == 0: cmd.insert(1, '--no-sandbox')
-                run_until_complete(cmd, done, timeout=30)
+                try:
+                    run_until_complete(cmd, done, timeout=60)
+                except AssertionError as error:
+                    raise AssertionError('Picker did not report completion; local requests: ' +
+                                         repr(visits) + '\n' + str(error)) from error
         finally:
             server.shutdown(); server.server_close(); thread.join(timeout=5)
         self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]['errors'], [], results)
         self.assertTrue(any(u.endswith('page=2') for u in results[0]['requests']), results)
         self.assertIn('Stable', results[0]['status'])
         self.assertIn('Repeater', results[0]['role'])
