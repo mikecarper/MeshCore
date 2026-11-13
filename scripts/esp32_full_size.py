@@ -84,6 +84,18 @@ def prepare_source(build_env, node):
     # Earlier middleware may already have substituted a private patched source.
     # Change flags in the actual clone, preserving that substituted node.
     apply_final_flags(build_env)
+    values = SOURCE_POLICY.flag_defines(
+        build_env.get("BUILD_FLAGS", ()), build_env.get("CPPDEFINES", ()))
+    if SOURCE_POLICY._enabled(values.get("MESH_CLI_SHARE_MEMORY_OPERATIONS", "0")):
+        source = Path(node.srcnode().get_abspath()).resolve()
+        parser = Path(build_env.subst("$PROJECT_DIR/src/helpers/CommonCLI.cpp")).resolve()
+        if source == parser:
+            # This parser is not an RF hot path. Keep one-use settings helpers
+            # out of line on the constrained C6 images, preserving all bytes.
+            flags = flag_values(build_env.get("CCFLAGS", ()))
+            if "-fno-inline-functions-called-once" not in flags:
+                flags.append("-fno-inline-functions-called-once")
+            build_env.Replace(CCFLAGS=flags)
     return node
 
 

@@ -30,11 +30,17 @@ The old method remains available for comparison and existing recovery paths.
 Its "full reset" name refers to the receiver maintenance sequence above, not
 asserting the radio's hardware reset pin. Hard radio recovery is separate.
 
-On boards with `SX126X_REGISTER_PATCH`, the SX1262 AGC lockup protection is
-now retained through sleep. This covers ordinary RXPS and the new receive
-refresh, including when `radio.rxps` is off. Runtime gain changes and old AGC
-resets preserve the retention list too. See the
+Every board using the SX1262 driver now enables AGC lockup protection and
+retains it through sleep, without requiring a board flag. This covers ordinary
+RXPS and the new receive refresh, including when `radio.rxps` is off. Runtime
+gain changes and old AGC resets preserve the retention list too. The Ebyte
+custom initializer applies the same checked protection. This implements
+[upstream PR #3824](https://github.com/meshcore-dev/MeshCore/pull/3824) together
+with the sleep-retention fix. SX1268, LLCC68, STM32WL, LR1110 and LR2021 do not
+receive SX1262-specific register writes. See the
 [V4 sleep-retention hardware results](test-results/sx1262_agc_sleep_retention_2026-11-12.md).
+The [T1000-E and W12 sleep checks](test-results/lr_sleep_checks_2026-11-12.md)
+record observations for those separate radio families.
 
 ## Automatic selection
 

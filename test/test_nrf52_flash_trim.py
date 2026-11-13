@@ -152,6 +152,18 @@ class Nrf52FlashTrimTest(unittest.TestCase):
 #include <helpers/CLIReplyCopy.h>
 extern char* other(char*, const char*);
 int main() {
+  const unsigned char input[] = {0x00, 0xFF, 0x01, 0x80, 0x00, 0x42};
+  for (size_t count = 0; count <= sizeof(input); ++count) {
+    unsigned char output[sizeof(input) + 2];
+    memset(output, 0x5A, sizeof(output));
+    if (memcpy(output + 1, input, count) != output + 1) return 10;
+    if (memcmp(output + 1, input, count) != 0 || output[0] != 0x5A
+        || output[count + 1] != 0x5A) return 11;
+    if (memset(output + 1, 0x1A5, count) != output + 1) return 12;
+    for (size_t index = 0; index < count; ++index)
+      if (output[index + 1] != 0xA5) return 13;
+    if (output[0] != 0x5A || output[count + 1] != 0x5A) return 14;
+  }
   const char* values[] = {"", "OK", "Error: saved; pending", "UTF8: \xc3\xa9"};
   for (const char* value : values) {
     char buffer[164];
@@ -180,12 +192,16 @@ char* other(char* destination, const char* source) { return strcpy(destination, 
                 binary = folder / ("copies-" + str(enabled))
                 subprocess.run(["g++", "-std=c++11", "-Os", "-flto", "-Wall", "-Wextra", "-Werror",
                     "-DMESH_CLI_SHARE_REPLY_COPIES=" + str(enabled), "-I" + str(ROOT / "src"),
+                    "-DMESH_CLI_SHARE_MEMORY_OPERATIONS=1",
                     str(folder / "first.cpp"), str(folder / "second.cpp"),
                     str(ROOT / "src/helpers/CLIReplyCopy.cpp"), "-o", str(binary)], check=True)
                 subprocess.run([str(binary)], check=True)
                 symbols = subprocess.check_output(["nm", "-C", "--defined-only", str(binary)], text=True)
                 copies = [line for line in symbols.splitlines() if "mesh::cli::copyReply(" in line]
                 self.assertEqual(len(copies), enabled)
+                for operation in ('copyBytes', 'fillBytes'):
+                    shared = [line for line in symbols.splitlines() if 'mesh::cli::' + operation + '(' in line]
+                    self.assertEqual(len(shared), enabled)
                 if enabled:
                     self.assertNotIn("clone", copies[0])
                     assembly = subprocess.check_output(["objdump", "-d", "-C", str(binary)], text=True)

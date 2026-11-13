@@ -54,8 +54,29 @@ class FullEsp32SizeTests(unittest.TestCase):
             if name in sections:
                 self.assertIn('-D MESH_CLI_SHARE_REPLY_COPIES=1', flags)
                 self.assertNotIn('MESH_CLI_COMPACT_REPLIES', flags)
+                if 'C6' in name:
+                    self.assertIn('-D MESH_CLI_SHARE_MEMORY_OPERATIONS=1', flags)
+                else:
+                    self.assertNotIn('MESH_CLI_SHARE_MEMORY_OPERATIONS', flags)
             else:
                 self.assertNotIn('MESH_CLI_SHARE_REPLY_COPIES', flags)
+                self.assertNotIn('MESH_CLI_SHARE_MEMORY_OPERATIONS', flags)
+
+    def test_constrained_parser_inlining_policy_does_not_affect_radio_or_libraries(self):
+        env = FakeEnvironment(mcu='esp32c6')
+        env['BUILD_FLAGS'] = ['-DMESH_CLI_SHARE_MEMORY_OPERATIONS=1']
+        env.subst = lambda text: text.replace('$PROJECT_DIR', str(ROOT))
+        class Node:
+            def __init__(self, path): self.path = path
+            def srcnode(self): return self
+            def get_abspath(self): return str(ROOT / self.path)
+        for path in ('src/helpers/CommonCLI.cpp', 'src/helpers/radiolib/RadioLibWrappers.cpp',
+                     '.pio/libdeps/RadioLib/SX126x.cpp'):
+            clone = copy.deepcopy(env)
+            node = Node(path)
+            self.assertIs(POLICY.prepare_source(clone, node), node)
+            self.assertEqual('-fno-inline-functions-called-once' in clone['CCFLAGS'],
+                             path == 'src/helpers/CommonCLI.cpp')
 
     def test_only_one_full_esp32_infrastructure_role_is_selected(self):
         for role in POLICY.ROLES:

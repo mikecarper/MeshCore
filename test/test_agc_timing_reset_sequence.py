@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
 #if MESH_AGC_TIMING_DIAGNOSTICS
   AGCTimingDiagnostics diagnostic;
   diagnostic.sequenceRequest(); diagnostic.admit(0);
-  sx126xResetAGC(&radio, true, &diagnostic);
+  sx126xResetAGC<true>(&radio, true, &diagnostic);
   diagnostic.helperFinished(clock_ms * 1000);
   assert(diagnostic.command_failures == (errors ? 7U : 0U));
   assert(diagnostic.failed_sequences == ((errors || stuck) ? 1U : 0U));
@@ -87,7 +87,7 @@ int main(int argc, char** argv) {
   assert(diagnostic.last_error == (errors ? -1 : 0));
   if (stuck) assert(diagnostic.last_error_step == AGCTimingDiagnostics::Step::Poll);
 #else
-  sx126xResetAGC(&radio, true);
+  sx126xResetAGC<true>(&radio, true);
 #endif
   std::cout << calls << clock_ms << "\n";
 }
@@ -112,7 +112,7 @@ class AGCTimingResetSequenceTests(unittest.TestCase):
                 compiler, "-std=c++11", "-Wall", "-Wextra", "-Werror",
                 "-DMESH_AGC_TIMING_DIAGNOSTICS=" + str(flag),
                 "-DSX126X_DIO2_AS_RF_SWITCH=1", "-DSX126X_RX_BOOSTED_GAIN=1",
-                "-DSX126X_REGISTER_PATCH=1", "-I" + str(folder),
+                "-I" + str(folder),
                 "-I" + str(ROOT / "src"), str(folder / "main.cpp"),
                 "-o", str(binary)], capture_output=True, text=True, timeout=60)
             if result.returncode:

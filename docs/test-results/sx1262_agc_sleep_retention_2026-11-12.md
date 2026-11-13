@@ -44,8 +44,15 @@ The original radio, RXPS, gain, power-saving and AGC settings were restored.
 
 This verifies register retention on the tested V4.3. It is not a blocker
 immunity, sensitivity or packet-loss measurement, and other boards were not
-physically tested in this run. The change applies to builds that already
-enable `SX126X_REGISTER_PATCH`.
+physically tested in this run. The initial fix applied to builds that already
+enabled `SX126X_REGISTER_PATCH`. A follow-up makes this protection part of
+every SX1262 driver instance, including Ebyte's custom initialization; the
+other radio families keep their own initialization and reset behavior.
+The XIAO C6 and LilyGo T-LoRa C6 Full images were also qualified with the
+chip-wide protection enabled. They fit their 2,031,616-byte OTA slots with
+216 and 200 bytes free respectively. Their constrained CLI objects share
+memory operations and keep one-use settings helpers out of line; feature
+selection and CLI text are unchanged.
 
 ## Regression coverage
 

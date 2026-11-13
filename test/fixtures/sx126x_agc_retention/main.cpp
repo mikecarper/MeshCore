@@ -5,7 +5,15 @@
 #include <iostream>
 
 struct Custom : SX1262 {
+@PATCH_METHOD@
 @GAIN_METHOD@
+};
+struct WrapperBase { virtual void doResetAGC() = 0; };
+struct Wrapper : WrapperBase {
+  SX126x* _radio; bool gain = false;
+  explicit Wrapper(SX126x* radio) : _radio(radio) {}
+  bool getRxBoostedGainMode() { return gain; }
+@RESET_METHOD@
 };
 
 int main(int argc, char** argv) {
@@ -35,8 +43,10 @@ int main(int argc, char** argv) {
   } else if (scenario == "reset") {
     radio.retain(0x0736); radio.regs[0x0736] = 0xAA;
     SX126x* base = &radio; // Same static type as the production reset helper.
+    Wrapper wrapper(base);
     for (unsigned i = 0; i < 20; ++i) {
-      sx126xResetAGC(base, bool(i % 2));
+      wrapper.gain = i % 2;
+      wrapper.doResetAGC();
       assert(!radio.last_gain_persist && radio.regs[0x029F] == 3);
       radio.sleep(true);
       assert(radio.regs[0x08B5] == 5 && radio.regs[0x0736] == 0xAA);
@@ -66,12 +76,18 @@ int main(int argc, char** argv) {
     Custom gain_failed; gain_failed.fail_at = 1;
     assert(gain_failed.setRxBoostedGainMode(true) == -77 && gain_failed.operations == 1);
     Custom reset_failed; reset_failed.fail_at = 2; // gain write, then patch read
-    sx126xResetAGC(static_cast<SX126x*>(&reset_failed), true);
+    sx126xResetAGC<true>(static_cast<SX126x*>(&reset_failed), true);
     assert(reset_failed.writes == 1 && reset_failed.operations == 2);
   } else if (scenario == "patch_only") {
     assert(sx126xApplyRetainedAgcPatch(&radio, false) == 0);
     assert(radio.contains(0x08B5) && !radio.contains(0x08AC));
     radio.sleep(true); assert(radio.regs[0x08B5] == 5);
+  } else if (scenario == "other_chips") {
+    SX126x other;
+    other.retain(0x0736); other.regs[0x0736] = 0xAA;
+    sx126xResetAGC(&other, true);
+    assert(other.writes == 0 && other.operations == 0);
+    assert(other.regs[0x08B5] == 4 && other.regs[0x029F] == 1);
   } else { assert(false); }
   std::cout << "PASS " << scenario << '\n';
 }

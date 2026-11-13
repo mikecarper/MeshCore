@@ -21,13 +21,16 @@ class SX126xAGCRetentionTests(unittest.TestCase):
         source = (ROOT / "src/helpers/radiolib/CustomSX1262.h").read_text()
         signature = "int16_t setRxBoostedGainMode(bool enabled, bool persist = true)"
         method = body(source, signature)
-        main = (FIXTURE / "main.cpp").read_text().replace("@GAIN_METHOD@", method)
+        patch = body(source, "int16_t applyAgcLockupFix()")
+        wrapper = (ROOT / "src/helpers/radiolib/CustomSX1262Wrapper.h").read_text()
+        reset = body(wrapper, "void doResetAGC() override")
+        main = ((FIXTURE / "main.cpp").read_text().replace("@GAIN_METHOD@", method)
+                .replace("@PATCH_METHOD@", patch).replace("@RESET_METHOD@", reset))
         (folder / "main.cpp").write_text(main)
         cls.binary = folder / "test"
         result = subprocess.run([
             shutil.which("g++") or "g++", "-std=c++11", "-Wall", "-Wextra", "-Werror",
             "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
-            "-DSX126X_REGISTER_PATCH=1", "-DSX126X_RX_BOOSTED_GAIN=1",
             "-I" + str(FIXTURE), "-I" + str(ROOT / "src"), str(folder / "main.cpp"),
             "-o", str(cls.binary)], capture_output=True, text=True, timeout=60)
         if result.returncode:
@@ -47,6 +50,7 @@ class SX126xAGCRetentionTests(unittest.TestCase):
     def test_full_malformed_and_insufficient_lists_never_overwrite_entries(self): self.check("capacity")
     def test_each_spi_failure_and_silent_write_failure_is_reported(self): self.check("failures")
     def test_patch_only_boards_do_not_enable_gain_retention(self): self.check("patch_only")
+    def test_other_chip_resets_do_not_apply_sx1262_patch(self): self.check("other_chips")
 
 
 if __name__ == "__main__":

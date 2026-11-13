@@ -3,9 +3,7 @@
 
 #include <RadioLib.h>
 #include "SX126xStatus.h"
-#ifdef SX126X_REGISTER_PATCH
 #include "SX126xAgcRetention.h"
-#endif
 #include "RadioRegulatorState.h"
 #include <math.h>
 #include "MeshCore.h"
@@ -89,15 +87,16 @@ class CustomSX1262 : public SX1262 {
     uint32_t getTcxoDelay() const { return tcxoDelay; }
     CustomSX1262(Module *mod) : SX1262(mod) { }
 
-#ifdef SX126X_REGISTER_PATCH
+    // This is an SX1262 chip workaround, independent of the board/role.
+    int16_t applyAgcLockupFix() { return sx126xApplyRetainedAgcPatch(this); }
+
     int16_t setRxBoostedGainMode(bool enabled, bool persist = true) {
       // RadioLib's persist=true replaces the retention list with RX gain
       // alone. Merge both registers instead, including on runtime gain changes.
       const int16_t status = SX1262::setRxBoostedGainMode(enabled, false);
       if (status != RADIOLIB_ERR_NONE || !persist) return status;
-      return sx126xApplyRetainedAgcPatch(this);
+      return applyAgcLockupFix();
     }
-#endif
 
     uint8_t regulatorModes() const { return _regulator.modes(); }
     mesh::power::RegulatorMode defaultRegulatorMode() const { return _regulator.defaultMode(); }
@@ -710,11 +709,7 @@ class CustomSX1262 : public SX1262 {
       setDio2AsRfSwitch(SX126X_DIO2_AS_RF_SWITCH);
   #endif
   #ifdef SX126X_RX_BOOSTED_GAIN
-    #ifdef SX126X_REGISTER_PATCH
       if (setRxBoostedGainMode(SX126X_RX_BOOSTED_GAIN) != RADIOLIB_ERR_NONE) return false;
-    #else
-      setRxBoostedGainMode(SX126X_RX_BOOSTED_GAIN);
-    #endif
   #endif
   #if defined(SX126X_RXEN) || defined(SX126X_TXEN)
     #ifndef SX126X_RXEN
@@ -728,9 +723,7 @@ class CustomSX1262 : public SX1262 {
 
   // The protection bit is not retained by warm sleep / RX duty cycling unless
   // its address is explicitly included in the chip's retention list.
-  #ifdef SX126X_REGISTER_PATCH
-    if (sx126xApplyRetainedAgcPatch(this) != RADIOLIB_ERR_NONE) return false;
-  #endif
+      if (applyAgcLockupFix() != RADIOLIB_ERR_NONE) return false;
 
       MESH_DEBUG_PRINTLN("SX1262 status=0x%02X device_errors=0x%04X", getStatus(), getDeviceErrors());
 

@@ -64,7 +64,8 @@ bool radio_init() {
   radio.setRxBoostedGainMode(SX126X_RX_BOOSTED_GAIN);
 #endif
 
-  return true;  // success
+  // This board uses its own initializer instead of CustomSX1262::std_init().
+  return radio.applyAgcLockupFix() == RADIOLIB_ERR_NONE;
 }
 
 mesh::LocalIdentity radio_new_identity() {

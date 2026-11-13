@@ -4,8 +4,9 @@
 
 // SX1261/2 retention memory holds at most four register addresses. Keep the
 // existing entries: replacing this list drops unrelated radio workarounds.
-template<class Radio>
-int16_t sx126xRetainAgcRegisters(Radio* radio, bool retain_gain) {
+// Configuration/recovery only: share these routines instead of inlining their
+// SPI/error paths into each initializer, gain setter and reset on small images.
+__attribute__((noinline)) inline int16_t sx126xRetainAgcRegisters(SX126x* radio, bool retain_gain) {
   constexpr uint16_t list_address = 0x029F;
   constexpr uint8_t capacity = 4;
   uint8_t list[1 + 2 * capacity] = {};
@@ -42,8 +43,7 @@ int16_t sx126xRetainAgcRegisters(Radio* radio, bool retain_gain) {
   return RADIOLIB_ERR_NONE;
 }
 
-template<class Radio>
-int16_t sx126xWriteRetainedAgcPatch(Radio* radio, uint8_t value, bool retain_gain = true) {
+__attribute__((noinline)) inline int16_t sx126xWriteRetainedAgcPatch(SX126x* radio, uint8_t value, bool retain_gain = true) {
   int16_t status = sx126xRetainAgcRegisters(radio, retain_gain);
   if (status != RADIOLIB_ERR_NONE) return status;
   value |= 0x01;
@@ -55,8 +55,7 @@ int16_t sx126xWriteRetainedAgcPatch(Radio* radio, uint8_t value, bool retain_gai
   return (actual & 0x01) ? RADIOLIB_ERR_NONE : RADIOLIB_ERR_UNKNOWN;
 }
 
-template<class Radio>
-int16_t sx126xApplyRetainedAgcPatch(Radio* radio, bool retain_gain = true) {
+__attribute__((noinline)) inline int16_t sx126xApplyRetainedAgcPatch(SX126x* radio, bool retain_gain = true) {
   uint8_t value = 0;
   const int16_t status = radio->readRegister(0x08B5, &value, 1);
   if (status != RADIOLIB_ERR_NONE) return status;
