@@ -7274,7 +7274,9 @@ run_logged_build_targets() {
       fi
       preserved_log=0
       echo "Building ${env} (${profile}); log: ${log_path}"
-      PIO_BUILD_JOBS_OVERRIDE=$pio_job_limit build_firmware "$env" > "$log_tmp" 2>&1
+      # A resumed target can return early after changing exported settings.
+      # Isolate every target so those settings cannot affect the next recipe.
+      ( PIO_BUILD_JOBS_OVERRIDE=$pio_job_limit build_firmware "$env" ) > "$log_tmp" 2>&1
       build_status=$?
       if [ "$build_status" -eq 0 ] \
           && grep -Eq "^Skipping ${env}; (existing artifacts found|matching recipe and qualified artifacts found)" "$log_tmp" \

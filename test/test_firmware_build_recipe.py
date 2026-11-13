@@ -758,6 +758,43 @@ printf 'RESULT:%s BATCH:%s\n' "$status" "$BATCH_BUILD_MODE"
 
 
 class CompilerJobLimitTests(unittest.TestCase):
+    def test_serial_resume_does_not_leak_indicator_partition_to_next_target(self):
+        with tempfile.TemporaryDirectory(prefix="mesh-resume-scope-") as temporary:
+            script = r'''
+source "$1/build_legacy.sh"
+OUTPUT_DIR=$2
+RESUME_BUILD_OUTPUT=1
+unset MESHCORE_ESP32_FULL_PARTITION_TABLE
+indicator_profile() {
+  unset MESHCORE_ESP32_FULL_PARTITION_TABLE
+  export MESHCORE_ESP32_FULL_PARTITION_TABLE=indicator-partitions.csv
+}
+build_firmware() {
+  if [ "$1" = indicator ]; then
+    local MESHCORE_ESP32_FULL_PARTITION_TABLE="${MESHCORE_ESP32_FULL_PARTITION_TABLE-}"
+    # Match the Indicator profile's nested unset/export followed by a skip.
+    indicator_profile
+    printf 'Skipping indicator; matching recipe and qualified artifacts found for indicator.\n'
+    return 0
+  fi
+  if [ "${MESHCORE_ESP32_FULL_PARTITION_TABLE+x}" ]; then
+    printf 'PARTITION_OVERRIDE_LEAKED\n'
+    return 1
+  fi
+  printf 'Skipping g2; matching recipe and qualified artifacts found for g2.\n'
+}
+run_logged_build_targets indicator g2
+status=$?
+if [ "${MESHCORE_ESP32_FULL_PARTITION_TABLE+x}" ]; then exit 76; fi
+printf 'RESULT:%s\n' "$status"
+exit "$status"
+'''
+            result = subprocess.run(["bash", "-c", script, "resume-scope-test", str(ROOT), temporary],
+                                    cwd=temporary, text=True, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("RESULT:0", result.stdout)
+            self.assertNotIn("PARTITION_OVERRIDE_LEAKED", result.stdout + result.stderr)
+
     def test_serial_matrix_passes_validated_job_limit_and_restores_caller_state(self):
         for requested, expected in (("4", "4"), ("2", "2"), ("0", "8"), ("invalid", "8")):
             with self.subTest(requested=requested), tempfile.TemporaryDirectory(prefix="mesh-compiler-jobs-") as temporary:
