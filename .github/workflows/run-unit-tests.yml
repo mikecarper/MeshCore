@@ -1863,6 +1863,7 @@ jobs:
           python3 -B test/test_t190_full_psram.py
           python3 -B test/test_sensirion_integer_type_fix.py
           python3 -B test/test_nrf52_bootloader_release_catalog.py
+          python3 -B test/test_guarded_combo_reconcile.py
           python3 -B test/test_t096_full_memory.py
           python3 -B test/test_st7735_framebuffer.py -v
           python3 -B test/test_nrf52_ble_startup.py
