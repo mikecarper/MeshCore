@@ -4328,6 +4328,23 @@ apply_lora_ota_no_external_sensors_profile() {
   fi
 }
 
+apply_rak4631_embedded_full_size_profile() {
+  # The complete-sensor RAK4631 OTA receivers must share flash with OTAFIX.
+  # Preserve all sensors, OTA diagnostics, radio behavior, and fast crypto;
+  # use the local OTA target name and shared CLI strings to fit that layout.
+  [ -n "${MESHCORE_NRF52_EMBED_BOOTLOADER:-}" ] || return 0
+  [ "${NRF52_OTA_SENSOR_PROFILE:-}" = full ] || return 0
+  case "${1,,}" in
+    rak_4631_repeater_lora_ota_no_external_sensors|rak_4631_repeater_unified_lora_ota)
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_OTA_LOCAL_TARGET_NAME_ONLY=1 -DMESH_CLI_SHARE_REPLY_COPIES=1 -DMESH_CLI_SHARE_MEMORY_OPERATIONS=1 -DMESH_CLI_COMPACT_REPLIES=1 -DMESH_CLI_SHARE_ERROR_PREFIXES=1"
+      record_build_reduction \
+        "ota target-name catalog omitted; local target name and numeric OTA matching retained"
+      record_build_reduction \
+        "CLI replies use concise wording; commands and settings retained"
+      ;;
+  esac
+}
+
 # Generated RAK4631 room-server and sensor OTA identities compile an ordinary
 # role environment, so their storage recipe cannot live only in a PlatformIO
 # stanza.  Apply the same bounded RAK15002 STORE contract as the explicit
@@ -5877,6 +5894,7 @@ build_firmware_one_profile() {
   apply_stm32_companion_size_profile "$env_name"
   apply_nrf52_size_profile "$env_name"
   apply_lora_ota_no_external_sensors_profile "$env_name"
+  apply_rak4631_embedded_full_size_profile "$env_name"
   apply_rak4631_rak15002_sd_store_profile "$env_name"
   apply_radio_overrides "$env_name"
   apply_firmware_profile_overrides

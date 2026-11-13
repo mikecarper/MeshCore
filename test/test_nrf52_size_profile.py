@@ -22,7 +22,8 @@ SEED_FLAGS = " ".join((
 ))
 
 
-def recipe(target, *, platform="NRF52_PLATFORM", ota=True, profile="standard", full=False):
+def recipe(target, *, platform="NRF52_PLATFORM", ota=True, profile="standard", full=False,
+           embedded="", sensor_profile=""):
     # Use the real eligibility predicates as well as the actual mutating helper.
     # A pio guard makes an accidental expansion into a firmware build fail fast.
     script = r'''
@@ -46,6 +47,9 @@ if is_nrf52_companion_radio_full_target "$target"; then full=1; fi
 if is_lora_ota_build "$target"; then lora_ota=1; fi
 if is_lora_ota_only_target "$target"; then ota_only=1; fi
 apply_nrf52_size_profile "$target"
+MESHCORE_NRF52_EMBED_BOOTLOADER=$7
+NRF52_OTA_SENSOR_PROFILE=$8
+apply_rak4631_embedded_full_size_profile "$target"
 if [ "$6" = 1 ]; then
   # Supply actual option data to the real query helper without asking PIO to
   # resolve the configuration. Both source directories already exist here.
@@ -61,7 +65,8 @@ printf '%s\0' "$PLATFORMIO_BUILD_FLAGS" "$PLATFORMIO_BUILD_UNFLAGS" \
         environment.pop(name, None)
     completed = subprocess.run(
         ["bash", "-c", script, "size-profile-test", target, platform,
-         str(int(ota)), profile, SEED_FLAGS, str(int(full))], cwd=ROOT, env=environment,
+         str(int(ota)), profile, SEED_FLAGS, str(int(full)), embedded, sensor_profile],
+        cwd=ROOT, env=environment,
         capture_output=True, check=True,
     )
     fields = completed.stdout.decode().split("\0")
@@ -72,6 +77,28 @@ printf '%s\0' "$PLATFORMIO_BUILD_FLAGS" "$PLATFORMIO_BUILD_UNFLAGS" \
 
 
 class Nrf52SizeProfileTest(unittest.TestCase):
+    def test_embedded_full_rak_receivers_keep_features_with_explicit_size_policy(self):
+        targets = ("RAK_4631_repeater_lora_ota_no_external_sensors",
+                   "RAK_4631_repeater_unified_lora_ota")
+        needed = {"-DMESH_OTA_LOCAL_TARGET_NAME_ONLY=1", "-DMESH_CLI_SHARE_REPLY_COPIES=1",
+                  "-DMESH_CLI_SHARE_MEMORY_OPERATIONS=1", "-DMESH_CLI_COMPACT_REPLIES=1",
+                  "-DMESH_CLI_SHARE_ERROR_PREFIXES=1"}
+        for target in targets:
+            with self.subTest(target=target):
+                result = recipe(target, embedded="2.4.12", sensor_profile="full")
+                flags = set(shlex.split(result["flags"]))
+                self.assertTrue(needed <= flags)
+                self.assertNotIn("-DED25519_COMPACT_BASE=1", flags)
+                self.assertNotIn("-DOTA_TRANSFER_DIAGNOSTICS=0", flags)
+                self.assertIn("target-name catalog omitted", result["reductions"])
+                self.assertIn("CLI replies use concise wording", result["reductions"])
+                for embedded, sensor in (("", "full"), ("2.4.12", "reduced")):
+                    unchanged = recipe(target, embedded=embedded, sensor_profile=sensor)
+                    self.assertFalse(needed.intersection(shlex.split(unchanged["flags"])))
+        other = recipe("RAK_3401_repeater_unified_lora_ota", embedded="2.4.12",
+                       sensor_profile="full")
+        self.assertFalse(needed.intersection(shlex.split(other["flags"])))
+
     def assert_preserved_policy(self, result):
         flags = BASE_FLAGS + shlex.split(result["flags"])
         optimizers = [flag for flag in flags if re.fullmatch(r"-O(?:[0-3sgz]|fast)", flag)]
