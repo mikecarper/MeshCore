@@ -39,6 +39,9 @@ class HeltecV4PartitionMigratorTest(unittest.TestCase):
         self.assertIn("board_build.partitions = default.csv", xiao_profile)
         xiao_board = XIAO_MIGRATOR_BOARD.read_text(encoding="utf-8")
         self.assertIn('"flash_size": "8MB"', xiao_board)
+        self.assertIn('"-DARDUINO_USB_CDC_ON_BOOT=0"', xiao_board)
+        expander = xiao_profile.split("[env:Xiao_S3_WIO_partition_expander]", 1)[1].split("[env:", 1)[0]
+        self.assertIn("board = seeed_xiao_esp32s3_migrator", expander)
 
     def test_migration_stages_identity_and_self_copies_before_table_switch(self):
         source = SOURCE.read_text(encoding="utf-8")

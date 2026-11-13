@@ -90,9 +90,9 @@ UNCHANGED_COUNTS = {
     ("meshnology_w12", "hwcdc"): 12,
     ("m5stack-stamps3", "hwcdc"): 5,
     ("seeed_xiao_esp32c3", "hwcdc"): 7,
-    ("seeed_xiao_esp32s3", "hwcdc"): 26,
+    ("seeed_xiao_esp32s3", "hwcdc"): 25,
     ("seeed_xiao_esp32s3_migrator", "hwcdc"): 1,
-    ("seeed_xiao_esp32s3_migrator", "uart"): 3,
+    ("seeed_xiao_esp32s3_migrator", "uart"): 4,
     ("seeed_wio_tracker_l2", "hwcdc"): 5,
     ("t-deck", "hwcdc"): 4,
     # Ten shared SX126x/SX127x T3 S3 roles retain native HWCDC.
@@ -291,7 +291,7 @@ class Esp32HwcdcRecipeTests(unittest.TestCase):
                 self.assertEqual(self.sdk["hwcdc_primary_enabled"](row["env"]),
                                  row["kind"] == "hwcdc")
                 self.assertFalse(self.sdk["native_primary_enabled"](row["env"]))
-        expected = Counter({"hwcdc": 353, "uart": 125, "classic_uart": 88})
+        expected = Counter({"hwcdc": 352, "uart": 126, "classic_uart": 88})
         expected.update(kind for _, _, kind in USB_PARTITION_BRIDGES.values())
         self.assertEqual(counts, expected)
 
