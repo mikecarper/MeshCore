@@ -21,14 +21,20 @@ from audit_esp32_image_ram import EspImage
 from test_replay_reset_integration import extract_braced
 
 
-def elf32(path, symbols, data=b"", address=0x3F400000):
+def elf32(path, symbols, data=b"", address=0x3F400000, *, symbol_sections=None, writable=False,
+          symbol_types=None, duplicate=None):
     """Minimal actual ELF32, including absolute linker symbols and loaded data."""
     names = bytearray(b"\0")
     symtab = bytearray(16)
     for name, (value, size) in symbols.items():
         offset = len(names)
         names += name.encode() + b"\0"
-        symtab += struct.pack("<IIIBBH", offset, value, size, 0x10, 0, 0xFFF1)
+        section = (symbol_sections or {}).get(name, 0xFFF1)
+        info = 0x10 | (symbol_types or {}).get(name, 0)
+        record = struct.pack("<IIIBBH", offset, value, size, info, 0, section)
+        symtab += record
+        if name == duplicate:
+            symtab += record
     section_offset = 52
     payload_offset = section_offset + 4 * 40
     string_offset = payload_offset + len(data)
@@ -37,7 +43,7 @@ def elf32(path, symbols, data=b"", address=0x3F400000):
     header += struct.pack("<HH5I6H", 2, 40, 1, 0, 0, section_offset, 0,
                           52, 0, 0, 40, 4, 0)
     sections = bytes(40)
-    sections += struct.pack("<10I", 0, 1, 2, address, payload_offset, len(data), 0, 0, 4, 0)
+    sections += struct.pack("<10I", 0, 1, 3 if writable else 2, address, payload_offset, len(data), 0, 0, 4, 0)
     sections += struct.pack("<10I", 0, 3, 0, 0, string_offset, len(names), 0, 0, 1, 0)
     sections += struct.pack("<10I", 0, 2, 0, 0, symbol_offset, len(symtab), 2, 1, 4, 16)
     Path(path).write_bytes(header + sections + data + names + symtab)
@@ -1443,6 +1449,58 @@ int main() {
                         passed = ram.check_firmware(path, "NRF52_PLATFORM", "nrf52840",
                                                     flags, "RAK_4631_repeater") == 0
                     self.assertEqual(passed, expected)
+
+    def test_embedded_rak_oled_counts_only_proven_static_display_once(self):
+        flags = {"RAK_4631": 1, "OTA_BOOTLOADER_MIGRATION": 1,
+                 "DISPLAY_CLASS": "SSD1306Display", "ENABLE_OTA": 1,
+                 "MESH_CLIENT_REPEATER_ONLY": 1}
+        base = ram.requirements("NRF52_PLATFORM", flags, "RAK_4631_repeater")
+        required = base["required_heap_bytes"]
+        with tempfile.TemporaryDirectory() as temporary:
+            image = Path(temporary) / "firmware.elf"
+            report = Path(temporary) / "memory.json"
+
+            def run(*, available, display=(0x20001000, 168), writable=True,
+                    section=1, selected=flags, target="RAK_4631_repeater",
+                    kind=1, duplicate=None):
+                elf32(image, {"__HeapBase": (0x20020000, 0),
+                              "__HeapLimit": (0x20020000 + available, 0),
+                              "display": display}, data=bytes(512), address=0x20001000,
+                      symbol_sections={"display": section}, writable=writable,
+                      symbol_types={"display": kind}, duplicate=duplicate)
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    status = ram.check_firmware(image, "NRF52_PLATFORM", "nrf52840",
+                                                selected, target, report)
+                return status, json.loads(report.read_text())
+
+            status, checked = run(available=required - 168)
+            self.assertEqual(status, 0)
+            self.assertEqual(checked["required_heap_bytes"], required - 168)
+            self.assertEqual(checked["linked_display_driver_bytes"], 168)
+            self.assertEqual(checked["components"]["display_pixels_and_driver"], 1880)
+            self.assertEqual(checked["components"]["allocation_and_transient_margin"], 4096)
+            self.assertEqual(checked["required_contiguous_bytes"], base["required_contiguous_bytes"])
+            self.assertEqual(run(available=required - 169)[0], 1)
+            for options in ({"writable": False}, {"section": 0xFFF1},
+                            {"kind": 2}, {"duplicate": "display"},
+                            {"display": (0x20001000, 513)},
+                            {"display": (0x20020000, 168)},
+                            {"target": "other_repeater"},
+                            {"selected": {**flags, "OTA_BOOTLOADER_MIGRATION": 0}}):
+                with self.subTest(options=options):
+                    status, checked = run(available=required - 1, **options)
+                    self.assertEqual(status, 1)
+                    self.assertNotIn("linked_display_driver_bytes", checked)
+            override = {**flags, "MESH_MIN_RUNTIME_HEAP": required + 128}
+            status, checked = run(available=required + 127, selected=override)
+            self.assertEqual(status, 1)
+            self.assertEqual(checked["required_heap_bytes"], required + 128)
+
+        board = (ROOT / "variants/rak4631/target.cpp").read_text()
+        oled = (ROOT / "src/helpers/ui/SSD1306Display.cpp").read_text()
+        self.assertIn("DISPLAY_CLASS display;", board)
+        self.assertIn("SSD1306Display::FRAMEBUFFER_BYTES == 1024", oled)
+        self.assertIn("SSD1306Display::FRAMEBUFFER_BYTES + 32 <= 2048", oled)
 
     def test_nrf52_oled_bound_matches_same_source_guard_without_changing_other_displays(self):
         defines = {

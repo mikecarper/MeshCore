@@ -681,6 +681,63 @@ def heap_regions(elf, platform, mcu):
     return [(start, end, 0)]
 
 
+def unique_elf_object(elf, wanted):
+    """Find one unambiguous object symbol; never trust an alias or function."""
+    matches = []
+    for section in elf.sections:
+        if section[1] != 2:  # SHT_SYMTAB
+            continue
+        strings = elf.section_bytes(elf.sections[section[6]])
+        for offset in range(section[4], section[4] + section[5], 16):
+            name, address, size, info, _, index = elf.unpack("IIIBBH", offset)
+            if not name or name >= len(strings) or not index:
+                continue
+            if strings[name:].split(b"\0", 1)[0] == wanted.encode("ascii"):
+                matches.append((address, size, index, info & 0x0F))
+    if len(matches) != 1 or matches[0][3] != 1:  # STT_OBJECT
+        return None
+    return matches[0][:3]
+
+
+def account_rak4631_linked_oled(elf, platform, mcu, defines, target, policy, regions):
+    """Count the linked OLED object once without reducing other RAM reserves.
+
+    The RAK4631 repeater declares its SSD1306Display object as the global
+    `display`. Its OLED bound already includes the framebuffer, that object,
+    and allocator overhead. If the ELF proves that object is in static RAM,
+    it is already excluded from the linker heap and must not be counted a
+    second time as a heap allocation. Unknown layouts retain the older,
+    conservative bound. Keep the original contiguous allocation bound too.
+    """
+    if (platform != "NRF52_PLATFORM" or str(mcu).lower() != "nrf52840"
+            or target != "RAK_4631_repeater" or "RAK_4631" not in defines
+            or not integer(defines, "OTA_BOOTLOADER_MIGRATION", 0)
+            or str(defines.get("DISPLAY_CLASS", "")).strip('"') != "SSD1306Display"):
+        return
+    symbol = unique_elf_object(elf, "display")
+    if not symbol:
+        return
+    address, size, section_index = symbol
+    if not (0 < size <= 512 and 0 < section_index < len(elf.sections)):
+        return
+    section = elf.sections[section_index]
+    section_address, section_size = section[3], section[5]
+    # nRF52840 RAM, a writable allocated section, fully outside every heap.
+    if (section[2] & 3 != 3 or not 0x20000000 <= address < address + size <= 0x20040000
+            or not section_address <= address < address + size <= section_address + section_size
+            or any(address < end and address + size > start for start, end, _ in regions)):
+        return
+    display_budget = policy["components"].get("display_pixels_and_driver")
+    # The 1 KiB framebuffer and 32 bytes of allocator headroom remain within
+    # the post-deduction OLED bound, in addition to the general 4 KiB margin.
+    if display_budget != 2048 or display_budget - size < 1024 + 32:
+        return
+    policy["components"]["display_pixels_and_driver"] -= size
+    policy["required_heap_bytes"] = max(
+        sum(policy["components"].values()), integer(defines, "MESH_MIN_RUNTIME_HEAP", 0))
+    policy["linked_display_driver_bytes"] = size
+
+
 def check_firmware(elf_path, platform, mcu, defines, target, output=None):
     elf = FirmwareElf(elf_path)
     if platform == "ESP32_PLATFORM":
@@ -694,6 +751,7 @@ def check_firmware(elf_path, platform, mcu, defines, target, output=None):
             defines["CONFIG_IDF_TARGET_ESP32"] = 1
     policy = requirements(platform, defines, target)
     regions = heap_regions(elf, platform, mcu)
+    account_rak4631_linked_oled(elf, platform, mcu, defines, target, policy, regions)
     available = sum(end - start for start, end, _ in regions)
     largest = max((end - start for start, end, _ in regions), default=0)
     passed = available >= policy["required_heap_bytes"] and largest >= policy["required_contiguous_bytes"]
