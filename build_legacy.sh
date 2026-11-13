@@ -3980,6 +3980,14 @@ apply_esp32_full_size_profile() {
   fi
 
   case "${env_name,,}" in
+    lilygo_t3s3_sx1262_repeater|lilygo_t3s3_sx1262_room_server|\
+    lilygo_t3s3_sx1276_repeater|lilygo_t3s3_sx1276_room_server)
+      # Exact legacy identities share the T3S3's 4 MiB flash with two OTA
+      # slots. Match the universal image's LTO policy while preserving all
+      # services, target names, sensors, and the existing partition layout.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -flto -flto-partition=one -DMESH_UNIVERSAL_LTO=1 -ffunction-sections -fdata-sections -mtext-section-literals -mlongcalls"
+      append_platformio_extra_script "post:scripts/esp32_universal_radio_lto.py"
+      ;;
     ebyte_eora-s3_repeater|ebyte_eora-s3_repeater_observer_mqtt|\
     ebyte_eora-s3_room_server_observer_mqtt)
       # Keep Full observer images inside the existing dual-OTA slots. The

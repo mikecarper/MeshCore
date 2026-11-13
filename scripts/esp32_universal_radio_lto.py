@@ -1,16 +1,20 @@
 """Link qualified universal radio images with the compiler's LTO plugin."""
+import os
 import re
 
 LINK_FLAGS = ("-flto", "-flto-partition=one", "-ffunction-sections", "-fdata-sections",
               "-mtext-section-literals", "-mlongcalls")
 
 
-def enabled(platform, mcu, board, target):
+def enabled(platform, mcu, board, target, *, full=False):
     return (platform == "espressif32" and (
         (mcu == "esp32s3" and board == "t3_s3_v1_x"
          and re.fullmatch(r"LilyGo_T3S3_(?:repeater(?:_bridge_espnow|_observer_mqtt)?|"
                           r"room_server(?:_observer_mqtt)?|kiss_modem|terminal_chat|"
                           r"companion_radio_(?:usb|ble|full)(?:_ps)?)", target) is not None)
+        or (mcu == "esp32s3" and board == "t3_s3_v1_x" and full
+            and re.fullmatch(r"LilyGo_T3S3_sx(?:1262|1276)_(?:repeater|room_server)_observer_mqtt",
+                             target) is not None)
         or (mcu == "esp32s3" and board == "ebyte_eora-s3"
             and target in ("Ebyte_EoRa-S3_repeater_observer_mqtt",
                            "Ebyte_EoRa-S3_room_server_observer_mqtt"))
@@ -25,7 +29,8 @@ def enabled(platform, mcu, board, target):
 def install(build_env):
     if not enabled(build_env.PioPlatform().name,
                    str(build_env.BoardConfig().get("build.mcu", "")).lower(),
-                   str(build_env.get("BOARD", "")), str(build_env.get("PIOENV", ""))):
+                   str(build_env.get("BOARD", "")), str(build_env.get("PIOENV", "")),
+                   full=os.environ.get("MESHCORE_ESP32_FULL_BUILD") == "1"):
         return False
     # PlatformIO already supplies plugin-aware gcc-ar/gcc-ranlib. BUILD_FLAGS
     # reaches compilation, but LTO's final code generation needs these too.

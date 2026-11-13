@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("universal_radio_lto", ROOT / "scripts/esp32_universal_radio_lto.py")
@@ -34,6 +35,19 @@ class Environment(dict):
 
 
 class UniversalRadioLtoTests(unittest.TestCase):
+    def test_exact_t3s3_legacy_observers_use_lto_only_for_full_images(self):
+        for radio in ("sx1262", "sx1276"):
+            for role in ("repeater", "room_server"):
+                target = "LilyGo_T3S3_%s_%s_observer_mqtt" % (radio, role)
+                with self.subTest(target=target):
+                    with patch.dict(os.environ, {"MESHCORE_ESP32_FULL_BUILD": "1"}):
+                        env = Environment(target=target)
+                        self.assertTrue(POLICY.install(env))
+                        self.assertTrue(set(POLICY.LINK_FLAGS) <= set(env["LINKFLAGS"]))
+                        self.assertFalse(POLICY.install(Environment(target=target, board="other")))
+                    with patch.dict(os.environ, {"MESHCORE_ESP32_FULL_BUILD": "0"}):
+                        self.assertFalse(POLICY.install(Environment(target=target)))
+
     def test_constrained_s3_repeater_bases_have_exact_lto_link_support(self):
         for board, target in (("esp32-s3-devkitc-1", "Heltec_Wireless_Tracker_repeater_observer_mqtt"),
                               ("esp32-s3-devkitc-1", "Heltec_WSL3_repeater_observer_mqtt"),
@@ -80,6 +94,11 @@ apply_esp32_full_size_profile "$2"
 printf '%s\n%s\n' "$PLATFORMIO_BUILD_FLAGS" "$PLATFORMIO_EXTRA_SCRIPTS"
 '''
         for full, target, expected in (("1", "Ebyte_EoRa-S3_Repeater", True),
+                                       ("1", "LilyGo_T3S3_sx1262_repeater", True),
+                                       ("1", "LilyGo_T3S3_sx1262_room_server", True),
+                                       ("1", "LilyGo_T3S3_sx1276_repeater", True),
+                                       ("1", "LilyGo_T3S3_sx1276_room_server", True),
+                                       ("0", "LilyGo_T3S3_sx1262_repeater", False),
                                        ("1", "Heltec_Wireless_Tracker_repeater", True),
                                        ("1", "Heltec_WSL3_repeater", True),
                                        ("1", "heltec_tracker_v2_repeater", True),
