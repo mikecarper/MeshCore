@@ -273,6 +273,22 @@
     return release.published_at || release.created_at || "";
   }
 
+  async function fetchAllReleases(endpoint, fetchPage) {
+    // A firmware family may span several releases and be pushed past the
+    // first page by unrelated previews. Never render a partial family.
+    const releases = [];
+    for (let page = 1; page <= 100; page++) {
+      const response = await fetchPage(endpoint + "?per_page=100&page=" + page,
+        { headers: { Accept: "application/vnd.github+json" } });
+      if (!response.ok) throw new Error("GitHub returned HTTP " + response.status);
+      const batch = await response.json();
+      if (!Array.isArray(batch)) throw new Error("Invalid GitHub release response");
+      releases.push(...batch);
+      if (batch.length < 100) return releases;
+    }
+    throw new Error("GitHub release catalog exceeds the pagination limit");
+  }
+
   function isT114PreviewTag(tag) {
     return /^heltec-t114-v\d+(?:\.\d+){2,3}\.preview[1-9]\d*$/.test(tag || "");
   }
@@ -3277,7 +3293,7 @@
     const endpoint = "https://api.github.com/repos/" +
       encodeURIComponent(repo.split("/")[0]) + "/" +
       encodeURIComponent(repo.split("/")[1]) +
-      "/releases?per_page=20";
+      "/releases";
     const embeddedElement = document.getElementById("firmware-picker-data");
     const embedded = embeddedElement ? JSON.parse(embeddedElement.textContent) : null;
     const bootloaderUrl = root.getAttribute("data-bootloaders-url");
@@ -3305,13 +3321,7 @@
       return response.ok ? response.json() : null;
     }).catch(function () { return null; }) : Promise.resolve(null);
     const releaseRequest = embedded ? Promise.resolve(embedded.releases) :
-      fetch(endpoint, { headers: { Accept: "application/vnd.github+json" } })
-      .then(function (response) {
-        if (!response.ok) {
-          throw new Error("GitHub returned HTTP " + response.status);
-        }
-        return response.json();
-      });
+      fetchAllReleases(endpoint, fetch);
     releaseRequest.then(function (data) {
         return controlRequest.then(function (controls) { return { releases: data, controls: controls }; });
       })
@@ -3366,6 +3376,7 @@
     INSTALL_LABELS: INSTALL_LABELS,
     CANDIDATE_RESULT_LIMIT: CANDIDATE_RESULT_LIMIT,
     selectReleaseSet: selectReleaseSet,
+    fetchAllReleases: fetchAllReleases,
     flattenReleaseAssets: flattenReleaseAssets,
     parseFirmwareAsset: parseFirmwareAsset,
     parseTargetProfile: parseTargetProfile,
