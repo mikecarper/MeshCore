@@ -66,6 +66,54 @@ test('installed base lookup requires exact version, role, hardware and reported 
   assert.equal(await catalog.findInstalled(dest,'repeater','v1.18.0.1 (Build: old)',{fetchImpl:f.fetchImpl}),null);
 });
 
+test('1.18.0.1 installed image lookup uses the exact historical mirror without weakening identity checks',async()=>{
+  const f=await fixture(),version='v1.18.0.1-halo-keymind-cascade-dev-03214a16';
+  const body=f.body, image=Buffer.from(f.image);image.writeUInt32LE(0x01120001,image.length-40);
+  const gz=gzipSync(image),piece={sha256:hash(image),size:image.length,gzipSha256:hash(gz),gzipSize:gz.length,path:hash(image)+'.gz'};
+  const name='test_board_repeater-full-ota-'+version+'.bin';
+  const url='https://github.com/mikecarper/MeshCore/releases/download/lora-ota-'+version+'/'+name;
+  const item={...f.item,version,name,url},dest={...f.dest,baseHash:hash(body).slice(0,16)};
+  const history='https://mikecarper.github.io/MeshCore/firmware-1.18.0.1/firmware/';
+  const seen=[];
+  const fetchImpl=async u=>{seen.push(u);if(u.endsWith('/catalog.json'))return new Response(JSON.stringify({items:[item]}));
+    if(u==='https://mikecarper.github.io/meshfirmware/firmware/index.json')return new Response(JSON.stringify({schemaVersion:1,entries:[]}));
+    if(u===history+'index.json')return new Response(JSON.stringify({schemaVersion:1,entries:[{url,...piece}]}));
+    if(u===history+piece.path)return new Response(gz);
+    throw Error('Unexpected URL '+u);};
+  const result=await catalog.findInstalled(dest,'repeater',version+' (Build: old)',{fetchImpl});
+  assert.equal(hash(result.bytes),hash(image));assert.ok(seen.includes(history+'index.json'));assert.ok(seen.includes(history+piece.path));
+  assert.equal(await catalog.findInstalled({...dest,hwId:'wrong'},'repeater',version,{fetchImpl}),null);
+  assert.equal(await catalog.findInstalled({...dest,baseHash:'0000000000000000'},'repeater',version,{fetchImpl}),null);
+  const invalid=async u=>u===history+'index.json'?new Response('{bad'):fetchImpl(u);
+  await assert.rejects(catalog.findInstalled(dest,'repeater',version,{fetchImpl:invalid}),/Cannot load firmware catalog/);
+  const corrupted=async u=>u===history+piece.path?new Response(Buffer.alloc(gz.length)):fetchImpl(u);
+  await assert.rejects(catalog.findInstalled(dest,'repeater',version,{fetchImpl:corrupted}),/hash/);
+});
+
+test('installed embedded bootloader applications may identify a base, but are never offered as OTA candidates',async()=>{
+  const name='test_board_repeater-with-bootloader-2.4.12-full-ota-v1.18.0.1-halo-keymind-cascade-dev-03214a16.zip';
+  assert.deepEqual(catalog.envNames(name),[]);
+  assert.ok(catalog.envNames(name,false).includes('test_board_repeater'));
+  assert.deepEqual(catalog.envNames('test_board_repeater-with-bootloader-not-valid-full-ota-v1.18.0.1.zip',false).includes('test_board_repeater'),false);
+  const f=await fixture(),version='v1.18.0.1-halo-keymind-cascade-dev-03214a16';
+  const image=Buffer.from(f.image);image.writeUInt32LE(0x01120001,image.length-40);
+  const gz=gzipSync(image),piece={sha256:hash(image),size:image.length,gzipSha256:hash(gz),gzipSize:gz.length,path:hash(image)+'.gz'};
+  const imageName=name.replace('03214a16.zip','40dd42de.bin'),url='https://github.com/mikecarper/MeshCore/releases/download/lora-ota-'+version+'/'+imageName;
+  const item={...f.item,version,name:imageName,url},history='https://mikecarper.github.io/MeshCore/firmware-1.18.0.1/firmware/';
+  const fetchImpl=async u=>{
+    if(u.endsWith('/catalog.json'))return new Response(JSON.stringify({items:[item]}));
+    if(u==='https://mikecarper.github.io/meshfirmware/firmware/index.json')return new Response(JSON.stringify({schemaVersion:1,entries:[]}));
+    if(u===history+'index.json')return new Response(JSON.stringify({schemaVersion:1,entries:[{url,...piece}]}));
+    if(u===history+piece.path)return new Response(gz);
+    throw Error('Unexpected URL '+u);
+  };
+  const reported='v1.18.0.1-halo-keymind-cascade-dev-40dd42de';
+  const dest={...f.dest,baseHash:hash(f.body).slice(0,16)},result=await catalog.findInstalled(dest,'repeater',reported,{fetchImpl});
+  assert.equal(hash(result.bytes),hash(image));
+  assert.equal(await catalog.findInstalled({...dest,baseHash:'0000000000000000'},'repeater',reported,{fetchImpl}),null);
+  assert.equal(await catalog.findInstalled(dest,'repeater','v1.18.0.1-halo-keymind-cascade-dev-deadbeef',{fetchImpl}),null);
+});
+
 test('released OTA receivers without installhash remain downloadable with full identity and hash checks',async()=>{
   const f=await fixture({installHash:false});
   const [choice]=await catalog.discover(f.dest,'repeater',{fetchImpl:f.fetchImpl});

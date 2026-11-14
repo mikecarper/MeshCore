@@ -8,6 +8,8 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(mota,zip,checks){
   'use strict';
   const ROOT='https://mikecarper.github.io/meshfirmware/', CONTROLS='https://mikecarper.github.io/MeshCore/_data/firmware_controls.json', MAX=64*1024*1024;
+  const HISTORY='https://mikecarper.github.io/MeshCore/firmware-1.18.0.1/firmware/';
+  const HISTORICAL_VERSION='v1.18.0.1-halo-keymind-cascade-dev-03214a16';
   const hex=b=>Array.from(b,x=>x.toString(16).padStart(2,'0')).join('');
   const sha=async b=>hex(new Uint8Array(await (globalThis.crypto?.subtle||require('node:crypto').webcrypto.subtle).digest('SHA-256',b)));
   const digest=s=>typeof s==='string'&&/^[0-9a-f]{64}$/.test(s);
@@ -15,7 +17,8 @@
   async function read(url,limit,fetchImpl,deadline){
     const expected=new URL(url,ROOT);
     const releaseApi=expected.origin==='https://api.github.com'&&/^\/repos\/mikecarper\/MeshCore\/releases\/tags\/[^/]+$/.test(expected.pathname)&&!expected.search&&!expected.hash;
-    if(!releaseApi&&(expected.origin!==new URL(ROOT).origin||!(expected.href.startsWith(ROOT)||expected.href===CONTROLS)))throw Error('Unexpected firmware mirror URL');
+    const history=expected.href===HISTORY+'index.json'||(expected.href.startsWith(HISTORY)&&/^[a-f0-9]{64}\.gz$/.test(expected.href.slice(HISTORY.length)));
+    if(!releaseApi&&!history&&(expected.origin!==new URL(ROOT).origin||!(expected.href.startsWith(ROOT)||expected.href===CONTROLS)))throw Error('Unexpected firmware mirror URL');
     const remaining=deadline===undefined?120000:deadline-Date.now();if(remaining<=0)throw Error('Firmware search timed out');
     const response=await fetchImpl(expected.href,{credentials:'omit',cache:'no-cache',signal:AbortSignal.timeout(Math.min(120000,remaining))});
     if(!response.ok)throw Error('Firmware catalog returned HTTP '+response.status);
@@ -33,10 +36,13 @@
   // Publication labels are stripped only to find possible build environments;
   // the downloaded application's actual EndF identity remains authoritative.
   function envNames(name,requireOta=true){
-    if(typeof name!=='string'||name.length>300||/[\\/\x00-\x1f]/.test(name)||/-with-bootloader-|-(?:merged|factory)(?=\.|-)/i.test(name))return [];
+    if(typeof name!=='string'||name.length>300||/[\\/\x00-\x1f]/.test(name)||(requireOta&&/-with-bootloader-/i.test(name))||/-(?:merged|factory)(?=\.|-)/i.test(name))return [];
     const m=/^(.+)-v\d+\.\d+\.\d+(?:\.\d+)?(?:[-+][a-z0-9._-]+)?\.(?:bin|zip)$/i.exec(name);
     if(!m||(requireOta&&!/-ota$/i.test(m[1])))return [];
-    const raw=m[1].replace(/-ota$/i,''),out=new Set([raw]);
+    const published=m[1].replace(/-ota$/i,'');
+    const raw=published.replace(/-with-bootloader-\d+(?:\.\d+){2}(?:-preview\.\d+)?(?=-(?:full|reduced)$|$)/i,'');
+    if(/-with-bootloader-/i.test(published)&&published===raw)return [];
+    const out=new Set([raw]);
     out.add(raw.replace(/-(?:full|reduced)$/i,''));
     out.add(raw.replace(/-full-usb-wifi$/i,''));
     out.add(raw.replace(/-full-logging$/i,''));
@@ -109,10 +115,10 @@
     if(!pieces||pieces.reduce((n,p)=>n+p.size,0)!==entry.size)throw Error('Invalid firmware mirror parts');
     return {entry,pieces};
   }
-  async function download(candidate,index,fetchImpl,deadline){
+  async function download(candidate,index,fetchImpl,deadline,mirrorRoot=ROOT+'firmware/'){
     const {entry,pieces}=mirrorEntry(candidate,index);
     const result=new Uint8Array(entry.size);let offset=0;
-    for(const p of pieces){const data=await read('firmware/'+p.path,Math.max(p.gzipSize,p.size),fetchImpl,deadline);const bytes=await unpack(data,p);result.set(bytes,offset);offset+=bytes.length;}
+    for(const p of pieces){const data=await read(mirrorRoot+p.path,Math.max(p.gzipSize,p.size),fetchImpl,deadline);const bytes=await unpack(data,p);result.set(bytes,offset);offset+=bytes.length;}
     if(await sha(result)!==entry.sha256)throw Error('Firmware mirror failed its complete SHA-256 check');
     return /\.zip$/i.test(candidate.name)?await zip.loadApplication(result):await mota.parseEndF(result);
   }
@@ -136,17 +142,34 @@
     const catalog=await json('catalog.json',12*1024*1024,fetchImpl,deadline);
     if(!Array.isArray(catalog.items)||catalog.items.length>50000)throw Error('Invalid firmware catalog');
     const matches=[],ids=new Map(),seen=new Set();
+    // A few 1.18.0.1 artifacts were built from a separately recorded source
+    // commit while remaining in the published 03214a16 release catalog. Only
+    // consider those when the exact runtime version is in the asset filename;
+    // the EndF identity and reported installed body hash are still mandatory.
+    function exactInstalledVersion(item){
+      if(item.version===expectedVersion)return true;
+      if(item.version!==HISTORICAL_VERSION||!/^v?1\.18\.0\.1-halo-keymind-cascade-dev-[a-f0-9]{8,40}$/i.test(expectedVersion)||typeof item.name!=='string')return false;
+      const name=item.name.toLowerCase(),suffix=expectedVersion.toLowerCase().replace(/^v?/,'v');
+      return name.endsWith('-'+suffix+'.bin')||name.endsWith('-'+suffix+'.zip');
+    }
     for(const item of catalog.items){
-      if(item?.project!=='MeshCore'||item.provider!=='Keymind Cascade'||item.role!==roles[role]||!['flash','flash-update'].includes(item.action)||item.version!==expectedVersion||typeof item.url!=='string'||!/^https:\/\/github\.com\/mikecarper\/MeshCore\/releases\/download\/[^/?#]+\/[^/?#]+$/i.test(item.url))continue;
+      if(item?.project!=='MeshCore'||item.provider!=='Keymind Cascade'||item.role!==roles[role]||!['flash','flash-update'].includes(item.action)||!exactInstalledVersion(item)||typeof item.url!=='string'||!/^https:\/\/github\.com\/mikecarper\/MeshCore\/releases\/download\/[^/?#]+\/[^/?#]+$/i.test(item.url))continue;
       const names=envNames(item.name,false);let match=false;for(const name of names){if(!ids.has(name))ids.set(name,await idForEnv(name));if(ids.get(name)===dest.targetId){match=true;break;}}
       if(match&&!seen.has(item.url)){seen.add(item.url);matches.push(item);}
     }
     if(!matches.length)return null;if(matches.length>8)throw Error('Too many possible installed firmware images; select the exact base manually');
-    const index=await json('firmware/index.json',4*1024*1024,fetchImpl,deadline);let total=0,found=null;
-    for(const item of matches){let entry,pieces;try{({entry,pieces}=mirrorEntry(item,index));}catch(e){if(/not available/.test(e.message))continue;throw e;}
+    const index=await json('firmware/index.json',4*1024*1024,fetchImpl,deadline);let total=0,found=null,historyIndex=null;
+    for(const item of matches){let entry,pieces,selectedIndex=index,mirrorRoot=ROOT+'firmware/';
+      try{({entry,pieces}=mirrorEntry(item,index));}catch(e){
+        if(!/not available/.test(e.message))throw e;
+        if(item.version!==HISTORICAL_VERSION)continue;
+        if(!historyIndex)historyIndex=await json(HISTORY+'index.json',4*1024*1024,fetchImpl,deadline);
+        selectedIndex=historyIndex;mirrorRoot=HISTORY;
+        try{({entry,pieces}=mirrorEntry(item,selectedIndex));}catch(historyError){if(/not available/.test(historyError.message))continue;throw historyError;}
+      }
       const budget=Math.max(entry.size,pieces.reduce((n,p)=>n+Math.max(p.size,p.gzipSize),0));
       if((total+=budget)>16*1024*1024)throw Error('Installed firmware search is too large; select the exact base manually');
-      const image=await download(item,index,fetchImpl,deadline);
+      const image=await download(item,selectedIndex,fetchImpl,deadline,mirrorRoot);
       if(image.targetId!==dest.targetId||image.hwId!==dest.hwId||image.fwVersion!==dest.version||hex(image.bodyHash)!==dest.baseHash.toLowerCase())continue;
       if(found&&hex(found.identity.imageHash)!==hex(image.imageHash))throw Error('More than one installed image matches the reported short hash');
       found={name:item.name.replace(/\.zip$/i,'.bin'),bytes:image.image,identity:image};
