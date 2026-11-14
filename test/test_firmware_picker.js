@@ -1233,6 +1233,26 @@ const publishedAssets = Object.entries(publishedControls.profiles).map(([target,
     (info.platform === 'NRF52_PLATFORM' ? '.uf2' : '.bin')));
 const publishedReleases = [release(publishedControls.familyTag, '2026-10-24T00:00:00Z', publishedAssets)];
 const publishedCatalog = picker.buildCatalog(publishedReleases, publishedControls);
+const historicalControls = require('../docs/_data/firmware_controls_1.18.0.1.json');
+const historicalTarget = 'Heltec_t1_repeater_lora_ota_no_external_sensors-full';
+const historicalAsset = asset(historicalTarget + '-ota-' + historicalControls.familyTag + '.uf2');
+const currentAsset = asset(historicalTarget + '-ota-' + publishedControls.familyTag + '.uf2');
+const versionReleases = [
+  release(historicalControls.familyTag, '2026-10-24T00:00:00Z', [historicalAsset]),
+  release(publishedControls.familyTag, '2026-11-14T00:00:00Z', [currentAsset]),
+];
+const historicalCatalog = picker.buildCatalog(versionReleases, historicalControls, historicalControls.familyTag);
+const currentVersionCatalog = picker.buildCatalog(versionReleases, publishedControls, publishedControls.familyTag);
+assert.strictEqual(historicalCatalog.releaseSet.familyTag, historicalControls.familyTag);
+assert.strictEqual(currentVersionCatalog.releaseSet.familyTag, publishedControls.familyTag);
+assert(historicalCatalog.rows.every(row => row.name.includes(historicalControls.familyTag)));
+assert(currentVersionCatalog.rows.every(row => row.name.includes(publishedControls.familyTag)));
+assert(historicalCatalog.profiles.every(profile => profile.controlsSource === historicalControls.source));
+assert(currentVersionCatalog.profiles.every(profile => profile.controlsSource === publishedControls.source));
+assert.strictEqual(picker.selectReleaseSet(versionReleases, publishedControls, 'v9.9.9'), null,
+  'An unavailable selected version must never fall back to another release');
+assert(new URL(picker.shortSelectionUrl('https://example.test/?release=1.18.0.1',
+  {hardware:'Heltec_t1'}, false)).searchParams.get('release') === '1.18.0.1');
 assert.strictEqual(publishedCatalog.rows.length, publishedAssets.length);
 assert(publishedCatalog.profiles.every(profile => profile.controls && profile.chipFamily !== 'unknown'));
 for (const file of publishedAssets) {

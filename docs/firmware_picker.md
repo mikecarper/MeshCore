@@ -4,7 +4,14 @@
 
 # Firmware picker
 
-<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json?v=1.18.0.2-a723af94-9d961a19" data-bootloaders-url="../_data/bootloader_manifest.json?v=otafix-2.4.12" data-share-url="https://mikecarper.github.io/MeshCore/p/">
+<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json?v=1.18.0.2-a723af94-9d961a19" data-legacy-controls-url="../_data/firmware_controls_1.18.0.1.json?v=03214a16" data-bootloaders-url="../_data/bootloader_manifest.json?v=otafix-2.4.12" data-share-url="https://mikecarper.github.io/MeshCore/p/">
+  <div class="firmware-picker-control firmware-picker-select-control" data-role="release-control">
+    <label for="firmware-picker-release">Firmware version</label>
+    <select id="firmware-picker-release" data-role="release-version" disabled>
+      <option value="1.18.0.2">1.18.0.2 (latest)</option>
+      <option value="1.18.0.1">1.18.0.1</option>
+    </select>
+  </div>
   <form class="firmware-picker-form" data-role="form">
     <div class="firmware-picker-feedback firmware-picker-wide" data-role="filter-feedback" hidden>
       <div aria-live="polite" aria-atomic="true">
@@ -84,7 +91,7 @@
   </form>
 
   <div class="firmware-picker-intro" role="note">
-    <strong>Current release set</strong>
+    <strong>Selected release set</strong>
     <p data-role="release-set">Loading release information...</p>
   </div>
 
@@ -132,7 +139,7 @@
   </details>
 
   <details class="firmware-asset-browser">
-    <summary>Advanced: search current release filenames</summary>
+    <summary>Advanced: search selected release filenames</summary>
     <p>
       Use this for uncommon board suffixes or expert recovery. A filename match
       is not a board-identity check.
@@ -146,6 +153,11 @@
 </div>
 
 ## What the choices mean
+
+Choose **Firmware version** first. The default is 1.18.0.2; 1.18.0.1 remains
+available. Firmware details and update instructions are matched to the chosen
+release. If a selected version cannot be loaded, the picker does not substitute
+another version.
 
 New **Heltec T114** images detect the optional screen automatically, so the
 same firmware works with or without it. Choose the board and firmware role;
@@ -244,8 +256,9 @@ Select any combination of choices, then use **Copy link to settings** for a
 short URL under `https://mikecarper.github.io/MeshCore/p/`. Opening the link
 restores those choices after the release
 catalog loads. Partial selections work too, so you can share a board and role
-while leaving other choices open. **Clear all choices** removes the picker
-parameters from the URL. Changes update the current browser-history entry
+while leaving other choices open. The link includes the selected firmware
+version. **Clear all choices** clears the board and other filters while keeping
+the selected version. Changes update the current browser-history entry
 without reloading the page or adding a Back-button entry for every click.
 
 For example, [RAK3401 unified Full repeater](https://mikecarper.github.io/MeshCore/p/?s=1.hRAK_3401.rrepeater.olora-receiver.ffull.vdefault)

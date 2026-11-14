@@ -309,7 +309,7 @@
       entry.source.startsWith(hash) && entry.profiles ? entry : null;
   }
 
-  function selectReleaseSet(releases, controlData) {
+  function selectReleaseSet(releases, controlData, requestedFamilyTag) {
     const publicReleases = (Array.isArray(releases) ? releases : []).filter(
       function (release) {
         return release && !release.draft && typeof release.tag_name === "string";
@@ -323,7 +323,9 @@
     const supplements = publicReleases.filter(function (release) {
       return Boolean(t114PreviewControls(controlData, release.tag_name));
     }).sort(function (a, b) { return releaseDate(b).localeCompare(releaseDate(a)); });
-    const main = mainReleases[0] || supplements[0];
+    const main = requestedFamilyTag
+      ? mainReleases.find(function (release) { return release.tag_name === requestedFamilyTag; })
+      : mainReleases[0] || supplements[0];
     if (!main) return null;
 
     const mainSupplement = t114PreviewControls(controlData, main.tag_name);
@@ -1403,8 +1405,8 @@
       profiles.length <= CANDIDATE_RESULT_LIMIT;
   }
 
-  function buildCatalog(releases, controlData) {
-    const releaseSet = selectReleaseSet(releases, controlData);
+  function buildCatalog(releases, controlData, requestedFamilyTag) {
+    const releaseSet = selectReleaseSet(releases, controlData, requestedFamilyTag);
     if (!releaseSet) {
       return { releaseSet: null, rows: [], profiles: [] };
     }
@@ -2837,6 +2839,18 @@
     const form = root.querySelector('[data-role="form"]');
     const status = root.querySelector('[data-role="status"]');
     const releaseSetStatus = root.querySelector('[data-role="release-set"]');
+    const releaseSelector = root.querySelector('[data-role="release-version"]');
+    const releaseFamilies = {
+      "1.18.0.2": "v1.18.0.2-halo-keymind-cascade-dev-a723af94",
+      "1.18.0.1": "v1.18.0.1-halo-keymind-cascade-dev-03214a16",
+    };
+    const releaseSources = {
+      "1.18.0.2": "a723af94ed7d8036329fb1f57637e6a009864752",
+      "1.18.0.1": "03214a16df2bd09d3272dfb001d2d322c6740f60",
+    };
+    let selectedRelease = new URL(global.location.href).searchParams.get("release") || "1.18.0.2";
+    let releaseLoadId = 0;
+    let releaseVersionActive = false;
     const result = root.querySelector('[data-role="result"]');
     const resultEyebrow = root.querySelector('[data-role="result-eyebrow"]');
     const resultTitle = root.querySelector('[data-role="result-title"]');
@@ -2890,7 +2904,9 @@
         if (copyLinkButton) copyLinkButton.disabled = true;
         return;
       }
-      const url = shortSelectionUrl(global.location.href, filters, automaticChipFamily);
+      const selectedUrl = new URL(global.location.href);
+      if (releaseVersionActive) selectedUrl.searchParams.set("release", selectedRelease);
+      const url = shortSelectionUrl(selectedUrl.href, filters, automaticChipFamily);
       if (url !== global.location.href) {
         try {
           global.history.replaceState(global.history.state, "", url);
@@ -2904,6 +2920,7 @@
           ? root.getAttribute("data-share-url") || url : url);
         base.pathname = base.pathname.replace(/\/firmware_picker\/$/, "/p/");
         if (global.location.protocol === "file:") base.hash = global.location.hash;
+        if (releaseVersionActive) base.searchParams.set("release", selectedRelease);
         shareLink.href = shortSelectionUrl(base.href, filters, automaticChipFamily);
         shareLink.hidden = false;
       }
@@ -2937,7 +2954,11 @@
         linkStatus.textContent = "Copy the address bar, or copy the 'Short link to these settings' link.";
       });
     });
-    global.addEventListener("popstate", restoreSelectionUrl);
+    global.addEventListener("popstate", function () {
+      const version = new URL(global.location.href).searchParams.get("release") || "1.18.0.2";
+      if (releaseVersionActive && version !== selectedRelease) loadRelease(version);
+      else restoreSelectionUrl();
+    });
 
     function matchingProfiles(ignoredField) {
       return selectionProfiles().filter(function (profile) {
@@ -3421,11 +3442,48 @@
     }).catch(function () { return null; }) : Promise.resolve(null);
     const releaseRequest = embedded ? Promise.resolve(embedded.releases) :
       fetchAllReleases(endpoint, fetch);
-    releaseRequest.then(function (data) {
-        return controlRequest.then(function (controls) { return { releases: data, controls: controls }; });
-      })
+    let legacyControlsRequest;
+    function controlsForVersion(version) {
+      if (version !== "1.18.0.1") return controlRequest;
+      if (!legacyControlsRequest) {
+        const url = root.getAttribute("data-legacy-controls-url");
+        legacyControlsRequest = url ? fetch(url).then(function (response) {
+          if (!response.ok) throw new Error("Historical firmware details are unavailable");
+          return response.json();
+        }) : Promise.reject(new Error("Historical firmware details are unavailable"));
+      }
+      return legacyControlsRequest;
+    }
+    function loadRelease(version) {
+      const loadId = ++releaseLoadId;
+      selectedRelease = version;
+      if (releaseSelector) releaseSelector.value = version;
+      catalog = { releaseSet: null, rows: [], profiles: [] };
+      form.inert = true;
+      result.hidden = true;
+      resultList.replaceChildren();
+      assetResults.replaceChildren();
+      missing.hidden = true;
+      if (resultLink) resultLink.hidden = true;
+      if (shareLink) shareLink.hidden = true;
+      if (copyLinkButton) copyLinkButton.disabled = true;
+      const bootloaderPanel = root.querySelector('[data-role="bootloader"]');
+      if (bootloaderPanel) bootloaderPanel.hidden = true;
+      releaseSetStatus.textContent = "Loading firmware version " + version + "...";
+      status.textContent = "Loading firmware version " + version + "...";
+      if (!Object.prototype.hasOwnProperty.call(releaseFamilies, version)) {
+        releaseSetStatus.textContent = "The requested firmware version is unavailable.";
+        status.textContent = "Choose an available firmware version.";
+        return;
+      }
+      Promise.all([releaseRequest, controlsForVersion(version)])
       .then(function (data) {
-        catalog = buildCatalog(data.releases, data.controls);
+        if (loadId !== releaseLoadId) return;
+        const requestedTag = releaseFamilies[version];
+        if (!data[1] || data[1].familyTag !== requestedTag || data[1].source !== releaseSources[version]) {
+          throw new Error("Firmware details do not match the selected version");
+        }
+        catalog = buildCatalog(data[0], data[1], requestedTag);
         if (!catalog.releaseSet || !catalog.profiles.length) {
           throw new Error(catalog.unavailableL1OneWattProfiles ?
             "Wio Tracker L1 1W storage or update metadata could not be verified; refresh or check the release" :
@@ -3455,15 +3513,67 @@
             " | Some Wio Tracker L1 1W choices are unavailable because storage or update metadata could not be verified. Refresh or check the release."));
         }
         clearButton.disabled = false;
+        form.inert = false;
         restoreSelectionUrl();
+        renderSearch();
       })
       .catch(function (error) {
+        if (loadId !== releaseLoadId) return;
         status.textContent =
           "Could not load the GitHub release catalog: " + error.message;
+        releaseSetStatus.textContent = "Firmware version " + version + " is unavailable.";
         missing.hidden = false;
         root.querySelector('[data-role="missing-text"]').textContent =
           "Open the release collection and search for the exact hardware name.";
       });
+    }
+    if (releaseSelector && !embedded) {
+      releaseVersionActive = true;
+      releaseSelector.disabled = false;
+      releaseSelector.addEventListener("change", function () {
+        const url = new URL(global.location.href);
+        url.searchParams.set("release", releaseSelector.value);
+        global.history.replaceState(global.history.state, "", url.href);
+        loadRelease(releaseSelector.value);
+      });
+      loadRelease(selectedRelease);
+    } else {
+      // Standalone embedded pickers retain their self-contained release.
+      const releaseControl = root.querySelector('[data-role="release-control"]');
+      if (releaseControl) releaseControl.hidden = true;
+      releaseRequest.then(function (releases) {
+        return controlRequest.then(function (metadata) {
+          catalog = buildCatalog(releases, metadata);
+          if (!catalog.releaseSet || !catalog.profiles.length) {
+            throw new Error(catalog.unavailableL1OneWattProfiles ?
+              "Wio Tracker L1 1W storage or update metadata could not be verified; refresh or check the release" :
+              "no complete release family was found");
+          }
+          const set = catalog.releaseSet;
+          releaseSetStatus.replaceChildren();
+          releaseSetStatus.appendChild(createElement("strong", set.name + (set.prerelease ? " - prerelease" : "")));
+          releaseSetStatus.appendChild(document.createTextNode(" | " + catalog.profiles.length +
+            " configurations | " + catalog.rows.length + " firmware files | " + set.releases.length + " release pages"));
+          if (set.url) {
+            releaseSetStatus.appendChild(document.createTextNode(" | "));
+            const link = createElement("a", "open primary release");
+            link.href = set.url;
+            releaseSetStatus.appendChild(link);
+          }
+          if (catalog.unavailableL1OneWattProfiles) {
+            releaseSetStatus.appendChild(document.createTextNode(
+              " | Some Wio Tracker L1 1W choices are unavailable because storage or update metadata could not be verified. Refresh or check the release."));
+          }
+          clearButton.disabled = false;
+          restoreSelectionUrl();
+        });
+      }).catch(function (error) {
+        status.textContent = "Could not load the GitHub release catalog: " + error.message;
+        missing.hidden = false;
+        root.querySelector('[data-role="missing-text"]').textContent =
+          "Open the release collection and search for the exact hardware name.";
+      });
+    }
   }
 
   const api = Object.freeze({
