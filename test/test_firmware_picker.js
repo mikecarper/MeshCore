@@ -1289,6 +1289,25 @@ for (const [target, info] of embeddedControls) {
 }
 assert.strictEqual(consolidatedEmbeddedProfiles, 14);
 
+// Experimental board-specific bootloaders retain their version in the choice
+// and visibly disclose that this project has not tested them on hardware.
+{
+  const [oldTarget, oldInfo] = embeddedControls[0];
+  const version = '2.4.13-preview.1';
+  const target = oldTarget.replace('-with-bootloader-' + oldInfo.embeddedBootloader.release,
+                                   '-with-bootloader-' + version);
+  const info = {...oldInfo, embeddedBootloader: {...oldInfo.embeddedBootloader,
+    release: version, hardware_tested: false}};
+  const tag = publishedControls.familyTag.replace(/-[0-9a-f]{8}$/,
+    '-' + info.embeddedBootloaderSource.slice(0, 8));
+  const preview = picker.buildCatalog([
+    release(publishedControls.familyTag, '2026-10-24T00:00:00Z', [asset(target + '-' + tag + '.uf2')]),
+  ], {...publishedControls, profiles: {[target]: info}}).profiles.find(item => item.target === target);
+  assert(preview && preview.embeddedBootloader, 'Preview firmware must retain its exact board metadata');
+  assert(picker.firmwareProfileLabel(preview).includes('OTAFIX ' + version + ' bootloader included'));
+  assert(picker.firmwareProfileLabel(preview).includes('not hardware tested'));
+}
+
 const rak118Context = {hardware: 'RAK_4631', role: 'repeater', ota: 'lora-receiver'};
 const rak118Bases = ['RAK_4631_repeater_unified_lora_ota', 'RAK_4631_repeater_ethernet'];
 const rak118Targets = rak118Bases.flatMap(base => ['', '-with-bootloader-2.4.12'].flatMap(marker =>

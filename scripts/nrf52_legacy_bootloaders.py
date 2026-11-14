@@ -22,11 +22,16 @@ _PHYSICAL_PROFILES = {
     "R1Neo": "wiscore_rak4631_auto",
     "Heltec_t114": "heltec_t114",
     "Heltec_t114_without_display": "heltec_t114",
+    "Heltec_mesh_solar": "heltec_mesh_solar",
     "Heltec_t096": "heltec_t096",
     "Heltec_t1": "heltec_t1",
     "LilyGo_T-Echo": "lilygo_techo",
     "LilyGo_T-Echo-Lite": "lilygo_techo_lite",
     "LilyGo_T-Echo-Lite_non_shell": "lilygo_techo_lite",
+    "LilyGo_T-Echo_Card": "lilygo_techo_card",
+    "LilyGo_T_Impulse_Plus": "lilygo_t_impulse_plus",
+    "MeshTracker_X1": "meshtracker_x1",
+    "Nano_G2_Ultra": "nano_g2_ultra",
     "t1000e": "t1000_e",
     "SenseCap_Solar": "sensecap_solar_p1",
     "Minewsemi_me25ls01": "minewsemi_mx25le01",
@@ -58,14 +63,49 @@ _RECORDS = [
         "artifact_sha256": "b0eb140afac57633208ace8a98908e8c90149a38c1b0b62cf65e0ec48acea1b7",
         "image_sha256": "8618c2d91d855afab573d4e9e7efcdc61d80242faa7b9e74f403a81e744abe16",
         "profiles": [
-            "heltec_t114"
+            "heltec_t114", "heltec_mesh_solar"
         ],
         "hardware": [
             "Heltec_t114",
-            "Heltec_t114_without_display"
+            "Heltec_t114_without_display", "Heltec_mesh_solar"
         ],
         "app_base": 155648,
         "softdevice_fwid": 182
+    },
+    {
+        "name": "t_echo_card_nrf52840_bootloader-0.9.2-dirty_s140_6.1.1_202608131146.hex",
+        "version": "0.9.2-dirty",
+        "source_url": "https://raw.githubusercontent.com/Xinyuan-LilyGO/T-Echo-Card/main/bootloader/T-Echo-Card%20bootloader/t_echo_card_nrf52840_bootloader-0.9.2-dirty_s140_6.1.1_202608131146.hex",
+        "artifact_sha256": "c6b8025cb855d15fb06cbaba24d460a12bfc87b22df10667fb88d9ff13c5941e",
+        "image_sha256": "efd403e7d211534a019467e9c39781bf49d4252fbb4850e8bb21fdc7895dab12",
+        "profiles": ["lilygo_techo_card"], "hardware": ["LilyGo_T-Echo_Card"],
+        "app_base": 155648, "softdevice_fwid": 182
+    },
+    {
+        "name": "t_impulse_plus_nrf52840_bootloader-0.9.2-dirty_s140_6.1.1_202508251059.hex",
+        "version": "0.9.2-dirty",
+        "source_url": "https://raw.githubusercontent.com/Xinyuan-LilyGO/T-Impulse-Plus/main/bootloader/%28%E4%BF%AE%E6%94%B9%E5%90%AF%E5%8A%A8%E6%97%B6%E9%97%B4%E4%B8%BA700ms%29t_impulse_plus_nrf52840_bootloader-0.9.2-dirty_s140_6.1.1_202508251059.hex",
+        "artifact_sha256": "b370eea5b238fecf4dd162a190a35e18129a3b23adbf27450ab1147c5d3b5572",
+        "image_sha256": "3bd7d638548bfc08d20898521aa0c2647ecb226d07296ad4c6b63bb7914aa6aa",
+        "profiles": ["lilygo_t_impulse_plus"], "hardware": ["LilyGo_T_Impulse_Plus"],
+        "app_base": 155648, "softdevice_fwid": 182
+    },
+    {
+        "name": "meshtracker_x1_factory_bootloader.zip", "version": "0.10.0-18-gb93789f",
+        "source_url": "https://files.seeedstudio.com/wiki/SenseCAP/Meshcore/MeshTrackerX1/Bootloader.zip",
+        "artifact_sha256": "69c246a8f29bc2ce7d1448581076be97a7232e8b548279ee6e1ec3a0d77f9e0c",
+        "image_sha256": "082eb4cd2cd3db971b9bf4b659c220473cdf13b9400de6fac84b0b1fd62dc005",
+        "profiles": ["meshtracker_x1"], "hardware": ["MeshTracker_X1"],
+        "app_base": 159744, "softdevice_fwid": 291
+    },
+    {
+        "name": "nano_g2_nrf52840_bootloader-0.6.4_s140_6.1.1.hex.zip",
+        "version": "0.6.4-dirty",
+        "source_url": "https://wiki.bqvoy.com/meshtastic/nano_g2_ultra/nano_g2_nrf52840_bootloader-0.6.4_s140_6.1.1.hex.zip",
+        "artifact_sha256": "8f10154689f8e922062ace1fe2177513ca846c166b9a3eaa48e76387dc459f5d",
+        "image_sha256": "c0607db64762d2b3203fcb13f3abed9adde1ec0f6ce2f5f204291f940511c5a5",
+        "profiles": ["nano_g2_ultra"], "hardware": ["Nano_G2_Ultra"],
+        "app_base": 155648, "softdevice_fwid": 182
     },
     {
         "name": "t-echo_lite_nrf52840_bootloader-0.9.2-dirty_s140_6.1.1_202411271344.hex",

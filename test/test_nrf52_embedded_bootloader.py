@@ -39,6 +39,8 @@ def boot_image(*, v7=False, name=None, board_id=None, storage=None,
     if name == "4631_DFU":
         image[0x200:0x220] = (b"MOTARAMA" + struct.pack("<HHI", 1, 72, 65536)
                               + b"MOTASTOR" + struct.pack("<HHBBBB", 1, 16, 0x14, 0, 0, 0))
+    elif name in ("X1INT_DFU", "SOLARINT_DFU"):
+        image[0x200:0x210] = b"MOTARAMA" + struct.pack("<HHI", 1, 72, 65536)
     offset = EMBED.BOOT_SIZE - 76
     struct.pack_into("<8sHHIII16sI", image, offset, b"BLMFCRC1", 1, 44,
                      EMBED.BOOT_BASE, EMBED.BOOT_SIZE, board_id,
@@ -125,6 +127,34 @@ class EmbeddedBootloaderTest(unittest.TestCase):
                        linker="nrf52840_s140_v7.ld" if v7 else "nrf52840_s140_v6.ld")
         options.update(kwargs)
         return EMBED.emit_resource(self.project, target, self.project / "generated", **options)
+
+    def test_preview_catalog_binds_each_board_identity_and_version(self):
+        manifest = EMBED.load_manifest(ROOT, EMBED.PREVIEW_VERSION)
+        self.assertTrue(manifest["prerelease"])
+        self.assertEqual({p["id"] for p in manifest["profiles"]}, set(EMBED.PREVIEW_PROFILE_IDENTITIES))
+        for item in manifest["profiles"]:
+            with self.subTest(board=item["id"]):
+                self.assertIs(item["hardwareTested"], False)
+                board_id, name = EMBED.PREVIEW_PROFILE_IDENTITIES[item["id"]]
+                v7 = item["id"] == "meshtracker_x1"
+                storage = 0x0A if item["storage"] == "internal" else 0x0E
+                image = boot_image(v7=v7, name=name, board_id=board_id, storage=storage,
+                                   boot_version=EMBED.PREVIEW_BOOT_VERSION)
+                archive = candidate(image, v7=v7)
+                profile = copy.deepcopy(item)
+                profile["files"]["zip"]["size"] = len(archive)
+                profile["files"]["zip"]["sha256"] = hashlib.sha256(archive).hexdigest()
+                self.assertEqual(EMBED.validate_candidate_zip(
+                    archive, profile, version=EMBED.PREVIEW_VERSION)[0], image)
+                wrong = boot_image(v7=v7, name=name, board_id=board_id, storage=storage,
+                                   boot_version=EMBED.BOOT_VERSION)
+                bad = candidate(wrong, v7=v7)
+                profile["files"]["zip"]["size"] = len(bad)
+                profile["files"]["zip"]["sha256"] = hashlib.sha256(bad).hexdigest()
+                with self.assertRaisesRegex(ValueError, "identity/version"):
+                    EMBED.validate_candidate_zip(bad, profile, version=EMBED.PREVIEW_VERSION)
+                target = item["meshcoreHardware"][0] + "_repeater_lora_ota_no_external_sensors"
+                self.assertEqual(EMBED.select_profile(manifest, target)[0]["id"], item["id"])
 
     def test_v6_v7_resources_link_and_contain_exact_candidate(self):
         compiler = shutil.which("g++")

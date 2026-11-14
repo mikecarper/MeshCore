@@ -1,4 +1,5 @@
 #pragma once
+#define OTA_BOOTLOADER_RELEASE "2.4.12"
 #include <stdint.h>
 
 extern const uint8_t migration_candidate[40960];

@@ -201,6 +201,26 @@ class ReleaseQualificationTest(unittest.TestCase):
                     package.validate_nrf52_sensor_pairs(wrong)
             self.assertEqual({p.name: p.read_bytes() for p in directory.iterdir()}, before)
 
+    def test_preview_metadata_requires_an_explicit_untested_label(self):
+        import nrf52_embedded_bootloader as bootloader
+        with tempfile.TemporaryDirectory() as temp:
+            item = self.embedded_sensor_record(Path(temp), 'full')
+            manifest = item['manifest']
+            target = 'MeshTracker_X1_repeater_lora_ota_no_external_sensors'
+            profile, _ = bootloader.select_profile(
+                bootloader.load_manifest(version=bootloader.PREVIEW_VERSION), target)
+            manifest['target'] = target
+            manifest['artifact_target'] = target + '-with-bootloader-2.4.13-preview.1-full-ota'
+            manifest['embedded_bootloader'].update(
+                release=bootloader.PREVIEW_VERSION, profile=profile['id'],
+                manifest_sha256=bootloader.PREVIEW_MANIFEST_SHA256,
+                asset_sha256=profile['files']['zip']['sha256'], hardware_tested=False)
+            self.assertEqual(package.embedded_bootloader_variant(manifest), bootloader.PREVIEW_VERSION)
+            self.assertIn('not hardware tested', package.release_profile_label(manifest))
+            manifest['embedded_bootloader']['hardware_tested'] = True
+            with self.assertRaisesRegex(ValueError, 'pinned release'):
+                package.embedded_bootloader_variant(manifest)
+
     def test_embedded_metadata_requires_exact_pinned_profile_and_packaged_proof(self):
         with tempfile.TemporaryDirectory() as temp:
             item = self.embedded_sensor_record(Path(temp), 'full')

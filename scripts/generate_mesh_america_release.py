@@ -192,6 +192,8 @@ def generate(catalog, plan, family, records, profiles, repo):
         bootloader = row.get("embedded_bootloader")
         if bootloader:
             profile += " + OTAFIX " + bootloader["release"] + " bootloader"
+            if bootloader.get("hardware_tested") is False:
+                profile += " (not hardware tested)"
         url = f"https://github.com/{repo}/releases/download/{tag}/"
         cap = next(name for name in row["files"] if name.endswith(".capabilities.json"))
         memory = next(name for name in row["files"] if name.endswith(".memory.json"))

@@ -534,7 +534,7 @@
     let base = String(target || "");
     const sensorSuffix = (base.match(/-(?:full|reduced)(?:-ota)?$/i) || [""])[0];
     if (sensorSuffix) base = base.slice(0, -sensorSuffix.length);
-    const bootloaderSuffix = (base.match(/-with-bootloader-\d+(?:\.\d+){2}$/i) || [""])[0];
+    const bootloaderSuffix = (base.match(/-with-bootloader-\d+(?:\.\d+){2}(?:-preview\.\d+)?$/i) || [""])[0];
     if (bootloaderSuffix) base = base.slice(0, -bootloaderSuffix.length);
     return { base: base, sensorSuffix: sensorSuffix, bootloaderSuffix: bootloaderSuffix };
   }
@@ -1250,7 +1250,7 @@
     const embedded = controls.embeddedBootloader;
     if (profile.sensorProfile && ["repeater", "room"].includes(profile.role) &&
         sensorSourceMatches && controls.embeddedBootloaderSource === sensorSource &&
-        embedded && /^\d+(?:\.\d+){2}$/.test(embedded.release || "") &&
+        embedded && /^\d+(?:\.\d+){2}(?:-preview\.\d+)?$/.test(embedded.release || "") &&
         embedded.automatic_delay_seconds === 70 && embedded.image_bytes === 40960 &&
         embedded.activation === "ota bootloader update" &&
         /^[0-9a-f]{64}$/.test(embedded.candidate_sha256 || "") &&
@@ -1618,7 +1618,8 @@
           .replace(/^-+|-+$/g, "") || "default";
       }
       return label + (variant !== "default" ? " - " + humanizeVariant(variant, profile.hardware) : "") +
-        (embedded ? " + OTAFIX " + embedded.release + " bootloader included" : "");
+        (embedded ? " + OTAFIX " + embedded.release + " bootloader included" +
+          (embedded.hardware_tested === false ? " (not hardware tested)" : "") : "");
     }
     const parts = [];
     if (profile.feature === "full") parts.push("Full");

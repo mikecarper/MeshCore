@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "tools/mota"))
 import motalib as ml
+import nrf52_embedded_bootloader as embed
 import qualify_nrf52_embedded_bootloader as qualifier
 
 SPEC = importlib.util.spec_from_file_location(
@@ -56,7 +57,11 @@ printf '%s\n' "$MESHCORE_NRF52_EMBED_BOOTLOADER" "${PARSED_COMMAND_ARGS[@]}"
             with self.subTest(arguments=arguments):
                 result = self.bash('shift\nparse_cli_options "$@"\n', *arguments)
                 self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-                self.assertIn("pinned release 2.4.12", result.stdout + result.stderr)
+                self.assertIn("pinned OTAFIX release", result.stdout + result.stderr)
+        preview = self.bash('shift\nparse_cli_options "$@" || exit $?\nprintf "%s\\n" "$MESHCORE_NRF52_EMBED_BOOTLOADER"\n',
+                            "--with-bootloader", "2.4.13-preview.1")
+        self.assertEqual(preview.returncode, 0, preview.stdout + preview.stderr)
+        self.assertEqual(preview.stdout.strip(), "2.4.13-preview.1")
 
     def filename(self, *, embedded=False, ota=True, infix="", full=False):
         return self.bash('''
@@ -131,7 +136,7 @@ class PackagedApplicationTests(unittest.TestCase):
                          "softdevice_fwid": self.identity.softdevice_fwid,
                          "stock_legacy": self.stock,
                          "profile": self.profile["id"], "release": "2.4.12",
-                         "manifest_sha256": qualifier.MANIFEST_SHA256,
+                         "manifest_sha256": embed.MANIFEST_SHA256,
                          "asset_sha256": "b" * 64,
                          "candidate_sha256": hashlib.sha256(self.candidate).hexdigest(),
                          "legacy_sha256": None}
@@ -196,7 +201,7 @@ class PackagedApplicationTests(unittest.TestCase):
         self.patches["select_profile"].assert_called_once_with(
             {"profiles": [self.profile]}, TARGET)
         self.patches["validate_candidate_zip"].assert_called_once_with(
-            b"verified published ZIP", self.profile)
+            b"verified published ZIP", self.profile, version="2.4.12")
 
     def test_resource_and_release_metadata_tampering_are_refused(self):
         for field, value in (("profile", "another_board"), ("release", "2.4.11"),

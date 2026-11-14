@@ -83,7 +83,7 @@ def validate_embedded_bootloader_application(manifest, application):
     candidate = body[offset:offset + size]
     if (len(candidate) != size
             or hashlib.sha256(candidate).hexdigest() != embedded["candidate_sha256"]
-            or b"BL embedded 2.4.12" not in body):
+            or ("BL embedded " + embedded["release"]).encode("ascii") not in body):
         raise ValueError("packaged embedded bootloader differs from qualification")
     validate_embedded_stock_body(embedded, body)
 
@@ -98,23 +98,26 @@ def embedded_bootloader_variant(manifest):
         if "-with-bootloader-" in artifact or capability in manifest.get("capabilities", []):
             raise ValueError(f"{artifact}: embedded bootloader lacks qualified metadata")
         return ""
-    from nrf52_embedded_bootloader import (BOOT_SIZE, LEGACY_SHA256, MANIFEST_SHA256,
-                                          VERSION, load_manifest, select_profile)
+    from nrf52_embedded_bootloader import (BOOT_SIZE, LEGACY_SHA256, catalog_settings,
+                                          load_manifest, select_profile)
     if not isinstance(metadata, dict):
         raise ValueError(f"{artifact}: invalid embedded bootloader metadata")
+    version = metadata.get("release")
     try:
-        profile, parsed = select_profile(load_manifest(), target)
+        _, _, manifest_sha256, _, _ = catalog_settings(version)
+        profile, parsed = select_profile(load_manifest(version=version), target)
     except (ValueError, KeyError) as exc:
-        raise ValueError(f"{artifact}: embedded bootloader requires an exact supported profile") from exc
+        raise ValueError(f"{artifact}: embedded bootloader requires an exact supported profile and pinned release") from exc
     verified = any(check.get("capability") == capability
                    and check.get("present") is True
                    and check.get("source") == "packaged application"
                    for check in manifest.get("verification", []))
     offset = metadata.get("app_offset")
     if (manifest.get("platform") != "NRF52_PLATFORM"
-            or metadata.get("release") != VERSION
+            or metadata.get("release") != version
+            or (profile.get("hardwareTested") is False and metadata.get("hardware_tested") is not False)
             or metadata.get("profile") != profile["id"]
-            or metadata.get("manifest_sha256") != MANIFEST_SHA256
+            or metadata.get("manifest_sha256") != manifest_sha256
             or metadata.get("asset_sha256") != profile["files"]["zip"]["sha256"]
             or not isinstance(metadata.get("candidate_sha256"), str)
             or not re.fullmatch(r"[0-9a-f]{64}", metadata["candidate_sha256"])
@@ -125,9 +128,9 @@ def embedded_bootloader_variant(manifest):
             or metadata.get("activation") != "ota bootloader update"
             or metadata.get("automatic_delay_seconds") != 70
             or capability not in manifest.get("capabilities", []) or not verified
-            or not artifact.startswith(target + "-with-bootloader-" + VERSION + "-")):
+            or not artifact.startswith(target + "-with-bootloader-" + version + "-")):
         raise ValueError(f"{artifact}: embedded bootloader qualification disagrees with its pinned release")
-    return VERSION
+    return version
 
 
 def nrf52_sensor_profile(manifest):
@@ -245,7 +248,11 @@ def release_profile_label(manifest):
     else:
         label = manifest["build_profile"]
     bootloader = embedded_bootloader_variant(manifest)
-    return label + " + OTAFIX " + bootloader + " bootloader" if bootloader else label
+    if bootloader:
+        label += " + OTAFIX " + bootloader + " bootloader"
+        if manifest["embedded_bootloader"].get("hardware_tested") is False:
+            label += " (not hardware tested)"
+    return label
 
 
 def validate_nrf52_sensor_pairs(records):

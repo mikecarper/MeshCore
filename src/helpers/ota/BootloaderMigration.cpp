@@ -281,7 +281,7 @@ bool bootloader_migration_service_due() {
 void bootloader_migration_status(char *reply, size_t capacity) {
   char hash[17];
   hex8(migration_candidate_sha256, hash);
-  snprintf(reply, capacity, "BL embedded 2.4.12: 40960 B; hash=%s; %s; last=%u; auto=%s", hash,
+  snprintf(reply, capacity, "BL embedded " OTA_BOOTLOADER_RELEASE ": 40960 B; hash=%s; %s; last=%u; auto=%s", hash,
            pending ? "armed" : already_installed ? "already installed" :
            installed_up_to_date() ? "up to date" : "idle", retained_result(),
            loader_excluded ? automatic_variant == migration::InstalledVariant::Recovery ?

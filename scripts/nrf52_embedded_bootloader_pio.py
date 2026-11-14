@@ -10,8 +10,8 @@ legacy = os.environ.get("MESHCORE_NRF52_LEGACY_BOOTLOADER")
 if legacy and not requested:
     raise RuntimeError("legacy bootloader pin requires MESHCORE_NRF52_EMBED_BOOTLOADER=2.4.12")
 if requested:
-    if requested != "2.4.12":
-        raise RuntimeError("only the pinned OTAFIX 2.4.12 embedded bootloader is supported")
+    if requested not in ("2.4.12", "2.4.13-preview.1"):
+        raise RuntimeError("only pinned OTAFIX embedded bootloader releases are supported")
     project = Path(env["PROJECT_DIR"])
     sys.path.insert(0, str(project / "scripts"))
     from nrf52_embedded_bootloader import emit_resource
@@ -26,7 +26,7 @@ if requested:
         flags=env.get("BUILD_FLAGS", ()), cppdefines=env.get("CPPDEFINES", ()),
         src_filter=src_filter,
         linker=board.get("build.ldscript", "") or board.get("build.arduino.ldscript", ""),
-        legacy_path=legacy)
+        legacy_path=legacy, version=requested)
     env.AppendUnique(CPPDEFINES=[("OTA_BOOTLOADER_MIGRATION", 1)], CPPPATH=[str(generated)])
     env.BuildSources(str(generated / "objects"), str(generated), src_filter=["+<*.cpp>"])
     print(f"Embedded OTAFIX {metadata['release']}: {metadata['profile']}; 40960 bytes; "

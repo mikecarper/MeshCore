@@ -30,6 +30,9 @@ from consolidated_profiles import omit_redundant_records
 from generate_mesh_america_release import target_profiles
 from nrf52_embedded_bootloader import (VERSION as BOOTLOADER_VERSION,
                                       MANIFEST_SHA256 as BOOTLOADER_MANIFEST_SHA256,
+                                      PREVIEW_VERSION as BOOTLOADER_PREVIEW_VERSION,
+                                      PREVIEW_MANIFEST_SHA256 as BOOTLOADER_PREVIEW_MANIFEST_SHA256,
+                                      PREVIEW_PROFILE_IDENTITIES,
                                       load_manifest as load_bootloader_manifest,
                                       select_profile as select_bootloader_profile)
 from nrf52_bootloader_exceptions import render_bootloader_exceptions
@@ -240,6 +243,24 @@ def require_separate_build_directories(ordinary: Path, embedded: Path) -> None:
         raise ValueError("ordinary and embedded bootloader builds require separate output directories")
 
 
+def preview_bootloader_catalog() -> dict:
+    # Keep this separate from the stable catalog and make the preview status
+    # explicit in release receipts. Neither source is a substitute for HIL.
+    import nrf52_embedded_bootloader
+    return nrf52_embedded_bootloader.load_manifest(version=BOOTLOADER_PREVIEW_VERSION)
+
+
+def bootloader_version_for_target(target: str) -> str:
+    parsed = target_profiles([target])[target]
+    hardware = parsed.get("sourceHardware")
+    catalog = preview_bootloader_catalog()
+    matches = [profile for profile in catalog["profiles"]
+               if hardware in profile.get("meshcoreHardware", [])]
+    if len(matches) > 1:
+        raise ValueError(f"{target}: ambiguous preview bootloader mapping")
+    return BOOTLOADER_PREVIEW_VERSION if matches else BOOTLOADER_VERSION
+
+
 def embedded_bootloader_selection(records: list[dict]) -> tuple[list[str], list[dict]]:
     """Exclude only exact hardware explicitly unavailable in the pinned catalog."""
     targets = sorted({record["manifest"]["target"] for record in records
@@ -272,6 +293,13 @@ def embedded_bootloader_selection(records: list[dict]) -> tuple[list[str], list[
                     or status not in ("retired", "source-pending", "source-blocked")
                     or not isinstance(reason, str) or not reason.strip() or not reason.isascii()):
                 raise ValueError(f"{target}: invalid unavailable bootloader catalog metadata")
+            if profile_id in PREVIEW_PROFILE_IDENTITIES:
+                preview = preview_bootloader_catalog()
+                selected, _ = select_bootloader_profile(preview, target)
+                if selected.get("id") != profile_id or selected.get("hardwareTested") is not False:
+                    raise ValueError(f"{target}: preview does not match the exact untested board")
+                supported.append(target)
+                continue
             exclusions.append({"target": target, "profile": profile_id,
                                "source_hardware": identity["sourceHardware"],
                                "status": status, "reason": reason})
@@ -309,7 +337,7 @@ def build_embedded_bootloader_artifacts(ordinary_work: Path, work: Path,
         # checks the exact source/recipe/package before reusing --resume data.
         run_logged([
             "bash", "build_legacy.sh", "build-firmware", target,
-            "--with-bootloader", BOOTLOADER_VERSION,
+            "--with-bootloader", bootloader_version_for_target(target),
             "--firmware-version", version,
             "--radio-preset", "usa-cascade-fixed", "--profile", "cascade",
             "--require-ota", "--resume",
@@ -331,7 +359,8 @@ def validate_embedded_bootloader_records(ordinary: list[dict], embedded: list[di
         if suffix and not artifact_target.endswith(suffix):
             raise ValueError(f"{artifact_target}: ordinary sensor publication suffix is invalid")
         base = artifact_target[:-len(suffix)] if suffix else artifact_target
-        variant = base + "-with-bootloader-" + BOOTLOADER_VERSION + suffix
+        boot_version = bootloader_version_for_target(manifest["target"])
+        variant = base + "-with-bootloader-" + boot_version + suffix
         if variant in expected:
             raise ValueError(f"{variant}: duplicate ordinary bootloader variant identity")
         expected[variant] = manifest
@@ -343,24 +372,36 @@ def validate_embedded_bootloader_records(ordinary: list[dict], embedded: list[di
         metadata = manifest.get("embedded_bootloader")
         if ordinary_manifest is None or artifact_target in observed:
             raise ValueError(f"{artifact_target}: unexpected or duplicate embedded bootloader variant")
-        profile, _ = select_bootloader_profile(catalog, ordinary_manifest["target"])
+        boot_version = bootloader_version_for_target(ordinary_manifest["target"])
+        selected_catalog = preview_bootloader_catalog() if boot_version == BOOTLOADER_PREVIEW_VERSION else catalog
+        expected_sha = (BOOTLOADER_PREVIEW_MANIFEST_SHA256 if boot_version == BOOTLOADER_PREVIEW_VERSION
+                        else BOOTLOADER_MANIFEST_SHA256)
+        profile, _ = select_bootloader_profile(selected_catalog, ordinary_manifest["target"])
         if (manifest["platform"] != "NRF52_PLATFORM"
                 or manifest["target"] != ordinary_manifest["target"]
                 or manifest["build_profile"] != ordinary_manifest["build_profile"]
                 or nrf52_sensor_profile(manifest) != nrf52_sensor_profile(ordinary_manifest)
                 or not isinstance(metadata, dict)
-                or metadata.get("release") != BOOTLOADER_VERSION
+                or metadata.get("release") != boot_version
+                or (boot_version == BOOTLOADER_PREVIEW_VERSION and metadata.get("hardware_tested") is not False)
                 or metadata.get("profile") != profile["id"]
-                or metadata.get("manifest_sha256") != BOOTLOADER_MANIFEST_SHA256
+                or metadata.get("manifest_sha256") != expected_sha
                 or metadata.get("asset_sha256") != profile["files"]["zip"]["sha256"]
                 or metadata.get("legacy_sha256") is not None):
             raise ValueError(f"{artifact_target}: embedded bootloader qualification differs from its ordinary target/catalog")
         observed.add(artifact_target)
     if observed != set(expected):
         raise ValueError("missing embedded bootloader variants: " + ", ".join(sorted(set(expected) - observed)))
-    return {"release": BOOTLOADER_VERSION,
-            "manifest_sha256": BOOTLOADER_MANIFEST_SHA256,
-            "targets": targets, "firmware_count": len(embedded), "exclusions": exclusions}
+    result = {"release": BOOTLOADER_VERSION,
+              "manifest_sha256": BOOTLOADER_MANIFEST_SHA256,
+              "targets": targets, "firmware_count": len(embedded), "exclusions": exclusions}
+    previews = [target for target in targets if bootloader_version_for_target(target) == BOOTLOADER_PREVIEW_VERSION]
+    if previews:
+        result["preview_release"] = BOOTLOADER_PREVIEW_VERSION
+        result["preview_manifest_sha256"] = BOOTLOADER_PREVIEW_MANIFEST_SHA256
+        result["preview_targets"] = previews
+        result["preview_hardware_tested"] = False
+    return result
 
 
 def build_migration_artifacts(work: Path, version: str, short_source: str,
@@ -792,13 +833,18 @@ def stage_release(work: Path, migration_work: Path, destination: Path, version: 
         bootloader_note = (
             "Normal nRF52 application images preserve the installed bootloader. Separate\n"
             "with-bootloader variants for supported Repeater/Room targets embed exact-board\n"
-            "OTAFIX 2.4.12 and check it for installation 70 seconds after startup. Standalone\n"
-            "exact-board bootloader files for supported profiles are under nrf52-bootloaders;\n"
+            "OTAFIX and check it for installation 70 seconds after startup. Stable standalone\n"
+            "exact-board bootloaders are under nrf52-bootloaders; preview files are on GitHub.\n"
             "do not substitute another board/storage image.\n" if bootloaders is not None else
             "nRF52 bootloader updates require the matching OTAFIX board/storage image\n"
             "before application firmware.\n")
         if exceptions_report:
             bootloader_note += "See NRF52-BOOTLOADER-EXCEPTIONS.md for boards without a verified bootloader.\n"
+        if variants and variants.get("preview_targets"):
+            bootloader_note += (
+                f"Selected exact-board variants include OTAFIX {BOOTLOADER_PREVIEW_VERSION}.\n"
+                "These preview bootloaders passed software checks but were not hardware tested.\n"
+                "https://github.com/mikecarper/MeshCore/blob/keymindCascade/docs/nrf52_bootloader_previews.md\n")
         (staging / "README.md").write_text(
             f"# MeshCore local release {version}\n\n"
             f"Firmware source commit: `{source}`. Release tooling commit: `{tooling_source}`.\n"

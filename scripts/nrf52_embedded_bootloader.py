@@ -24,6 +24,10 @@ LEGACY_SHA256 = "64bfe69d56eefc2d0fe51770902aff70ea0cc06cad261d3d219e4a3c0efac8d
 BOOT_BASE, BOOT_SIZE = 0xF4000, 0xA000
 REPOSITORY = "mikecarper/Adafruit_nRF52_Bootloader_OTAFIX"
 TAG = "v0.11.0-OTAFIX" + VERSION
+PREVIEW_VERSION = "2.4.13-preview.1"
+PREVIEW_TAG = "v0.11.0-OTAFIX" + PREVIEW_VERSION
+PREVIEW_BOOT_VERSION = 0x02040D01
+PREVIEW_MANIFEST_SHA256 = "e32a52f0524530229120527d5ed56ba265e6b890f6bad04cbc77ad2832b91456"
 MAX_ZIP_SIZE = 2 * 1024 * 1024
 
 
@@ -40,14 +44,23 @@ def _json(data):
     return json.loads(data.decode("utf-8"), object_pairs_hook=_unique_object)
 
 
-def load_manifest(project=ROOT):
-    data = (Path(project) / "docs/_data/bootloader_manifest.json").read_bytes()
-    if hashlib.sha256(data).hexdigest() != MANIFEST_SHA256:
-        raise ValueError("embedded bootloader requires the pinned OTAFIX 2.4.12 download manifest")
+def catalog_settings(version):
+    if version == VERSION:
+        return TAG, BOOT_VERSION, MANIFEST_SHA256, "bootloader_manifest.json", False
+    if version == PREVIEW_VERSION:
+        return PREVIEW_TAG, PREVIEW_BOOT_VERSION, PREVIEW_MANIFEST_SHA256, "bootloader_preview_manifest.json", True
+    raise ValueError("unsupported embedded OTAFIX release")
+
+
+def load_manifest(project=ROOT, version=VERSION):
+    tag, _, digest, filename, prerelease = catalog_settings(version)
+    data = (Path(project) / "docs/_data" / filename).read_bytes()
+    if hashlib.sha256(data).hexdigest() != digest:
+        raise ValueError("embedded bootloader requires its pinned OTAFIX download manifest")
     manifest = _json(data)
     if (manifest.get("schemaVersion") != 1 or manifest.get("repository") != REPOSITORY
-            or manifest.get("tag") != TAG or manifest.get("version") != VERSION
-            or manifest.get("prerelease") is not False):
+            or manifest.get("tag") != tag or manifest.get("version") != version
+            or manifest.get("prerelease") is not prerelease):
         raise ValueError("unexpected embedded bootloader release identity")
     return manifest
 
@@ -97,6 +110,15 @@ PROFILE_IDENTITIES = {
     "xiao_nrf52840_ble_sense": (0x28860045, "XIAO_DFU"),
 }
 
+PREVIEW_PROFILE_IDENTITIES = {
+    "heltec_mesh_solar": (0x239A0071, "SOLARINT_DFU"),
+    "lilygo_techo_card": (0x239A00DA, "LTECARD_DFU"),
+    "lilygo_t_impulse_plus": (0x239A00DA, "LTIMP_DFU"),
+    "meshtracker_x1": (0x28860057, "X1INT_DFU"),
+    "muzi_base": (0x239A0081, "MUZIB_DFU"),
+    "nano_g2_ultra": (0x42518695, "NANOG2_DFU"),
+}
+
 
 def select_profile(manifest, target):
     from generate_mesh_america_release import target_profiles
@@ -115,19 +137,20 @@ def select_profile(manifest, target):
     return matches[0], parsed
 
 
-def _asset(profile):
+def _asset(profile, version=VERSION):
+    tag, _, _, _, _ = catalog_settings(version)
     asset = profile["files"]["zip"]
     name, size, digest = asset["name"], asset["size"], asset["sha256"]
     if (not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.zip", name)
             or type(size) is not int or not 0 < size <= MAX_ZIP_SIZE
             or not re.fullmatch(r"[0-9a-f]{64}", digest)
-            or asset["url"] != f"https://github.com/{REPOSITORY}/releases/download/{TAG}/{name}"):
+            or asset["url"] != f"https://github.com/{REPOSITORY}/releases/download/{tag}/{name}"):
         raise ValueError("invalid pinned bootloader ZIP metadata")
     return asset
 
 
-def download_zip(profile, cache_dir):
-    asset = _asset(profile)
+def download_zip(profile, cache_dir, version=VERSION):
+    asset = _asset(profile, version)
     cache = Path(cache_dir)
     cache.mkdir(parents=True, exist_ok=True)
     path = cache / (asset["sha256"] + "-" + asset["name"])
@@ -171,8 +194,9 @@ def _unsigned_init(packet, metadata, firmware):
         raise ValueError("Legacy DFU init metadata/firmware CRC mismatch")
 
 
-def validate_candidate_zip(data, profile, project=ROOT):
-    asset = _asset(profile)
+def validate_candidate_zip(data, profile, project=ROOT, version=VERSION):
+    asset = _asset(profile, version)
+    _, boot_version, _, _, _ = catalog_settings(version)
     if len(data) != asset["size"] or hashlib.sha256(data).hexdigest() != asset["sha256"]:
         raise ValueError("bootloader ZIP does not match its pinned release asset")
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
@@ -215,11 +239,12 @@ def validate_candidate_zip(data, profile, project=ROOT):
     if (identity is None or identity.manifest_offset != BOOT_SIZE - 76
             or not (0x20000000 <= sp <= 0x20040000 and sp % 8 == 0 and reset & 1
                     and BOOT_BASE <= reset & ~1 < BOOT_BASE + BOOT_SIZE)
-            or identity.boot_version != BOOT_VERSION or identity.softdevice_family != 140
+            or identity.boot_version != boot_version or identity.softdevice_family != 140
             or identity.layout_abi != 1 or identity.compat_flags != 0
             or identity.device_name != profile["deviceName"]):
         raise ValueError("candidate bootloader identity/version/vector/CRC mismatch")
-    expected_identity = PROFILE_IDENTITIES.get(profile.get("id"))
+    identities = PROFILE_IDENTITIES if version == VERSION else PREVIEW_PROFILE_IDENTITIES
+    expected_identity = identities.get(profile.get("id"))
     if expected_identity is None or (identity.board_id, identity.device_name) != expected_identity:
         raise ValueError("candidate bootloader board/name does not match the reviewed profile")
     platforms = {"6.1.1": (0xB6, 0x26000), "7.3.0": (0x123, 0x27000)}
@@ -231,6 +256,11 @@ def validate_candidate_zip(data, profile, project=ROOT):
     expected_storage = {"internal": 0x0A, "qspi": 0x0E, "sd": 0x09, "adaptive": 0x0A}
     if actual_storage != expected_storage.get(profile["storage"]):
         raise ValueError("candidate OTA capability marker differs from its exact profile")
+    if version == PREVIEW_VERSION and profile["storage"] == "internal":
+        ram = b"MOTARAMA" + struct.pack("<HHI", 1, 72, 65536)
+        if (sum(image[off:off + 16] == ram for off in range(0, len(image) - 15, 4)) != 1
+                or sp > 0x20030000):
+            raise ValueError("internal preview bootloader lacks its 64 KiB hybrid RAM arena")
     if profile["storage"] == "adaptive" and ml.bootloader_optional_app_storage(image) != 0x14:
         raise ValueError("adaptive candidate lacks its exact optional storage contract")
     # The pinned asset is authoritative for newly published hardware. Keep the
@@ -268,7 +298,7 @@ def load_legacy(path):
 
 
 def emit_resource(project, target, output, *, flags=(), cppdefines=(), src_filter=(),
-                  linker=None, legacy_path=None, cache_dir=None):
+                  linker=None, legacy_path=None, cache_dir=None, version=VERSION):
     from nrf52_flash_trim import flag_defines, source_selected
     definitions = flag_defines(flags, cppdefines)
     def enabled(key):
@@ -278,7 +308,8 @@ def emit_resource(project, target, output, *, flags=(), cppdefines=(), src_filte
             or definitions.get("DISABLE_LORA_OTA") is not None
             or definitions.get("OTA_SEEDER_ONLY") is not None):
         raise ValueError("embedded bootloader requires an nRF52 OTA receiver")
-    manifest = load_manifest(project)
+    _, _, manifest_sha256, _, _ = catalog_settings(version)
+    manifest = load_manifest(project, version)
     profile, parsed = select_profile(manifest, target)
     # Sensor-reduced release overlays compile the underlying PlatformIO
     # environment while retaining the synthetic overlay's on-air identity.
@@ -308,11 +339,11 @@ def emit_resource(project, target, output, *, flags=(), cppdefines=(), src_filte
                 "../examples/companion_radio/MyMesh.cpp", "../examples/simple_secure_chat/main.cpp",
                 "../examples/simple_sensor/main.cpp", "../examples/kiss_modem/main.cpp"))):
         raise ValueError("embedded bootloader requires its exact repeater or room-server source tree")
-    if legacy_path and (parsed["sourceHardware"] != "RAK_4631"
+    if legacy_path and (version != VERSION or parsed["sourceHardware"] != "RAK_4631"
                         or profile["id"] != "wiscore_rak4631_auto"):
         raise ValueError("the qualified legacy bridge is restricted to RAK4631")
     image, identity = validate_candidate_zip(download_zip(
-        profile, cache_dir or Path(project) / ".pio/otafix-cache"), profile, project)
+        profile, cache_dir or Path(project) / ".pio/otafix-cache", version), profile, project, version)
     linked_base = application_base(project, linker)
     if linked_base is not None and linked_base != identity.app_base:
         raise ValueError("candidate SoftDevice base does not match the application linker")
@@ -327,7 +358,7 @@ def emit_resource(project, target, output, *, flags=(), cppdefines=(), src_filte
     arrays = {"migration_candidate": image,
               "migration_candidate_sha256": hashlib.sha256(image).digest(),
               "migration_legacy_sha256": hashlib.sha256(legacy).digest() if legacy else bytes(32)}
-    header = "#pragma once\n#include <stdint.h>\n"
+    header = "#pragma once\n#include <stdint.h>\n#define OTA_BOOTLOADER_RELEASE " + json.dumps(version) + "\n"
     source = '#include "BootloaderMigrationResource.h"\n'
     for name, data in arrays.items():
         header += f"extern const uint8_t {name}[{len(data)}];\n"
@@ -356,8 +387,8 @@ def emit_resource(project, target, output, *, flags=(), cppdefines=(), src_filte
     (output / "BootloaderMigrationResource.cpp").write_text(source, encoding="ascii")
     (output / "BootloaderMigrationResource.bin").write_bytes(image)
     metadata = {"target": target, "hardware": parsed["sourceHardware"], "role": parsed["role"],
-                "profile": profile["id"], "release": VERSION, "version": VERSION,
-                "manifest_sha256": MANIFEST_SHA256,
+                "profile": profile["id"], "release": version, "version": version,
+                "manifest_sha256": manifest_sha256,
                 "asset_sha256": profile["files"]["zip"]["sha256"],
                 "source_zip_sha256": profile["files"]["zip"]["sha256"],
                 "candidate_sha256": hashlib.sha256(image).hexdigest(),

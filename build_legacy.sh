@@ -150,7 +150,7 @@ Options:
                  Default for Option 3; Companion USB updates remain supported.
                  Cable-only infrastructure platforms are reported and omitted.
   --allow-no-ota: Include cable-only development targets instead.
-  --with-bootloader <2.4.12>: Build a separate nRF52 Repeater/Room variant
+  --with-bootloader <2.4.12|2.4.13-preview.1>: Build a separate nRF52 Repeater/Room variant
                 carrying the exact-board OTAFIX bootloader for authenticated activation.
   --background: Run the selected build as a persistent detached job. Its log
                 and status live outside OUTPUT_DIR so --clean cannot erase them.
@@ -1070,8 +1070,8 @@ parse_cli_options() {
         shift
         ;;
       --with-bootloader)
-        if [ "$#" -lt 2 ] || [ "$2" != "2.4.12" ]; then
-          echo "--with-bootloader requires the pinned release 2.4.12"; return 1
+        if [ "$#" -lt 2 ] || { [ "$2" != "2.4.12" ] && [ "$2" != "2.4.13-preview.1" ]; }; then
+          echo "--with-bootloader requires a pinned OTAFIX release"; return 1
         fi
         export MESHCORE_NRF52_EMBED_BOOTLOADER="$2"
         shift 2
@@ -3577,7 +3577,7 @@ declare_full_logging_application_contract() {
   local env_name=$1
   BUILD_APPLICATION_EXPECTATIONS=()
   if [ -n "${MESHCORE_NRF52_EMBED_BOOTLOADER:-}" ]; then
-    record_application_expectation "bootloader.embedded" "BL embedded 2.4.12"
+    record_application_expectation "bootloader.embedded" "BL embedded ${MESHCORE_NRF52_EMBED_BOOTLOADER}"
   fi
   if requires_full_usb_packet_logging "$env_name" \
       || is_xiao_qspi_canonical_repeater_build "$env_name" \
@@ -5465,7 +5465,7 @@ collect_build_artifacts() {
 
 embedded_bootloader_artifact_target() {
   if [ -n "${MESHCORE_NRF52_EMBED_BOOTLOADER:-}" ]; then
-    [ "$MESHCORE_NRF52_EMBED_BOOTLOADER" = "2.4.12" ] || return 1
+    { [ "$MESHCORE_NRF52_EMBED_BOOTLOADER" = "2.4.12" ] || [ "$MESHCORE_NRF52_EMBED_BOOTLOADER" = "2.4.13-preview.1" ]; } || return 1
     echo "${1}-with-bootloader-${MESHCORE_NRF52_EMBED_BOOTLOADER}"
   else
     echo "$1"
@@ -5713,10 +5713,10 @@ build_firmware_one_profile() {
     return 1
   fi
   if [ -n "${MESHCORE_NRF52_EMBED_BOOTLOADER:-}" ]; then
-    if [ "$MESHCORE_NRF52_EMBED_BOOTLOADER" != "2.4.12" ] \
+    if { [ "$MESHCORE_NRF52_EMBED_BOOTLOADER" != "2.4.12" ] && [ "$MESHCORE_NRF52_EMBED_BOOTLOADER" != "2.4.13-preview.1" ]; } \
         || [ "$env_platform" != "NRF52_PLATFORM" ] \
         || ! { is_repeater_role_target "$env_name" || is_room_server_role_target "$env_name"; }; then
-      echo "Embedded bootloader variants require an nRF52 Repeater or Room and release 2.4.12." >&2
+      echo "Embedded bootloader variants require an nRF52 Repeater or Room and a pinned OTAFIX release." >&2
       return 1
     fi
   fi

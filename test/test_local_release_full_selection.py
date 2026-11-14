@@ -685,6 +685,43 @@ class BootloaderReleaseOrchestrationTest(unittest.TestCase):
                 legacy_sha256=None)
         return result
 
+    def test_source_verified_previews_are_selected_without_aliasing_unresolved_boards(self):
+        preview_hardware = ("Heltec_mesh_solar", "LilyGo_T-Echo_Card", "LilyGo_T_Impulse_Plus",
+                            "MeshTracker_X1", "Nano_G2_Ultra", "muzi_base_uno", "muzi_base_duo")
+        unresolved = ("ThinkNode_M4", "ThinkNode_M8", "wio_wm1110")
+        records = []
+        for hardware in preview_hardware + unresolved:
+            records += sensor_pair(hardware + "_repeater_lora_ota_no_external_sensors")
+        targets, exclusions = release.embedded_bootloader_selection(records)
+        self.assertEqual(set(targets), {name + "_repeater_lora_ota_no_external_sensors"
+                                        for name in preview_hardware})
+        self.assertEqual({entry["source_hardware"] for entry in exclusions}, set(unresolved))
+        self.assertTrue(all(release.bootloader_version_for_target(target) == "2.4.13-preview.1"
+                            for target in targets))
+        self.assertTrue(all(release.bootloader_version_for_target(entry["target"]) == "2.4.12"
+                            for entry in exclusions))
+
+        ordinary = sensor_pair("MeshTracker_X1_repeater_lora_ota_no_external_sensors")
+        embedded = deepcopy(ordinary)
+        profile, _ = release.select_bootloader_profile(release.preview_bootloader_catalog(),
+                                                        ordinary[0]["manifest"]["target"])
+        for item in embedded:
+            manifest = item["manifest"]
+            sensor = release.nrf52_sensor_profile(manifest)
+            manifest["artifact_target"] = (manifest["target"] + "-with-bootloader-2.4.13-preview.1-"
+                                            + sensor + "-ota")
+            manifest["embedded_bootloader"] = {
+                "release": "2.4.13-preview.1", "profile": profile["id"],
+                "manifest_sha256": release.BOOTLOADER_PREVIEW_MANIFEST_SHA256,
+                "asset_sha256": profile["files"]["zip"]["sha256"], "legacy_sha256": None,
+                "hardware_tested": False}
+        receipt = release.validate_embedded_bootloader_records(ordinary, embedded)
+        self.assertEqual(receipt["preview_targets"], [ordinary[0]["manifest"]["target"]])
+        self.assertIs(receipt["preview_hardware_tested"], False)
+        embedded[0]["manifest"]["embedded_bootloader"]["release"] = "2.4.12"
+        with self.assertRaisesRegex(ValueError, "qualification differs"):
+            release.validate_embedded_bootloader_records(ordinary, embedded)
+
     def test_target_selection_is_exact_role_platform_sorted_and_unique(self):
         eligible = sensor_pair("z_repeater") + sensor_pair("a_room_server")
         excluded = [record("n_companion_radio_full", platform="NRF52_PLATFORM"),

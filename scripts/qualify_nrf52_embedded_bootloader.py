@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 import zipfile
 
-from nrf52_embedded_bootloader import (ROOT, BOOT_SIZE, VERSION, MANIFEST_SHA256,
+from nrf52_embedded_bootloader import (ROOT, BOOT_SIZE, VERSION, catalog_settings,
     LEGACY_SHA256, BOOTLOADER_HARDWARE, load_manifest, select_profile, download_zip, validate_candidate_zip)
 from nrf52_legacy_bootloaders import legacy_bootloaders_for
 
@@ -20,15 +20,18 @@ def qualify(directory, manifest_path):
     manifest = json.loads(manifest_path.read_text())
     if manifest.get("platform") != "NRF52_PLATFORM" or manifest.get("verified") is not True:
         raise ValueError("embedded bootloader requires qualified nRF52 firmware")
-    profile, parsed = select_profile(load_manifest(), manifest["target"])
-    candidate, identity = validate_candidate_zip(download_zip(profile, ROOT / ".pio/otafix-cache"), profile)
+    resource = directory / "bootloader-migration-resource"
+    metadata = json.loads((resource / "BootloaderMigrationResource.json").read_text())
+    version = metadata.get("release")
+    _, _, manifest_sha256, _, _ = catalog_settings(version)
+    profile, parsed = select_profile(load_manifest(version=version), manifest["target"])
+    candidate, identity = validate_candidate_zip(
+        download_zip(profile, ROOT / ".pio/otafix-cache", version), profile, version=version)
     hardware = BOOTLOADER_HARDWARE.get(parsed["sourceHardware"], parsed["sourceHardware"])
     stock_legacy = legacy_bootloaders_for(profile["id"], hardware,
                                          identity.app_base, identity.softdevice_fwid)
-    resource = directory / "bootloader-migration-resource"
-    metadata = json.loads((resource / "BootloaderMigrationResource.json").read_text())
-    if (metadata.get("profile") != profile["id"] or metadata.get("release") != VERSION
-            or metadata.get("manifest_sha256") != MANIFEST_SHA256
+    if (metadata.get("profile") != profile["id"] or metadata.get("release") != version
+            or metadata.get("manifest_sha256") != manifest_sha256
             or metadata.get("asset_sha256") != profile["files"]["zip"]["sha256"]
             or metadata.get("candidate_sha256") != hashlib.sha256(candidate).hexdigest()
             or metadata.get("legacy_sha256") not in (None, LEGACY_SHA256)
@@ -52,7 +55,7 @@ def qualify(directory, manifest_path):
             or len(application) > layout.linked_app_end - layout.app_base
             or offset < 0 or offset % 4 or body.find(candidate, offset + 1) >= 0
             or offset + BOOT_SIZE > len(body)
-            or b"BL embedded 2.4.12" not in body):
+            or ("BL embedded " + version).encode("ascii") not in body):
         raise ValueError("packaged application lacks the complete aligned embedded bootloader or activation code")
     # Do not promote a copied JSON claim into legacy-update qualification. The
     # entire ordered hash table must exist in the EndF-verified application body
@@ -65,16 +68,18 @@ def qualify(directory, manifest_path):
                     or stock_offset >= offset + BOOT_SIZE)):
         raise ValueError("packaged application lacks its exact reviewed stock bootloader hash table")
     manifest["embedded_bootloader"] = {
-        "release": VERSION, "profile": profile["id"],
+        "release": version, "profile": profile["id"],
         "candidate_sha256": hashlib.sha256(candidate).hexdigest(),
         "asset_sha256": profile["files"]["zip"]["sha256"],
-        "manifest_sha256": MANIFEST_SHA256,
+        "manifest_sha256": manifest_sha256,
         "legacy_sha256": metadata.get("legacy_sha256"),
         "stock_legacy": stock_legacy, "stock_legacy_offset": stock_offset,
         "app_offset": offset, "image_bytes": BOOT_SIZE,
         "activation": "ota bootloader update",
         "automatic_delay_seconds": 70,
     }
+    if version != VERSION:
+        manifest["embedded_bootloader"]["hardware_tested"] = False
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     return manifest["embedded_bootloader"]
 

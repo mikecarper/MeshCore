@@ -102,7 +102,7 @@ static void sha256(uint8_t*,size_t,const uint8_t*,int,const uint8_t*,int);
 class LegacyBootloaderTests(unittest.TestCase):
     def test_every_record_matches_independent_public_stock_reader_audit(self):
         artifacts = json.loads((ROOT / "test/fixtures/nrf52_bootloader_version/stock_images.json").read_text())["artifacts"]
-        self.assertEqual(len(_RECORDS), 16)
+        self.assertEqual(len(_RECORDS), 20)
         for record in _RECORDS:
             matches = [item for item in artifacts if item["url"] == record["source_url"]]
             self.assertEqual(len(matches), 1, record["name"])
@@ -130,6 +130,22 @@ class LegacyBootloaderTests(unittest.TestCase):
             item["image_sha256"] for item in records))
         self.assertEqual(legacy_bootloaders_for("wiscore_rak4631_auto", "RAK_3401", 0x26000, 0xB6), [])
         self.assertEqual(legacy_bootloaders_for("wiscore_rak3401_auto", "RAK_4631", 0x26000, 0xB6), [])
+
+    def test_preview_stock_hashes_are_bound_to_the_exact_board(self):
+        for profile, hardware, base, fwid in (
+            ("heltec_mesh_solar", "Heltec_mesh_solar", 0x26000, 0xB6),
+            ("lilygo_techo_card", "LilyGo_T-Echo_Card", 0x26000, 0xB6),
+            ("lilygo_t_impulse_plus", "LilyGo_T_Impulse_Plus", 0x26000, 0xB6),
+            ("meshtracker_x1", "MeshTracker_X1", 0x27000, 0x123),
+            ("nano_g2_ultra", "Nano_G2_Ultra", 0x26000, 0xB6),
+        ):
+            with self.subTest(hardware=hardware):
+                self.assertTrue(legacy_bootloaders_for(profile, hardware, base, fwid))
+                self.assertEqual(legacy_bootloaders_for(profile, "muzi_base_uno", base, fwid), [])
+                self.assertEqual(legacy_bootloaders_for(profile, hardware, base ^ 0x1000, fwid), [])
+        # A shared module or similar vendor is not a verified Muzi factory image.
+        self.assertEqual(legacy_bootloaders_for("muzi_base", "muzi_base_uno", 0x26000, 0xB6), [])
+        self.assertEqual(legacy_bootloaders_for("muzi_base", "muzi_base_duo", 0x26000, 0xB6), [])
 
     def test_shared_module_or_wrong_softdevice_cannot_inherit_a_stock_hash(self):
         for record in _RECORDS:
