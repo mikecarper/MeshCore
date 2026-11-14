@@ -122,6 +122,52 @@ class EarlyOtaAvailabilityBrowserTest(unittest.TestCase):
         self.assertFalse(any(result['gated']), result)
         self.assertRegex(result['availability']['text'], r'(?i)support|available|ready|receiver detected')
 
+    def test_cold_rak_prepares_storage_before_reporting_availability(self):
+        harness = availability_harness()
+        marker = "cmds.push('remote '+cmd);"
+        self.assertEqual(harness.count(marker), 1)
+        override = r'''if(cmd==='ota status')return 'OTA | this fw 00112233 (743K) hw=RAK4631 | target:1234ABCD | maxblk:2048 | bl:'+(counts[cmd]===1?'storage-ERR':'QSPI')+' blrc:00 | no download';
+        if(cmd==='ota self')return 'self body=100 image=156 base_hash=0011223344556677 | maxblk:2048 abi=3 codecs=0x5 | '+(counts[cmd]===1?'storage unsafe: not probed':'QSPI store:2048K | bootloader: QSPI apply OK');
+        if(cmd==='ota bootloader status')return 'BL board=239A0029 target=2D0DF000 name=4631_DFU crc=FF374B1B abi=3 caps=0A | staged:none mid=- hash=-';
+        if(cmd==='ota qspi')return 'QSPI W25Q16 header jedec=EF4015 size=2048K sr1=00 stage=jedec';'''
+        harness = harness.replace(marker, marker+override, 1)
+        result = run_harness(harness, timeout=90)
+        commands = self.check_read_only(result)
+        self.assertTrue(result['complete'], result)
+        self.assertEqual(commands.count('ota bootloader status'), 1, result)
+        self.assertEqual(commands.count('ota status'), 2, result)
+        self.assertEqual(commands.count('ota self'), 2, result)
+        self.assertFalse(any(result['gated']), result)
+        self.assertRegex(result['availability']['text'], r'(?i)receiver detected|supported')
+
+    def test_rak_with_a_real_storage_failure_stays_blocked(self):
+        result = run_harness(availability_harness(
+            status='OTA | this fw 00112233 (743K) hw=RAK4631 | target:1234ABCD | maxblk:2048 | bl:storage-ERR blrc:00 | no download',
+            self_reply='self body=100 image=156 base_hash=0011223344556677 | maxblk:2048 abi=3 codecs=0x5 | storage unsafe: no usable store'), timeout=90)
+        commands = self.check_read_only(result)
+        self.assertIn('ota self', commands, result)
+        self.assertNotIn('ota bootloader status', commands, result)
+        self.assertTrue(all(result['gated']), result)
+        self.assertRegex(result['availability']['text'], r'(?i)storage.*not ready|storage.*unavailable')
+
+    def test_cold_rak_is_prepared_through_an_older_usb_companion(self):
+        harness = availability_harness(companion=True)
+        marker = "if(text==='get public.key')reply='> '+key;"
+        self.assertEqual(harness.count(marker), 1)
+        override = r'''else if(text==='ota status')reply='OTA | this fw 00112233 (743K) hw=RAK4631 | target:1234ABCD | maxblk:2048 | bl:'+(cmds.filter(x=>x===text).length===1?'storage-ERR':'QSPI')+' blrc:00 | no download';
+        else if(text==='ota self')reply='self body=100 image=156 base_hash=0011223344556677 | maxblk:2048 abi=3 codecs=0x5 | '+(cmds.filter(x=>x===text).length===1?'storage unsafe: not probed':'QSPI store:2048K | bootloader: QSPI apply OK');
+        else if(text==='ota bootloader status')reply='BL board=239A0029 target=2D0DF000 name=4631_DFU crc=FF374B1B abi=3 caps=0A | staged:none mid=- hash=-';
+        else if(text==='ota qspi')reply='QSPI W25Q16 header jedec=EF4015 size=2048K sr1=00 stage=jedec';'''
+        harness = harness.replace(marker, marker+override, 1)
+        result = run_harness(harness, timeout=90)
+        commands = self.check_read_only(result)
+        self.assertTrue(result['complete'], result)
+        self.assertEqual(commands.count('ota bootloader status'), 1, result)
+        self.assertEqual(commands.count('ota status'), 2, result)
+        self.assertEqual(commands.count('ota self'), 2, result)
+        self.assertFalse(any(result['gated']), result)
+        self.assertRegex(result['availability']['text'], r'(?i)receiver detected|supported')
+
     def test_source_known_not_to_send_ota_blocks_before_any_remote_investigation(self):
         harness = availability_harness(companion=True)
         marker = "window.addEventListener('load',async()=>{try{"

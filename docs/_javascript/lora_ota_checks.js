@@ -102,15 +102,71 @@
       return {state:'unknown', message:'LoRa update support could not be confirmed. The target did not provide a usable OTA status and installed-image identity. Check access and connectivity, then investigate again.'};
     }
   }
+  function bare(reply) { return String(reply || '').trim().replace(/^>\s*/, ''); }
+  function coldRakStatus(status) {
+    const text = bare(status), hw = [...text.matchAll(/\bhw=([^ |]+)/gi)],
+      target = [...text.matchAll(/\btarget:([0-9a-f]{8})\b/gi)],
+      limits = [...text.matchAll(/\bmaxblk:(\d+)\b/gi)],
+      stores = [...text.matchAll(/\bbl:([^ |]+)/gi)];
+    if (!/^OTA\s*\|/.test(text) || hw.length !== 1 ||
+        !['RAK_3401','RAK4631'].includes(hw[0][1]) || target.length !== 1 ||
+        target[0][1] === '00000000' || limits.length !== 1 ||
+        !['1024','2048'].includes(limits[0][1]) || stores.length !== 1 ||
+        !['NONE','storage-ERR'].includes(stores[0][1]) ||
+        text.split(' | ').filter(part => part === 'no download').length !== 1 ||
+        /\bdownload:/i.test(text)) return null;
+    return {hw:hw[0][1], target:target[0][1].toLowerCase(), limit:Number(limits[0][1])};
+  }
+  // The adaptive RAK store deliberately does not probe removable media for
+  // idle status calls. Its explicit bootloader-status query prepares storage
+  // without starting an update; bind that one query to the same live image.
+  async function prepareColdRakStorage(remote, status, self) {
+    status = bare(status); self = bare(self);
+    const identity = coldRakStatus(status);
+    const prefix = /^self body=([1-9]\d*) image=([1-9]\d*) base_hash=([0-9a-f]{16}) \| maxblk:(1024|2048)(?: abi=(\d+) codecs=0x([0-9a-f]+))? \| (.+)$/i;
+    const before = prefix.exec(self);
+    if (!identity || !before || before[7] !== 'storage unsafe: not probed')
+      return {status,self,prepared:false};
+    if (Number(before[4]) !== identity.limit) throw Error('Target reports conflicting block limits');
+    const bootloader = bare(await remote('ota bootloader status'));
+    const boot = /^BL board=239A0029 target=([0-9a-f]{8}) name=(3401(?:_AUTO)?_DFU|4631(?:_AUTO)?_DFU) crc=([0-9a-f]{8}) abi=(\d+) caps=([0-9a-f]{2}) \| staged:none mid=- hash=-$/i.exec(bootloader);
+    const profiles = {
+      RAK_3401: {'3401_DFU':['23818A80','0A'], '3401_AUTO_DFU':['D04AB3AB','1E']},
+      RAK4631: {'4631_DFU':['2D0DF000','0A'], '4631_AUTO_DFU':['FEEAFD1B','1E']}
+    };
+    const expected = boot && profiles[identity.hw][boot[2].toUpperCase()];
+    if (!boot || !expected || boot[1].toUpperCase() !== expected[0] ||
+        boot[5].toUpperCase() !== expected[1] || /^(?:00000000|ffffffff)$/i.test(boot[3]) ||
+        Number(boot[4]) < 3 || Number(boot[4]) >= 65535 ||
+        (before[5] && (Number(before[5]) !== Number(boot[4]) || (parseInt(before[6],16) & 5) !== 5)))
+      throw Error('Target bootloader identity or staging state could not be verified');
+    const nextStatus = bare(await remote('ota status'));
+    const nextSelf = bare(await remote('ota self'));
+    const after = prefix.exec(nextSelf);
+    const hw = [...nextStatus.matchAll(/\bhw=([^ |]+)/gi)], targets = [...nextStatus.matchAll(/\btarget:([0-9a-f]{8})\b/gi)],
+      limits = [...nextStatus.matchAll(/\bmaxblk:(\d+)\b/gi)], stores = [...nextStatus.matchAll(/\bbl:([^ |]+)/gi)];
+    if (!after || before.slice(1,7).some((v,i) => String(v || '').toLowerCase() !== String(after[i+1] || '').toLowerCase()) ||
+        !/^OTA\s*\|/.test(nextStatus) || hw.length !== 1 || hw[0][1] !== identity.hw ||
+        targets.length !== 1 || targets[0][1].toLowerCase() !== identity.target ||
+        limits.length !== 1 || Number(limits[0][1]) !== identity.limit || stores.length !== 1 ||
+        nextStatus.split(' | ').filter(part => part === 'no download').length !== 1 || /\bdownload:/i.test(nextStatus))
+      throw Error('Target firmware or update state changed while checking storage');
+    let backend;
+    if (/^internal store:[1-9]\d*K \| bootloader: delta apply OK$/.test(after[7])) backend = 'internal';
+    else if (/^QSPI store:[1-9]\d*K \| bootloader: QSPI apply OK$/.test(after[7])) backend = 'QSPI';
+    else if (identity.hw === 'RAK4631' && after[7] === 'SD store | bootloader: authenticated SD apply OK') backend = 'SD';
+    if (!backend || stores[0][1] !== backend) throw Error('Target update storage is not ready');
+    return {status:nextStatus,self:nextSelf,prepared:true,bootloader};
+  }
   // Used by manual package checks too, so skipping investigation does not
   // defer an explicit receiver rejection until after unrelated target reads.
   async function readReceiver(remote) {
-    const normalize = value => String(value || '').trim().replace(/^>\s*/, '');
-    const status = normalize(await remote('ota status'));
+    let status = bare(await remote('ota status'));
     const first = availability(status);
     const reject = result => { const error=Error(result.message);error.otaAvailability=result;throw error; };
-    if (first.state==='unsupported' || first.state==='unavailable')reject(first);
-    const self = normalize(await remote('ota self'));
+    if (first.state==='unsupported' || (first.state==='unavailable' && !coldRakStatus(status)))reject(first);
+    let self = bare(await remote('ota self'));
+    ({status,self} = await prepareColdRakStorage(remote, status, self));
     const result = availability(status, self);
     if(result.state!=='supported')reject(result);
     return {status,self};
@@ -209,5 +265,5 @@
         plan.memorySize + Math.ceil(info.blob.length / 4096) * 4096 > ceiling - plan.app)
       throw Error('The current nRF52 staging space no longer fits this differential');
   }
-  return { route, destination, availability, readReceiver, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, needsHybridRam, confirmHybridRam, readHybridRam, validateInternalPlan, version, hex, failureAdvice, explicitMaxBlock };
+  return { route, destination, availability, readReceiver, coldRakStatus, prepareColdRakStorage, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, needsHybridRam, confirmHybridRam, readHybridRam, validateInternalPlan, version, hex, failureAdvice, explicitMaxBlock };
 });

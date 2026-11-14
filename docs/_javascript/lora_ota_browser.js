@@ -844,6 +844,10 @@
       for (; next < checks.length; next++) {
         checkStopped();
         const [label, command] = checks[next];
+        if(command==='ota bootloader status' && replies[command]) {
+          add(label+': '+replies[command]);
+          continue;
+        }
         if(command==='get bootloader.ver' || command==='ota bootloader status') {
           if(esp32Target===undefined)esp32Target=await LoraOtaChecks.isKnownEsp32(replies['ota status']||'',replies['ota self']||'');
           if(esp32Target){add(label+': Skipped (ESP32)');continue;}
@@ -869,6 +873,23 @@
           add(label + ': ' + (unknown ? 'Unknown or unsupported (' + (normalized || 'empty response') + ')' : normalized));
         }
         if(command==='ota status' || command==='ota self') {
+          // Idle adaptive RAKs can report an unprobed store as an error. Read
+          // the image identity before deciding whether that report is real.
+          if(command==='ota status' && LoraOtaChecks.coldRakStatus(replies['ota status'])) {
+            add('Checking whether update storage needs preparation.');
+            continue;
+          }
+          if(command==='ota self' && LoraOtaChecks.coldRakStatus(replies['ota status'])) {
+            showInvestigationProgress('Checking update storage...');
+            const checked = await LoraOtaChecks.prepareColdRakStorage(async request => {
+              checkStopped(); const result = await readCommand(request); checkStopped(); return result;
+            }, replies['ota status'], replies['ota self']);
+            if(checked.prepared) {
+              replies['ota status']=checked.status; replies['ota self']=checked.self;
+              replies['ota bootloader status']=checked.bootloader;
+              add('Update storage is ready.');
+            }
+          }
           const assessment=LoraOtaChecks.availability(replies['ota status'],command==='ota self' ? replies['ota self'] : undefined);
           if(command==='ota self' || assessment.state==='unsupported' || assessment.state==='unavailable') {
             targetAvailability=assessment;showAvailability(assessment);

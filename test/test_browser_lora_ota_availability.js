@@ -139,3 +139,75 @@ test('manual receiver check preserves timeout and transport failures unchanged',
     assert.deepEqual(commands, failAt === 'ota status' ? ['ota status'] : ['ota status', 'ota self']);
   }
 });
+
+function coldRakFixture({hw='RAK4631', backend='QSPI', auto=false}={}) {
+  const header = `OTA | this fw 00112233 (743K) hw=${hw} | target:1234ABCD | maxblk:2048 | bl:`;
+  const prefix = 'self body=100 image=156 base_hash=0011223344556677 | maxblk:2048 abi=3 codecs=0x5 | ';
+  const model = hw === 'RAK_3401' ? '3401' : '4631';
+  const target = ({'3401_DFU':'23818A80','3401_AUTO_DFU':'D04AB3AB',
+    '4631_DFU':'2D0DF000','4631_AUTO_DFU':'FEEAFD1B'})[model+(auto?'_AUTO_DFU':'_DFU')];
+  const tail = {internal:'internal store:52K | bootloader: delta apply OK',
+    QSPI:'QSPI store:2048K | bootloader: QSPI apply OK',
+    SD:'SD store | bootloader: authenticated SD apply OK'}[backend];
+  return {
+    beforeStatus:header+'storage-ERR blrc:00 | no download',
+    beforeSelf:prefix+'storage unsafe: not probed',
+    boot:`BL board=239A0029 target=${target} name=${model}${auto?'_AUTO':''}_DFU crc=FF374B1B abi=3 caps=${auto?'1E':'0A'} | staged:none mid=- hash=-`,
+    afterStatus:header+backend+' blrc:00 | no download', afterSelf:prefix+tail
+  };
+}
+
+function coldReader(fixture, calls) {
+  let statuses=0, selves=0;
+  return async command => {
+    calls.push(command);
+    if(command==='ota status') return ++statuses===1 ? fixture.beforeStatus : fixture.afterStatus;
+    if(command==='ota self') return ++selves===1 ? fixture.beforeSelf : fixture.afterSelf;
+    if(command==='ota bootloader status') return fixture.boot;
+    throw Error('Unexpected command: '+command);
+  };
+}
+
+test('cold RAK storage is prepared and rechecked for both board families', async () => {
+  for(const [hw,backend,auto] of [['RAK4631','QSPI',false],['RAK4631','SD',true],
+    ['RAK_3401','internal',false],['RAK_3401','QSPI',true]]) {
+    const fixture=coldRakFixture({hw,backend,auto}), calls=[];
+    const result=await checks.readReceiver(coldReader(fixture,calls));
+    assert.deepEqual(calls,['ota status','ota self','ota bootloader status','ota status','ota self']);
+    assert.deepEqual(result,{status:fixture.afterStatus,self:fixture.afterSelf});
+    assert.equal(checks.availability(result.status,result.self).state,'supported');
+  }
+});
+
+test('cold preparation does not hide real errors or touch other boards', async () => {
+  const fixture=coldRakFixture(), calls=[];
+  fixture.beforeSelf=fixture.beforeSelf.replace('not probed','no usable store');
+  await assert.rejects(checks.readReceiver(coldReader(fixture,calls)), e=>e.otaAvailability?.state==='unavailable');
+  assert.deepEqual(calls,['ota status','ota self']);
+  assert.equal(checks.coldRakStatus(fixture.beforeStatus.replace('RAK4631','OtherBoard')),null);
+  assert.equal(checks.coldRakStatus(fixture.beforeStatus.replace('no download','download: active')),null);
+});
+
+test('cold preparation requires matching bootloader, image, and storage evidence', async () => {
+  for(const mutate of [
+    f=>f.boot=f.boot.replace('2D0DF000','23818A80'),
+    f=>f.boot=f.boot.replace('crc=FF374B1B','crc=00000000'),
+    f=>f.boot=f.boot.replace('staged:none','staged:ready'),
+    f=>f.afterSelf=f.afterSelf.replace('0011223344556677','A011223344556677'),
+    f=>f.afterStatus=f.afterStatus.replace('target:1234ABCD','target:11223344'),
+    f=>f.afterStatus=f.afterStatus.replace('bl:QSPI','bl:internal'),
+    f=>f.afterSelf=f.afterSelf.replace('QSPI store:2048K','QSPI store:0K'),
+  ]) {
+    const fixture=coldRakFixture(), calls=[]; mutate(fixture);
+    await assert.rejects(checks.readReceiver(coldReader(fixture,calls)));
+  }
+});
+
+test('cold storage command timeouts remain unknown failures', async () => {
+  const fixture=coldRakFixture(), calls=[], read=coldReader(fixture,calls);
+  const timeout=Object.assign(Error('request timed out; result is unknown'),{loraReplyTimeout:true});
+  await assert.rejects(checks.readReceiver(async command => {
+    if(command==='ota bootloader status') throw timeout;
+    return read(command);
+  }), error=>error===timeout && error.otaAvailability===undefined);
+});
