@@ -8,6 +8,7 @@ import re
 import tempfile
 import threading
 import unittest
+from urllib.parse import urlsplit
 
 from test_compact_elegant_ota import run_until_complete
 from test_webconfig_ui_runtime import BROWSER
@@ -119,19 +120,22 @@ class BrowserLoraOtaRuntimeTest(unittest.TestCase):
         scripts = re.findall(r'<script src="[^"]+"></script>', markdown)
         page = '<!doctype html><meta charset="utf-8">' + div + HARNESS + ''.join(scripts)
         done = threading.Event()
-        results = []
+        results, missing_scripts = [], []
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def log_message(self, *_): pass
             def do_GET(self):
-                if self.path in ('/', '/browser_lora_ota/'):
+                path = urlsplit(self.path).path
+                if path in ('/', '/browser_lora_ota/'):
                     body = page.encode('utf-8')
-                elif re.fullmatch(r'/_javascript/lora_ota_[a-z_]+\.js', self.path):
-                    body = (ROOT / 'docs' / self.path.lstrip('/')).read_bytes()
+                elif re.fullmatch(r'/_javascript/lora_ota_[a-z_]+\.js', path):
+                    body = (ROOT / 'docs' / path.lstrip('/')).read_bytes()
                 else:
+                    if path.startswith('/_javascript/') and path.endswith('.js'):
+                        missing_scripts.append(self.path)
                     self.send_error(404); return
                 self.send_response(200); self.send_header('Content-Length', str(len(body)))
-                self.send_header('Content-Type', 'text/html; charset=utf-8' if self.path.endswith('/') else 'application/javascript; charset=utf-8')
+                self.send_header('Content-Type', 'text/html; charset=utf-8' if path.endswith('/') else 'application/javascript; charset=utf-8')
                 self.end_headers(); self.wfile.write(body)
             def do_POST(self):
                 if self.path != '/__result': self.send_error(404); return
@@ -148,6 +152,7 @@ class BrowserLoraOtaRuntimeTest(unittest.TestCase):
                 run_until_complete(command, done, timeout=30)
         finally:
             server.shutdown(); server.server_close(); thread.join(timeout=5)
+        self.assertFalse(missing_scripts, f'Browser scripts did not load: {missing_scripts}')
         self.assertEqual(len(results), 1)
         result = results[0]
         self.assertNotIn('error', result, result)
