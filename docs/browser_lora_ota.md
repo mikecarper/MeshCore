@@ -335,5 +335,5 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_radio_setup.js"></script>
 <script src="../_javascript/lora_ota_recovery.js"></script>
 <script src="../_javascript/lora_ota_lease.js"></script>
-<script src="../_javascript/lora_ota_catalog.js"></script>
+<script src="../_javascript/lora_ota_catalog.js?v=4aeb7bf86"></script>
 <script src="../_javascript/lora_ota_browser.js"></script>
