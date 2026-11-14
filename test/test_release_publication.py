@@ -153,6 +153,43 @@ class ReleasePublicationTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'different family'):
                     catalogs.read_stage(directory)
 
+    def test_local_packaging_keeps_supplemental_source_and_preview_notice(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.mock_local_manifest(root)
+            extra = 'b' * 40
+            target = 'Test_repeater_lora_ota'
+            artifact = target + '-with-bootloader-2.4.13-preview.1-full-ota'
+            row, files = self.record(root / 'inputs', target, 'NRF52_PLATFORM',
+                                     publication_target=artifact)
+            renamed = []
+            for path in files:
+                destination = path.with_name(path.name.replace(SOURCE[:8], extra[:8]))
+                path.rename(destination)
+                renamed.append(destination)
+            row.update(artifact_target=artifact, source_commit=extra,
+                       embedded_bootloader={'hardware_tested': False})
+            row['files'] = [path.name for path in renamed]
+            receipt = dict(source_commit=extra, directory='source-bbbbbbbb',
+                           kind='nrf52_bootloader_preview', bootloader_release='2.4.13-preview.1',
+                           hardware_tested=False, artifact_targets=[artifact])
+            (root / 'input/manifest.json').write_text(json.dumps({'supplemental_sources': [receipt]}))
+            output = root / 'release'
+            argv = ['package', '--input', str(root / 'input'), '--output', str(output),
+                    '--local-release', '--version', '1.17.1.9', '--commit', SOURCE]
+            with patch.object(sys, 'argv', argv), \
+                 patch.object(package, 'collect_local_release', return_value=(
+                     [{'manifest': row, 'files': renamed}], [],
+                     {'frequency': '910.525', 'bandwidth': '62.5', 'sf': '7', 'cr': '5'})), \
+                 patch.object(package, 'embedded_bootloader_variant', return_value='2.4.13-preview.1'):
+                package.main()
+            plan = json.loads((output / 'release-plan.json').read_text())
+            rows = json.loads((output / 'lora-ota/TARGET-MANIFEST.json').read_text())
+            self.assertEqual(plan['supplemental_sources'], [receipt])
+            self.assertEqual(rows[0]['source_commit'], extra)
+            self.assertTrue(all(extra[:8] in name for name in rows[0]['files']))
+            self.assertIn('not hardware tested', (output / 'lora-ota-notes.md').read_text())
+
     def test_catalog_distinguishes_qualified_bootloader_firmware_from_ordinary_images(self):
         from nrf52_embedded_bootloader import (BOOT_SIZE, MANIFEST_SHA256, VERSION as BL_VERSION,
                                               load_manifest, select_profile)
