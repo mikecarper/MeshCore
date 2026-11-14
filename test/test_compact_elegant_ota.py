@@ -206,7 +206,14 @@ window.addEventListener('load',function(){
                            "http://127.0.0.1:%d/update" % server.server_port]
                 if os.name != "nt" and hasattr(os, "geteuid") and os.geteuid() == 0:
                     command.insert(1, "--no-sandbox")
-                run_until_complete(command, complete)
+                try:
+                    # Three real file uploads, hashes, and a failure response
+                    # can exceed 30 seconds on a loaded hosted runner.
+                    run_until_complete(command, complete, timeout=90)
+                except AssertionError as error:
+                    raise AssertionError(
+                        f"Compact OTA did not finish; uploads received: {len(requests)}, "
+                        f"reports received: {len(reports)}\n{error}") from error
             self.assertEqual(len(reports), 1)
             self.assertNotIn('data-test-error=', reports[0])
             self.assertIn('data-test-busy="yes"', reports[0])
