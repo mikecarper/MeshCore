@@ -32,6 +32,12 @@ jobs:
         with:
           python-version: '3.13'
 
+      - name: Cache pinned historical firmware archive
+        uses: actions/cache@v5
+        with:
+          path: ${{ runner.temp }}/meshcore-historical-11801
+          key: meshcore-historical-11801-c3368422d6250ac00fdd8bbd2b88036445eaca5e19afd30cdd6cba98a625c666
+
       - name: Build
         env:
           GH_TOKEN: ${{ github.token }}
@@ -44,9 +50,18 @@ jobs:
           node test/test_firmware_picker.js
           node test/test_partition_catalog_viewer.js
           node test/test_release_features.js
+          python -m unittest discover -s test -p test_deploy_historical_mirror.py
           python scripts/sync_bootloader_manifest.py
           mkdocs build
           cmp firmware/esp32_partition_catalog.json site/_data/esp32_partition_catalog.json
+
+      - name: Install pinned historical firmware mirror
+        run: |
+          python scripts/deploy_historical_mirror.py \
+            --url https://github.com/mikecarper/MeshCore/releases/download/utility-v1.18.0.1-halo-keymind-cascade-dev-03214a16/meshcore-1.18.0.1-historical-mirror.tar \
+            --sha256 c3368422d6250ac00fdd8bbd2b88036445eaca5e19afd30cdd6cba98a625c666 \
+            --size 499752960 \
+            --cache-dir "$RUNNER_TEMP/meshcore-historical-11801"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
