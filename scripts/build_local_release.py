@@ -32,6 +32,7 @@ from nrf52_embedded_bootloader import (VERSION as BOOTLOADER_VERSION,
                                       MANIFEST_SHA256 as BOOTLOADER_MANIFEST_SHA256,
                                       load_manifest as load_bootloader_manifest,
                                       select_profile as select_bootloader_profile)
+from nrf52_bootloader_exceptions import render_bootloader_exceptions
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -768,6 +769,7 @@ def stage_release(work: Path, migration_work: Path, destination: Path, version: 
         bundle_release(staging, migrations, list(BOARDS), version,
                        short_source, "usa-cascade-fixed", "cascade")
 
+        exceptions_report = render_bootloader_exceptions(variants)
         manifest = {
             "format": "meshcore-local-release-v1",
             "source_commit": source,
@@ -782,15 +784,21 @@ def stage_release(work: Path, migration_work: Path, destination: Path, version: 
             "nrf52_bootloaders": bootloaders,
             "firmware": entries,
         }
+        if exceptions_report:
+            manifest["nrf52_bootloader_exception_report"] = "NRF52-BOOTLOADER-EXCEPTIONS.md"
         (staging / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="ascii")
+        if exceptions_report:
+            (staging / "NRF52-BOOTLOADER-EXCEPTIONS.md").write_text(exceptions_report, encoding="ascii")
         bootloader_note = (
             "Normal nRF52 application images preserve the installed bootloader. Separate\n"
             "with-bootloader variants for supported Repeater/Room targets embed exact-board\n"
             "OTAFIX 2.4.12 and check it for installation 70 seconds after startup. Standalone\n"
-            "exact-board bootloader files for all normal profiles are under nrf52-bootloaders;\n"
+            "exact-board bootloader files for supported profiles are under nrf52-bootloaders;\n"
             "do not substitute another board/storage image.\n" if bootloaders is not None else
             "nRF52 bootloader updates require the matching OTAFIX board/storage image\n"
             "before application firmware.\n")
+        if exceptions_report:
+            bootloader_note += "See NRF52-BOOTLOADER-EXCEPTIONS.md for boards without a verified bootloader.\n"
         (staging / "README.md").write_text(
             f"# MeshCore local release {version}\n\n"
             f"Firmware source commit: `{source}`. Release tooling commit: `{tooling_source}`.\n"

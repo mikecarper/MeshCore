@@ -21,6 +21,7 @@ from package_nrf52_font_license import validate_artifact_notice
 from package_meshtext_license import validate_artifact_notice as validate_meshtext_notice
 from package_pocket_gui_license import validate_artifact_notice as validate_pocket_gui_notice
 from package_cardputer_license import validate_artifact_notice as validate_cardputer_notice
+from nrf52_bootloader_exceptions import render_bootloader_exceptions
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -525,6 +526,27 @@ def portable_profile_exclusions(status):
             for name in names]
 
 
+def require_no_publication_blockers(manifest):
+    blockers = manifest.get("publication_blockers", [])
+    if (not isinstance(blockers, list)
+            or any(not isinstance(item, str) or not item.strip() or not item.isascii()
+                   for item in blockers)):
+        raise ValueError("invalid local release publication blockers")
+    if blockers:
+        raise ValueError("local release has unresolved publication blockers: " + "; ".join(blockers))
+
+
+def validate_local_bootloader_report(directory, manifest):
+    name = "NRF52-BOOTLOADER-EXCEPTIONS.md"
+    declared = manifest.get("nrf52_bootloader_exception_report")
+    expected = render_bootloader_exceptions(manifest.get("nrf52_bootloader_variants"))
+    path = directory / name
+    if declared is not None and (declared != name or not expected or not path.is_file()):
+        raise ValueError("local release bootloader exception report is missing or invalid")
+    if path.exists() and (not expected or path.read_text(encoding="ascii") != expected):
+        raise ValueError("local release bootloader exception report disagrees with its inventory")
+
+
 def collect_local_release(directory, version, source):
     """Recheck a completed local release without adding migration-only images."""
     from build_esp32_partition_migration import verify_archive
@@ -637,6 +659,7 @@ def collect_local_release(directory, version, source):
         if manifest.get("nrf52_bootloaders") != validate_bootloader_catalog(bootloaders):
             raise ValueError("local release standalone bootloader inventory disagrees with pinned files")
         extras.extend(sorted(path for path in bootloaders.iterdir() if path.is_file()))
+    validate_local_bootloader_report(directory, manifest)
     return records, extras, {"frequency": "910.525", "bandwidth": "62.5", "sf": "7", "cr": "5"}
 
 
@@ -658,10 +681,16 @@ def main():
     firmware_label = f"v{args.version}-halo-keymind-cascade-dev"
     version = f"{firmware_label}-{args.commit[:8]}"
     extras = []
+    bootloader_exceptions = ""
     if args.local_release:
         if args.allow_partial:
             parser.error("a completed local release cannot be partially published")
+        local_manifest = json.loads((args.input / "manifest.json").read_text(encoding="ascii"))
+        require_no_publication_blockers(local_manifest)
         records, extras, radio = collect_local_release(args.input, firmware_label, args.commit)
+        if json.loads((args.input / "manifest.json").read_text(encoding="ascii")) != local_manifest:
+            raise ValueError("local release manifest changed during qualification")
+        bootloader_exceptions = render_bootloader_exceptions(local_manifest.get("nrf52_bootloader_variants"))
         status = {"state": "completed", "exit_code": "0"}
         failures, portable_exclusions = [], []
     else:
@@ -762,6 +791,14 @@ def main():
             shutil.copy2(exclusions, destination / exclusions.name)
         partial_note = ""
         portable_note = ""
+        bootloader_note = ""
+        if bootloader_exceptions:
+            report_name = "NRF52-BOOTLOADER-EXCEPTIONS.md"
+            (destination / report_name).write_text(bootloader_exceptions, encoding="ascii")
+            report_url = f"https://github.com/{args.repo}/releases/download/{group['tag']}/{report_name}"
+            bootloader_note = ("**nRF52 bootloaders:** Some boards do not have a verified OTAFIX image. "
+                               "Application-only firmware keeps the installed bootloader. "
+                               f"[Affected boards and details]({report_url}).\n\n")
         if portable_exclusions:
             report = {"source": args.commit, "version": args.version,
                       "portable_slot_bytes": 1310720, "exclusions": portable_exclusions}
@@ -800,7 +837,7 @@ def main():
                 f"> **{channel}.** USA Cascade.\n\n"
                 + description["purpose"] + "\n\n"
                 "Select the exact board, radio, storage and role in the picker.\n\n"
-                + split_note + partial_note + portable_note
+                + split_note + partial_note + portable_note + bootloader_note
                 + f"[Installation and upgrade guide]({release_guide}) | "
                 f"[Feature controls]({docs_url}role_feature_switches/) | "
                 f"[Full Companion guide]({docs_url}full_companion_features/)\n\n"

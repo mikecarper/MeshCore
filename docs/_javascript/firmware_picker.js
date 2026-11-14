@@ -3203,7 +3203,7 @@
       } else if (bootloaderCatalog) {
         const unavailable = unavailableBootloaderForHardware(bootloaderCatalog, hardware, chip);
         content.appendChild(createElement("p", unavailable ?
-          "No OTAFIX " + bootloaderCatalog.version + " bootloader has been published for this board. " + unavailable.reason :
+          "No verified OTAFIX " + bootloaderCatalog.version + " bootloader is available for this board. Application-only firmware keeps the installed bootloader. " + unavailable.reason :
           "No verified bootloader download matches this exact hardware in the current catalog. Check the release notes for board support."));
       }
       if (bootloaderNotice) content.appendChild(createElement("p", bootloaderNotice));
