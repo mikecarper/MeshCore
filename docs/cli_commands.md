@@ -4,116 +4,21 @@
 
 # CLI Commands
 
-For hardware-specific app templates, use `get hardware`, then prefix a command
-with `@board/role`, for example `@Heltec_tower_v2/r ota pull A1B2C3D4 flash`.
-`/r` means repeater, `/s` room server, `/c` Companion and `/n` sensor. Other
-hardware replies `OK - skipped (hardware/role)`. A short `@#<hardware-id>/r`
-form is also available. See [hardware and role conditions](fleet_management.md#hardware-and-role-conditions)
-for signed fleet use, availability and OTA prerequisites.
-
-For SolarXiao Base/Advanced/MPPT automatic detection, manual overrides, live
-battery/MCU readings and charger controls, see [SolarXiao carrier profiles](solarxiao_power.md)
-(`get solar`, `get solar readings`, `set solar.board auto`, `get mppt`, `set mppt`).
-
-See [two LoRa profiles](radio_profiles.md) for `radio2`, `tempradio2`, scheduling,
-RX-only mode, cross-transmission policy, and optional radio preambles.
-W12 repeater, room and sensor builds also provide the experimental
-`set pramscan on`, `get pramscan` and `set pramscan off` commands. The scanner
-starts automatically on compatible dual-radio profiles; `off` selects host
-switching until reboot. See
-[W12 on-chip scanner](radio_profiles.md#experimental-w12-on-chip-scanner)
-for hardware limits and reliability considerations.
-
-For a saved MediaMesh second profile, use `set radio2 mediamesh`
-or the narrower `set radio2 mediamesh-range`. Settings are chosen from the
-saved primary frequency when selected: USA uses 911.150 MHz, EU868 869.525 MHz,
-the listed AU/NZ/Brazil/Thailand/Vietnam presets 922.500 MHz, and EU433
-434.250 MHz. USA and the other non-EU868 groups use 250/125 kHz, SF7, CR 4/5;
-EU868 uses 125/62.5 kHz, SF5, CR 4/7. Both use `rxtx` and automatic preamble.
-Unknown custom primary frequencies require an explicit radio2 tuple. Existing
-saved profiles do not retune when the primary changes or on upgrade; primary
-`tempradio` does not affect preset selection. These leave the primary profile
-and crossing policy unchanged. Both radio2 and `radio2.cross` default to `off`.
-On repeaters, room servers and sensors, either preset also saves an allowed
-`#mediamesh` forwarding region. `set radio2 off` or `set radio2 auto` disables
-that permission while retaining the region entry. Default/home regions,
-wildcard permissions and outgoing app scopes stay unchanged.
-See [MediaMesh presets](radio_profiles.md#mediamesh-presets).
-
-For supported Full Companions, see [Meshtext channel chat](radio_profiles.md#meshtext-channel-chat)
-for `mt-` channels and the explicit `send mt.nodeinfo <channel slot>` command.
-Chat remains plain text. A separate GPS-free NodeInfo is sent after the first
-successful chat transmission per used channel/identity per boot; the explicit
-command can also request one. Automatic metadata waits for a 250 ms gap after
-the latest successful MT transmission; explicit requests bypass that gap.
-MT messages default to 15 total attempts (the first send plus up to 14 retries)
-unless a matching repeat is heard. The Companion's `flood.retry.count` can lower
-that budget; `0` or `mt.hops 0` sends once. NodeInfo keeps its metadata cap and
-`flood.retry.advert` gate. Scheduled beacons remain fire and forget.
-
-See [carrier-wave RF checks](carrier_wave.md) for `cw on [seconds]`,
-`cw2 on [seconds]`, and stopping a carrier with `off`.
-
-For keyed Morse TX, use `morse send TEST DE N0CALL` and `morse stop`.
-Defaults are **902.100 MHz and 25 WPM**; `set morse.freq <MHz>` and
-`set morse.wpm <1–60>` save separate frequency/speed settings.
-Small-flash STM32 Companion builds retain Morse TX but do not include Morse
-RX by default; listen/read/stats/clear return an unsupported-RX error there.
-The constrained `wio-e5-mini_repeater` omits Morse TX/RX and CW tools entirely;
-normal packet TX/RX and radio2 remain available.
-`get morse` shows status. See [TX-only Morse messages](carrier_wave.md#tx-only-morse-messages)
-for supported characters, limits, overlap checks and the temporary pause in
-packet reception. Nothing transmits automatically.
-
-For timed Morse RX, use `morse listen <minutes>` (fractions allowed, 1 second
-through 5 minutes). `morse stop` ends TX or RX. All roles retain the bounded
-capture in RAM for `morse read [offset]`; follow each page's `next` value until
-`next=END`. `morse clear` removes it when idle. A new successful session or
-reboot replaces/removes the capture. Buffered USB/browser Full Companion ASCII
-terminals show decoded progress; other terminals and binary clients request it
-through the CLI, without adding
-unidentified text to authenticated channel/chat messages. Normal LoRa is paused
-during listening, so a remote administrator must wait for the selected session
-to end before reading the capture over LoRa. See [timed reception](carrier_wave.md#timed-morse-reception-and-retained-captures)
-for arming time, real chip bandwidths and truncation behavior.
-
-For copy/paste on/off recipes and the differences from Full Companion, see
-[feature switches by role](role_feature_switches.md). The
-[USB web console](https://flasher.meshcore.io/console) opens the default ASCII
-terminal at 115200 baud; it does not require on-device WebConfig or WiFi.
-
 This document provides an overview of CLI commands that can be sent to MeshCore Repeaters, Room Servers and Sensors.
-
-See [CLI Availability by Firmware Build](cli_build_matrix.md) for the role and
-profile matrix. Commands depend on compiled features; some portable builds
-omit WebConfig while retaining the complete role CLI and compact WiFi updater.
-
-Small-flash Mini and STM32 Companion profiles, plus RAK4631 Full Companion,
-use shorter human-readable validation replies. Command syntax, returned
-values, protocol acknowledgements and destructive-operation warnings stay
-the same.
-
-See [CLI Command Availability Matrix](cli_command_availability.md) for the
-command-by-command nRF52 and ESP32 build tables.
 
 The first word of a command is case-insensitive, so `set`, `Set`, and `SET`
 are equivalent, as are `get`, `Get`, and the other command verbs. The case of
 arguments such as node names, passwords, and keys is left unchanged.
-
-Repeater retries carrying the same logical request ID and original command
-bytes reuse the cached result, even when command parsing trims whitespace or
-splits arguments in place. Changing the timestamp alone does not execute the
-operation again. Normal authentication and stale-request checks still apply.
-Deferred commands and host-service replies remain bound to the full authenticated
-public key, even if permission changes move ACL entries. Removing or revoking
-the requester cancels pending execution; a running `setperm` can still acknowledge
-its own completed change to the original sender.
 
 Use the site search or your browser's Find command with everyday wording such
 as **tx retries**, **retry attempts**, **serial logging**, or **tx power**.
 **Search terms** below are alternative wording to help find a command, not
 additional CLI aliases. Enter the syntax shown under **Usage**; supported
 command aliases are listed there explicitly.
+
+Connect over USB using the [web console](https://flasher.meshcore.io/console)
+or an ASCII terminal at 115200 baud. See [related guides and command details](#related-guides-and-command-details)
+for radio profiles, feature switches, and other specialized commands.
 
 ## Navigation
 
@@ -8001,3 +7906,104 @@ is active.
 - Connect with any TCP client (e.g. `nc`, PuTTY) to access the same CLI available over serial.
 
 ---
+
+## Related guides and command details
+
+See [CLI Availability by Firmware Build](cli_build_matrix.md) for the role and
+profile matrix. Commands depend on compiled features; some portable builds
+omit WebConfig while retaining the complete role CLI and compact WiFi updater.
+
+Small-flash Mini and STM32 Companion profiles, plus RAK4631 Full Companion,
+use shorter human-readable validation replies. Command syntax, returned
+values, protocol acknowledgements and destructive-operation warnings stay
+the same.
+
+See [CLI Command Availability Matrix](cli_command_availability.md) for the
+command-by-command nRF52 and ESP32 build tables.
+
+For hardware-specific app templates, use `get hardware`, then prefix a command
+with `@board/role`, for example `@Heltec_tower_v2/r ota pull A1B2C3D4 flash`.
+`/r` means repeater, `/s` room server, `/c` Companion and `/n` sensor. Other
+hardware replies `OK - skipped (hardware/role)`. A short `@#<hardware-id>/r`
+form is also available. See [hardware and role conditions](fleet_management.md#hardware-and-role-conditions)
+for signed fleet use, availability and OTA prerequisites.
+
+For SolarXiao Base/Advanced/MPPT automatic detection, manual overrides, live
+battery/MCU readings and charger controls, see [SolarXiao carrier profiles](solarxiao_power.md)
+(`get solar`, `get solar readings`, `set solar.board auto`, `get mppt`, `set mppt`).
+
+See [two LoRa profiles](radio_profiles.md) for `radio2`, `tempradio2`, scheduling,
+RX-only mode, cross-transmission policy, and optional radio preambles.
+W12 repeater, room and sensor builds also provide the experimental
+`set pramscan on`, `get pramscan` and `set pramscan off` commands. The scanner
+starts automatically on compatible dual-radio profiles; `off` selects host
+switching until reboot. See
+[W12 on-chip scanner](radio_profiles.md#experimental-w12-on-chip-scanner)
+for hardware limits and reliability considerations.
+
+For a saved MediaMesh second profile, use `set radio2 mediamesh`
+or the narrower `set radio2 mediamesh-range`. Settings are chosen from the
+saved primary frequency when selected: USA uses 911.150 MHz, EU868 869.525 MHz,
+the listed AU/NZ/Brazil/Thailand/Vietnam presets 922.500 MHz, and EU433
+434.250 MHz. USA and the other non-EU868 groups use 250/125 kHz, SF7, CR 4/5;
+EU868 uses 125/62.5 kHz, SF5, CR 4/7. Both use `rxtx` and automatic preamble.
+Unknown custom primary frequencies require an explicit radio2 tuple. Existing
+saved profiles do not retune when the primary changes or on upgrade; primary
+`tempradio` does not affect preset selection. These leave the primary profile
+and crossing policy unchanged. Both radio2 and `radio2.cross` default to `off`.
+On repeaters, room servers and sensors, either preset also saves an allowed
+`#mediamesh` forwarding region. `set radio2 off` or `set radio2 auto` disables
+that permission while retaining the region entry. Default/home regions,
+wildcard permissions and outgoing app scopes stay unchanged.
+See [MediaMesh presets](radio_profiles.md#mediamesh-presets).
+
+For supported Full Companions, see [Meshtext channel chat](radio_profiles.md#meshtext-channel-chat)
+for `mt-` channels and the explicit `send mt.nodeinfo <channel slot>` command.
+Chat remains plain text. A separate GPS-free NodeInfo is sent after the first
+successful chat transmission per used channel/identity per boot; the explicit
+command can also request one. Automatic metadata waits for a 250 ms gap after
+the latest successful MT transmission; explicit requests bypass that gap.
+MT messages default to 15 total attempts (the first send plus up to 14 retries)
+unless a matching repeat is heard. The Companion's `flood.retry.count` can lower
+that budget; `0` or `mt.hops 0` sends once. NodeInfo keeps its metadata cap and
+`flood.retry.advert` gate. Scheduled beacons remain fire and forget.
+
+See [carrier-wave RF checks](carrier_wave.md) for `cw on [seconds]`,
+`cw2 on [seconds]`, and stopping a carrier with `off`.
+
+For keyed Morse TX, use `morse send TEST DE N0CALL` and `morse stop`.
+Defaults are **902.100 MHz and 25 WPM**; `set morse.freq <MHz>` and
+`set morse.wpm <1–60>` save separate frequency/speed settings.
+Small-flash STM32 Companion builds retain Morse TX but do not include Morse
+RX by default; listen/read/stats/clear return an unsupported-RX error there.
+The constrained `wio-e5-mini_repeater` omits Morse TX/RX and CW tools entirely;
+normal packet TX/RX and radio2 remain available.
+`get morse` shows status. See [TX-only Morse messages](carrier_wave.md#tx-only-morse-messages)
+for supported characters, limits, overlap checks and the temporary pause in
+packet reception. Nothing transmits automatically.
+
+For timed Morse RX, use `morse listen <minutes>` (fractions allowed, 1 second
+through 5 minutes). `morse stop` ends TX or RX. All roles retain the bounded
+capture in RAM for `morse read [offset]`; follow each page's `next` value until
+`next=END`. `morse clear` removes it when idle. A new successful session or
+reboot replaces/removes the capture. Buffered USB/browser Full Companion ASCII
+terminals show decoded progress; other terminals and binary clients request it
+through the CLI, without adding
+unidentified text to authenticated channel/chat messages. Normal LoRa is paused
+during listening, so a remote administrator must wait for the selected session
+to end before reading the capture over LoRa. See [timed reception](carrier_wave.md#timed-morse-reception-and-retained-captures)
+for arming time, real chip bandwidths and truncation behavior.
+
+For copy/paste on/off recipes and the differences from Full Companion, see
+[feature switches by role](role_feature_switches.md). The
+[USB web console](https://flasher.meshcore.io/console) opens the default ASCII
+terminal at 115200 baud; it does not require on-device WebConfig or WiFi.
+
+Repeater retries carrying the same logical request ID and original command
+bytes reuse the cached result, even when command parsing trims whitespace or
+splits arguments in place. Changing the timestamp alone does not execute the
+operation again. Normal authentication and stale-request checks still apply.
+Deferred commands and host-service replies remain bound to the full authenticated
+public key, even if permission changes move ACL entries. Removing or revoking
+the requester cancels pending execution; a running `setperm` can still acknowledge
+its own completed change to the original sender.
