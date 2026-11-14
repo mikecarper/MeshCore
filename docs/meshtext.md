@@ -10,6 +10,75 @@ send scheduled Meshtext beacons on supported builds, but cannot receive,
 relay, or host Meshtext chat. Meshtext and MeshCore are separate networks;
 this does not bridge messages between them.
 
+## Easy setup: rooftop and handheld
+
+This example uses the public US LongFast channel. Both devices need a
+supported **Full Companion** firmware build and a radio that supports
+LongFast. Set up the rooftop device before installing it. A device running
+Repeater firmware cannot repeat Meshtext; Full Companion firmware does not
+make the rooftop device a MeshCore repeater.
+
+For each device, connect the MeshCore app to that device, then open
+**Settings > Command Line** to enter the commands. Add channels in the app's
+channel editor. Connect to one device at a time.
+
+### 1. Rooftop device
+
+1. Connect the app to the rooftop device. In its Command Line, enter:
+
+   ```text
+   set mt.region us
+   ```
+
+2. Add the channel `#mt-longfast` in the app. Return to Command Line and enter:
+
+   ```text
+   set mt.rebroadcast on
+   get mt.status
+   ```
+
+3. Check that the status says `active` and `rebroadcast=on`. Leave the device
+   powered on; the setting is saved even when the app disconnects.
+
+### 2. Handheld device
+
+1. Connect the app to the handheld. In its Command Line, enter:
+
+   ```text
+   set mt.region us
+   ```
+
+2. Add the same channel: `#mt-longfast`. Return to Command Line and enter:
+
+   ```text
+   get mt.status
+   get mt.hops
+   ```
+
+3. Check that the status says `active` and hops is greater than zero. If hops
+   is zero, enter `set mt.hops 7`. You do not need to enable rebroadcasting on
+   the handheld to send messages.
+
+For another region or channel, select the matching region and preset on both
+devices and on the Meshtastic radios you want to reach. See the
+[supported regions and presets](radio_profiles.md#meshtext-channel-chat).
+If the channel cannot be added or status is not active, check the status
+message and any existing radio2 profile. If radio2 was manually turned off,
+`set radio2 auto` enables automatic setup and clears a saved manual profile.
+
+### 3. Test
+
+Send a message on `#mt-longfast` from the handheld. On the rooftop device,
+compare `get mt.status` RX and TX counters before and after the message.
+Other Meshtext traffic also changes these counters, so test on a quiet channel
+if possible. `get mt.retry` on the handheld can show a heard repeat, but does
+not identify which device repeated it. A separate receiver or packet monitor
+can give stronger evidence.
+
+Only decoded channel text with hops remaining is eligible; DMs, GPS and
+NodeInfo are not repeated. The rooftop device may miss a message while tuned
+to MeshCore, or skip its repeat after hearing another device forward it.
+
 ## Companion: send and receive messages
 
 Use a **Full Companion** build on a supported ESP32 or nRF52 device. The
@@ -56,32 +125,6 @@ For private channels or other frequency slots, see the
 
 Radio1 and radio2 share one physical radio and take turns listening. Messages
 can be missed on either network while the radio is listening to the other.
-
-### Repeat messages with a rooftop Companion
-
-A supported Full Companion can repeat Meshtext channel messages. Configure
-the same Meshtext channel, region, preset, frequency slot, and key on the
-rooftop device and your sending Companion. On the rooftop device, run:
-
-```text
-set mt.rebroadcast on
-get mt.status
-```
-
-The status should show `active` and `rebroadcast=on`. This setting is saved
-and defaults to off. On the sending Companion, use `get mt.hops` to check that
-the hop limit is greater than zero.
-
-Send a channel message and compare the rooftop device's `get mt.status` RX
-and TX counters before and after. Other Meshtext traffic also affects those
-counters, so test on a quiet channel if possible. On the sending Companion,
-`get mt.retry` can show a heard repeat, but does not identify which device
-repeated it. A separate receiver or packet monitor can give stronger evidence.
-
-Only decoded channel text with hops remaining is eligible; DMs, GPS and
-NodeInfo are not repeated. The rooftop device may miss a message while tuned
-to MeshCore, or skip its repeat after hearing another device forward it.
-This does not bridge messages between Meshtext and MeshCore.
 
 ## Repeater: scheduled transmit-only beacon
 
