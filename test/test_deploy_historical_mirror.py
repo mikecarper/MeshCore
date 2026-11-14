@@ -114,6 +114,14 @@ class HistoricalMirrorTests(unittest.TestCase):
             self.install(make_archive(index, files))
         self.assertEqual((target / 'preserve').read_text(), 'keep')
 
+    def test_symlink_ancestor_is_not_followed(self):
+        index, files = fixture()
+        (self.root / 'actual').mkdir()
+        (self.root / 'site').symlink_to(self.root / 'actual', target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'symlink ancestor'):
+            self.install(make_archive(index, files))
+        self.assertEqual(list((self.root / 'actual').iterdir()), [])
+
     def test_verified_cache_hit_never_redownloads_and_corruption_fails_closed(self):
         index, files = fixture()
         data = make_archive(index, files)

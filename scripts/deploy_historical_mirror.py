@@ -126,6 +126,8 @@ def install_archive(archive, destination, expected_sha256, expected_size):
     require(not archive.is_symlink() and archive.is_file() and archive.stat().st_size == expected_size and
             read_hash(archive) == expected_sha256, 'Archive does not match its pinned size and SHA-256')
     parent = destination.parent
+    require(not any(path.is_symlink() for path in (parent, *parent.parents)),
+            'Mirror destination has a symlink ancestor')
     parent.mkdir(parents=True, exist_ok=True)
     require(not parent.is_symlink() and not destination.exists() and not destination.is_symlink(),
             'Mirror destination already exists or is a symlink')
