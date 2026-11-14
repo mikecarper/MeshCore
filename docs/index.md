@@ -6,12 +6,12 @@
 
 ## Start here
 
-**Current stable release: [1.18.0.1 USA Cascade](releases/1.18.0.1.md).**
+**Current stable release: [1.18.0.2 USA Cascade](releases/1.18.0.2.md).**
 Read what changed, which boards benefit and the known limitations in one place.
 
 | I want to... | Start here |
 | --- | --- |
-| See what is new or fixed | [1.18.0.1 release notes](releases/1.18.0.1.md) |
+| See what is new or fixed | [1.18.0.2 release notes](releases/1.18.0.2.md) |
 | Download firmware for my board | [Firmware picker](firmware_picker.md) |
 | Flash firmware over USB | [Mesh Firmware USB flasher](https://mikecarper.github.io/meshfirmware/) |
 | Install an update | [Update guide](ota_user_guide.md) |

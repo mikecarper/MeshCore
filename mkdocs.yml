@@ -111,8 +111,8 @@ nav:
       - docs.md
   - Research: research/index.md
   - Releases:
-      - In preparation - 1.18.0.2 USA Cascade: releases/1.18.0.2.md
-      - Current - 1.18.0.1 USA Cascade: releases/1.18.0.1.md
+      - Current - 1.18.0.2 USA Cascade: releases/1.18.0.2.md
+      - 1.18.0.1 USA Cascade: releases/1.18.0.1.md
       - Previous releases:
           - 1.17.1.9 USA Cascade: releases/1.17.1.9.md
           - 1.17.1.8 USA Cascade: releases/1.17.1.8.md

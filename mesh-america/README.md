@@ -1,6 +1,6 @@
 # Mesh America provider catalogs
 
-The two active provider catalogs select the 1.18.0.1 USA Cascade release family. Each lists 589 unique qualified firmware profiles across 101 hardware cards (589 firmware entries). Both catalogs use the same binaries. The logging catalog remains a separate stable provider URL for existing Mesh America installations.
+The two provider catalogs select the 1.18.0.2 USA Cascade release family. Each covers 717 firmware profiles across 107 hardware cards. Some automatic-radio profiles appear on more than one appropriate card, for 724 total entries. Both catalogs use the same binaries; the logging URL remains available for existing installations.
 
 ```text
 Provider name: Keymind Cascade
@@ -10,12 +10,10 @@ Provider name: Keymind Cascade Logging
 Catalog URL:   https://raw.githubusercontent.com/mikecarper/MeshCore/keymindCascade/mesh-america/keymind-cascade-logging-v1.16.0-provider.json
 ```
 
-The `v1.16.0` part of those filenames is a stable provider URL, not the firmware version. Both JSON files contain exact 1.18.0.1 asset URLs, including the exact release page for each qualified Companion, infrastructure, sensor, and terminal profile.
+The `v1.16.0` portion of each filename is part of its stable provider URL, not the firmware version. Meshfirmware on Linux and Windows reads these same provider URLs.
 
-Four 256 KiB STM32WL USB Companion images (RAK 3x72, Tiny Relay, Wio-E5 Mini, and Wio-E5) omit packet diagnostics to preserve their 32 KiB LittleFS layout. Their USB Companion transport remains available. Their entries say so explicitly. Other logging controls follow each exact image's capability manifest.
+See the [1.18.0.2 release guide](../docs/releases/1.18.0.2.md) and [firmware picker](../docs/firmware_picker.md). Choose the exact board, radio, storage and role. An ESP32 merged image includes the bootloader, partitions and application; an app-only image needs a compatible partition layout. For an existing device that needs a partition expansion, use its exact board and role package from the [utility release](https://github.com/mikecarper/MeshCore/releases/tag/utility-v1.18.0.2-halo-keymind-cascade-dev-a723af94) and follow its instructions.
 
-See the [1.18.0.1 release guide](../docs/releases/1.18.0.1.md) and [firmware picker](../docs/firmware_picker.md). An ESP32 `flash-wipe` merged image installs the bootloader, partition table, and application over USB. An app-only `flash-update` image requires an already compatible layout; it cannot expand partitions. If the installed firmware supports it, run `get storage.layout` to inspect the live partition table; firmware version alone cannot confirm the layout. For an existing node that must retain a Wi-Fi or LoRa update path, check the [utility release](https://github.com/mikecarper/MeshCore/releases/tag/utility-v1.18.0.1-halo-keymind-cascade-dev-03214a16) for its exact board and role migration ZIP and follow the README inside. Back up identity and settings, and plan for cable recovery if power fails during the partition-table write. Ordinary nRF52 application images preserve the installed bootloader. Separate `with-bootloader-2.4.12` Repeater and Room Server choices carry the exact-board OTAFIX image and check it once after 70 seconds; recovery and unrecognized bootloaders require the documented local migration route. Standalone board-matched bootloader utilities remain available for other roles. LoRa OTA requires a compatible exact-board bootloader.
+Ordinary nRF52 application images preserve the installed bootloader. Supported Repeater and Room images marked with a bootloader carry their exact-board OTAFIX image. Selected images carry OTAFIX 2.4.13-preview.1; those bootloaders have not been physically tested on the listed boards. Recognized older bootloaders are checked for replacement after startup; unrecognized or recovery bootloaders require the documented local route. LoRa OTA needs a compatible exact-board bootloader. See the [bootloader preview details](../docs/nrf52_bootloader_previews.md) and [release guide](../docs/releases/1.18.0.2.md) for limitations.
 
-The release includes 435 ordinary applications and 154 embedded-bootloader variants, plus 69 standalone bootloader files and 96 exact ESP32 board/role migration packages in the utility release. Meshfirmware on Linux and Windows reads these stable provider URLs, so it receives the same release without a separate firmware-list update.
-
-Catalogs are generated from the staged release manifest, with every asset URL checked against the staged file and tag. Historical `provider-backup.json` files are retained unchanged.
+The catalogs are generated from the staged release manifest with asset URLs checked against the release groups. The main firmware source is `a723af94ed7d8036329fb1f57637e6a009864752`; the additional nRF52 preview images use `9d961a199325ca9f7d059e8c103f0a80e4698ef1`. Historical `provider-backup.json` files remain unchanged.

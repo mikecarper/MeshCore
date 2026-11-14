@@ -1249,11 +1249,15 @@ const embeddedRakCompatibilitySuccessors = new Map([
   ['RAK_4631_repeater_bridge_rs232_serial2_lora_ota_no_external_sensors', 'RAK_4631_repeater_unified_lora_ota'],
 ]);
 const embeddedControls = Object.entries(publishedControls.profiles).filter(([, info]) => info.embeddedBootloader);
-assert.strictEqual(embeddedControls.length, 154);
+assert.strictEqual(embeddedControls.length, 220);
+assert.strictEqual(embeddedControls.filter(([, info]) =>
+  info.embeddedBootloader.release === '2.4.13-preview.1' &&
+  info.embeddedBootloader.hardware_tested === false).length, 26);
 let consolidatedEmbeddedProfiles = 0;
 for (const [target, info] of embeddedControls) {
   let profile = publishedCatalog.profiles.find(item => item.target === target);
-  const base = target.replace(/-with-bootloader-\d+(?:\.\d+){2}-(?:full|reduced)$/, '');
+  const base = target.replace('-with-bootloader-' + info.embeddedBootloader.release, '')
+    .replace(/-(?:full|reduced)$/, '');
   const successorBase = embeddedRakCompatibilitySuccessors.get(base);
   if (successorBase) {
     assert.strictEqual(profile, undefined, target + ' must use its exact combined recommendation');
@@ -1280,7 +1284,10 @@ for (const [target, info] of embeddedControls) {
   assert(ordinary, target + ' must retain its ordinary application identity');
   assert.strictEqual(ordinary.embeddedBootloader, undefined);
   assert.notStrictEqual(picker.firmwareProfileValue(profile), picker.firmwareProfileValue(ordinary));
-  assert(picker.firmwareProfileLabel(profile).includes('OTAFIX 2.4.12 bootloader included'));
+  assert(picker.firmwareProfileLabel(profile).includes('OTAFIX ' + info.embeddedBootloader.release + ' bootloader included'));
+  if (info.embeddedBootloader.hardware_tested === false) {
+    assert(picker.firmwareProfileLabel(profile).includes('not hardware tested'));
+  }
   assert(!picker.firmwareProfileLabel(ordinary).includes('bootloader included'));
   const instructions = picker.installSteps(profile, 'uf2').join('\n');
   assert(instructions.includes('at least 70 seconds'));
@@ -2163,6 +2170,49 @@ for (let leftIndex = 0; leftIndex < publishedCatalog.profiles.length; leftIndex 
   }
 }
 console.log('current T-LoRa profiles remain distinct and every overlapping release choice has a unique value and label');
+
+// L1 1W has two real storage layouts for both roles and both sensor policies.
+// Their firmware and bootloader packages must not collapse into one button.
+for (const role of ['repeater', 'room_server']) {
+  for (const policy of ['full', 'reduced']) {
+    for (const bootloader of ['', '-with-bootloader-2.4.12']) {
+      const internalTarget = 'WioTrackerL1-1W_' + role + '_lora_ota_no_external_sensors' + bootloader + '-' + policy;
+      const externalTarget = 'WioTrackerL1-1W_' + role + '_lora_ota' + bootloader + '-' + policy;
+      const internal = publishedCatalog.profiles.find(profile => profile.target === internalTarget);
+      const external = publishedCatalog.profiles.find(profile => profile.target === externalTarget);
+      assert(internal && external, 'Both L1 1W storage choices must remain selectable');
+      assert(picker.firmwareProfileLabel(internal).includes('Internal storage'));
+      assert(!picker.firmwareProfileLabel(external).includes('Internal storage'));
+      assert.notStrictEqual(picker.firmwareProfileValue(internal), picker.firmwareProfileValue(external));
+      for (const profile of [internal, external]) {
+        const selection = {hardware: profile.hardware, role: profile.role, ota: profile.ota,
+          feature: profile.feature, variant: profile.variant};
+        const url = picker.shortSelectionUrl('https://mikecarper.github.io/MeshCore/firmware_picker/', selection, true);
+        const restored = picker.selectionFromUrl(url, publishedCatalog.profiles);
+        assert.deepStrictEqual(restored.unavailable, []);
+        assert.deepStrictEqual(publishedCatalog.profiles.filter(item =>
+          picker.profileMatchesFacets(item, restored.filters)).map(item => item.target), [profile.target]);
+      }
+    }
+  }
+}
+{
+  const target = 'WioTrackerL1-1W_repeater_lora_ota_no_external_sensors-full';
+  const baseInfo = publishedControls.profiles[target];
+  for (const fault of ['missing-storage', 'wrong-storage', 'stale-source']) {
+    const info = structuredClone(baseInfo);
+    if (fault === 'missing-storage') delete info.updateRequirements.lora.storage;
+    if (fault === 'wrong-storage') info.updateRequirements.lora.storage = 'external_qspi';
+    if (fault === 'stale-source') info.sensorProfileSource = 'a'.repeat(40);
+    const catalog = picker.buildCatalog([
+      release(publishedControls.familyTag, '2026-10-24T00:00:00Z',
+        [asset(target + '-' + publishedAssetTag(target) + '.uf2')]),
+    ], {...publishedControls, profiles: {[target]: info}});
+    assert(catalog.profiles.length === 1 && catalog.profiles[0].variant !== 'internal-storage',
+      'Internal-storage label requires exact source-bound storage proof: ' + fault);
+  }
+}
+console.log('L1 1W storage choices retain exact targets, labels, URLs and metadata gates');
 
 // Standalone migration files must match the exact board, role, release, and URL.
 const migrationFamily = currentControls.familyTag;

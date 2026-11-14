@@ -1247,6 +1247,17 @@
         profile.variant = variantWithoutSensorMarker(profile.variant);
       }
     }
+    // The L1 1W publishes both internal-flash and external-QSPI OTA images
+    // with otherwise identical choices. Identify the internal variant only
+    // from this exact, source-bound target and its packaged storage metadata.
+    // Leave QSPI as the default so existing default selections still work.
+    if (profile.sensorProfile && sensorSourceMatches &&
+        /^WioTrackerL1-1W_(?:repeater|room_server)_lora_ota_no_external_sensors(?:-with-bootloader-\d+(?:\.\d+){2}(?:-preview\.\d+)?)?-(?:full|reduced)$/i.test(profile.target) &&
+        controls.updateRequirements && controls.updateRequirements.lora &&
+        controls.updateRequirements.lora.storage === "internal_flash") {
+      const suffix = targetPublicationParts(profile.target).bootloaderSuffix;
+      profile.variant = "internal-storage" + (suffix ? "-" + suffix.slice(1).replace(/\./g, "-").toLowerCase() : "");
+    }
     const embedded = controls.embeddedBootloader;
     if (profile.sensorProfile && ["repeater", "room"].includes(profile.role) &&
         sensorSourceMatches && controls.embeddedBootloaderSource === sensorSource &&
@@ -1950,6 +1961,7 @@
 
   function humanizeVariant(value, hardware) {
     if (!value || value === "default") return "Default";
+    if (value === "internal-storage") return "Internal storage";
     if (value === "rs232-bridge") return "RS-232 bridge";
     if (value === "mqtt-observer") return "Wi-Fi MQTT observer";
     if (value === "observer-identity") return "Observer OTA identity";

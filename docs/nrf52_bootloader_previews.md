@@ -5,8 +5,8 @@
 # Additional nRF52 bootloader previews
 
 [Download the matching MeshCore firmware](https://github.com/mikecarper/MeshCore/releases/tag/nrf52-bootloader-preview-v1.18.0.2-9d961a19)
-for your exact board, role, and sensor variant. These are preview images, not
-the final 1.18.0.2 release.
+for your exact board, role, and sensor variant. These same firmware images are
+also included in the 1.18.0.2 release. The bundled bootloader remains a preview.
 
 [OTAFIX 2.4.13-preview.1](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.13-preview.1)
 has exact-board images for Heltec Mesh Solar, LilyGo T-Echo Card and T-Impulse

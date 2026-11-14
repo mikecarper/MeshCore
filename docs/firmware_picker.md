@@ -4,7 +4,7 @@
 
 # Firmware picker
 
-<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json?v=1.18.0.1-03214a16" data-bootloaders-url="../_data/bootloader_manifest.json?v=otafix-2.4.12" data-share-url="https://mikecarper.github.io/MeshCore/p/">
+<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json?v=1.18.0.2-a723af94-9d961a19" data-bootloaders-url="../_data/bootloader_manifest.json?v=otafix-2.4.12" data-share-url="https://mikecarper.github.io/MeshCore/p/">
   <form class="firmware-picker-form" data-role="form">
     <div class="firmware-picker-feedback firmware-picker-wide" data-role="filter-feedback" hidden>
       <div aria-live="polite" aria-atomic="true">
@@ -528,8 +528,10 @@ Board mappings and file names, URLs, sizes and SHA-256 hashes come from
 `bootloader-manifest.json` in the
 [OTAFIX release](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/latest).
 Ordinary application UF2 and DFU files preserve the installed bootloader.
-Separate **OTAFIX 2.4.12 bootloader included** Repeater and Room Server choices
-carry their exact-board bootloader inside the application. Leave that application
+Separate **bootloader included** Repeater and Room Server choices carry their
+exact-board OTAFIX bootloader inside the application. Some additional choices
+include [OTAFIX 2.4.13-preview.1](nrf52_bootloader_previews.md), which has not
+been physically tested on those boards. Leave that application
 running for at least 70 seconds after startup; it checks once when radio and OTA
 activity are idle, updates a recognized compatible older bootloader, and skips
 a matching current or newer version. Check `get bootloader.ver` after reboot.
@@ -550,7 +552,7 @@ pin map, and other physical differences without crowding the Hardware dropdown.
 that need a different image or wiring, such as serial port or external storage.
 The picker skips this step when all available profile choices lead to the
 same firmware file.
-The 1.18.0.1 nRF52 repeater, room-server and sensor releases publish two separately
+The 1.18.0.2 nRF52 repeater, room-server and sensor releases publish two separately
 qualified choices: **Reduced sensors + LoRa OTA** and
 **Full supported sensors + LoRa OTA**, with `-reduced-ota` and `-full-ota` artifact suffixes. Each keeps
 its exact board/role OTA identity and storage layout; the suffix is not a new
