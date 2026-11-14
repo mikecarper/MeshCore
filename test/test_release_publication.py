@@ -249,6 +249,51 @@ class ReleasePublicationTest(unittest.TestCase):
                 catalogs.generate(self.template(), {"version": "1.17.1.9", "source": SOURCE, "groups": []},
                                   FAMILY, [(row, FAMILY, files)], catalogs.target_profiles(targets), "mikecarper/MeshCore")
 
+    def test_radio_auto_detection_reuses_only_proven_exact_board_cards(self):
+        cap = 'radio.autodetect.sx126x_sx127x'
+        row = {'target': 'LilyGo_T3S3_repeater', 'platform': 'ESP32_PLATFORM',
+               'verified': True, 'capabilities': [cap],
+               'verification': [{'capability': cap, 'present': True, 'source': 'packaged application',
+                                 'evidence': 'meshcore.capability.radio.autodetect.sx126x_sx127x.v1'}]}
+        mapping = {('esp32', 'LilyGo_T3S3_sx1262'): {2}, ('esp32', 'LilyGo_T3S3_sx1276'): {7}}
+        self.assertEqual(catalogs.alias_card_indexes(row, 'esp32', 'LilyGo_T3S3', mapping), {2, 7})
+        for fault in ('missing_proof', 'false_proof', 'wrong_target', 'missing_card'):
+            bad = json.loads(json.dumps(row))
+            cards = dict(mapping)
+            if fault == 'missing_proof':
+                bad['verification'] = []
+            elif fault == 'false_proof':
+                bad['verification'][0]['present'] = False
+            elif fault == 'wrong_target':
+                bad['target'] = 'Different_board_repeater'
+            else:
+                cards.pop(('esp32', 'LilyGo_T3S3_sx1276'))
+            with self.subTest(fault=fault), self.assertRaises(ValueError):
+                catalogs.alias_card_indexes(bad, 'esp32', 'LilyGo_T3S3', cards)
+
+    def test_amplified_handheld_screen_variants_share_the_correct_new_card(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            catalog = self.template()
+            catalog['maker']['Ikoka'] = {'name': 'Ikoka'}
+            targets = ('ikoka_handheld_nrf_e22_33dbm_repeater',
+                       'ikoka_handheld_nrf_e22_33dbm_096_companion_radio_full')
+            records = []
+            for target in targets:
+                row, files = self.record(root / target, target, 'NRF52_PLATFORM')
+                records.append((row, FAMILY, files))
+            existing = {catalogs.identity(f['name']) for d in catalog['device']
+                        for fw in d['firmware'] for v in fw['version'].values() for f in v['files']}
+            profiles = catalogs.target_profiles(set(targets) | existing)
+            result = catalogs.generate(catalog, {'version': '1.17.1.9', 'source': SOURCE, 'groups': []},
+                                       FAMILY, records, profiles, 'mikecarper/MeshCore')
+            self.assertEqual(len(result['device']), 1)
+            card = result['device'][0]
+            self.assertIn('33 dBm', card['name'])
+            self.assertEqual(len(card['firmware']), 2)
+            self.assertTrue(all('33 dBm amplified' in entry['version'][FAMILY]['notes']
+                                for entry in card['firmware']))
+
     def test_catalog_retains_download_only_cards_for_new_sensor_profiles(self):
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)

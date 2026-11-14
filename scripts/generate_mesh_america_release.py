@@ -12,6 +12,7 @@ import re
 import subprocess
 from urllib.parse import quote
 from package_cascade_release import embedded_bootloader_variant, source_allowed, supplemental_sources
+from consolidated_profiles import SPECS as CONSOLIDATION_SPECS, proven as consolidation_proven
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,7 +24,61 @@ ADDITIONAL_HARDWARE_CARDS = {
         "maker": "waveshare", "name": "Waveshare ESP32-S3 LR1121", "type": "esp32"},
     ("esp32", "Wio_Tracker_L2"): {
         "maker": "seeed", "name": "Seeed Wio Tracker L2", "type": "esp32"},
+    ("esp32", "M5Stack_Cardputer_Adv"): {
+        "maker": "m5stack", "name": "M5Stack Cardputer ADV", "type": "esp32"},
+    ("nrf52", "ProMicro_m33s"): {
+        "maker": "promicro", "name": "ProMicro nRF52 + E22 33 dBm (850-930 MHz)", "type": "nrf52"},
+    ("nrf52", "ProMicro_400m33s"): {
+        "maker": "promicro", "name": "ProMicro nRF52 + E22 33 dBm (400 MHz band)", "type": "nrf52"},
+    ("nrf52", "Xiao_nrf52_m33s"): {
+        "maker": "seeed", "name": "XIAO nRF52 + E22 33 dBm (850-930 MHz)", "type": "nrf52"},
+    ("nrf52", "Xiao_nrf52_400m33s"): {
+        "maker": "seeed", "name": "XIAO nRF52 + E22 33 dBm (400 MHz band)", "type": "nrf52"},
+    ("nrf52", "ikoka_handheld_nrf_e22_33dbm"): {
+        "maker": "Ikoka", "name": "Ikoka Handheld nRF E22 33 dBm (850-930 MHz)", "type": "nrf52"},
+    ("nrf52", "ikoka_handheld_nrf_e22_400m33s"): {
+        "maker": "Ikoka", "name": "Ikoka Handheld nRF E22 33 dBm (400 MHz band)", "type": "nrf52"},
 }
+
+# Only these reviewed carrier relationships may reuse a catalog card. A
+# generic radio-detect image must prove that behavior in its packaged bytes.
+HARDWARE_CARD_ALIASES = {
+    ("esp32", "LilyGo_T3S3"): (("LilyGo_T3S3_sx1262", "LilyGo_T3S3_sx1276"), "radio.autodetect.sx126x_sx127x"),
+    ("esp32", "Tbeam"): (("Tbeam_SX1262", "Tbeam_SX1276"), "radio.autodetect.sx126x_sx127x"),
+    ("esp32", "Meshadventurer"): (("Meshadventurer_sx1262", "Meshadventurer_sx1268"), "radio.autodetect.sx1262_sx1268"),
+    ("esp32", "Meshadventurer_m33s"): (("Meshadventurer_sx1262", "Meshadventurer_sx1268"), "radio.autodetect.sx1262_sx1268"),
+    ("esp32", "Generic_E22"): (("Generic_E22_sx1262", "Generic_E22_sx1268"), "radio.autodetect.sx1262_sx1268"),
+    ("esp32", "Generic_E22_m33s"): (("Generic_E22_sx1262", "Generic_E22_sx1268"), "radio.autodetect.sx1262_sx1268"),
+    ("esp32", "Tenstar_C3"): (("Tenstar_C3_sx1262", "Tenstar_C3_sx1268"), "radio.autodetect.sx1262_sx1268"),
+    ("nrf52", "muzi_base"): (("muzi_base_uno", "muzi_base_duo"), "radio.autodetect.sx1262_lr1121"),
+    ("esp32", "heltec_rc32_without_display"): (("heltec_rc32",), None),
+    ("esp32", "heltec_v4_expansionkit"): (("heltec_v4",), None),
+    ("nrf52", "ikoka_nano_nrf_400m33s"): (("ikoka_nano_nrf_33dbm",), None),
+    ("nrf52", "ikoka_stick_nrf_400m33s"): (("ikoka_stick_nrf_33dbm",), None),
+    ("nrf52", "solarxiao_400M33S"): (("solarxiao_33S",), None),
+}
+
+ADDITIONAL_HARDWARE_ALIASES = {
+    ("nrf52", "ikoka_handheld_nrf_e22_33dbm_096"): "ikoka_handheld_nrf_e22_33dbm",
+    ("nrf52", "ikoka_handheld_nrf_e22_400m33s_096"): "ikoka_handheld_nrf_e22_400m33s",
+}
+
+
+def alias_card_indexes(manifest, platform, hardware, by_hardware):
+    alias = HARDWARE_CARD_ALIASES.get((platform, hardware))
+    if not alias:
+        return set()
+    names, capability = alias
+    if capability and not any(spec['capability'] == capability and consolidation_proven(manifest, spec)
+                              for spec in CONSOLIDATION_SPECS):
+        raise ValueError(manifest['target'] + ': radio detection lacks exact packaged proof')
+    indexes = set()
+    for name in names:
+        choices = set(by_hardware.get((platform, name), set())) | set(by_hardware.get(('noflash', name), set()))
+        if len(choices) != 1:
+            raise ValueError(manifest['target'] + ': hardware alias needs one exact existing card per radio')
+        indexes.update(choices)
+    return indexes
 
 
 def identity(name):
@@ -158,7 +213,14 @@ def generate(catalog, plan, family, records, profiles, repo):
             # A download-only card is an installer restriction, not a chip.
             # Retain that restriction for new profiles of the same hardware.
             indexes.update(by_hardware.get(("noflash", parsed["hardware"]), set()))
-            card_key = (platform, parsed["hardware"])
+            aliased = False
+            if not indexes:
+                indexes = alias_card_indexes(row, platform, parsed["hardware"], by_hardware)
+                aliased = bool(indexes)
+            hardware = ADDITIONAL_HARDWARE_ALIASES.get((platform, parsed["hardware"]), parsed["hardware"])
+            card_key = (platform, hardware)
+            if not indexes and hardware != parsed["hardware"]:
+                indexes = set(by_hardware.get(card_key, set()))
             if not indexes and card_key in ADDITIONAL_HARDWARE_CARDS:
                 card = ADDITIONAL_HARDWARE_CARDS[card_key]
                 if card["maker"] not in catalog["maker"]:
@@ -166,7 +228,7 @@ def generate(catalog, plan, family, records, profiles, repo):
                 indexes = {len(result["device"])}
                 result["device"].append({**card, "firmware": []})
                 by_hardware[card_key] = indexes
-            if len(indexes) != 1:
+            if not indexes or (len(indexes) != 1 and not aliased):
                 raise ValueError(f"new profile needs an exact hardware card mapping: {target}")
         if any(result["device"][i]["type"] not in (platform, "noflash") for i in indexes):
             raise ValueError("firmware platform differs from its hardware card")
@@ -210,6 +272,9 @@ def generate(catalog, plan, family, records, profiles, repo):
                  f"EXACT TARGET - {row['target']}. Match the exact board, radio, screen, and storage hardware.",
                  f"PROFILE - {profile}. See the qualified capabilities and memory reports for this image.",
                  f"SELF-UPDATE - Verified methods: {methods}."]
+        if re.search(r'(?:m33s|33dbm)', row['target'], re.I):
+            notes.append('RADIO - This variant is for the matching 33 dBm amplified radio module. '
+                         'Choose the correct 400 MHz or 850-930 MHz hardware and antenna.')
         if platform == "esp32":
             notes.append("INSTALL - The merged .bin installs the bootloader, partitions and application over USB. An app-only .bin requires a compatible existing partition layout. Use the exact board and role migration ZIP from the utility release when expanding partitions over Wi-Fi or LoRa; follow its README and install its supplied Full application.")
         elif platform == "nrf52":
