@@ -10,6 +10,10 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
 
 <div data-lora-ota>
   <p data-role="workflow-status" class="lora-ota-notice" role="status" aria-live="polite">Connect your USB radio to get started.</p>
+  <label class="lora-ota-verbose-toggle"><input type="checkbox" data-role="verbose-errors" aria-controls="lora-ota-error-details"> Show detailed diagnostics</label>
+  <aside data-role="verbose-error-panel" hidden role="region" aria-label="Detailed error diagnostics">
+    <pre id="lora-ota-error-details" data-role="error-details">Detailed errors will appear here. Passwords and secret command arguments are hidden.</pre>
+  </aside>
   <p data-role="browser-support" class="lora-ota-notice" role="alert" hidden>USB access is unavailable in this browser. Open this page in Chrome or Edge on a computer. Firefox does not provide the Web Serial connection this updater needs.</p>
   <section class="lora-ota-step">
     <h2>1. Connect and choose the remote device</h2>

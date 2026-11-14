@@ -25,6 +25,49 @@
   const OWNED_USB_FOLDERS=new WeakMap();
   const RADIO_PROBE_READS=new Set(['get public.key','get tempradio','get tempradio2','get radio2.status']);
   function loraTimeout(message){const error=Error(message);error.loraReplyTimeout=true;return error;}
+  // Diagnostic metadata never changes the message: retry decisions elsewhere
+  // intentionally match the original transport error. Keep the same object.
+  function errorContext(error,fields){
+    if(error && (typeof error==='object'||typeof error==='function'))for(const [name,value] of Object.entries(fields)){
+      if(value!==undefined&&error[name]===undefined)try{error[name]=value;}catch(_){}
+    }
+    return error;
+  }
+  const ERROR_CONTEXT_FIELDS=['otaStep','otaCommand','otaEndpoint','otaTimeoutMs','otaAttempt','otaMaxAttempts','otaRequestCommand','otaRequestStep','otaPath','otaRadio','otaRequestRadio'];
+  function inheritedContext(error){return Object.fromEntries(ERROR_CONTEXT_FIELDS.map(name=>[name,error?.[name]]));}
+  function targetPath(link,guarded=false){
+    if(guarded)return 'direct (0 hops; enforced by guarded session)';
+    const hops=link.contactList.find(contact=>contact.publicKey===link.knownRepeater)?.hops;
+    return Number.isInteger(hops)&&hops>=0&&hops<=63?(hops===0?'stored route: direct (0 hops; not verified)':'stored route: '+hops+' hops (not verified)'):'path unknown';
+  }
+  function requestRadio(link){
+    const source=link.supportsOtaRadio2&&[0,1].includes(link.otaRadioProfile)?(link.otaRadioProfile===1?'Radio 2':'primary radio')+' (selected OTA profile)':'LoRa profile not confirmed';
+    return 'Source: '+source+'; target: profile not confirmed';
+  }
+  function safeCommand(text){
+    if(typeof text!=='string')return 'CLI command <arguments hidden>';
+    if(isReadOnly(text)||['get ota.direct','get ota.direct.capabilities','get ota.direct.radio','ota folder'].includes(text))return text;
+    if(/^get ota\.direct\.reply(?: \d+)?$/.test(text))return 'get ota.direct.reply <arguments hidden>';
+    if(/^ota (?:pull|installhash|config|key)\b/.test(text))return text.split(' ').slice(0,2).join(' ')+' <arguments hidden>';
+    const setting=/^set (tempradio2|radio2(?:\.cross)?|radio\.rxps)(?: |$)/.exec(text);
+    if(setting)return 'set '+setting[1]+' <arguments hidden>';
+    if(/^(?:set|login|tempradio)\b/.test(text))return text.split(' ')[0]+' <arguments hidden>';
+    return 'CLI command <arguments hidden>';
+  }
+  function remoteError(error,text,fields={}){
+    const command=safeCommand(text),step=text==='get public.key'?'Verifying target identity':'Waiting for remote command reply';
+    if(error?.otaStep!==undefined&&(error.otaCommand!==command||error.otaEndpoint!=='remote target'||error.otaStep!==step))
+      errorContext(error,{otaRequestCommand:command,otaRequestStep:step,otaRequestRadio:fields.otaRadio});
+    return errorContext(error,{otaStep:step,otaCommand:command,otaEndpoint:'remote target',...fields});
+  }
+  function usbContext(payload,timeoutMs,radio){
+    const command=payload[0]===66?dec.decode(payload.subarray(1)):'';
+    const guardStep=payload[0]===52?({1:'Preparing guarded admin session',2:'Sending direct return path',3:'Closing guarded admin session',4:'Arming source reply mailbox'})[payload[1]]:null;
+    const localRead=payload[0]===66?(isReadOnly(command)||['get ota.direct','get ota.direct.capabilities','get ota.direct.radio','ota folder'].includes(command)||/^get ota\.direct\.reply(?: \d+)?$/.test(command)):[1,4,5,10,22].includes(payload[0]);
+    return {otaStep:guardStep||(command.startsWith('get ota.direct.reply ')?'Reading source reply mailbox':'Waiting for USB command reply'),
+      otaCommand:command?safeCommand(command):usbOperation(payload),otaEndpoint:'USB Companion',otaTimeoutMs:timeoutMs,
+      otaRadio:[2,26,65].includes(payload[0])||payload[0]===52&&payload[1]===2?radio:localRead||guardStep?'USB/local command (no LoRa transmission)':'USB/local command (LoRa transmission not confirmed)'};
+  }
   function radioProbeTimeout(radio,preamble){
     if(!Array.isArray(radio)||radio.length!==4)throw Error('Choose the radio settings for the link probe');
     const [frequency,bandwidth,sf,cr]=radio;
@@ -261,14 +304,14 @@
     }
     command(payload,code){return this.commandAny(payload,[code]);}
     commandAny(payload,codes,anyResponse=false,timeoutMs=this.options.commandTimeout??15000){
-      const operation=usbOperation(payload);
+      const operation=usbOperation(payload),radio=requestRadio(this);
       const run=this.queue.then(()=>new Promise((resolve,reject)=>{
         if(!this.running||this.failure)return reject(this.failure||Error('Companion is disconnected'));
         if(this.usbFolderSource?.blocksAppCommands())return reject(Error('USB folder must return to Binary mode before an app command'));
         if(payload.length>this.usbRawFrameMax)return reject(Error('Companion command exceeds its USB receive limit'));
         const timer=setTimeout(()=>{this.pending=null;this.failure=Error('Companion response timed out while '+operation+'; reconnect before retrying');reject(this.failure);},timeoutMs);
         this.pending={codes,anyResponse,resolve,reject,timer};this.writer.write(packet(payload)).catch(e=>{clearTimeout(timer);this.pending=null;this.failure=e;reject(e);});
-      }));this.queue=run.catch(()=>{});return run;
+      })).catch(error=>{throw errorContext(error,usbContext(payload,timeoutMs,radio));});this.queue=run.catch(()=>{});return run;
     }
     contacts(){
       if(this.usbFolderSource?.ownsStream())return this.withFolderPaused(()=>this.contactsBinary(),false);
@@ -281,7 +324,7 @@
         const timer=setTimeout(()=>{this.pending=null;this.failure=Error('Contact list timed out; reconnect before retrying');reject(this.failure);},this.options.contactsTimeout??60000);
         this.pending={contacts:true,started:false,rows:[],resolve,reject,timer};
         this.writer.write(packet(Uint8Array.of(4))).catch(e=>{clearTimeout(timer);this.pending=null;this.failure=e;reject(e);});
-      }));this.queue=run.catch(()=>{});return run;
+      })).catch(error=>{throw errorContext(error,{otaStep:'Loading source contacts',otaCommand:'contacts',otaEndpoint:'USB Companion',otaTimeoutMs:this.options.contactsTimeout??60000,otaRadio:'USB/local command (no LoRa transmission)'});});this.queue=run.catch(()=>{});return run;
     }
     selectTarget(key){
       key=String(key).toLowerCase();unhex(key);
@@ -295,6 +338,7 @@
       return this.localCommandBinary(text);
     }
     async localCommandBinary(text){
+      try{
       if(!this.localCliSupported)throw Error('This Companion cannot report local CLI settings over USB');
       if(typeof text!=='string'||!text.length||/[\r\n\0]/.test(text)||enc.encode(text).length>180)throw Error('Invalid Companion command');
       const reply=dec.decode((await this.command(join(Uint8Array.of(66),enc.encode(text)),29)).slice(1)).trim();
@@ -307,6 +351,7 @@
       // no RXPS implementation. Unknown settings and other errors stay errors.
       if(text==='get radio.rxps'&&/^Error: RX power saving (?:is unsupported on this radio|unsupported on radio)$/.test(reply))return '> off,unsupported';
       return reply;
+      }catch(error){throw errorContext(error,{otaStep:'Reading local source setting',otaCommand:safeCommand(text),otaEndpoint:'USB Companion',otaTimeoutMs:this.options.commandTimeout??15000});}
     }
     withFolderPaused(fn,wait=true){
       const run=this.folderQueue.then(async()=>{
@@ -433,10 +478,12 @@
       await this.command(join(Uint8Array.of(52,mode),unhex(this.knownRepeater),extra),0);
     }
     async checkClock(){
+      try{
       const read=async()=>{const f=await this.command(Uint8Array.of(5),9);if(f.length!==5)throw Error('Cannot verify Companion clock');return new DataView(f.buffer,f.byteOffset,f.byteLength).getUint32(1,true);};
       const current=await read(),now=Math.floor(Date.now()/1000);
       if(current>now+600||current+59<now)throw Error('Companion clock is out of sync. Correct its clock before retrying.');
       this.timestamp=Math.max(this.timestamp,current);
+      }catch(error){throw errorContext(error,{otaStep:'Checking source clock',otaCommand:'get device time',otaEndpoint:'USB Companion'});}
     }
     assertStandardTarget(){
       if(!this.knownRepeater||!this.contactList.some(c=>c.publicKey===this.knownRepeater))throw Error('Select a stored contact before continuing');
@@ -481,6 +528,7 @@
           this.assertInvestigationRunning();this.investigationAttempt=attempt;
           try{const reply=await run();this.assertInvestigationRunning();return reply;}
           catch(error){
+            errorContext(error,{otaAttempt:attempt,otaMaxAttempts:maxAttempts});
             this.assertInvestigationRunning();
             if(!error?.loraReplyTimeout||this.failure)throw error;
             if(attempt===maxAttempts){error.attempts=attempt;throw error;}
@@ -526,6 +574,8 @@
       if(preserve){try{this.options.onPreserved?.(decodedInbox(rows[index]),rows.filter(r=>r.sourceKey===this.sourceKey&&!r.pending).length);}catch(_){}}
     }
     async standardReply(text,otaControl=false){
+      const radio=requestRadio(this),path=targetPath(this);
+      try{
       if(!this.investigationEnabled||!(otaControl?legacyOtaCommand(text):isReadOnly(text)))throw Error('Only approved OTA commands are allowed');
       if(!this.investigationAuthenticated&&!(text==='get public.key'&&this.investigationProofPending))throw Error('Verify the target before running investigation commands');
       if(otaControl&&!this.investigationVerified)throw Error('Verify the target full public key before updating');
@@ -569,7 +619,7 @@
           const reservation=this.reserveInbox();let frame;
           const waiting=setTimeout(()=>this.investigationProgress('waiting-inbox',text,this.options.inboxTimeout??30000),this.options.commandTimeout??15000);
           try{frame=await this.commandAny(Uint8Array.of(10),[],true,this.options.inboxTimeout??30000);}
-          catch(e){throw Error((e?.message||e)+'; a queued message may have been removed before it could be saved');}
+          catch(e){throw errorContext(Error((e?.message||e)+'; a queued message may have been removed before it could be saved'),inheritedContext(e));}
           finally{clearTimeout(waiting);}
           if(frame[0]===10){this.finishInbox(reservation,frame,false);return {idle:true};}
           const offset=frame[0]===16?4:frame[0]===7?1:-1;
@@ -590,8 +640,10 @@
       }
       this.investigationProgress('command-timeout',text);
       const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;throw error;
+      }catch(error){throw remoteError(error,text,{otaTimeoutMs:isReadOnly(text)?this.investigationReplyTimeout():(this.options.investigationTimeout??20000),otaPath:path,otaRadio:radio});}
     }
     async investigateVerifyPeer(key,password=''){
+      const radio=requestRadio(this),path=targetPath(this,this.otaSupported);
       this.validate(key);return this.withAdmin(()=>this.withFolderPaused(async()=>{
         if(this.otaSupported){
           this.investigationEnabled=true;this.assertInvestigationRunning();
@@ -627,13 +679,15 @@
         const normalized=proof.replace(/^>\s*/,'').trim();
         const unavailable=/^(?:unknown command\b|unsupported\b|error:\s*(?:unknown (?:setting|command)|unsupported)\b|err(?:or)?\s*[:-]?\s*(?:unknown|unsupported)\b)/i.test(normalized)
           || /^(?:(?:err|error)\s*:?\s*)?(?:permission denied|access denied|not authori[sz]ed)\.?$/i.test(normalized);
-        if(normalized.toLowerCase()!==this.knownRepeater&&!unavailable)throw Error('Target did not prove its full public key');
+        if(normalized.toLowerCase()!==this.knownRepeater&&!unavailable)throw remoteError(Error('Target did not prove its full public key'),'get public.key');
         this.investigationVerified=!unavailable;
         this.investigationPassword=password;this.investigationAuthenticated=true;await this.ensureUsbFolderReady();return this.knownRepeater;
-      }));
+      })).catch(error=>{throw errorContext(error,{otaStep:'Logging in to target',otaCommand:'login <arguments hidden>',otaEndpoint:'remote target',otaTimeoutMs:this.investigationReplyTimeout(),otaPath:path,otaRadio:radio});});
     }
     async investigateCommand(key,password,text){this.validate(key);if(!this.investigationAuthenticated)throw Error('Verify the target before running investigation commands');if(password!==this.investigationPassword)throw Error('Disconnect and reconnect before changing the admin password');return this.withAdmin(()=>this.withFolderPaused(()=>this.retryInvestigation(text,()=>this.otaSupported?this.remoteReply(text):this.standardReply(text))));}
     async login(password,investigation=false){
+      const radio=requestRadio(this),path=targetPath(this,true);
+      try{
       if(typeof password!=='string'||enc.encode(password).length>15||/[\r\n\0]/.test(password))throw Error('Admin password must fit in 15 bytes');
       if(!this.knownRepeater)throw Error('Select a target first');
       if(!this.otaSupported)throw Error(this.otaUnavailableReason);
@@ -663,12 +717,15 @@
         const status=await this.localCommand('get ota.direct');if(/^>?\s*ota\.direct v=2 active=1 busy=0\s*$/i.test(status))break;
         if(!/^>?\s*ota\.direct v=2 active=1 busy=1\s*$/i.test(status))throw Error('Companion direct session changed');await sleep(100);
       }
-      if(Date.now()>=deadline)throw loraTimeout('Return path timed out');
+      if(Date.now()>=deadline)throw errorContext(loraTimeout('Return path timed out'),{otaStep:'Preparing direct return path',otaCommand:'get ota.direct',otaEndpoint:'USB Companion',otaTimeoutMs:this.options.remoteTimeout??75000});
       const proof=investigation?await this.retryInvestigation('get public.key',()=>this.remoteReply('get public.key')):await this.remoteReply('get public.key');
-      if(proof.replace(/^>\s*/,'').trim().toLowerCase()!==this.knownRepeater)throw Error('Repeater did not prove its full public key');
+      if(proof.replace(/^>\s*/,'').trim().toLowerCase()!==this.knownRepeater)throw remoteError(Error('Repeater did not prove its full public key'),'get public.key');
       this.authenticated=true;this.authenticatedPassword=password;
+      }catch(error){throw errorContext(error,{otaStep:'Logging in to target',otaCommand:'login <arguments hidden>',otaEndpoint:'remote target',otaTimeoutMs:investigation?this.investigationReplyTimeout():(this.options.remoteTimeout??75000),otaPath:path,otaRadio:radio});}
     }
     async remoteReply(text){
+      const radio=requestRadio(this),path=targetPath(this,true);
+      try{
       if(!text||/[\r\n\0]/.test(text)||enc.encode(text).length>152)throw Error('Invalid remote command');
       if(this.investigationAttempt)this.assertInvestigationRunning();
       if(this.used.size>=7921)throw Error('Reconnect before sending more commands');
@@ -696,6 +753,7 @@
         if((m[5]!=='-'&&m[5].length%2)||data.length>40||result.length+data.length>n||(!data.length&&result.length!==n)||(total!==null&&n!==total))throw Error('Invalid Companion reply page');
         total=n;result.push(...data);if(result.length===total){if(isReadOnly(text))this.investigationProgress('command-result',text);return dec.decode(Uint8Array.from(result));}
       }if(isReadOnly(text))this.investigationProgress('command-timeout',text);const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;throw error;
+      }catch(error){throw remoteError(error,text,{otaTimeoutMs:this.investigationAttempt?this.investigationReplyTimeout():(this.options.remoteTimeout??75000),otaPath:path,otaRadio:radio});}
     }
     validate(key){if(String(key).toLowerCase()!==this.knownRepeater)throw Error('Target differs from the selected repeater');}
     async verifyPeer(key,password=''){

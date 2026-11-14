@@ -6,6 +6,7 @@ import unittest
 from test_browser_lora_ota_runtime import BROWSER
 from test_browser_lora_ota_nrf_runtime import run_harness
 from test_browser_lora_ota_workflow_runtime import workflow_harness
+from test_browser_lora_ota_companion_runtime import investigation_harness
 
 
 class BrowserLoraOtaFailureRuntime(unittest.TestCase):
@@ -40,6 +41,33 @@ class BrowserLoraOtaFailureRuntime(unittest.TestCase):
                 self.assertEqual(sum(c.startswith('remote ota pull ') for c in result['cmds']), 1)
                 self.assertFalse(any(c == 'remote ota install' or c.startswith('remote ota installhash ')
                                      for c in result['cmds']))
+
+    def test_identity_timeout_reveals_safe_step_command_path_and_can_be_hidden(self):
+        script = investigation_harness()
+        marker = "window.addEventListener('load',async()=>{try{"
+        script = script.replace(marker, marker + "const Base=LoraOtaCompanion.CompanionTransport;LoraOtaCompanion.CompanionTransport=class extends Base{constructor(port,options){super(port,{...options,investigationTimeout:50,remoteTimeout:50});}};", 1)
+        mailbox = "value=`> ota.reply req=${corr} state=ready bytes=${b.length} off=${at} data=${hex(part)||'-'}`;"
+        self.assertEqual(script.count(mailbox), 1)
+        script = script.replace(mailbox, "value=`> ota.reply req=${corr} state=pending bytes=0 off=${at} data=-`;", 1)
+        report = "await report({result:el('investigation').textContent,status:el('status').textContent,cmds,frames:port.frames,guard,complete:event.detail.complete});return;"
+        self.assertEqual(script.count(report), 1)
+        script = script.replace(report, r'''const verbose=el('verbose-errors'), panel=el('verbose-error-panel'), details=el('error-details').textContent;
+    const revealed=verbose.checked&&!panel.hidden;
+    verbose.checked=false;verbose.dispatchEvent(new Event('change'));const hidden=panel.hidden;
+    await report({result:el('investigation').textContent,status:el('status').textContent,notice:el('workflow-status').textContent,details,revealed,hidden,cmds,frames:port.frames,guard,complete:event.detail.complete});return;''', 1)
+        result = run_harness(script, timeout=45)
+        self.assertNotIn('error', result, result)
+        self.assertFalse(result['complete'], result)
+        self.assertTrue(result['revealed'], result)
+        self.assertTrue(result['hidden'], result)
+        self.assertIn('get public.key', result['details'])
+        self.assertIn('Verifying target identity', result['details'])
+        self.assertIn('0 hops', result['details'])
+        self.assertIn('Radio:', result['details'])
+        self.assertIn('Attempt: 7 of 7', result['details'])
+        self.assertIn('result is unknown', result['notice'])
+        self.assertNotIn('Command:', result['notice'])
+        self.assertFalse(any(c.startswith('ota pull ') or c.startswith('ota install') for c in result['cmds']))
 
 
 if __name__ == '__main__':

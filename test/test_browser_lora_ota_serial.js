@@ -315,3 +315,66 @@ test('only explicit unsupported replies permit primary-only OTA profile fallback
   const link=new RepeaterTransport({});link.localCommand=async()=> 'OTApeer invalid';
   await assert.rejects(()=>link.probeOtaRadio(),/Cannot confirm/);
 });
+
+test('USB failures keep their original object and redact login keys and password arguments', async () => {
+  for(const command of ['ota.peer login.repeater '+'b'.repeat(64)+' PRIVATE_PASS','ota.peer result 128']){
+    const link=new RepeaterTransport({}, {commandTimeout:5});link.running=true;link.writer={write:async()=>{}};
+    await assert.rejects(link.localCommand(command),error=>{
+      assert.equal(error,link.failure);assert.equal(error.message,'Repeater command timed out; reconnect before retrying; its result is unknown');assert.equal(error.otaEndpoint,'USB Repeater');assert.equal(error.otaTimeoutMs,5);
+      assert.equal(error.otaCommand,command.startsWith('ota.peer login')?'ota.peer login.repeater <arguments hidden>':'ota.peer result <arguments hidden>');
+      assert(!JSON.stringify(error).includes('PRIVATE_PASS'));assert(!JSON.stringify(error).includes('b'.repeat(64)));return true;
+    });link.running=false;
+  }
+});
+test('temporary radio setter failures identify the setting but hide its arguments',async()=>{
+  const link=new RepeaterTransport({}, {commandTimeout:5});link.running=true;link.writer={write:async()=>{}};
+  await assert.rejects(link.localCommand('set tempradio2 PRIVATE_SETTINGS'),error=>{assert.equal(error.otaCommand,'set tempradio2 <arguments hidden>');assert(!JSON.stringify(error).includes('PRIVATE_SETTINGS'));return true;});link.running=false;
+});
+
+test('USB mailbox context survives a remote identity request and snapshots Radio 2 before cleanup', async () => {
+  const link=new RepeaterTransport({}, {remoteTimeout:1234});link.supportsOtaRadio2=true;link.otaRadioProfile=1;link.otaPath='routed (2 hops; configured)';
+  const original=Object.assign(Error('Original source mailbox failure'),{otaStep:'Reading source reply mailbox',otaCommand:'ota.peer result',otaEndpoint:'USB Repeater',otaTimeoutMs:17,otaRadio:'USB/local command (no LoRa transmission)'});
+  const calls=[];link.localCommand=async command=>{calls.push(command);if(command==='ota.peer result'){link.otaRadioProfile=0;throw original;}return 'OTApeer job=01020304 state=pending';};
+  await assert.rejects(link.job('ota.peer cmd '+'b'.repeat(64)+' get public.key'),error=>{
+    assert.equal(error,original);assert.equal(error.message,'Original source mailbox failure');assert.equal(error.otaEndpoint,'USB Repeater');assert.equal(error.otaTimeoutMs,17);assert.equal(error.otaRequestCommand,'get public.key');assert.equal(error.otaRequestStep,'Verifying target identity');assert.match(error.otaRequestRadio,/Source: Radio 2/);assert.match(error.otaPath,/routed.*2 hops/);return true;
+  });assert.equal(calls.length,2);
+});
+
+test('remote job timeouts and rejected mutations keep safe command and configured path metadata', async () => {
+  const link=new RepeaterTransport({}, {remoteTimeout:0});link.localCommand=async command=>command.startsWith('ota.peer path ')?'OTApeer path='+command.slice('ota.peer path '.length):'OTApeer job=01020304 state=pending';link.supportsRoutedPath=true;
+  await link.setPath(['AA','BB']);
+  await assert.rejects(link.job('ota.peer cmd '+'b'.repeat(64)+' get public.key'),error=>{assert.equal(error.message,'OTA request timed out; its result is unknown');assert.equal(error.otaStep,'Verifying target identity');assert.equal(error.otaCommand,'get public.key');assert.equal(error.otaEndpoint,'remote target');assert.match(error.otaPath,/routed.*2 hops/);assert.match(error.otaRadio,/not confirmed/);return true;});
+  link.remoteTimeout=1234;link.localCommand=async command=>command==='ota.peer result'?'OTApeer job=01020304 state=error bytes=10 off=0 data=4552522064656e696564':'OTApeer job=01020304 state=pending';
+  await assert.rejects(link.job('ota.peer cmd '+'b'.repeat(64)+' set wifi.password PRIVATE_WIFI_SECRET'),error=>{assert.equal(error.message,'ERR denied');assert.equal(error.otaCommand,'set <arguments hidden>');assert.equal(error.otaEndpoint,'remote target');assert(!JSON.stringify(error).includes('PRIVATE_WIFI_SECRET'));assert(!JSON.stringify(error).includes('b'.repeat(64)));return true;});
+});
+
+test('a failed login is labelled separately and does not include its password', async () => {
+  const link=new RepeaterTransport({}, {knownRepeater:'b'.repeat(64)}),original=Error('Rejected login');link.job=async()=>{throw original;};
+  await assert.rejects(link.login('b'.repeat(64),'PRIVATE_PASS'),error=>{assert.equal(error,original);assert.equal(error.otaStep,'Logging in to target');assert.equal(error.otaCommand,'login <arguments hidden>');assert.equal(error.otaEndpoint,'remote target');assert(!JSON.stringify(error).includes('PRIVATE_PASS'));return true;});
+});
+
+test('direct local path configuration from routed wrappers updates later remote error metadata', async () => {
+  const port=new FakePort(),link=new RepeaterTransport(port,{knownRepeater:'b'.repeat(64),openSettle:0,remoteTimeout:0});await link.open();
+  assert.equal(link.otaPath,'direct (0 hops; configured)');
+  const before=port.commands.length;await link.localCommand('ota.peer path A1,B2,C3');
+  assert.deepEqual(port.commands.slice(before),['ota.peer path A1,B2,C3'],'diagnostics do not read or write an extra command');
+  assert.equal(link.otaPath,'routed (3 hops; configured)');
+  await assert.rejects(link.job('ota.peer cmd '+'b'.repeat(64)+' get public.key'),error=>{assert.equal(error.otaPath,'routed (3 hops; configured)');return /timed out/.test(error.message);});
+  await link.localCommand('ota.peer path off');assert.equal(link.otaPath,'direct (0 hops; configured)');
+  port.replies={'ota.peer path':'OTApeer path=AA11,BB22'};await link.localCommand('ota.peer path');assert.equal(link.otaPath,'routed (2 hops; configured)');await link.close();
+});
+
+test('unconfirmed path reads or writes clear stale route claims without changing their result', async () => {
+  for(const reply of ['ERR bad state','OTApeer path=off','OTApeer path=AA,BBBB','OTApeer path=AA,AA']){
+    const port=new FakePort(),link=new RepeaterTransport(port,{knownRepeater:'b'.repeat(64),openSettle:0,remoteTimeout:0});await link.open();
+    port.replies={'ota.peer path A1,B2':reply};assert.equal(await link.localCommand('ota.peer path A1,B2'),reply);assert.equal(link.otaPath,null);
+    await assert.rejects(link.job('ota.peer cmd '+'b'.repeat(64)+' ota status'),error=>{assert.equal(error.otaPath,'path unknown');return /timed out/.test(error.message);});
+    await link.close();
+  }
+  for(const reply of ['Unknown command','OTApeer path=AA,BBBB','OTApeer path=AA,AA']){
+    const port=new FakePort(),link=new RepeaterTransport(port,{knownRepeater:'b'.repeat(64),openSettle:0});await link.open();
+    port.replies={'ota.peer path':reply};assert.equal(await link.localCommand('ota.peer path'),reply);assert.equal(link.otaPath,null);await link.close();
+  }
+  const port=new FakePort(),link=new RepeaterTransport(port,{knownRepeater:'b'.repeat(64),openSettle:0,commandTimeout:5});await link.open();
+  port.drop='ota.peer path';await assert.rejects(link.localCommand('ota.peer path'),/timed out/);assert.equal(link.otaPath,null);await link.close();
+});

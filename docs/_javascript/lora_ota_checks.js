@@ -7,6 +7,80 @@
   'use strict';
   const keyPattern = /^[0-9a-f]{64}$/i;
   function hex(bytes) { return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join(''); }
+  // Error context is for display only. Never rewrite the original message or
+  // transport flags: timeout/retry and uncertain-install decisions use them.
+  function errorDetails(error, {step='', secrets=[]} = {}) {
+    const hidden='<hidden>', argumentsHidden='<arguments hidden>';
+    const privateValues=Array.isArray(secrets) ? [...new Set(secrets.filter(value=>typeof value==='string'&&value.length))].sort((a,b)=>b.length-a.length) : [];
+    const redact=value=>{
+      let result=typeof value==='string'?value:'';
+      for(const secret of privateValues)result=result.split(secret).join(hidden);
+      return result;
+    };
+    const safeText=(value,limit=160,multiline=false)=>{
+      // Remove secrets before truncating; cutting first could expose a prefix.
+      let text=redact(value).replace(/(?:https?:\/\/|file:\/\/)[^\s<>]+/gi,'<address hidden>')
+        .replace(/\b[a-f0-9]{16,}\b/gi,'<key hidden>')
+        .replace(/\b[A-Za-z0-9+/_=-]{32,}\b/g,'<value hidden>')
+        .replace(/[!-~]{2}\|(?=[!-~])/g,'<request tag hidden>');
+      text=text.replace(multiline?/[^\x20-\x7e\n]/g:/[^\x20-\x7e]/g,' ');
+      text=multiline?text.replace(/ +/g,' ').trim():text.replace(/\s+/g,' ').trim();
+      return text.length>limit?text.slice(0,limit)+'...':text;
+    };
+    const safeCommand=value=>{
+      const text=redact(value).trim();
+      if(!text||text.length>1024||/[^\x20-\x7e]/.test(text))return '';
+      // These fixed binary-operation names come from the USB transport, not
+      // device text. Preserve them without accepting arbitrary prose as CLI.
+      const usbOperations=new Set(['reading the Companion identity','sending an admin command',
+        'reading the Companion clock','reading a queued message','reading device information',
+        'sending an admin login','setting up the OTA session','sending a raw OTA packet',
+        'waiting for a USB command reply','running a local CLI command']);
+      if(usbOperations.has(text))return text;
+      if(/^USB (?:binary )?command (?:[0-9]|[1-9][0-9]{1,2})$/.test(text))return text;
+      if(/^(?:ver|version|board|clock|login|password|tempradio|tempradio2)$/.test(text))
+        return /^(?:login|password)$/.test(text)?text+' '+argumentsHidden:text;
+      if(/^get [a-z][a-z0-9_.]{0,47}$/.test(text))return text;
+      if(/^get ota\.direct\.reply (?:[0-9]|[1-9][0-9]{1,4})$/.test(text))return text;
+      if(/^ota (?:status|self|config|stats|installhash|ls|qspi|ram|folder|install|abort|cancel|stop)$/.test(text)
+          ||/^ota bootloader status$/.test(text)||/^ota key list$/.test(text))return text;
+      if(/^ota ls (?:[1-9]|[1-9][0-9]|1[01][0-9]|12[0-8])$/.test(text))return text;
+      if(/^ota\.peer (?:status|path|timeout|radio|close)$/.test(text))return text;
+      const setting=/^(get|set) ([a-z][a-z0-9_.]{0,47})(?: |$)/.exec(text);
+      if(setting)return setting[1]+' '+setting[2]+' '+argumentsHidden;
+      const ota=/^(ota(?:\.peer)?) ([a-z][a-z0-9_.]{0,31})(?: |$)/.exec(text);
+      if(ota)return ota[1]+' '+ota[2]+' '+argumentsHidden;
+      if(text==='CLI command '+argumentsHidden)return text;
+      const verb=/^([a-z][a-z0-9_.-]{0,23})(?: |$)/i.exec(text);
+      return verb?verb[1]+' '+argumentsHidden:'';
+    };
+    const detail=error&&(typeof error==='object'||typeof error==='function')?error:{};
+    const action=safeText(step), stage=safeText(detail.otaStep);
+    const lines=['Step: '+(action||stage||'not identified')];
+    if(stage&&action&&stage!==action)lines.push('Stage: '+stage);
+    const endpoint=safeText(detail.otaEndpoint,64);
+    if(endpoint)lines.push('Endpoint: '+endpoint);
+    const path=safeText(detail.otaPath,160);
+    if(path)lines.push('Path: '+path);
+    const radio=safeText(detail.otaRadio,160);
+    if(radio)lines.push('Radio: '+radio);
+    const command=safeCommand(detail.otaCommand);
+    lines.push('Command: '+(command||'not identified for this failure'));
+    const requestStep=safeText(detail.otaRequestStep),requestCommand=safeCommand(detail.otaRequestCommand);
+    if(requestStep&&requestStep!==stage)lines.push('Request step: '+requestStep);
+    if(requestCommand&&requestCommand!==command)lines.push('Request command: '+requestCommand);
+    const requestRadio=safeText(detail.otaRequestRadio,160);
+    if(requestRadio&&requestRadio!==radio)lines.push('Request radio: '+requestRadio);
+    if(Number.isFinite(detail.otaTimeoutMs)&&detail.otaTimeoutMs>0&&detail.otaTimeoutMs<=86400000)
+      lines.push('Timeout: '+Number((detail.otaTimeoutMs/1000).toFixed(3))+' s');
+    if(Number.isInteger(detail.otaAttempt)&&detail.otaAttempt>0&&detail.otaAttempt<=1000){
+      const maximum=Number.isInteger(detail.otaMaxAttempts)&&detail.otaMaxAttempts>=detail.otaAttempt&&detail.otaMaxAttempts<=1000?detail.otaMaxAttempts:null;
+      lines.push('Attempt: '+detail.otaAttempt+(maximum?' of '+maximum:''));
+    }
+    const reason=safeText(typeof error==='string'?error:detail.message,2048,true)||'Unknown failure';
+    lines.push('Reason: '+reason);
+    return lines.join('\n');
+  }
   // Only offer a diagnosis when the receiver reported that exact reason.
   // Older targets may report only "failed", so leave unknown reasons alone.
   function failureAdvice(detail) {
@@ -265,5 +339,5 @@
         plan.memorySize + Math.ceil(info.blob.length / 4096) * 4096 > ceiling - plan.app)
       throw Error('The current nRF52 staging space no longer fits this differential');
   }
-  return { route, destination, availability, readReceiver, coldRakStatus, prepareColdRakStorage, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, needsHybridRam, confirmHybridRam, readHybridRam, validateInternalPlan, version, hex, failureAdvice, explicitMaxBlock };
+  return { route, destination, availability, readReceiver, coldRakStatus, prepareColdRakStorage, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, needsHybridRam, confirmHybridRam, readHybridRam, validateInternalPlan, version, hex, failureAdvice, explicitMaxBlock, errorDetails };
 });

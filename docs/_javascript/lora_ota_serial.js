@@ -14,6 +14,53 @@
   const u16 = (v, n) => v.getUint16(n, true);
   const u32 = (v, n) => v.getUint32(n, true);
   const view = b => new DataView(b.buffer, b.byteOffset, b.byteLength);
+  // Preserve transport errors/messages used by retry logic; add only bounded,
+  // non-secret diagnostic labels rather than arbitrary CLI text or arguments.
+  function errorContext(error,fields){
+    if(error&&(typeof error==='object'||typeof error==='function'))for(const [name,value] of Object.entries(fields)){
+      if(value!==undefined&&error[name]===undefined)try{error[name]=value;}catch(_){}
+    }
+    return error;
+  }
+  const SAFE_READS=new Set(['get public.key','clock','ver','ota status','ota self','ota ram','ota config','ota key list','ota stats','ota ls','ota qspi','ota installhash','ota bootloader status',
+    'get bootloader.ver','get radio','get tempradio','get radio.rxps','get radio2','get tempradio2','get radio2.cross','get radio2.status','get radioat','get tempradioat','get radioat2','get tempradioat2',
+    'ota.peer status','ota.peer capabilities','ota.peer path','ota.peer timeout','ota.peer radio','ota folder']);
+  function safeCommand(text){
+    if(typeof text!=='string')return 'CLI command <arguments hidden>';
+    if(SAFE_READS.has(text)||/^ota ls (?:[1-9]|[1-9][0-9]|1[01][0-9]|12[0-8])$/.test(text))return text;
+    if(/^ota\.peer (?:result|peers|login(?:\.repeater)?|cmd(?:\.acl)?|acl|path|timeout|radio)\b/.test(text))return text.split(' ').slice(0,2).join(' ')+' <arguments hidden>';
+    if(/^ota (?:pull|installhash|config|key)\b/.test(text))return text.split(' ').slice(0,2).join(' ')+' <arguments hidden>';
+    const setting=/^set (tempradio2|radio2(?:\.cross)?|radio\.rxps)(?: |$)/.exec(text);
+    if(setting)return 'set '+setting[1]+' <arguments hidden>';
+    if(/^(?:set|login|tempradio)\b/.test(text))return text.split(' ')[0]+' <arguments hidden>';
+    return 'CLI command <arguments hidden>';
+  }
+  function peerContext(command,timeoutMs){
+    const match=/^ota\.peer cmd(?:\.acl)? [a-f0-9]{64} (.+)$/i.exec(command);
+    const text=match?.[1],login=/^ota\.peer (?:login(?:\.repeater)?|acl) /.test(command);
+    return {otaStep:text==='get public.key'?'Verifying target identity':login?'Logging in to target':'Waiting for remote command reply',
+      otaCommand:text?safeCommand(text):login?'login <arguments hidden>':command==='ota.peer discover'?'discovery':'OTA peer request',otaEndpoint:'remote target',otaTimeoutMs:timeoutMs};
+  }
+  function remoteError(error,fields){
+    if(error?.otaStep!==undefined&&(error.otaCommand!==fields.otaCommand||error.otaEndpoint!==fields.otaEndpoint||error.otaStep!==fields.otaStep))
+      errorContext(error,{otaRequestCommand:fields.otaCommand,otaRequestStep:fields.otaStep,otaRequestRadio:fields.otaRadio});
+    return errorContext(error,fields);
+  }
+  function mailboxError(error,timeoutMs){return errorContext(error,{otaStep:'Reading source reply mailbox',otaCommand:'ota.peer result',otaEndpoint:'USB Repeater',otaTimeoutMs:timeoutMs,otaRadio:'USB/local command (no LoRa transmission)'});}
+  function requestRadio(link){
+    const source=link.supportsOtaRadio2&&[0,1].includes(link.otaRadioProfile)?(link.otaRadioProfile===1?'Radio 2':'primary radio')+' (selected OTA profile)':'LoRa profile not confirmed';
+    return 'Source: '+source+'; target: profile not confirmed';
+  }
+  function reportedPath(reply,request){
+    const match=/^OTApeer path=(off|[a-f0-9,]+)$/i.exec(reply);
+    if(!match)return null;
+    const value=match[1];
+    if(request!=='ota.peer path'&&value.toLowerCase()!==request.slice('ota.peer path '.length).toLowerCase())return null;
+    if(value.toLowerCase()==='off')return 'direct (0 hops; configured)';
+    const prefixes=value.split(',');
+    if(prefixes.length>8||prefixes.some(prefix=>!/^(?:[a-f0-9]{2}){1,3}$/i.test(prefix))||new Set(prefixes.map(prefix=>prefix.length)).size!==1||new Set(prefixes.map(prefix=>prefix.toUpperCase())).size!==prefixes.length)return null;
+    return 'routed ('+prefixes.length+' hop'+(prefixes.length===1?'':'s')+'; configured)';
+  }
   const key = value => {
     if (!/^[0-9a-f]{64}$/i.test(value || '')) throw new Error('A complete 64-character public key is required');
     return value.toLowerCase();
@@ -259,6 +306,7 @@
       this.ownsPeer = false;
       this.authenticatedKey = null; this.lastPeerUse = 0; this.aclOnly = !!options.aclOnly;
       this.knownRepeater = options.knownRepeater ? key(options.knownRepeater) : null;
+      this.otaPath = null;
       this.knownTargetSupported = false;
       if (this.aclOnly && !this.knownRepeater) throw new Error('ACL access requires a complete known repeater key');
       this.supportsRoutedPath = false; this.clockChecked = false;
@@ -298,14 +346,17 @@
           }
           this.supportsRoutedPath = caps.endsWith(' routed_path=1');
           this.knownTargetSupported = true;
-          if (this.supportsRoutedPath && await this.localCommand('ota.peer path') !== 'OTApeer path=off')
-            throw new Error('The repeater already has an OTA route; clear it before starting');
+          if (this.supportsRoutedPath) {
+            if(await this.localCommand('ota.peer path') !== 'OTApeer path=off')throw new Error('The repeater already has an OTA route; clear it before starting');
+            this.otaPath='direct (0 hops; configured)';
+          }
         } else {
           // Older firmware may not recognize the query. A recognized existing
           // route must never silently turn a direct session into a routed one.
           const path = await this.localCommand('ota.peer path');
           if (path.startsWith('OTApeer path=') && path !== 'OTApeer path=off')
             throw new Error('The repeater already has an OTA route; clear it before starting');
+          if(path==='OTApeer path=off')this.otaPath='direct (0 hops; configured)';
         }
         return this;
       } catch (error) { await this.close(); throw error; }
@@ -344,6 +395,12 @@
     }
     async localCommand(text) {
       const bytes = commandBytes(text, 240);
+      const pathRequest=/^ota\.peer path(?: |$)/.test(text);
+      // The routed wrapper configures this through localCommand directly.
+      // Never keep an old direct/routed claim across an unconfirmed request.
+      if(pathRequest)this.otaPath=null;
+      const localRead=SAFE_READS.has(text)||/^ota\.peer (?:result|peers)(?: |$)/.test(text);
+      const radio=/^ota\.peer (?:cmd(?:\.acl)?|login(?:\.repeater)?|acl|discover)(?: |$)/.test(text)?requestRadio(this):localRead?'USB/local command (no LoRa transmission)':'USB/local command (LoRa transmission not confirmed)';
       const operation = this.commandQueue.then(() => new Promise((resolve, reject) => {
         if (!this.running || this.failure) return reject(this.failure || new Error('The repeater is disconnected'));
         let echoed = false, settled = false;
@@ -356,6 +413,7 @@
         const finish = (error, value) => {
           if (settled) return;
           settled = true; clearTimeout(timer); this.waiter = null;
+          if(!error&&pathRequest)this.otaPath=reportedPath(value,text);
           error ? reject(error) : resolve(value);
         };
         this.waiter = (line, error) => {
@@ -380,10 +438,12 @@
         };
         const payload = new Uint8Array(bytes.length + 2); payload.set(bytes); payload.set([13, 10], bytes.length);
         this.write(payload).catch(error => finish(error));
-      }));
+      })).catch(error=>{throw errorContext(error,{otaStep:/^ota\.peer result(?: |$)/.test(text)?'Reading source reply mailbox':'Waiting for USB command reply',otaCommand:safeCommand(text),otaEndpoint:'USB Repeater',otaTimeoutMs:this.commandTimeout,otaRadio:radio});});
       this.commandQueue = operation.catch(() => {}); return operation;
     }
     async job(command) {
+      const radio=requestRadio(this),path=this.otaPath||'path unknown';
+      try{
       // The command may reach the repeater even if its acknowledgement is
       // lost. Only jobs initiated after the empty-state check belong to us.
       this.ownsPeer = true;
@@ -394,16 +454,17 @@
       while (Date.now() < deadline) {
         const reply = await this.localCommand('ota.peer result' + (offset ? ' ' + offset : ''));
         const p = reply.match(/^OTApeer job=([0-9a-f]{8}) state=(pending|ok|error) bytes=(\d+) off=(\d+) data=([0-9a-f]+|-)$/i);
-        if (!p || p[1].toUpperCase() !== job) throw new Error('OTA request changed; its result is unknown');
+        if (!p || p[1].toUpperCase() !== job) throw mailboxError(new Error('OTA request changed; its result is unknown'),this.commandTimeout);
         if (p[2] === 'pending') { await sleep(this.pollMs); continue; }
         const size = Number(p[3]), start = Number(p[4]), encoded = p[5] === '-' ? '' : p[5];
-        if (size > 160 || start !== offset || encoded.length % 2 || (total !== null && (total !== size || state !== p[2]))) throw new Error('Invalid OTA reply pages');
+        if (size > 160 || start !== offset || encoded.length % 2 || (total !== null && (total !== size || state !== p[2]))) throw mailboxError(new Error('Invalid OTA reply pages'),this.commandTimeout);
         const chunk = encoded.match(/../g)?.map(c => parseInt(c, 16)) || [];
-        if (chunk.length > 48 || offset + chunk.length > size || (!chunk.length && offset < size)) throw new Error('Invalid OTA reply length');
+        if (chunk.length > 48 || offset + chunk.length > size || (!chunk.length && offset < size)) throw mailboxError(new Error('Invalid OTA reply length'),this.commandTimeout);
         total = size; state = p[2]; result.push(...chunk); offset += chunk.length;
         if (offset === total) { const text = decoder.decode(Uint8Array.from(result)); if (state === 'error') throw new Error(text); return text; }
       }
       throw new Error('OTA request timed out; its result is unknown');
+      }catch(error){throw remoteError(error,{...peerContext(command,this.remoteTimeout),otaPath:path,otaRadio:radio});}
     }
     async discover() {
       return this.withAdmin(async () => {
@@ -457,6 +518,8 @@
       return k;
     }
     async login(k, password) {
+      const radio=requestRadio(this),path=this.otaPath||'path unknown';
+      try{
       if (this.aclOnly || password === '') {
         await this.job('ota.peer acl ' + k);
       } else if (!this.knownRepeater) {
@@ -469,6 +532,7 @@
         await this.job('ota.peer login ' + k + ' ' + password);
       } else await this.job('ota.peer login.repeater ' + k + ' ' + password);
       this.authenticatedKey = k; this.lastPeerUse = Date.now();
+      }catch(error){throw errorContext(error,{otaStep:'Logging in to target',otaCommand:'login <arguments hidden>',otaEndpoint:'remote target',otaTimeoutMs:this.remoteTimeout,otaPath:path,otaRadio:radio});}
     }
     async verifyPeer(publicKey, password = '') {
       const k = this.validatePeer(publicKey, password);
@@ -513,6 +577,7 @@
     }
     async remoteCommand(publicKey, password, text) {
       const k = this.validatePeer(publicKey, password); commandBytes(text, 154);
+      const radio=requestRadio(this),path=this.otaPath||'path unknown';
       return this.withAdmin(async () => {
         await this.checkClock();
         if (this.aclOnly || password === '') {
@@ -522,7 +587,7 @@
         }
         if (this.authenticatedKey !== k || Date.now() - this.lastPeerUse > 240000) await this.login(k, password);
         const reply = await this.job('ota.peer cmd ' + k + ' ' + text); this.lastPeerUse = Date.now(); return reply;
-      });
+      }).catch(error=>{throw remoteError(error,{otaStep:text==='get public.key'?'Verifying target identity':'Waiting for remote command reply',otaCommand:safeCommand(text),otaEndpoint:'remote target',otaTimeoutMs:this.remoteTimeout,otaPath:path,otaRadio:radio});});
     }
     async setPath(prefixes) {
       if (!this.supportsRoutedPath) throw new Error('Source firmware has no routed-path support');
@@ -532,6 +597,7 @@
       const value = prefixes.length ? prefixes.map(p => p.toUpperCase()).join(',') : 'off';
       const reply = await this.localCommand('ota.peer path ' + value);
       if (reply !== 'OTApeer path=' + value) throw new Error('Route change was not confirmed');
+      this.otaPath=prefixes.length?'routed ('+prefixes.length+' hops; configured)':'direct (0 hops; configured)';
     }
     async serve(info, blob, compress = rawDeflate) {
       if (this.serving || this.seeder || this.folderUnknown) throw new Error('A package is already being served or folder ownership is unresolved');

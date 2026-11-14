@@ -43,6 +43,42 @@ class Port{
   async close(){}
 }
 async function run(){
+  {
+    const c=new CompanionTransport({}, {knownRepeater:key});c.localCliSupported=true;
+    c.command=async()=>{throw Error('USB disconnected');};
+    await assert.rejects(c.localCommandBinary('set tempradio2 PRIVATE_SETTINGS'),error=>{assert.equal(error.otaCommand,'set tempradio2 <arguments hidden>');assert(!JSON.stringify(error).includes('PRIVATE_SETTINGS'));return true;});
+  }
+  // Error metadata keeps original objects/messages and hides every argument.
+  for(const command of ['get ota.direct.reply 0','set wifi.password PRIVATE_WIFI_SECRET']){
+    const c=new CompanionTransport({}, {commandTimeout:5});c.running=true;c.writer={write:async()=>{}};
+    let caught;await assert.rejects(c.commandAny(Uint8Array.of(66,...enc.encode(command)),[29]),error=>{caught=error;return /Companion response timed out/.test(error.message);});
+    assert.equal(caught,c.failure);assert.equal(caught.otaEndpoint,'USB Companion');assert.equal(caught.otaTimeoutMs,5);
+    assert.equal(caught.otaCommand,command.startsWith('get')?'get ota.direct.reply <arguments hidden>':'set <arguments hidden>');
+    assert.equal(caught.otaRadio,command.startsWith('get')?'USB/local command (no LoRa transmission)':'USB/local command (LoRa transmission not confirmed)');
+    assert(!JSON.stringify(caught).includes('PRIVATE_WIFI_SECRET'));c.running=false;
+  }
+  {
+    const c=new CompanionTransport({}, {knownRepeater:key,remoteTimeout:1234});c.guardMode=async()=>{};c.supportsOtaRadio2=true;c.otaRadioProfile=1;
+    const inner=Object.assign(Error('Original mailbox failure'),{otaStep:'Reading source reply mailbox',otaCommand:'get ota.direct.reply <arguments hidden>',otaEndpoint:'USB Companion',otaTimeoutMs:17,otaRadio:'USB/local command (no LoRa transmission)',loraReplyTimeout:true});
+    c.command=async()=>Uint8Array.of(6);c.localCommand=async()=>{c.otaRadioProfile=0;throw inner;};
+    await assert.rejects(c.remoteReply('get public.key'),error=>{
+      assert.equal(error,inner);assert.equal(error.message,'Original mailbox failure');assert.equal(error.otaEndpoint,'USB Companion');assert.equal(error.otaTimeoutMs,17);assert.equal(error.otaRequestCommand,'get public.key');assert.equal(error.otaRequestStep,'Verifying target identity');assert.match(error.otaRequestRadio,/Source: Radio 2/);assert.match(error.otaPath,/direct.*0 hops.*enforced/);assert.equal(error.loraReplyTimeout,true);return true;
+    });
+  }
+  {
+    const c=new CompanionTransport({}, {knownRepeater:key,investigationTimeout:12});c.investigationEnabled=true;c.investigationAuthenticated=true;c.contactList=[{publicKey:key,hops:3}];c.contacts=async()=>c.contactList;
+    const original=Error('Original remote rejection');c.command=async()=>{throw original;};
+    await assert.rejects(c.standardReply('ota status'),error=>{assert.equal(error,original);assert.equal(error.otaCommand,'ota status');assert.equal(error.otaEndpoint,'remote target');assert.match(error.otaPath,/stored route: 3 hops.*not verified/);return true;});
+    let calls=0;await assert.rejects(c.retryInvestigation('ota status',async()=>{calls++;const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;throw error;}),error=>{assert.equal(error.message,'Remote command timed out; result is unknown');assert.equal(error.otaAttempt,11);assert.equal(error.otaMaxAttempts,11);assert.equal(error.attempts,11);return true;});assert.equal(calls,11);
+  }
+  {
+    const descriptor=Object.getOwnPropertyDescriptor(globalThis,'navigator');Object.defineProperty(globalThis,'navigator',{configurable:true,value:{locks:{request:async(_name,_options,fn)=>fn({})}}});
+    try{
+      const c=new CompanionTransport({}, {knownRepeater:key,inboxPollDelay:0});c.investigationEnabled=true;c.investigationAuthenticated=true;c.contactList=[{publicKey:key,hops:0}];c.contacts=async()=>c.contactList;c.command=async()=>Uint8Array.of(6);c.reserveInbox=()=> 'reservation';
+      const inner=Object.assign(Error('Original inbox timeout'),{otaStep:'Waiting for USB command reply',otaCommand:'reading a queued message',otaEndpoint:'USB Companion',otaTimeoutMs:31,otaRadio:'USB/local command (no LoRa transmission)'});c.commandAny=async()=>{throw inner;};
+      await assert.rejects(c.standardReply('ota status'),error=>{assert.equal(error.message,'Original inbox timeout; a queued message may have been removed before it could be saved');assert.equal(error.otaEndpoint,'USB Companion');assert.equal(error.otaTimeoutMs,31);assert.equal(error.otaRequestCommand,'ota status');assert.equal(error.otaRadio,'USB/local command (no LoRa transmission)');return true;});
+    }finally{if(descriptor)Object.defineProperty(globalThis,'navigator',descriptor);else delete globalThis.navigator;}
+  }
   const d=new Decoder(),frame=wire(Uint8Array.of(29,1,2));assert.deepEqual(d.feed(frame.slice(0,2)),[]);assert.deepEqual(Array.from(d.feed(frame.slice(2))[0]),[29,1,2]);
   const port=new Port(),link=new CompanionTransport(port,{openSettle:0,commandTimeout:1000,remoteTimeout:1000});
   await link.open();assert.equal(link.sourceKey,source);assert.equal(link.firmwareVersion,'v1.18.0.2-dev-12345678');assert.equal(link.firmwareBoardName,'Test board');assert.equal(port.frames.filter(frame=>frame[0]===22).length,1);assert.equal(link.otaMode,'guarded');assert.equal(await link.localCommand('get radio'),'> 910.525,62.5,7,5');
@@ -152,7 +188,7 @@ async function run(){
   const rejected=new Port();rejected.loginCode=0x86;
   const rejectedLink=new CompanionTransport(rejected,{openSettle:0,commandTimeout:1000});
   await rejectedLink.open();await rejectedLink.contacts();rejectedLink.selectTarget(key);
-  await assert.rejects(()=>rejectedLink.investigateVerifyPeer(key,'password'),/rejected/i);
+  await assert.rejects(()=>rejectedLink.investigateVerifyPeer(key,'password'),error=>{assert.match(error.message,/rejected/i);assert.equal(error.otaStep,'Logging in to target');assert.equal(error.otaCommand,'login <arguments hidden>');assert.equal(error.otaEndpoint,'remote target');assert(!JSON.stringify(error).includes('password'));return true;});
   assert(!rejected.frames.some(f=>f[0]===2));await rejectedLink.close();
 }
 run().then(()=>console.log('Companion transport tests passed')).catch(e=>{console.error(e);process.exitCode=1;});

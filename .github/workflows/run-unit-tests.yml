@@ -43,6 +43,7 @@ jobs:
         run: |
           python3 -m pip install detools==0.53.0
           node test/test_browser_lora_ota_checks.js
+          node --test test/test_browser_lora_ota_error_context.js test/test_browser_lora_ota_error_ui.js
           node --test test/test_browser_lora_ota_availability.js
           node --test test/test_browser_lora_ota_repeat.js
           node --test test/test_browser_lora_ota_sim.js

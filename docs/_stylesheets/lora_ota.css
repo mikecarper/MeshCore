@@ -113,6 +113,9 @@
   overflow-wrap: anywhere;
 }
 [data-lora-ota] .lora-ota-notice[data-state="error"] { border-color: #b45309; }
+[data-lora-ota] .lora-ota-verbose-toggle { display: flex; align-items: center; gap: 0.5rem; }
+[data-lora-ota] .lora-ota-verbose-toggle input { width: auto; }
+[data-lora-ota] [data-role="verbose-error-panel"] pre { max-height: 24rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 [data-lora-ota] [data-role="update-summary"] { overflow-wrap: anywhere; }
 [data-lora-ota] .lora-ota-step details { margin-top: 0.8rem; }
 
