@@ -52,13 +52,36 @@ older or smaller builds; for example, an LLCC68 radio cannot use LongFast.
    A queued message does not guarantee delivery.
 
 For private channels or other frequency slots, see the
-[full Meshtext reference](radio_profiles.md#meshtext-channel-chat). A Companion
-can optionally forward decoded channel text on Meshtext with
-`set mt.rebroadcast on`; this is off by default. It forwards eligible text
-within Meshtext, not between Meshtext and MeshCore.
+[full Meshtext reference](radio_profiles.md#meshtext-channel-chat).
 
 Radio1 and radio2 share one physical radio and take turns listening. Messages
 can be missed on either network while the radio is listening to the other.
+
+### Repeat messages with a rooftop Companion
+
+A supported Full Companion can repeat Meshtext channel messages. Configure
+the same Meshtext channel, region, preset, frequency slot, and key on the
+rooftop device and your sending Companion. On the rooftop device, run:
+
+```text
+set mt.rebroadcast on
+get mt.status
+```
+
+The status should show `active` and `rebroadcast=on`. This setting is saved
+and defaults to off. On the sending Companion, use `get mt.hops` to check that
+the hop limit is greater than zero.
+
+Send a channel message and compare the rooftop device's `get mt.status` RX
+and TX counters before and after. Other Meshtext traffic also affects those
+counters, so test on a quiet channel if possible. On the sending Companion,
+`get mt.retry` can show a heard repeat, but does not identify which device
+repeated it. A separate receiver or packet monitor can give stronger evidence.
+
+Only decoded channel text with hops remaining is eligible; DMs, GPS and
+NodeInfo are not repeated. The rooftop device may miss a message while tuned
+to MeshCore, or skip its repeat after hearing another device forward it.
+This does not bridge messages between Meshtext and MeshCore.
 
 ## Repeater: scheduled transmit-only beacon
 
