@@ -2173,6 +2173,16 @@ console.log('current T-LoRa profiles remain distinct and every overlapping relea
 
 // L1 1W has two real storage layouts for both roles and both sensor policies.
 // Their firmware and bootloader packages must not collapse into one button.
+// This fixture is the exact eight L1 1W controls from the 1.18.0.1 release;
+// its embedded bootloader assets have a different, recorded source hash.
+const legacyL1Controls = require('./fixtures/firmware_picker_l1_1w_1_18_0_1_controls.json');
+const legacyL1Assets = Object.entries(legacyL1Controls.profiles).map(([target, info]) =>
+  asset(target + '-ota-' + legacyL1Controls.familyTag.replace(/-[0-9a-f]{8}$/,
+    '-' + info.sensorProfileSource.slice(0, 8)) + '.uf2'));
+const legacyL1Catalog = picker.buildCatalog([
+  release(legacyL1Controls.familyTag, '2026-10-24T00:00:00Z', legacyL1Assets),
+], legacyL1Controls);
+assert.strictEqual(legacyL1Catalog.profiles.length, 8);
 for (const role of ['repeater', 'room_server']) {
   for (const policy of ['full', 'reduced']) {
     for (const bootloader of ['', '-with-bootloader-2.4.12']) {
@@ -2181,8 +2191,23 @@ for (const role of ['repeater', 'room_server']) {
       const internal = publishedCatalog.profiles.find(profile => profile.target === internalTarget);
       const external = publishedCatalog.profiles.find(profile => profile.target === externalTarget);
       assert(internal && external, 'Both L1 1W storage choices must remain selectable');
-      assert(picker.firmwareProfileLabel(internal).includes('Internal storage'));
-      assert(!picker.firmwareProfileLabel(external).includes('Internal storage'));
+      assert(picker.firmwareProfileLabel(external).includes('External QSPI'));
+      assert(!picker.firmwareProfileLabel(internal).includes('External QSPI'));
+      const legacyVariant = (policy === 'reduced' ? 'no-external-sensors' : '') +
+        (bootloader ? (policy === 'reduced' ? '-' : '') + 'with-bootloader-2-4-12' : '');
+      assert.strictEqual(internal.variant, legacyVariant || 'default',
+        'The pre-existing variant must continue to select the internal image');
+      const legacyProfile = legacyL1Catalog.profiles.find(profile => profile.target === internalTarget);
+      assert(legacyProfile && legacyProfile.variant === (legacyVariant || 'default'));
+      const oldLink = picker.shortSelectionUrl('https://mikecarper.github.io/MeshCore/firmware_picker/',
+        {hardware: legacyProfile.hardware, role: legacyProfile.role, ota: legacyProfile.ota,
+          feature: legacyProfile.feature, variant: legacyProfile.variant}, true);
+      const restoredOldLink = picker.selectionFromUrl(oldLink, publishedCatalog.profiles);
+      assert.deepStrictEqual(restoredOldLink.unavailable, [], 'Existing 1.18.0.1 links must remain valid');
+      assert.deepStrictEqual(publishedCatalog.profiles.filter(item =>
+        picker.profileMatchesFacets(item, restoredOldLink.filters)).map(item => item.target), [internalTarget],
+      'Existing 1.18.0.1 links must not switch storage layout');
+      assert.strictEqual(external.variant, 'external-qspi' + (bootloader ? '-with-bootloader-2-4-12' : ''));
       assert.notStrictEqual(picker.firmwareProfileValue(internal), picker.firmwareProfileValue(external));
       for (const profile of [internal, external]) {
         const selection = {hardware: profile.hardware, role: profile.role, ota: profile.ota,
@@ -2197,19 +2222,57 @@ for (const role of ['repeater', 'room_server']) {
   }
 }
 {
-  const target = 'WioTrackerL1-1W_repeater_lora_ota_no_external_sensors-full';
-  const baseInfo = publishedControls.profiles[target];
-  for (const fault of ['missing-storage', 'wrong-storage', 'stale-source']) {
-    const info = structuredClone(baseInfo);
-    if (fault === 'missing-storage') delete info.updateRequirements.lora.storage;
-    if (fault === 'wrong-storage') info.updateRequirements.lora.storage = 'external_qspi';
-    if (fault === 'stale-source') info.sensorProfileSource = 'a'.repeat(40);
-    const catalog = picker.buildCatalog([
-      release(publishedControls.familyTag, '2026-10-24T00:00:00Z',
-        [asset(target + '-' + publishedAssetTag(target) + '.uf2')]),
-    ], {...publishedControls, profiles: {[target]: info}});
-    assert(catalog.profiles.length === 1 && catalog.profiles[0].variant !== 'internal-storage',
-      'Internal-storage label requires exact source-bound storage proof: ' + fault);
+  const internal = 'WioTrackerL1-1W_repeater_lora_ota_no_external_sensors-full';
+  const external = 'WioTrackerL1-1W_repeater_lora_ota-full';
+  const targets = [internal, external];
+  for (const target of targets) {
+    for (const fault of ['missing-controls', 'missing-storage', 'wrong-storage', 'stale-source', 'wrong-policy']) {
+      const metadata = structuredClone(publishedControls);
+      const info = metadata.profiles[target];
+      if (fault === 'missing-controls') delete metadata.profiles[target];
+      if (fault === 'missing-storage') delete info.updateRequirements.lora.storage;
+      if (fault === 'wrong-storage') info.updateRequirements.lora.storage = target === internal ? 'external_qspi' : 'internal_flash';
+      if (fault === 'stale-source') info.sensorProfileSource = 'a'.repeat(40);
+      if (fault === 'wrong-policy') info.sensorProfile = 'reduced';
+      const catalog = picker.buildCatalog([
+        release(publishedControls.familyTag, '2026-10-24T00:00:00Z',
+          targets.map(name => asset(name + '-' + publishedAssetTag(name) + '.uf2'))),
+      ], metadata);
+      assert(!catalog.profiles.some(profile => profile.target === target),
+        'Unsafe storage or sensor metadata must hide the affected choice: ' + target + ': ' + fault);
+      assert.strictEqual(catalog.unavailableL1OneWattProfiles, 2,
+        'Both storage choices must be withheld when their distinction is unverified');
+      assert(!catalog.profiles.some(profile => targets.includes(profile.target)),
+        'The sibling must not be recommended automatically: ' + target + ': ' + fault);
+      assert(catalog.rows.some(row => row.target === target), 'Exact downloads remain in advanced search');
+      const oldVariant = target === internal ? 'default' : 'external-qspi';
+      const oldUrl = picker.shortSelectionUrl('https://mikecarper.github.io/MeshCore/firmware_picker/',
+        {hardware: 'WioTrackerL1-1W', role: 'repeater', ota: 'lora-receiver', feature: 'full', variant: oldVariant}, true);
+      const restored = picker.selectionFromUrl(oldUrl, catalog.profiles);
+      assert(restored.unavailable.includes('variant=' + oldVariant),
+        'A saved link must report its unverified target unavailable, not select the other storage layout');
+    }
+  }
+}
+{
+  const internal = 'WioTrackerL1-1W_repeater_lora_ota_no_external_sensors-with-bootloader-2.4.12-full';
+  const external = 'WioTrackerL1-1W_repeater_lora_ota-with-bootloader-2.4.12-full';
+  for (const target of [internal, external]) {
+    for (const fault of ['missing-bootloader', 'stale-bootloader-source', 'bad-bootloader-hash']) {
+      const metadata = structuredClone(publishedControls);
+      const info = metadata.profiles[target];
+      if (fault === 'missing-bootloader') delete info.embeddedBootloader;
+      if (fault === 'stale-bootloader-source') info.embeddedBootloaderSource = 'a'.repeat(40);
+      if (fault === 'bad-bootloader-hash') info.embeddedBootloader.candidate_sha256 = 'invalid';
+      const catalog = picker.buildCatalog([
+        release(publishedControls.familyTag, '2026-10-24T00:00:00Z',
+          [internal, external].map(name => asset(name + '-' + publishedAssetTag(name) + '.uf2'))),
+      ], metadata);
+      assert(!catalog.profiles.some(profile => profile.target === target),
+        'Invalid bootloader metadata must hide its exact target: ' + target + ': ' + fault);
+      assert.strictEqual(catalog.unavailableL1OneWattProfiles, 2);
+      assert(!catalog.profiles.some(profile => profile.target === internal || profile.target === external));
+    }
   }
 }
 console.log('L1 1W storage choices retain exact targets, labels, URLs and metadata gates');

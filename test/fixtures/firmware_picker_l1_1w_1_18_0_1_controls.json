@@ -1,0 +1,387 @@
+{
+  "familyTag": "v1.18.0.1-halo-keymind-cascade-dev-03214a16",
+  "partitionMigrations": {},
+  "profiles": {
+    "WioTrackerL1-1W_repeater_lora_ota_no_external_sensors-full": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": true,
+      "gps": true,
+      "mqtt": false,
+      "otaRole": "lora-receiver",
+      "platform": "NRF52_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "sensorProfile": "full",
+      "sensorProfileSource": "03214a16df2bd09d3272dfb001d2d322c6740f60",
+      "snmp": false,
+      "updateMethods": [
+        "bluetooth",
+        "lora"
+      ],
+      "updateRequirements": {
+        "lora": {
+          "bootloader": "Matching board/storage OTAFIX bootloader",
+          "bootloader_release": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.11",
+          "notes": [
+            "Use a destination-specific .mota package matching the board, target, and storage layout.",
+            "An in-place delta requires the exact firmware currently running as its base.",
+            "The package must fit the receiver's staging and apply workspace.",
+            "Check the release's exact-board bootloader manifest; hardware-pending boards are not covered by the normal release.",
+            "Artifact inspection verifies compiled support; it does not verify the bootloader installed on a physical device.",
+            "Internal storage accepts in-place application deltas, not full application packages."
+          ],
+          "package_types": [
+            "in_place_delta"
+          ],
+          "storage": "internal_flash"
+        }
+      },
+      "webconfig": false
+    },
+    "WioTrackerL1-1W_repeater_lora_ota_no_external_sensors-reduced": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": true,
+      "gps": true,
+      "mqtt": false,
+      "otaRole": "lora-receiver",
+      "platform": "NRF52_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "sensorProfile": "reduced",
+      "sensorProfileSource": "03214a16df2bd09d3272dfb001d2d322c6740f60",
+      "snmp": false,
+      "updateMethods": [
+        "bluetooth",
+        "lora"
+      ],
+      "updateRequirements": {
+        "lora": {
+          "bootloader": "Matching board/storage OTAFIX bootloader",
+          "bootloader_release": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.11",
+          "notes": [
+            "Use a destination-specific .mota package matching the board, target, and storage layout.",
+            "An in-place delta requires the exact firmware currently running as its base.",
+            "The package must fit the receiver's staging and apply workspace.",
+            "Check the release's exact-board bootloader manifest; hardware-pending boards are not covered by the normal release.",
+            "Artifact inspection verifies compiled support; it does not verify the bootloader installed on a physical device.",
+            "Internal storage accepts in-place application deltas, not full application packages."
+          ],
+          "package_types": [
+            "in_place_delta"
+          ],
+          "storage": "internal_flash"
+        }
+      },
+      "webconfig": false
+    },
+    "WioTrackerL1-1W_repeater_lora_ota_no_external_sensors-with-bootloader-2.4.12-full": {
+      "display": true,
+      "embeddedBootloader": {
+        "activation": "ota bootloader update",
+        "app_offset": 524396,
+        "asset_sha256": "aceae36b3b4c8fa2fa72be9a0d68d63bed53398a17ace6736e932b99b6d85b58",
+        "automatic_delay_seconds": 70,
+        "candidate_sha256": "15f66078197b10352f8217d2d5809357cd3f71341b2c3ed9e55f209ffc71d90d",
+        "image_bytes": 40960,
+        "legacy_sha256": null,
+        "manifest_sha256": "d2f62a4ec9b7c5643d8ed787d9e1710a2fabac34607a0bbb6ea5883a458e6df3",
+        "profile": "wio_tracker_l1",
+        "release": "2.4.12",
+        "stock_legacy": [],
+        "stock_legacy_offset": null
+      },
+      "embeddedBootloaderSource": "40dd42de972762d38083d1faf68f1ba3bc104d61",
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": true,
+      "gps": true,
+      "mqtt": false,
+      "otaRole": "lora-receiver",
+      "platform": "NRF52_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "sensorProfile": "full",
+      "sensorProfileSource": "40dd42de972762d38083d1faf68f1ba3bc104d61",
+      "snmp": false,
+      "updateMethods": [
+        "bluetooth",
+        "lora"
+      ],
+      "updateRequirements": {
+        "lora": {
+          "bootloader": "Matching board/storage OTAFIX bootloader",
+          "bootloader_release": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.11",
+          "notes": [
+            "Use a destination-specific .mota package matching the board, target, and storage layout.",
+            "An in-place delta requires the exact firmware currently running as its base.",
+            "The package must fit the receiver's staging and apply workspace.",
+            "Check the release's exact-board bootloader manifest; hardware-pending boards are not covered by the normal release.",
+            "Artifact inspection verifies compiled support; it does not verify the bootloader installed on a physical device.",
+            "Internal storage accepts in-place application deltas, not full application packages."
+          ],
+          "package_types": [
+            "in_place_delta"
+          ],
+          "storage": "internal_flash"
+        }
+      },
+      "webconfig": false
+    },
+    "WioTrackerL1-1W_repeater_lora_ota_no_external_sensors-with-bootloader-2.4.12-reduced": {
+      "display": true,
+      "embeddedBootloader": {
+        "activation": "ota bootloader update",
+        "app_offset": 496820,
+        "asset_sha256": "aceae36b3b4c8fa2fa72be9a0d68d63bed53398a17ace6736e932b99b6d85b58",
+        "automatic_delay_seconds": 70,
+        "candidate_sha256": "15f66078197b10352f8217d2d5809357cd3f71341b2c3ed9e55f209ffc71d90d",
+        "image_bytes": 40960,
+        "legacy_sha256": null,
+        "manifest_sha256": "d2f62a4ec9b7c5643d8ed787d9e1710a2fabac34607a0bbb6ea5883a458e6df3",
+        "profile": "wio_tracker_l1",
+        "release": "2.4.12",
+        "stock_legacy": [],
+        "stock_legacy_offset": null
+      },
+      "embeddedBootloaderSource": "40dd42de972762d38083d1faf68f1ba3bc104d61",
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": true,
+      "gps": true,
+      "mqtt": false,
+      "otaRole": "lora-receiver",
+      "platform": "NRF52_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "sensorProfile": "reduced",
+      "sensorProfileSource": "40dd42de972762d38083d1faf68f1ba3bc104d61",
+      "snmp": false,
+      "updateMethods": [
+        "bluetooth",
+        "lora"
+      ],
+      "updateRequirements": {
+        "lora": {
+          "bootloader": "Matching board/storage OTAFIX bootloader",
+          "bootloader_release": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.11",
+          "notes": [
+            "Use a destination-specific .mota package matching the board, target, and storage layout.",
+            "An in-place delta requires the exact firmware currently running as its base.",
+            "The package must fit the receiver's staging and apply workspace.",
+            "Check the release's exact-board bootloader manifest; hardware-pending boards are not covered by the normal release.",
+            "Artifact inspection verifies compiled support; it does not verify the bootloader installed on a physical device.",
+            "Internal storage accepts in-place application deltas, not full application packages."
+          ],
+          "package_types": [
+            "in_place_delta"
+          ],
+          "storage": "internal_flash"
+        }
+      },
+      "webconfig": false
+    },
+    "WioTrackerL1-1W_room_server_lora_ota_no_external_sensors-full": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": true,
+      "gps": true,
+      "mqtt": false,
+      "otaRole": "lora-receiver",
+      "platform": "NRF52_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "sensorProfile": "full",
+      "sensorProfileSource": "03214a16df2bd09d3272dfb001d2d322c6740f60",
+      "snmp": false,
+      "updateMethods": [
+        "bluetooth",
+        "lora"
+      ],
+      "updateRequirements": {
+        "lora": {
+          "bootloader": "Matching board/storage OTAFIX bootloader",
+          "bootloader_release": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.11",
+          "notes": [
+            "Use a destination-specific .mota package matching the board, target, and storage layout.",
+            "An in-place delta requires the exact firmware currently running as its base.",
+            "The package must fit the receiver's staging and apply workspace.",
+            "Check the release's exact-board bootloader manifest; hardware-pending boards are not covered by the normal release.",
+            "Artifact inspection verifies compiled support; it does not verify the bootloader installed on a physical device.",
+            "Internal storage accepts in-place application deltas, not full application packages."
+          ],
+          "package_types": [
+            "in_place_delta"
+          ],
+          "storage": "internal_flash"
+        }
+      },
+      "webconfig": false
+    },
+    "WioTrackerL1-1W_room_server_lora_ota_no_external_sensors-reduced": {
+      "display": true,
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": true,
+      "gps": true,
+      "mqtt": false,
+      "otaRole": "lora-receiver",
+      "platform": "NRF52_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "sensorProfile": "reduced",
+      "sensorProfileSource": "03214a16df2bd09d3272dfb001d2d322c6740f60",
+      "snmp": false,
+      "updateMethods": [
+        "bluetooth",
+        "lora"
+      ],
+      "updateRequirements": {
+        "lora": {
+          "bootloader": "Matching board/storage OTAFIX bootloader",
+          "bootloader_release": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.11",
+          "notes": [
+            "Use a destination-specific .mota package matching the board, target, and storage layout.",
+            "An in-place delta requires the exact firmware currently running as its base.",
+            "The package must fit the receiver's staging and apply workspace.",
+            "Check the release's exact-board bootloader manifest; hardware-pending boards are not covered by the normal release.",
+            "Artifact inspection verifies compiled support; it does not verify the bootloader installed on a physical device.",
+            "Internal storage accepts in-place application deltas, not full application packages."
+          ],
+          "package_types": [
+            "in_place_delta"
+          ],
+          "storage": "internal_flash"
+        }
+      },
+      "webconfig": false
+    },
+    "WioTrackerL1-1W_room_server_lora_ota_no_external_sensors-with-bootloader-2.4.12-full": {
+      "display": true,
+      "embeddedBootloader": {
+        "activation": "ota bootloader update",
+        "app_offset": 482492,
+        "asset_sha256": "aceae36b3b4c8fa2fa72be9a0d68d63bed53398a17ace6736e932b99b6d85b58",
+        "automatic_delay_seconds": 70,
+        "candidate_sha256": "15f66078197b10352f8217d2d5809357cd3f71341b2c3ed9e55f209ffc71d90d",
+        "image_bytes": 40960,
+        "legacy_sha256": null,
+        "manifest_sha256": "d2f62a4ec9b7c5643d8ed787d9e1710a2fabac34607a0bbb6ea5883a458e6df3",
+        "profile": "wio_tracker_l1",
+        "release": "2.4.12",
+        "stock_legacy": [],
+        "stock_legacy_offset": null
+      },
+      "embeddedBootloaderSource": "40dd42de972762d38083d1faf68f1ba3bc104d61",
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": true,
+      "gps": true,
+      "mqtt": false,
+      "otaRole": "lora-receiver",
+      "platform": "NRF52_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "sensorProfile": "full",
+      "sensorProfileSource": "40dd42de972762d38083d1faf68f1ba3bc104d61",
+      "snmp": false,
+      "updateMethods": [
+        "bluetooth",
+        "lora"
+      ],
+      "updateRequirements": {
+        "lora": {
+          "bootloader": "Matching board/storage OTAFIX bootloader",
+          "bootloader_release": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.11",
+          "notes": [
+            "Use a destination-specific .mota package matching the board, target, and storage layout.",
+            "An in-place delta requires the exact firmware currently running as its base.",
+            "The package must fit the receiver's staging and apply workspace.",
+            "Check the release's exact-board bootloader manifest; hardware-pending boards are not covered by the normal release.",
+            "Artifact inspection verifies compiled support; it does not verify the bootloader installed on a physical device.",
+            "Internal storage accepts in-place application deltas, not full application packages."
+          ],
+          "package_types": [
+            "in_place_delta"
+          ],
+          "storage": "internal_flash"
+        }
+      },
+      "webconfig": false
+    },
+    "WioTrackerL1-1W_room_server_lora_ota_no_external_sensors-with-bootloader-2.4.12-reduced": {
+      "display": true,
+      "embeddedBootloader": {
+        "activation": "ota bootloader update",
+        "app_offset": 455016,
+        "asset_sha256": "aceae36b3b4c8fa2fa72be9a0d68d63bed53398a17ace6736e932b99b6d85b58",
+        "automatic_delay_seconds": 70,
+        "candidate_sha256": "15f66078197b10352f8217d2d5809357cd3f71341b2c3ed9e55f209ffc71d90d",
+        "image_bytes": 40960,
+        "legacy_sha256": null,
+        "manifest_sha256": "d2f62a4ec9b7c5643d8ed787d9e1710a2fabac34607a0bbb6ea5883a458e6df3",
+        "profile": "wio_tracker_l1",
+        "release": "2.4.12",
+        "stock_legacy": [],
+        "stock_legacy_offset": null
+      },
+      "embeddedBootloaderSource": "40dd42de972762d38083d1faf68f1ba3bc104d61",
+      "espnowBridge": false,
+      "femRx": false,
+      "femTx": true,
+      "gps": true,
+      "mqtt": false,
+      "otaRole": "lora-receiver",
+      "platform": "NRF52_PLATFORM",
+      "primaryEspnow": false,
+      "rs232": false,
+      "rxgain": true,
+      "rxps": true,
+      "sensorProfile": "reduced",
+      "sensorProfileSource": "40dd42de972762d38083d1faf68f1ba3bc104d61",
+      "snmp": false,
+      "updateMethods": [
+        "bluetooth",
+        "lora"
+      ],
+      "updateRequirements": {
+        "lora": {
+          "bootloader": "Matching board/storage OTAFIX bootloader",
+          "bootloader_release": "https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/v0.11.0-OTAFIX2.4.11",
+          "notes": [
+            "Use a destination-specific .mota package matching the board, target, and storage layout.",
+            "An in-place delta requires the exact firmware currently running as its base.",
+            "The package must fit the receiver's staging and apply workspace.",
+            "Check the release's exact-board bootloader manifest; hardware-pending boards are not covered by the normal release.",
+            "Artifact inspection verifies compiled support; it does not verify the bootloader installed on a physical device.",
+            "Internal storage accepts in-place application deltas, not full application packages."
+          ],
+          "package_types": [
+            "in_place_delta"
+          ],
+          "storage": "internal_flash"
+        }
+      },
+      "webconfig": false
+    }
+  },
+  "source": "03214a16df2bd09d3272dfb001d2d322c6740f60"
+}

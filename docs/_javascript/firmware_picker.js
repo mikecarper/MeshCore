@@ -595,6 +595,14 @@
         ? "rx-boosted"
         : variant + "-rx-boosted";
     }
+    // Keep the historical internal target on the default facet. For the
+    // other exact identity, avoid claiming a storage type from a filename.
+    if (/^WioTrackerL1-1W_(?:repeater|room_server)_lora_ota_no_external_sensors-full$/i.test(parentTarget)) {
+      variant = "default";
+    }
+    if (/^WioTrackerL1-1W_(?:repeater|room_server)_lora_ota-(?:full|reduced)$/i.test(parentTarget)) {
+      variant = "storage-unverified";
+    }
     if (publication.bootloaderSuffix) {
       variant = (variant === "default" ? "" : variant + "-") +
         publication.bootloaderSuffix.slice(1).replace(/\./g, "-").toLowerCase();
@@ -1247,16 +1255,15 @@
         profile.variant = variantWithoutSensorMarker(profile.variant);
       }
     }
-    // The L1 1W publishes both internal-flash and external-QSPI OTA images
-    // with otherwise identical choices. Identify the internal variant only
-    // from this exact, source-bound target and its packaged storage metadata.
-    // Leave QSPI as the default so existing default selections still work.
+    // The L1 1W publishes both internal and external OTA images. Preserve the
+    // legacy default selection for internal storage and identify QSPI only
+    // from the exact source-bound target and packaged storage metadata.
     if (profile.sensorProfile && sensorSourceMatches &&
-        /^WioTrackerL1-1W_(?:repeater|room_server)_lora_ota_no_external_sensors(?:-with-bootloader-\d+(?:\.\d+){2}(?:-preview\.\d+)?)?-(?:full|reduced)$/i.test(profile.target) &&
+        /^WioTrackerL1-1W_(?:repeater|room_server)_lora_ota(?:-with-bootloader-\d+(?:\.\d+){2}(?:-preview\.\d+)?)?-(?:full|reduced)$/i.test(profile.target) &&
         controls.updateRequirements && controls.updateRequirements.lora &&
-        controls.updateRequirements.lora.storage === "internal_flash") {
+        controls.updateRequirements.lora.storage === "external_qspi") {
       const suffix = targetPublicationParts(profile.target).bootloaderSuffix;
-      profile.variant = "internal-storage" + (suffix ? "-" + suffix.slice(1).replace(/\./g, "-").toLowerCase() : "");
+      profile.variant = "external-qspi" + (suffix ? "-" + suffix.slice(1).replace(/\./g, "-").toLowerCase() : "");
     }
     const embedded = controls.embeddedBootloader;
     if (profile.sensorProfile && ["repeater", "room"].includes(profile.role) &&
@@ -1274,6 +1281,39 @@
   function variantWithoutSensorMarker(value) {
     return String(value || "default").replace(/(?:^|-)no-external-sensors(?=-|$)/g, "")
       .replace(/^-+|-+$/g, "").replace(/--+/g, "-") || "default";
+  }
+
+  function qualifiedL1OneWattStorage(profile) {
+    const match = /^WioTrackerL1-1W_(?:repeater|room_server)_lora_ota(_no_external_sensors)?(-with-bootloader-\d+(?:\.\d+){2}(?:-preview\.\d+)?)?-(full|reduced)$/i.exec(profile.target || "");
+    if (!match) return true;
+    const controls = profile.controls;
+    const lora = controls && controls.updateRequirements && controls.updateRequirements.lora;
+    const expectedStorage = match[1] ? "internal_flash" : "external_qspi";
+    // sensorProfile is assigned only after the filename's source-commit
+    // prefix, platform, role and LoRa capability match the release data.
+    return Boolean(lora && lora.storage === expectedStorage &&
+      profile.sensorProfile === match[3].toLowerCase() &&
+      (!match[2] || profile.embeddedBootloader));
+  }
+
+  function qualifyL1OneWattStoragePairs(profiles) {
+    const pairs = new Map();
+    (profiles || []).forEach(function (profile) {
+      const match = /^WioTrackerL1-1W_(repeater|room_server)_lora_ota(_no_external_sensors)?(-with-bootloader-\d+(?:\.\d+){2}(?:-preview\.\d+)?)?-(full|reduced)$/i.exec(profile.target || "");
+      if (!match) return;
+      const key = [match[1], match[3] || "", match[4]].join("|").toLowerCase();
+      if (!pairs.has(key)) pairs.set(key, []);
+      pairs.get(key).push(profile);
+    });
+    const unavailable = new Set();
+    pairs.forEach(function (pair) {
+      if (pair.length > 1 && pair.some(function (profile) { return !qualifiedL1OneWattStorage(profile); })) {
+        pair.forEach(function (profile) { unavailable.add(profile); });
+      }
+    });
+    return (profiles || []).filter(function (profile) {
+      return !unavailable.has(profile) && qualifiedL1OneWattStorage(profile);
+    });
   }
 
   function hardwareFamilyFor(hardware, hardwareNames) {
@@ -1502,11 +1542,13 @@
 
     // Embedded compatibility images can be consolidated only after their
     // metadata proves the exact replacement; raw rows retain every download.
-    const qualifiedProfiles = omitRakStorageProfilesWhenUnified(
+    const storageCandidates = omitRakStorageProfilesWhenUnified(
       omitTransportsReplacedByFull(profiles, true), true
     );
+    const qualifiedProfiles = qualifyL1OneWattStoragePairs(storageCandidates);
     return {
       releaseSet: releaseSet,
+      unavailableL1OneWattProfiles: storageCandidates.length - qualifiedProfiles.length,
       rows: firmwareRows.filter(function (file) {
         return !file.t114Preview || profiles.some(function (profile) {
           return profile.t114Preview && profile.files.includes(file);
@@ -1961,7 +2003,8 @@
 
   function humanizeVariant(value, hardware) {
     if (!value || value === "default") return "Default";
-    if (value === "internal-storage") return "Internal storage";
+    if (value === "external-qspi") return "External QSPI";
+    if (value === "storage-unverified") return "Storage unverified";
     if (value === "rs232-bridge") return "RS-232 bridge";
     if (value === "mqtt-observer") return "Wi-Fi MQTT observer";
     if (value === "observer-identity") return "Observer OTA identity";
@@ -2814,6 +2857,7 @@
     });
     controls.firmwareProfile = form.querySelector('[data-field="firmwareProfile"]');
     let catalog = { releaseSet: null, rows: [], profiles: [] };
+    let unresolvedLinkedChoices = [];
     let bootloaderCatalog = null;
     let bootloaderNotice = "Loading the latest bootloader downloads...";
     const filters = {};
@@ -2839,6 +2883,13 @@
     }
 
     function updateSelectionUrl() {
+      // Keep the original URL and avoid sharing a silently altered selection
+      // until the user deliberately changes a choice or clears the form.
+      if (unresolvedLinkedChoices.length) {
+        if (shareLink) shareLink.hidden = true;
+        if (copyLinkButton) copyLinkButton.disabled = true;
+        return;
+      }
       const url = shortSelectionUrl(global.location.href, filters, automaticChipFamily);
       if (url !== global.location.href) {
         try {
@@ -2862,13 +2913,14 @@
     function restoreSelectionUrl() {
       if (!catalog.profiles.length) return;
       const restored = selectionFromUrl(global.location.href, catalog.profiles);
+      unresolvedLinkedChoices = restored.unavailable.slice();
       FACET_FIELDS.forEach(function (field) {
         filters[field] = restored.filters[field] || "";
       });
       automaticChipFamily = restored.automaticChipFamily;
       if (linkStatus) linkStatus.textContent = restored.unavailable.length
         ? "Some linked choices are unavailable or incompatible in the current release: " +
-          restored.unavailable.join(", ") + ". Review the remaining choices before downloading."
+          restored.unavailable.join(", ") + ". Choose an available firmware profile or clear all choices before downloading."
         : "";
       refreshFacets();
     }
@@ -3054,10 +3106,20 @@
       });
       sensorToggle.checked = showReducedSensors || explicitlyReduced(catalog.profiles, filters);
       if (sensorToggle.checked) sensorOptions.open = true;
-      const profileChoices = firmwareProfileChoices(selectedProfiles, filters);
+      let profileChoices = firmwareProfileChoices(selectedProfiles, filters);
+      if (unresolvedLinkedChoices.length) {
+        // Partial filters from the broken link are not a deliberate choice.
+        // Offer only complete profiles backed by an available image.
+        profileChoices = profileChoices.filter(function (choice) {
+          return selectedProfiles.some(function (profile) {
+            return firmwareProfileValue(profile) === choice.value &&
+              profileMatchesFacets(profile, filters, PROFILE_FIELDS);
+          });
+        });
+      }
       const profileControl = controls.firmwareProfile;
       renderRadioChoices(profileControl, [{ value: "", label: "Any" }].concat(profileChoices),
-        firmwareProfileValue(filters), groupPrefix + "-firmwareProfile", "firmwareProfile");
+        unresolvedLinkedChoices.length ? "" : firmwareProfileValue(filters), groupPrefix + "-firmwareProfile", "firmwareProfile");
       profileControl.closest("fieldset").disabled = profileChoices.length === 0;
       setRefinementHint(profileControl, "firmwareProfile", profileChoices);
       const requirements = selectionRequirements(selectedProfiles, filters);
@@ -3065,6 +3127,11 @@
         const control = controls[field];
         if (control) control.closest("fieldset").hidden = requirements.hiddenFields.includes(field);
       });
+      // With a broken link, even a single remaining choice must be explicitly
+      // selected; do not let its otherwise hidden control become automatic.
+      if (unresolvedLinkedChoices.length && profileControl) {
+        profileControl.closest("fieldset").hidden = false;
+      }
       const hardwareVariants = valuesForField("hardware");
       const hardwareVariantControl = root.querySelector(
         '[data-role="hardware-variant-control"]'
@@ -3090,6 +3157,19 @@
       result.hidden = true;
       missing.hidden = true;
       resultList.replaceChildren();
+      if (unresolvedLinkedChoices.length) {
+        const panel = root.querySelector('[data-role="bootloader"]');
+        if (panel) panel.hidden = true;
+        if (resultLink) resultLink.hidden = true;
+        status.textContent = "A linked choice is unavailable. Choose an available firmware profile or clear all choices before downloading.";
+        if (feedback) {
+          feedback.hidden = false;
+          feedback.dataset.state = "incomplete";
+          feedback.querySelector('[data-role="filter-count"]').textContent = "Linked choice unavailable";
+          feedback.querySelector('[data-role="filter-note"]').textContent = "Choose an available firmware profile or clear all choices to continue.";
+        }
+        return;
+      }
       const requirements = selectionRequirements(selectionProfiles(), filters);
       const missingFields = requirements.missingFields;
       const cardOptions = {
@@ -3184,6 +3264,10 @@
     function renderBootloader() {
       const panel = root.querySelector('[data-role="bootloader"]');
       if (!panel) return;
+      if (unresolvedLinkedChoices.length) {
+        panel.hidden = true;
+        return;
+      }
       const hardware = filters.hardware;
       const chip = catalog.profiles.some(function (profile) {
         return profile.hardware === hardware && profile.chipFamily === "nrf52";
@@ -3265,13 +3349,14 @@
       if (field === "firmwareProfile") {
         const chosen = firmwareProfileFilters(target.value);
         if (!chosen) return;
-        if (linkStatus) linkStatus.textContent = "";
+        if (target.value) unresolvedLinkedChoices = [];
+        if (!unresolvedLinkedChoices.length && linkStatus) linkStatus.textContent = "";
         PROFILE_FIELDS.forEach(function (part) { filters[part] = chosen[part]; });
         refreshFacets();
         return;
       }
       if (!FACET_FIELDS.includes(field)) return;
-      if (linkStatus) linkStatus.textContent = "";
+      if (!unresolvedLinkedChoices.length && linkStatus) linkStatus.textContent = "";
       if (field === "chipFamily") {
         automaticChipFamily = false;
         // A deliberate family switch takes precedence over an old board.
@@ -3292,6 +3377,7 @@
     form.addEventListener("reset", function (event) {
       event.preventDefault();
       if (!catalog.profiles.length) return;
+      unresolvedLinkedChoices = [];
       automaticChipFamily = false;
       showReducedSensors = true;
       sensorOptions.open = false;
@@ -3341,7 +3427,9 @@
       .then(function (data) {
         catalog = buildCatalog(data.releases, data.controls);
         if (!catalog.releaseSet || !catalog.profiles.length) {
-          throw new Error("no complete release family was found");
+          throw new Error(catalog.unavailableL1OneWattProfiles ?
+            "Wio Tracker L1 1W storage or update metadata could not be verified; refresh or check the release" :
+            "no complete release family was found");
         }
         const set = catalog.releaseSet;
         releaseSetStatus.replaceChildren();
@@ -3361,6 +3449,10 @@
           const link = createElement("a", "open primary release");
           link.href = set.url;
           releaseSetStatus.appendChild(link);
+        }
+        if (catalog.unavailableL1OneWattProfiles) {
+          releaseSetStatus.appendChild(document.createTextNode(
+            " | Some Wio Tracker L1 1W choices are unavailable because storage or update metadata could not be verified. Refresh or check the release."));
         }
         clearButton.disabled = false;
         restoreSelectionUrl();
