@@ -111,6 +111,48 @@ class ReleasePublicationTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "different family"):
                 catalogs.read_stage(directory)
 
+    def test_catalog_preserves_declared_supplemental_firmware_source(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            plan = self.stage(directory)
+            extra = 'b' * 40
+            target = 'Test_repeater-with-bootloader-2.4.13-preview.1-full-ota'
+            folder = directory / 'lora-ota'
+            row, files = self.record(folder, target, 'NRF52_PLATFORM', 'full')
+            for path in files:
+                path.rename(path.with_name(path.name.replace(SOURCE[:8], extra[:8])))
+            row['files'] = [name.replace(SOURCE[:8], extra[:8]) for name in row['files']]
+            row['source_commit'] = extra
+            row['embedded_bootloader'] = {'hardware_tested': False}
+            rows = json.loads((folder / 'TARGET-MANIFEST.json').read_text()) + [row]
+            receipt = dict(source_commit=extra, directory='source-bbbbbbbb',
+                           kind='nrf52_bootloader_preview', bootloader_release='2.4.13-preview.1',
+                           hardware_tested=False, artifact_targets=[target])
+            plan['supplemental_sources'] = [receipt]
+            next(g for g in plan['groups'] if g['key'] == 'lora-ota')['target_count'] += 1
+            def inventory():
+                (folder / 'TARGET-MANIFEST.json').write_text(json.dumps(rows))
+                (folder / 'SHA256SUMS.txt').write_text(''.join(
+                    hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n'
+                    for p in sorted(folder.iterdir()) if p.name != 'SHA256SUMS.txt'))
+                (directory / 'release-plan.json').write_text(json.dumps(plan))
+            inventory()
+            with patch.object(catalogs, 'embedded_bootloader_variant', return_value='2.4.13-preview.1'), \
+                 patch.object(package, 'embedded_bootloader_variant', return_value='2.4.13-preview.1'):
+                _, family, records = catalogs.read_stage(directory)
+                found = next(record for record, _, _ in records if record['artifact_target'] == target)
+                self.assertEqual(family, FAMILY)
+                self.assertEqual(found['source_commit'], extra)
+                receipt['artifact_targets'] = ['another-target']
+                inventory()
+                with self.assertRaisesRegex(ValueError, 'wrong-source'):
+                    catalogs.read_stage(directory)
+                receipt['artifact_targets'] = [target]
+                row['source_commit'] = SOURCE
+                inventory()
+                with self.assertRaisesRegex(ValueError, 'different family'):
+                    catalogs.read_stage(directory)
+
     def test_catalog_distinguishes_qualified_bootloader_firmware_from_ordinary_images(self):
         from nrf52_embedded_bootloader import (BOOT_SIZE, MANIFEST_SHA256, VERSION as BL_VERSION,
                                               load_manifest, select_profile)

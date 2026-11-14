@@ -11,7 +11,7 @@ from pathlib import Path
 import re
 import subprocess
 from urllib.parse import quote
-from package_cascade_release import embedded_bootloader_variant
+from package_cascade_release import embedded_bootloader_variant, source_allowed, supplemental_sources
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,6 +67,7 @@ def read_stage(stage):
     source = plan["source"]
     if not re.fullmatch(r"[a-f0-9]{40}", source):
         raise ValueError("release source must be a full commit")
+    receipts = supplemental_sources(plan, source)
     family = f"v{plan['version']}-halo-keymind-cascade-dev-{source[:8]}"
     records = []
     seen = set()
@@ -89,9 +90,11 @@ def read_stage(stage):
             raise ValueError("release target count differs from manifest")
         for row in manifests:
             logical_target = row["artifact_target"]
-            if row.get("verified") is not True or row.get("source_commit", source) != source:
+            row_source = row.get("source_commit", source)
+            if row.get("verified") is not True or not source_allowed(row, receipts, source):
                 raise ValueError("unqualified or wrong-source release profile")
             embedded_bootloader_variant(row)
+            artifact_family = f"v{plan['version']}-halo-keymind-cascade-dev-{row_source[:8]}"
             files = []
             for name in row["files"]:
                 if Path(name).name != name or name not in checksums:
@@ -100,7 +103,7 @@ def read_stage(stage):
                 if hashlib.sha256(path.read_bytes()).hexdigest() != checksums[name]:
                     raise ValueError(f"release asset checksum failed: {name}")
                 if path.suffix in SUFFIXES:
-                    if family not in name:
+                    if artifact_family not in name:
                         raise ValueError("firmware filename belongs to a different family")
                     files.append(path)
             if not files:
@@ -119,7 +122,7 @@ def read_stage(stage):
                         re.fullmatch(r"-full(?:-usb-wifi|-logging)?(?:-ota)?", infix))
                     or (row["build_profile"] == "logging" and
                         re.fullmatch(r"-logging(?:-ota)?", infix)))))
-            qualified_stem = published_target + "-" + family
+            qualified_stem = published_target + "-" + artifact_family
             if any(path.stem.removesuffix("-merged") != qualified_stem for path in files):
                 raise ValueError("firmware filename differs from exact release source/version")
             if (not valid_infix or any(qualified_stem + suffix not in row["files"]

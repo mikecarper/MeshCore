@@ -700,6 +700,11 @@ class BootloaderReleaseOrchestrationTest(unittest.TestCase):
                             for target in targets))
         self.assertTrue(all(release.bootloader_version_for_target(entry["target"]) == "2.4.12"
                             for entry in exclusions))
+        historical_targets, historical_exclusions = release.embedded_bootloader_selection(
+            records, include_previews=False)
+        self.assertEqual(historical_targets, [])
+        self.assertEqual({entry['source_hardware'] for entry in historical_exclusions},
+                         set(preview_hardware + unresolved))
 
         ordinary = sensor_pair("MeshTracker_X1_repeater_lora_ota_no_external_sensors")
         embedded = deepcopy(ordinary)

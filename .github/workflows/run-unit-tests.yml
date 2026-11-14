@@ -1857,6 +1857,7 @@ jobs:
           python3 -B test/test_neighbor_scope_storage.py
           python3 -B test/test_ed25519_compact.py
           python3 -B test/test_cascade_release_package.py
+          python3 -B test/test_consolidate_local_release.py
           python3 -B test/test_nrf52_bootloader_exceptions.py
           python3 -B test/test_release_publication.py
           python3 -B test/test_local_release_full_selection.py

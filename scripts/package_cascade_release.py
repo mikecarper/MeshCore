@@ -54,8 +54,28 @@ def validate_embedded_stock_metadata(metadata, profile, parsed):
     # with convenient names or a hash copied from another board's package.
     if "stock_legacy" not in metadata:
         return "stock_legacy_offset" not in metadata
-    if metadata["stock_legacy"] != embedded_stock_legacy_records(profile, parsed):
+    from nrf52_embedded_bootloader import BOOTLOADER_HARDWARE
+    hardware = BOOTLOADER_HARDWARE.get(parsed["sourceHardware"], parsed["sourceHardware"])
+    actual = metadata["stock_legacy"]
+    expected = embedded_stock_legacy_records(profile, parsed)
+    if not isinstance(actual, list) or len(actual) != len(expected):
         return False
+    for old, current in zip(actual, expected):
+        # An older receipt remains valid when the same reviewed binary was
+        # subsequently confirmed for another board. Its actual hashes,
+        # firmware geometry, origin and the current board binding stay exact.
+        if (not isinstance(old, dict) or set(old) != set(current)
+                or any(old[key] != current[key] for key in current
+                       if key not in ("hardware", "profiles"))
+                or not isinstance(old.get("hardware"), list)
+                or not isinstance(old.get("profiles"), list)
+                or any(not isinstance(value, str) for value in old["hardware"] + old["profiles"])
+                or len(set(old["hardware"])) != len(old["hardware"])
+                or len(set(old["profiles"])) != len(old["profiles"])
+                or hardware not in old["hardware"] or profile["id"] not in old["profiles"]
+                or not set(old["hardware"]) <= set(current["hardware"])
+                or not set(old["profiles"]) <= set(current["profiles"])):
+            return False
     offset = metadata.get("stock_legacy_offset")
     return (type(offset) is int and offset >= 0 and offset % 4 == 0
             if metadata["stock_legacy"] else offset is None)
@@ -554,7 +574,89 @@ def validate_local_bootloader_report(directory, manifest):
         raise ValueError("local release bootloader exception report disagrees with its inventory")
 
 
-def collect_local_release(directory, version, source):
+def supplemental_sources(manifest, source):
+    """Read explicit, narrowly scoped mixed-source build receipts."""
+    from nrf52_embedded_bootloader import PREVIEW_VERSION
+
+    sources = manifest.get("supplemental_sources", [])
+    if not isinstance(sources, list):
+        raise ValueError("invalid supplemental source inventory")
+    by_directory = {}
+    commits = {source}
+    artifacts = set()
+    for item in sources:
+        if not isinstance(item, dict):
+            raise ValueError("invalid supplemental source")
+        commit, folder = item.get("source_commit"), item.get("directory")
+        names = item.get("artifact_targets")
+        if (not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit)
+                or commit in commits or commit[:8] in {value[:8] for value in commits}
+                or folder != "source-" + commit[:8] or folder in by_directory
+                or item.get("kind") != "nrf52_bootloader_preview"
+                or item.get("bootloader_release") != PREVIEW_VERSION
+                or item.get("hardware_tested") is not False
+                or not isinstance(names, list) or not names
+                or any(not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_.+-]+", name)
+                       for name in names)
+                or len(set(names)) != len(names) or artifacts.intersection(names)):
+            raise ValueError("invalid supplemental source receipt")
+        commits.add(commit)
+        artifacts.update(names)
+        by_directory[folder] = item
+    return by_directory
+
+
+def source_allowed(manifest, receipts, source):
+    record_source = manifest.get("source_commit", source)
+    if record_source == source:
+        return True
+    for item in receipts.values():
+        if (item["source_commit"] == record_source
+                and manifest["artifact_target"] in item["artifact_targets"]):
+            return (manifest.get("platform") == "NRF52_PLATFORM"
+                    and embedded_bootloader_variant(manifest) == item["bootloader_release"]
+                    and manifest["embedded_bootloader"].get("hardware_tested") is False)
+    return False
+
+
+def packaged_nrf52_identity(record):
+    packages = [path for path in record["files"] if path.suffix == ".zip"]
+    if len(packages) != 1:
+        raise ValueError("supplemental comparison requires one DFU package")
+    with zipfile.ZipFile(packages[0]) as package:
+        app = json.loads(package.read("manifest.json"))["manifest"]["application"]
+        data = package.read(app["bin_file"])
+    identity, layout = parse_endf_ident(data), parse_nrf52_layout(data)
+    if identity is None or layout is None:
+        raise ValueError("supplemental comparison requires a packaged identity and layout")
+    return identity, layout
+
+
+def validate_supplemental_matches(records, source):
+    """Only accept additions matching the existing target, role and flash layout."""
+    ordinary = {}
+    for record in records:
+        manifest = record["manifest"]
+        if (manifest.get("source_commit", source) == source
+                and manifest.get("platform") == "NRF52_PLATFORM"
+                and not embedded_bootloader_variant(manifest)):
+            key = (manifest["target"], nrf52_sensor_profile(manifest))
+            ordinary.setdefault(key, []).append(record)
+    for record in records:
+        manifest = record["manifest"]
+        if manifest.get("source_commit", source) == source:
+            continue
+        key = (manifest["target"], nrf52_sensor_profile(manifest))
+        candidates = ordinary.get(key, [])
+        if len(candidates) != 1 or not key[1]:
+            raise ValueError(f"{manifest['artifact_target']}: supplemental image lacks its exact ordinary sensor variant")
+        original = candidates[0]
+        if (manifest.get("ota_update_requirements") != original["manifest"].get("ota_update_requirements")
+                or packaged_nrf52_identity(record) != packaged_nrf52_identity(original)):
+            raise ValueError(f"{manifest['artifact_target']}: supplemental identity or flash layout differs from the ordinary image")
+
+
+def collect_local_release(directory, version, source, *, historical_bootloader_inventory=False):
     """Recheck a completed local release without adding migration-only images."""
     from build_esp32_partition_migration import verify_archive
     from esp32_migration_assets import standalone_assets
@@ -587,14 +689,37 @@ def collect_local_release(directory, version, source):
               if p.is_file() and p != directory / "SHA256SUMS.txt"}
     if checked != actual:
         raise ValueError("local release checksum inventory is incomplete")
+    additions = supplemental_sources(manifest, source)
+    seen_additions = {folder: set() for folder in additions}
     records = []
     for group in sorted((directory / "firmware").iterdir()):
-        if not group.is_dir():
+        if not group.is_dir() or group.is_symlink():
             raise ValueError("unexpected file outside firmware groups")
         group_records = collect_artifacts(group, f"{version}-{source[:8]}")
+        for child in sorted(path for path in group.iterdir() if path.is_dir()):
+            receipt = additions.get(child.name)
+            if receipt is None or child.is_symlink():
+                raise ValueError("unrecognized supplemental firmware directory")
+            commit = receipt["source_commit"]
+            candidates = collect_artifacts(child, f"{version}-{commit[:8]}")
+            for record in candidates:
+                qualified = record["manifest"]
+                artifact = qualified["artifact_target"]
+                if (artifact not in receipt["artifact_targets"] or artifact in seen_additions[child.name]
+                        or qualified.get("source_commit", commit) != commit
+                        or qualified.get("platform") != "NRF52_PLATFORM"
+                        or embedded_bootloader_variant(qualified) != receipt["bootloader_release"]
+                        or qualified["embedded_bootloader"].get("hardware_tested") is not False):
+                    raise ValueError(f"{artifact}: supplemental image disagrees with its source receipt")
+                qualified["source_commit"] = commit
+                seen_additions[child.name].add(artifact)
+            group_records.extend(candidates)
         if any(category(record) != group.name for record in group_records):
             raise ValueError("local release firmware group disagrees with qualification")
         records.extend(group_records)
+    if any(seen_additions[name] != set(item["artifact_targets"]) for name, item in additions.items()):
+        raise ValueError("supplemental firmware inventory is incomplete")
+    validate_supplemental_matches(records, source)
     # Standard and expanded Full images may retain the same OTA identity.
     # Match each independently qualified package by its exact file inventory;
     # the logical target alone cannot distinguish those publication profiles.
@@ -613,7 +738,7 @@ def collect_local_release(directory, version, source):
         qualified = record["manifest"]
         if (qualified["target"] != entry["target"]
                 or qualified["artifact_target"] != entry["artifact_target"]
-                or qualified.get("source_commit", source) != source
+                or qualified.get("source_commit", source) != entry.get("source_commit", source)
                 or qualified["platform"] != entry["platform"]
                 or qualified["build_profile"] != entry["profile"]
                 or qualified.get("embedded_bootloader") != entry.get("embedded_bootloader")
@@ -660,7 +785,8 @@ def collect_local_release(directory, version, source):
                     if not embedded_bootloader_variant(record["manifest"])]
         embedded = [record for record in records
                     if embedded_bootloader_variant(record["manifest"])]
-        if manifest["nrf52_bootloader_variants"] != validate_embedded_bootloader_records(ordinary, embedded):
+        if manifest["nrf52_bootloader_variants"] != validate_embedded_bootloader_records(
+                ordinary, embedded, include_previews=not historical_bootloader_inventory):
             raise ValueError("local release embedded bootloader inventory disagrees with qualified files")
         bootloaders = bootloader_directory
         if manifest.get("nrf52_bootloaders") != validate_bootloader_catalog(bootloaders):
@@ -689,11 +815,13 @@ def main():
     version = f"{firmware_label}-{args.commit[:8]}"
     extras = []
     bootloader_exceptions = ""
+    source_receipts = {}
     if args.local_release:
         if args.allow_partial:
             parser.error("a completed local release cannot be partially published")
         local_manifest = json.loads((args.input / "manifest.json").read_text(encoding="ascii"))
         require_no_publication_blockers(local_manifest)
+        source_receipts = supplemental_sources(local_manifest, args.commit)
         records, extras, radio = collect_local_release(args.input, firmware_label, args.commit)
         if json.loads((args.input / "manifest.json").read_text(encoding="ascii")) != local_manifest:
             raise ValueError("local release manifest changed during qualification")
@@ -760,7 +888,8 @@ def main():
         summaries = []
         for record in group["records"]:
             manifest = record["manifest"]
-            if manifest.get("source_commit", args.commit) != args.commit:
+            record_source = manifest.get("source_commit", args.commit)
+            if not source_allowed(manifest, source_receipts, args.commit):
                 raise ValueError("qualified firmware belongs to another source")
             file_links = []
             for path in record["files"]:
@@ -772,7 +901,7 @@ def main():
             methods = ", ".join(manifest.get("ota_update_methods", [])) or "USB"
             # Older capability manifests inherit source provenance from the
             # validated completed release inventory. Preserve their raw bytes.
-            summaries.append({**manifest, "source_commit": args.commit,
+            summaries.append({**manifest, "source_commit": record_source,
                               "sensor_profile": nrf52_sensor_profile(manifest),
                               "files": [path.name for path in record["files"]]})
             rows.append(f"<tr><td>{html.escape(manifest['artifact_target'])}</td><td>{html.escape(release_profile_label(manifest))}</td><td>{html.escape(methods)}</td><td>{' | '.join(file_links)}</td></tr>")
@@ -836,6 +965,12 @@ def main():
                             f"Only individually qualified firmware is published. [Missing builds]({report_url}).\n\n")
         channel = 'Stable release' if args.stable else 'Development prerelease'
         description = descriptions[group["key"]]
+        additional_sources = sorted({record["manifest"].get("source_commit", args.commit)
+                                     for record in group["records"]} - {args.commit})
+        source_note = ("\nAdditional nRF52 bootloader preview source: "
+                       + ", ".join(f"`{commit}`" for commit in additional_sources)
+                       + ". These board-specific bootloaders were not hardware tested.\n"
+                       if additional_sources else "")
         split_note = ("These pages are split for download limits and contain the same firmware version; "
                       "the picker finds the correct page for your board.\n\n" if description["parts"] > 1 else "")
         body = (f"[Open the firmware picker]({docs_url}firmware_picker/) | "
@@ -854,7 +989,7 @@ def main():
                 "Other firmware and tools:\n\n" + links + "\n\n"
                 f"USA Cascade defaults: **{radio['frequency']} MHz, BW{radio['bandwidth']}, "
                 f"SF{radio['sf']}, CR{radio['cr']}**. Saved radio settings take precedence.\n\n"
-                f"Firmware identifier: `{base_tag}`. Source: `{args.commit}`.\n")
+                f"Firmware identifier: `{base_tag}`. Base source: `{args.commit}`.\n" + source_note)
         (args.output / (group["key"] + "-notes.md")).write_text(body)
         (destination / "BUILD-NOTES.txt").write_text(body)
     picker = ("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>"
@@ -886,6 +1021,7 @@ def main():
         group["asset_count"] = len(files) + 1
         group["target_count"] = len(group.pop("records"))
     (args.output / "release-plan.json").write_text(json.dumps({"source": args.commit, "version": args.version, "radio": radio, "groups": groups,
+        "supplemental_sources": list(source_receipts.values()),
         "provenance": "local-release" if args.local_release else "matrix-status",
         "matrix": {"state": status["state"], "exit_code": int(status["exit_code"]), "failures": failures,
                    "portable_profile_exclusions": portable_exclusions}}, indent=2) + "\n")

@@ -20,6 +20,75 @@ from motalib import ENDF_LEN, FwIdent, Nrf52Layout, ensure_endf, ensure_nrf52_la
 
 
 class ReleaseQualificationTest(unittest.TestCase):
+    def test_historical_stock_receipt_allows_only_newly_reviewed_aliases(self):
+        from nrf52_embedded_bootloader import load_manifest, select_profile
+        target = 'Heltec_t114_repeater_lora_ota_no_external_sensors'
+        profile, parsed = select_profile(load_manifest(), target)
+        current = package.embedded_stock_legacy_records(profile, parsed)
+        old = deepcopy(current)
+        item = next(row for row in old if 'heltec_mesh_solar' in row['profiles'])
+        item['profiles'].remove('heltec_mesh_solar')
+        item['hardware'].remove('Heltec_mesh_solar')
+        metadata = {'stock_legacy': old, 'stock_legacy_offset': 4}
+        self.assertTrue(package.validate_embedded_stock_metadata(metadata, profile, parsed))
+        for fault in ('hash', 'board', 'invented_alias', 'missing_record'):
+            bad = deepcopy(metadata)
+            if fault == 'hash':
+                bad['stock_legacy'][0]['image_sha256'] = 'a' * 64
+            elif fault == 'board':
+                bad['stock_legacy'][0]['hardware'].remove('Heltec_t114')
+            elif fault == 'invented_alias':
+                bad['stock_legacy'][0]['profiles'].append('invented')
+            else:
+                bad['stock_legacy'].pop()
+            with self.subTest(fault=fault):
+                self.assertFalse(package.validate_embedded_stock_metadata(bad, profile, parsed))
+
+    def test_supplemental_source_receipt_is_exact_and_marks_preview(self):
+        source, extra = 'a' * 40, 'b' * 40
+        receipt = dict(source_commit=extra, directory='source-bbbbbbbb',
+                       kind='nrf52_bootloader_preview', bootloader_release='2.4.13-preview.1',
+                       hardware_tested=False, artifact_targets=['example-repeater-full-ota'])
+        self.assertEqual(package.supplemental_sources({'supplemental_sources': [receipt]}, source),
+                         {'source-bbbbbbbb': receipt})
+        for field, value in (('source_commit', source), ('directory', '../bad'),
+                             ('hardware_tested', True), ('kind', 'ordinary'),
+                             ('artifact_targets', []), ('bootloader_release', '2.4.12')):
+            bad = {**receipt, field: value}
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'supplemental'):
+                package.supplemental_sources({'supplemental_sources': [bad]}, source)
+        with self.assertRaisesRegex(ValueError, 'supplemental'):
+            package.supplemental_sources({'supplemental_sources': [receipt, receipt]}, source)
+        candidate = {'source_commit': extra, 'artifact_target': receipt['artifact_targets'][0],
+                     'platform': 'NRF52_PLATFORM', 'embedded_bootloader': {'hardware_tested': False}}
+        receipts = {'source-bbbbbbbb': receipt}
+        with patch.object(package, 'embedded_bootloader_variant', return_value='2.4.13-preview.1'):
+            self.assertTrue(package.source_allowed(candidate, receipts, source))
+            self.assertFalse(package.source_allowed({**candidate, 'platform': 'ESP32_PLATFORM'}, receipts, source))
+            self.assertFalse(package.source_allowed({**candidate, 'artifact_target': 'other'}, receipts, source))
+            self.assertFalse(package.source_allowed({**candidate, 'source_commit': 'c' * 40}, receipts, source))
+
+    def test_supplemental_must_match_ordinary_packaged_identity_and_layout(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            old = root / 'old'
+            new = root / 'new'
+            old.mkdir()
+            new.mkdir()
+            base = 'a' * 40
+            ordinary = self.sensor_record(old, 'full', target='test_repeater')
+            preview = self.sensor_record(new, 'full', target='test_repeater')
+            preview['manifest']['source_commit'] = 'b' * 40
+            package.validate_supplemental_matches([ordinary, preview], base)
+            for changes in (dict(target_id=123), dict(app_base=0x27000),
+                            dict(storage='external_qspi')):
+                replacement = self.sensor_record(new, 'full', target='test_repeater', **changes)
+                replacement['manifest']['source_commit'] = 'b' * 40
+                with self.subTest(changes=changes), self.assertRaisesRegex(ValueError, 'identity or flash layout'):
+                    package.validate_supplemental_matches([ordinary, replacement], base)
+            with self.assertRaisesRegex(ValueError, 'lacks its exact ordinary'):
+                package.validate_supplemental_matches([preview], base)
+
     def test_portable_exclusions_require_a_complete_summary(self):
         self.assertEqual(package.portable_profile_exclusions({}), [])
         with tempfile.TemporaryDirectory() as temp:

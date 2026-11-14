@@ -261,7 +261,7 @@ def bootloader_version_for_target(target: str) -> str:
     return BOOTLOADER_PREVIEW_VERSION if matches else BOOTLOADER_VERSION
 
 
-def embedded_bootloader_selection(records: list[dict]) -> tuple[list[str], list[dict]]:
+def embedded_bootloader_selection(records: list[dict], *, include_previews: bool = True) -> tuple[list[str], list[dict]]:
     """Exclude only exact hardware explicitly unavailable in the pinned catalog."""
     targets = sorted({record["manifest"]["target"] for record in records
                       if record["manifest"]["platform"] == "NRF52_PLATFORM"
@@ -293,7 +293,7 @@ def embedded_bootloader_selection(records: list[dict]) -> tuple[list[str], list[
                     or status not in ("retired", "source-pending", "source-blocked")
                     or not isinstance(reason, str) or not reason.strip() or not reason.isascii()):
                 raise ValueError(f"{target}: invalid unavailable bootloader catalog metadata")
-            if profile_id in PREVIEW_PROFILE_IDENTITIES:
+            if include_previews and profile_id in PREVIEW_PROFILE_IDENTITIES:
                 preview = preview_bootloader_catalog()
                 selected, _ = select_bootloader_profile(preview, target)
                 if selected.get("id") != profile_id or selected.get("hardwareTested") is not False:
@@ -344,9 +344,10 @@ def build_embedded_bootloader_artifacts(ordinary_work: Path, work: Path,
         ], work / "build-logs" / f"embedded-{target}.log", environment)
 
 
-def validate_embedded_bootloader_records(ordinary: list[dict], embedded: list[dict]) -> dict:
+def validate_embedded_bootloader_records(ordinary: list[dict], embedded: list[dict], *,
+                                         include_previews: bool = True) -> dict:
     """Require every requested variant beside its unchanged ordinary package."""
-    targets, exclusions = embedded_bootloader_selection(ordinary)
+    targets, exclusions = embedded_bootloader_selection(ordinary, include_previews=include_previews)
     catalog = load_bootloader_manifest()
     expected = {}
     for record in ordinary:
