@@ -571,8 +571,12 @@ int main(int argc, char** argv) {
       mock_write_capacity.store(0);
       const std::string first(400, 'a');
       const std::string second(400, 'b');
-      assert(ethernet_client.write(reinterpret_cast<const uint8_t*>(first.data()), first.size()) == first.size());
-      assert(ethernet_client.write(reinterpret_cast<const uint8_t*>(second.data()), second.size()) == 112);
+      // The worker can hold SPI briefly even when the client is online.
+      // Retry only the unaccepted bytes, then verify the queue really is full.
+      wait_until([] { return ethernet_queue_capacity() == ETHERNET_CLI_TX_BUFFER_BYTES; });
+      write_all(reinterpret_cast<const uint8_t*>(first.data()), first.size());
+      write_all(reinterpret_cast<const uint8_t*>(second.data()), 112);
+      assert(ethernet_queue_capacity() == 0);
       assert(ethernet_client.availableForWrite() == 0);
       assert(ethernet_client.write(uint8_t{'x'}) == 0);
       mock_ethernet_input = "eth off\r";
@@ -580,7 +584,7 @@ int main(int argc, char** argv) {
       assert(!ethernet_read_line(line, sizeof(line)) && mock_ethernet_input == "eth off\r");
       mock_write_capacity.store(2048);
       wait_until([&] { return output().find(first + second.substr(0, 112)) != std::string::npos && ethernet_is_running(); });
-      assert(ethernet_client.write(reinterpret_cast<const uint8_t*>(second.data() + 112), 288) == 288);
+      write_all(reinterpret_cast<const uint8_t*>(second.data() + 112), 288);
       wait_until([&] { return output().find(first + second) != std::string::npos && ethernet_is_running(); });
       read_complete_line(line, sizeof(line));
       assert(std::string(line) == "eth off");
@@ -631,7 +635,7 @@ int main(int argc, char** argv) {
       accept_connection();
       (void)ethernet_take_session_reset();
       mock_ack_send.store(false);
-      assert(ethernet_client.write(reinterpret_cast<const uint8_t*>("payload"), 7) == 7);
+      write_all(reinterpret_cast<const uint8_t*>("payload"), 7);
       wait_until([] { return !ethernet_is_running(); });
       assert_busy_facade();
       for (int iteration = 0; iteration < 10; ++iteration) ethernet_loop_maintain();
@@ -647,7 +651,8 @@ int main(int argc, char** argv) {
       (void)ethernet_take_session_reset();
       mock_ack_send.store(false);
       mock_stuck_command.store(true);
-      assert(ethernet_client.write(uint8_t{'z'}) == 1);
+      const uint8_t payload = 'z';
+      write_all(&payload, 1);
       wait_until([] { return ethernet_state.load() == EthernetCliState::Faulted; });
       assert(command("eth.status").find("controller stalled") != std::string::npos);
       assert_busy_facade();
