@@ -122,6 +122,17 @@ class EarlyOtaAvailabilityBrowserTest(unittest.TestCase):
         self.assertFalse(any(result['gated']), result)
         self.assertRegex(result['availability']['text'], r'(?i)support|available|ready|receiver detected')
 
+    def test_preceding_cached_checks_script_does_not_break_investigation(self):
+        harness = availability_harness()
+        marker = "window.addEventListener('load',async()=>{"
+        self.assertEqual(harness.count(marker), 1)
+        harness = harness.replace(marker, marker+
+            "delete LoraOtaChecks.coldRakStatus;delete LoraOtaChecks.prepareColdRakStorage;", 1)
+        result = run_harness(harness, timeout=90)
+        self.check_read_only(result)
+        self.assertTrue(result['complete'], result)
+        self.assertFalse(any(result['gated']), result)
+
     def test_cold_rak_prepares_storage_before_reporting_availability(self):
         harness = availability_harness()
         marker = "cmds.push('remote '+cmd);"

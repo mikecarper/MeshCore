@@ -875,11 +875,14 @@
         if(command==='ota status' || command==='ota self') {
           // Idle adaptive RAKs can report an unprobed store as an error. Read
           // the image identity before deciding whether that report is real.
-          if(command==='ota status' && LoraOtaChecks.coldRakStatus(replies['ota status'])) {
+          // A browser may briefly have the preceding checks script cached.
+          const hasColdRakChecks=typeof LoraOtaChecks.coldRakStatus==='function' &&
+            typeof LoraOtaChecks.prepareColdRakStorage==='function';
+          if(command==='ota status' && hasColdRakChecks && LoraOtaChecks.coldRakStatus(replies['ota status'])) {
             add('Checking whether update storage needs preparation.');
             continue;
           }
-          if(command==='ota self' && LoraOtaChecks.coldRakStatus(replies['ota status'])) {
+          if(command==='ota self' && hasColdRakChecks && LoraOtaChecks.coldRakStatus(replies['ota status'])) {
             showInvestigationProgress('Checking update storage...');
             const checked = await LoraOtaChecks.prepareColdRakStorage(async request => {
               checkStopped(); const result = await readCommand(request); checkStopped(); return result;
