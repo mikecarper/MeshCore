@@ -21,6 +21,13 @@ FAMILY = VERSION + "-" + SOURCE[:8]
 
 
 class ReleasePublicationTest(unittest.TestCase):
+    def mock_local_manifest(self, base):
+        # The packaging CLI now reads the local manifest before calling the
+        # mocked collector, so its publication checks still run in these tests.
+        directory = base / "input"
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "manifest.json").write_text("{}\n", encoding="ascii")
+
     def record(self, directory, target, platform="ESP32_PLATFORM", sensor="", *,
                publication_target=None, build_profile="auto"):
         directory.mkdir(parents=True, exist_ok=True)
@@ -301,6 +308,7 @@ class ReleasePublicationTest(unittest.TestCase):
     def test_standalone_migration_assets_reach_utility_release(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
+            self.mock_local_manifest(base)
             row, files = self.record(base / "input", "Station_G2_companion_radio_usb")
             extras = []
             for suffix in ("expander.bin", "expander.mota", "migration.json"):
@@ -325,6 +333,7 @@ class ReleasePublicationTest(unittest.TestCase):
         self.assertEqual(package.MAX_RELEASE_ASSETS, 1000)
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
+            self.mock_local_manifest(base)
             extras = []
             for index in range(6):
                 path = base / f"migration-{index}-expander.bin"
@@ -343,6 +352,7 @@ class ReleasePublicationTest(unittest.TestCase):
     def test_stable_publication_notes_and_assets_are_ascii(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
+            self.mock_local_manifest(base)
             row, files = self.record(base / "input", "Station_G2_companion_radio_usb")
             row.pop("source_commit")  # Actual older cap manifests inherit validated release provenance.
             output = base / "stage"
@@ -406,6 +416,7 @@ class ReleasePublicationTest(unittest.TestCase):
     def test_staged_notes_lead_with_picker_and_link_human_role_choices(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
+            self.mock_local_manifest(base)
             companion, companion_files = self.record(base / "input", "Station_G2_companion_radio_full")
             repeater, repeater_files = self.record(base / "input", "Station_G2_repeater", build_profile="full")
             records = [{"manifest": companion, "files": companion_files},
@@ -448,6 +459,7 @@ class ReleasePublicationTest(unittest.TestCase):
     def test_split_pages_keep_tags_and_explain_one_version_with_human_links(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
+            self.mock_local_manifest(base)
             records = []
             for index in range(3):
                 target = f"board_{index}_repeater_lora_ota"
