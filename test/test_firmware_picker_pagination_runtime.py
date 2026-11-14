@@ -29,6 +29,7 @@ class PickerPaginationRuntime(unittest.TestCase):
         bootstrap = '''<script>
 const requests=[];
 const errors=[];
+let firstReleaseFailed=false, retried=false;
 const pages=%s;
 window.addEventListener('error', event => errors.push(String(event.message)));
 window.addEventListener('unhandledrejection', event => errors.push(String(event.reason)));
@@ -36,6 +37,7 @@ window.fetch=async function(url) {
   requests.push(String(url));
   if (String(url).includes('/releases?')) {
     const first=String(url).endsWith('page=1');
+    if (first && !firstReleaseFailed) { firstReleaseFailed=true; return {ok:false,status:503}; }
     // A later page can be slower than the initial document load.
     if (!first) await new Promise(resolve=>setTimeout(resolve, 1200));
     return {ok:true,json:async()=>first?pages[0]:pages[1]};
@@ -51,6 +53,12 @@ window.addEventListener('DOMContentLoaded',()=>{
     const status=root && root.querySelector('[data-role="release-set"]');
     const result={requests,errors,role:role ? role.textContent : '',
       status:status ? status.textContent : ''};
+    if (!retried && result.status.includes('unavailable')) {
+      retried=true;
+      const version=root.querySelector('[data-role="release-version"]');
+      version.value='1.18.0.1'; version.dispatchEvent(new Event('change'));
+      version.value='1.18.0.2'; version.dispatchEvent(new Event('change'));
+    }
     if ((requests.some(url=>url.endsWith('page=2')) && result.status.includes('Stable') &&
          result.role.includes('Repeater')) || errors.length || Date.now()>=deadline) {
       const xhr=new XMLHttpRequest(); xhr.open('POST','/result'); xhr.send(JSON.stringify(result));
@@ -217,13 +225,17 @@ window.addEventListener('DOMContentLoaded',()=>{
                              'draft':False, 'prerelease':False, 'assets':[{'name':name, 'size':1000000,
                              'browser_download_url':'https://github.com/mikecarper/MeshCore/releases/download/'+family+'/'+name}]})
         bootstrap = '''<script>
-const releases=%s, snapshots=%s, errors=[]; let phase=0, prior='', old='', recorded=null;
+const releases=%s, snapshots=%s, errors=[]; let phase=0, prior='', old='', recorded=null, legacyAttempts=0;
 window.addEventListener('error', e=>errors.push(String(e.message)));
 window.addEventListener('unhandledrejection', e=>errors.push(String(e.reason)));
 window.fetch=async function(url) {
   const path=String(url);
   if(path.includes('/releases?')) return {ok:true,json:async()=>releases};
-  if(path.includes('firmware_controls_1.18.0.1.json')) return {ok:true,json:async()=>snapshots['1.18.0.1']};
+  if(path.includes('firmware_controls_1.18.0.1.json')) {
+    legacyAttempts++;
+    if(legacyAttempts===1) return {ok:false,status:503};
+    return {ok:true,json:async()=>snapshots['1.18.0.1']};
+  }
   if(path.includes('firmware_controls.json')) return {ok:true,json:async()=>snapshots['1.18.0.2']};
   return {ok:false,status:404,json:async()=>null};
 };
@@ -235,17 +247,23 @@ window.addEventListener('DOMContentLoaded',()=>{
   const select=root && root.querySelector('[data-role="release-version"]');
   if(phase===0 && status.includes('Version 1.18.0.2')) {
    prior=select.value; select.value='1.18.0.1'; select.dispatchEvent(new Event('change')); phase=1;
-  } else if(phase===1 && status.includes('Version 1.18.0.1')) {
+  } else if(phase===1 && status.includes('1.18.0.1 is unavailable')) {
+   if(!root.querySelector('[data-role="result"]').hidden) errors.push('A failed load showed a recommendation');
+   select.value='1.18.0.2';select.dispatchEvent(new Event('change'));phase=2;
+  } else if(phase===2 && status.includes('Version 1.18.0.2')) {
+   select.value='1.18.0.1';select.dispatchEvent(new Event('change'));phase=3;
+  } else if(phase===3 && status.includes('Version 1.18.0.1')) {
    const search=root.querySelector('[data-field="asset-search"]');
    search.value='Heltec_t1_repeater'; search.dispatchEvent(new Event('input'));
    old=root.querySelector('[data-role="asset-results"]').textContent;
    recorded={errors,prior,selected:select.value,query:location.search,
      share:root.querySelector('[data-role="share-link"]').href,old};
    snapshots['1.18.0.1'].source='0000000000000000000000000000000000000000';
-   select.value='1.18.0.2';select.dispatchEvent(new Event('change'));phase=2;
-  } else if(phase===2 && status.includes('Version 1.18.0.2')) {
-   select.value='1.18.0.1';select.dispatchEvent(new Event('change'));phase=3;
-  } else if(phase===3 && status.includes('1.18.0.1 is unavailable')) {
+   select.value='1.18.0.2';select.dispatchEvent(new Event('change'));phase=4;
+  } else if(phase===4 && status.includes('Version 1.18.0.2')) {
+   select.value='1.18.0.1';select.dispatchEvent(new Event('change'));phase=5;
+  } else if(phase===5 && status.includes('1.18.0.1 is unavailable')) {
+   recorded.legacyAttempts=legacyAttempts;
    recorded.failureStatus=root.querySelector('[data-role="status"]').textContent;
    recorded.failureHidden=root.querySelector('[data-role="result"]').hidden;
    recorded.failureQuery=location.search;
@@ -289,6 +307,7 @@ window.addEventListener('DOMContentLoaded',()=>{
         self.assertIn('release=1.18.0.1',result['share'],result)
         self.assertIn('03214a16',result['old'],result)
         self.assertNotIn('a723af94',result['old'],result)
+        self.assertEqual(result['legacyAttempts'],2,result)
         self.assertIn('do not match the selected version',result['failureStatus'],result)
         self.assertTrue(result['failureHidden'],result)
         self.assertIn('release=1.18.0.1',result['failureQuery'],result)

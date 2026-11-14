@@ -3436,23 +3436,32 @@
       bootloaderNotice = "Bootloader downloads could not be loaded. Open the release notes below.";
       renderBootloader();
     });
-    const controlUrl = root.getAttribute("data-controls-url");
-    const controlRequest = embedded ? Promise.resolve(embedded.controls) : controlUrl ? fetch(controlUrl).then(function (response) {
-      return response.ok ? response.json() : null;
-    }).catch(function () { return null; }) : Promise.resolve(null);
-    const releaseRequest = embedded ? Promise.resolve(embedded.releases) :
-      fetchAllReleases(endpoint, fetch);
-    let legacyControlsRequest;
-    function controlsForVersion(version) {
-      if (version !== "1.18.0.1") return controlRequest;
-      if (!legacyControlsRequest) {
-        const url = root.getAttribute("data-legacy-controls-url");
-        legacyControlsRequest = url ? fetch(url).then(function (response) {
-          if (!response.ok) throw new Error("Historical firmware details are unavailable");
-          return response.json();
-        }) : Promise.reject(new Error("Historical firmware details are unavailable"));
+    let releaseRequest;
+    const controlsRequests = {};
+    function releasesForPicker() {
+      if (!releaseRequest) {
+        releaseRequest = (embedded ? Promise.resolve(embedded.releases) :
+          fetchAllReleases(endpoint, fetch)).catch(function (error) {
+          releaseRequest = null;
+          throw error;
+        });
       }
-      return legacyControlsRequest;
+      return releaseRequest;
+    }
+    function controlsForVersion(version) {
+      if (embedded) return Promise.resolve(embedded.controls);
+      if (!controlsRequests[version]) {
+        const url = root.getAttribute(version === "1.18.0.1" ?
+          "data-legacy-controls-url" : "data-controls-url");
+        controlsRequests[version] = (url ? fetch(url).then(function (response) {
+          if (!response.ok) throw new Error("Firmware details are unavailable");
+          return response.json();
+        }) : Promise.reject(new Error("Firmware details are unavailable"))).catch(function (error) {
+          delete controlsRequests[version];
+          throw error;
+        });
+      }
+      return controlsRequests[version];
     }
     function loadRelease(version) {
       const loadId = ++releaseLoadId;
@@ -3476,7 +3485,7 @@
         status.textContent = "Choose an available firmware version.";
         return;
       }
-      Promise.all([releaseRequest, controlsForVersion(version)])
+      Promise.all([releasesForPicker(), controlsForVersion(version)])
       .then(function (data) {
         if (loadId !== releaseLoadId) return;
         const requestedTag = releaseFamilies[version];
@@ -3541,8 +3550,8 @@
       // Standalone embedded pickers retain their self-contained release.
       const releaseControl = root.querySelector('[data-role="release-control"]');
       if (releaseControl) releaseControl.hidden = true;
-      releaseRequest.then(function (releases) {
-        return controlRequest.then(function (metadata) {
+      releasesForPicker().then(function (releases) {
+        return controlsForVersion(selectedRelease).then(function (metadata) {
           catalog = buildCatalog(releases, metadata);
           if (!catalog.releaseSet || !catalog.profiles.length) {
             throw new Error(catalog.unavailableL1OneWattProfiles ?
