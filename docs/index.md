@@ -16,6 +16,7 @@ Read what changed, which boards benefit and the known limitations in one place.
 | Flash firmware over USB | [Mesh Firmware USB flasher](https://mikecarper.github.io/meshfirmware/) |
 | Install an update | [Update guide](ota_user_guide.md) |
 | Turn a feature on or off | [Feature controls by role](role_feature_switches.md) |
+| Use Meshtastic-compatible text | [Meshtext setup](meshtext.md) |
 | Find a command | [CLI reference](cli_commands.md) |
 | Troubleshoot a device | [FAQ](faq.md) |
 

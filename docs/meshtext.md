@@ -16,8 +16,9 @@ Use a **Full Companion** build on a supported ESP32 or nRF52 device. The
 radio must also support the selected preset. Meshtext is not included in all
 older or smaller builds; for example, an LLCC68 radio cannot use LongFast.
 
-1. In the Companion's local CLI, select the region used by the Meshtastic
-   devices. For example, in the US:
+1. Open the [Companion's local CLI](companion_cli.md) in a compatible app or
+   terminal and select the region used by the Meshtastic devices. For example,
+   in the US:
 
    ```text
    set mt.region us
@@ -41,10 +42,10 @@ older or smaller builds; for example, an LLCC68 radio cannot use LongFast.
    get radio2
    ```
 
-   `get mt.status` must report that Meshtext is active. If radio2 says
-   `off (manual)`, use `set radio2 auto` and check again after two seconds.
-   If a manually configured radio2 or another feature owns it, resolve that
-   conflict first. The status message explains why it cannot start.
+   `get mt.status` must report that Meshtext is active. If radio2 was manually
+   turned off, use `set radio2 auto` and check again after two seconds. This
+   clears any saved manual radio2 profile. If another feature owns radio2,
+   resolve that conflict first. The status message explains why it cannot start.
 
 4. Open the new channel in the app and send a message. The Meshtastic devices
    must use the same region, preset, frequency slot, channel name, and key.

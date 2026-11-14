@@ -7973,7 +7973,7 @@ See [carrier-wave RF checks](carrier_wave.md) for `cw on [seconds]`,
 
 For keyed Morse TX, use `morse send TEST DE N0CALL` and `morse stop`.
 Defaults are **902.100 MHz and 25 WPM**; `set morse.freq <MHz>` and
-`set morse.wpm <1–60>` save separate frequency/speed settings.
+`set morse.wpm <1-60>` save separate frequency/speed settings.
 Small-flash STM32 Companion builds retain Morse TX but do not include Morse
 RX by default; listen/read/stats/clear return an unsupported-RX error there.
 The constrained `wio-e5-mini_repeater` omits Morse TX/RX and CW tools entirely;
