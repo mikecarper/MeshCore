@@ -72,6 +72,7 @@ if(!item)throw Error('Updater navigation link missing');item.click();});</script
             try:
                 with tempfile.TemporaryDirectory(prefix='meshcore-mkdocs-browser-', ignore_cleanup_errors=True) as profile:
                     command = [BROWSER, '--headless=new', '--disable-gpu', '--no-first-run',
+                               '--disable-dev-shm-usage',
                                # The updater and simulated target are local. Optional
                                # CDN fonts/maps must not stall the page's load event
                                # when a CI runner cannot reach the public internet.
@@ -81,7 +82,10 @@ if(!item)throw Error('Updater navigation link missing');item.click();});</script
                     if os.name != 'nt' and hasattr(os, 'geteuid') and os.geteuid() == 0:
                         command.insert(1, '--no-sandbox')
                     try:
-                        run_until_complete(command, done, timeout=45)
+                        # Cold CI browsers can take longer to start their
+                        # network process before the first local request.
+                        # Still require the complete simulated OTA result.
+                        run_until_complete(command, done, timeout=120)
                     except AssertionError as error:
                         self.fail(f'{error}\nLocal requests: {requests}\nHTTP failures: {failures}')
             finally:
