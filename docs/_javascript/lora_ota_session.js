@@ -9,6 +9,62 @@
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const radioSetup = () => typeof module === 'object' && module.exports ? require('./lora_ota_radio_setup.js') : globalThis.LoraOtaRadioSetup;
   const formatRadio = tuple => [Number(tuple[0]).toFixed(3), ...tuple.slice(1)].join(',');
+  // Installer support belongs to the authenticated running firmware, not the
+  // selected update or its journal. Keep credentials and connection ownership
+  // only in this module's RAM; closing a guard for a channel handoff is not a
+  // physical USB reconnect and need not discard unchanged firmware evidence.
+  const installCapabilities = new WeakMap();
+  const object = value => value !== null && (typeof value === 'object' || typeof value === 'function');
+  function installCapabilityReply(reply) {
+    if (typeof reply !== 'string') return null;
+    reply = reply.trim().replace(/^>\s*/, '');
+    if (reply === 'ERR usage: ota installhash <64-hex-container-sha256>') return {mode:'hash',reply};
+    if (/^(?:(?:err(?:or)?\s*:?\s*)?(?:unknown|unsupported)\b)/i.test(reply)) return {mode:'legacy',reply};
+    return null;
+  }
+  function installCapabilityBinding(link, key, password, dest) {
+    if (!object(link) || typeof link.sourceKey !== 'string' || !/^[a-f0-9]{64}$/i.test(link.sourceKey) ||
+        typeof key !== 'string' || !/^[a-f0-9]{64}$/i.test(key) || typeof password !== 'string' ||
+        !dest || !Number.isInteger(dest.targetId) || dest.targetId < 0 || dest.targetId > 0xffffffff ||
+        typeof dest.hwId !== 'string' || !/^[a-z0-9_.-]{1,64}$/i.test(dest.hwId) ||
+        !Number.isInteger(dest.version) || dest.version < 0 || dest.version > 0xffffffff ||
+        typeof dest.baseHash !== 'string' || !/^[a-f0-9]{16}$/i.test(dest.baseHash)) return null;
+    if ([link.knownRepeater,link.target].some(selected => typeof selected === 'string' &&
+        /^[a-f0-9]{64}$/i.test(selected) && selected.toLowerCase() !== key.toLowerCase())) return null;
+    const connection = [], seen = new Set();
+    for (let current = link; object(current); current = current.link) {
+      if (seen.has(current) || connection.length >= 8 || current.failure ||
+          current.running === false || current.opened === false || current.portOpened === false) return null;
+      seen.add(current);
+      connection.push({owner:current,port:current.port,reader:current.reader,writer:current.writer,
+        running:current.running,opened:current.opened,portOpened:current.portOpened,sourceKey:current.sourceKey,
+        knownRepeater:current.knownRepeater,target:current.target});
+    }
+    if (!connection.some(snapshot => object(snapshot.port) && object(snapshot.reader) && object(snapshot.writer))) return null;
+    return {source:link.sourceKey.toLowerCase(),target:key.toLowerCase(),password,
+      targetId:dest.targetId,hwId:dest.hwId,version:dest.version,baseHash:dest.baseHash.toLowerCase(),connection};
+  }
+  function sameInstallCapabilityBinding(a, b) {
+    return !!a && !!b && ['source','target','password','targetId','hwId','version','baseHash'].every(field => a[field] === b[field]) &&
+      a.connection.length === b.connection.length && a.connection.every((snapshot, index) =>
+        Object.keys(snapshot).every(field => snapshot[field] === b.connection[index][field]));
+  }
+  function clearInstallCapability(link) { if (object(link)) installCapabilities.delete(link); }
+  function rememberInstallCapability(link, key, password, dest, reply) {
+    const binding = installCapabilityBinding(link, key, password, dest), capability = installCapabilityReply(reply);
+    if (!binding || !capability) { clearInstallCapability(link); return false; }
+    installCapabilities.set(link, {...binding,...capability});
+    return true;
+  }
+  function cachedInstallCapability(link, key, password, dest) {
+    if (!object(link)) return null;
+    const cached = installCapabilities.get(link);
+    if (!cached) return null;
+    if (!sameInstallCapabilityBinding(cached, installCapabilityBinding(link, key, password, dest))) {
+      clearInstallCapability(link); return null;
+    }
+    return cached;
+  }
   function setupRequired(message) { const error = Error(message); error.radioSetupRequired = true; return error; }
   function value(text) { const s = String(text).trim().replace(/^>\s*/, ''); if (!s || /^(error|err\b|unknown\b|unsupported\b)/i.test(s)) throw Error(s || 'Empty response'); return s; }
   function diagnostic(text, limit = 160) {
@@ -189,22 +245,32 @@
       if(result.record?.radio)this.verifiedRadio=cloneRadio(result.record.radio);
       this.requireActive();
     }
-    async requireInstallHash() {
+    async requireInstallHash(dest) {
       this.requireActive();
-      const reply = String(await this.link.remoteCommand(this.key, this.password, 'ota installhash')).trim().replace(/^>\s*/, '');
-      if (reply === 'ERR usage: ota installhash <64-hex-container-sha256>') {
-        this.installMode = 'hash';
-        return;
+      this.installMode = null;
+      let capability = cachedInstallCapability(this.link, this.key, this.password, dest);
+      if (!capability) {
+        const before = installCapabilityBinding(this.link, this.key, this.password, dest);
+        const reply = await this.link.remoteCommand(this.key, this.password, 'ota installhash');
+        this.requireActive();
+        if (before && !sameInstallCapabilityBinding(before, installCapabilityBinding(this.link, this.key, this.password, dest))) {
+          clearInstallCapability(this.link);
+          throw Error('The target identity or USB connection changed while checking installation capability');
+        }
+        capability = installCapabilityReply(reply);
+        if (!capability) {
+          clearInstallCapability(this.link);
+          throw Error('Cannot determine whether the target supports verified OTA installation');
+        }
+        rememberInstallCapability(this.link, this.key, this.password, dest, reply);
       }
       // Only an explicit unsupported-command response establishes that the
       // older install verb is needed. A timeout or unexpected answer leaves
       // the target's capabilities unknown and must never select a fallback.
-      if (/^(?:(?:err(?:or)?\s*:?\s*)?(?:unknown|unsupported)\b)/i.test(reply)) {
-        this.installMode = 'legacy';
+      this.installMode = capability.mode;
+      if (this.installMode === 'legacy') {
         this.progress('Older target: ota install validates the staged package, but cannot bind the full container hash. Post-install verification is limited to the target-reported firmware hash prefix.');
-        return;
       }
-      throw Error('Cannot determine whether the target supports verified OTA installation');
     }
     async readDownload() {
       const status = await this.remote('ota status');
@@ -413,9 +479,9 @@
       }
       this.bodyHash = await expectedBody(this.info, this.image);
       const checkSourceOta = !this.link.browserRawSource || this.link.otaSupported === true || this.link.usesUsbFolderFallback === true;
+      await this.requireInstallHash(dest);
       await this.inspectRadios();
       this.restorePausedSecondaryRecord(prior);
-      await this.requireInstallHash();
       const state = await this.readDownload();
       const disposition = this.downloadDisposition(state, options);
       if (checkSourceOta) {
@@ -735,5 +801,5 @@
       return this.stopServingTask;
     }
   }
-  return { DirectSession, temp, download, policy, expectedBody, installHash };
+  return { DirectSession, temp, download, policy, expectedBody, installHash, rememberInstallCapability, clearInstallCapability };
 });

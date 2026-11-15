@@ -24,6 +24,7 @@
   }
   const SAFE_READS=new Set(['get public.key','clock','ver','board','ota status','ota self','ota ram','ota config','ota key list','ota stats','ota ls','ota qspi','ota installhash','ota bootloader status',
     'get bootloader.ver','get radio','get tempradio','get radio.rxps','get radio2','get tempradio2','get radio2.cross','get radio2.status','get radioat','get tempradioat','get radioat2','get tempradioat2',
+    'get repeat','get radio.flood','get radio2.flood',
     'ota.peer status','ota.peer capabilities','ota.peer path','ota.peer timeout','ota.peer radio','ota folder']);
   function safeCommand(text){
     if(typeof text!=='string')return 'CLI command <arguments hidden>';

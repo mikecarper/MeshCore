@@ -406,6 +406,11 @@
         };
         const matches = state => state?.state === 'active' && Array.isArray(state.tuple) &&
           same(state.tuple, expected) && state.preamble === v.preamble;
+        const originalRead = command => {
+          const remaining = deadline - clock();
+          need(remaining > 0, 'The 90-second setup deadline expired before the next original-channel read; no read was sent.');
+          return remote(command, {maxDurationMs:remaining});
+        };
         const probe = async profile => {
           const remaining = deadline - clock();
           if (remaining <= 0) return {reachable:false};
@@ -459,10 +464,11 @@
           if ((link.otaRadioProfile ?? 0) !== 0) {
             await link.closeRadioSession();
             await link.selectOtaRadio(0);
-            await link.verifyPeer(key, password); keyProof(await remote('get public.key'), key);
+            await link.verifyPeer(key, password);
+            keyProof(await originalRead('get public.key'), key);
           }
           progress('Reading target temporary state on the already-proven primary channel before enabling source radio2.');
-          const state = await readTemporary(remote, targetProfile);
+          const state = await readTemporary(originalRead, targetProfile);
           need(clock() < deadline, 'Original-channel verification exceeded the 90-second setup deadline; no target switch request was sent.');
           need(['off', 'pending', 'active'].includes(state.state), 'Target temporary state on its original channel is unknown.');
           if (!matches(state) && state.state !== 'pending') await requestSwitch();

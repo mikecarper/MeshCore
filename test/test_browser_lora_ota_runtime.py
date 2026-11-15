@@ -122,7 +122,12 @@ class BrowserLoraOtaRuntimeTest(unittest.TestCase):
         markdown = (ROOT / 'docs/browser_lora_ota.md').read_text(encoding='utf-8')
         div = re.search(r'<div data-lora-ota>.*?</div>', markdown, re.S).group()
         scripts = re.findall(r'<script src="[^"]+"></script>', markdown)
-        page = '<!doctype html><meta charset="utf-8">' + div + HARNESS + ''.join(scripts)
+        # Forwarding lifecycle has its own checked-by-default browser scenarios;
+        # this original protocol fixture does not model those extra commands.
+        forwarding_opt_out = ('<script>(()=>{const checkbox=document.querySelector('
+            "'[data-lora-ota] [data-role=\"quiet-forwarding\"]');"
+            'if(checkbox)checkbox.checked=false;})();</script>')
+        page = '<!doctype html><meta charset="utf-8">' + div + forwarding_opt_out + HARNESS + ''.join(scripts)
         done = threading.Event()
         results, missing_scripts = [], []
 

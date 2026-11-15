@@ -50,14 +50,60 @@ async function run(){
     await c.open();await c.contacts();c.selectTarget(key);await c.verifyPeer(key,'password');
     const options=c.options,loginCount=p.frames.filter(frame=>frame[0]===26).length;
     p.timeoutFirst['ota self']=1;assert.equal(await c.remoteCommand(key,'password','ota self'),'> 9');assert.equal(p.remoteAttempts['ota self'],2);assert.equal(c.options,options);
-    p.timeoutFirst['ota status']=3;await assert.rejects(c.remoteCommand(key,'password','ota status'),error=>{assert.equal(error.message,'Remote command timed out; result is unknown');assert.equal(error.otaAttempt,3);assert.equal(error.otaMaxAttempts,3);assert.equal(error.attempts,3);assert.equal(error.otaTimeoutMs,120);assert.equal(error.loraReplyTimeout,true);return true;});
-    assert.equal(p.remoteAttempts['ota status'],3);assert.equal(p.frames.filter(frame=>frame[0]===26).length,loginCount);assert.equal(c.options,options);
+    p.timeoutFirst['ota status']=11;await assert.rejects(c.remoteCommand(key,'password','ota status'),error=>{assert.equal(error.message,'Remote command timed out; result is unknown');assert.equal(error.otaAttempt,11);assert.equal(error.otaMaxAttempts,11);assert.equal(error.attempts,11);assert.equal(error.otaTimeoutMs,120);assert.equal(error.loraReplyTimeout,true);return true;});
+    assert.equal(p.remoteAttempts['ota status'],11);assert.equal(p.frames.filter(frame=>frame[0]===26).length,loginCount);assert.equal(c.options,options);
     const tags=p.frames.filter(frame=>frame[0]===2).map(frame=>dec.decode(frame.slice(13)).slice(0,3));assert.equal(new Set(tags).size,tags.length);await c.close();
   }
   for(const [hops,expected] of [[0,7000],[null,20000],[1,20000]]){
     const c=new CompanionTransport({}, {knownRepeater:key,remoteTimeout:75000});c.otaSupported=true;c.authenticated=true;c.running=true;c.contactList=[{publicKey:key,hops}];
     const options=c.options,timeouts=[];c.remoteReply=async()=>{timeouts.push(c.options.remoteTimeout);if(timeouts.length===1){const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;throw error;}return '> self';};
     assert.equal(await c.remoteCommand(key,'','ota self'),'> self');assert.deepEqual(timeouts,[expected,expected]);assert.equal(c.options,options);
+  }
+  // A command that still has no confirmed authentication gets seven read
+  // attempts; an authenticated guarded target gets eleven, not three.
+  for(const confirmed of [false,true]){
+    const c=new CompanionTransport({}, {knownRepeater:key});c.otaSupported=true;c.running=true;c.authenticated=confirmed;
+    c.login=async()=>{};let calls=0;
+    c.remoteReply=async()=>{calls++;throw Object.assign(Error('Remote command timed out; result is unknown'),{loraReplyTimeout:true});};
+    await assert.rejects(c.remoteCommand(key,'','ota self'),error=>{
+      assert.equal(error.otaMaxAttempts,confirmed?11:7);assert.equal(error.otaAttempt,confirmed?11:7);
+      assert.equal(error.attempts,confirmed?11:7);return true;
+    });assert.equal(calls,confirmed?11:7);
+  }
+  {
+    const make=()=>{const c=new CompanionTransport({}, {knownRepeater:key,remoteTimeout:75000});
+      c.otaSupported=true;c.running=true;c.authenticated=true;c.supportsOtaRadio2=true;c.otaRadioProfile=1;return c;};
+    const originalNow=Date.now;let now=1000;
+    try{
+      Date.now=()=>now;
+      for(const lateSuccess of [false,true]){
+        const c=make(),options=c.options,timeouts=[];
+        c.remoteReply=async()=>{timeouts.push(c.options.remoteTimeout);now+=10;
+          if(lateSuccess)return '> too late';
+          throw Object.assign(Error('Remote command timed out; result is unknown'),{loraReplyTimeout:true});};
+        await assert.rejects(c.remoteCommand(key,'','ota self',{maxDurationMs:10}),error=>{
+          assert.equal(error.loraReplyTimeout,true);assert.equal(error.otaBudgetExhausted,true);
+          assert.equal(error.otaAttempt,1);assert.equal(error.otaMaxAttempts,11);assert.equal(error.attempts,1);
+          assert.equal(error.otaCommand,'ota self');assert.equal(error.otaEndpoint,'remote target');
+          assert.match(error.otaPath,/direct \(0 hops/);assert.match(error.otaRadio,/Radio 2/);return true;
+        });assert.deepEqual(timeouts,[10]);assert.equal(c.options,options);assert.equal(c.authenticated,true);
+        assert.equal(c.diagnosticDeadline,undefined);
+      }
+      const c=make(),options=c.options,timeouts=[];
+      c.remoteReply=async()=>{timeouts.push(c.options.remoteTimeout);now+=4;if(timeouts.length===1)throw Object.assign(Error('miss'),{loraReplyTimeout:true});return '> ok';};
+      assert.equal(await c.remoteCommand(key,'','ota self',{maxDurationMs:10}),'> ok');
+      assert.deepEqual(timeouts,[10,6]);assert.equal(c.options,options);
+      const queued=make();let release,calls=0;queued.admin=new Promise(resolve=>{release=resolve;});queued.remoteReply=async()=>{calls++;return '> no';};
+      const pending=queued.remoteCommand(key,'','ota self',{maxDurationMs:10});now+=10;release();
+      await assert.rejects(pending,error=>error.otaBudgetExhausted&&error.otaAttempt===0);assert.equal(calls,0);
+      for(const invalid of [0,-1,NaN,Infinity,'10'])await assert.rejects(queued.remoteCommand(key,'','ota self',{maxDurationMs:invalid}),/finite positive/);
+      await assert.rejects(queued.remoteCommand(key,'','set tx 9',{maxDurationMs:10}),/read-only/);assert.equal(calls,0);
+      const backwards=make(),before=backwards.options;
+      backwards.remoteReply=async()=>{now--;return '> no';};
+      await assert.rejects(backwards.remoteCommand(key,'','ota self',{maxDurationMs:10}),/Invalid remote read clock/);assert.equal(backwards.options,before);
+    }finally{Date.now=originalNow;}
+    const c=make();let calls=0;c.remoteReply=async()=>{calls++;return '> ok';};
+    assert.equal(await c.remoteCommand(key,'','ota self',{replyTimeoutMs:5}),'> ok');assert.equal(calls,1);
   }
   for(const command of ['set tx 9','ota pull 01234567 flash','ota install','ota cancel','login','ota self extra']){
     const c=new CompanionTransport({}, {knownRepeater:key});c.otaSupported=true;c.authenticated=true;c.running=true;let calls=0;

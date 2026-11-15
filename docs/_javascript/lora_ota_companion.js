@@ -78,7 +78,8 @@
   }
   const READ_ONLY=new Set(['get public.key','ota status','ota self','ota ram','ver','board','get bootloader.ver','get usb.raw.max',
     'ota bootloader status','ota config','ota key list','get tempradio','get radio','get radio.rxps','ota installhash','ota qspi','ota stats','ota ls',
-    'get radio2','get tempradio2','get radio2.cross','get radio2.status','get radioat','get tempradioat','get radioat2','get tempradioat2']);
+    'get radio2','get tempradio2','get radio2.cross','get radio2.status','get radioat','get tempradioat','get radioat2','get tempradioat2',
+    'get repeat','get radio.flood','get radio2.flood']);
   function isReadOnly(text) {
     // The OTA catalog is bounded by the protocol's 255 entries (two per page).
     return READ_ONLY.has(text) || /^ota ls (?:[1-9]|[1-9][0-9]|1[01][0-9]|12[0-8])$/.test(text);
@@ -926,8 +927,29 @@
         }finally{this.options=options;}
       });
     }
-    async remoteCommand(key,password,text){
+    async remoteCommand(key,password,text,{maxDurationMs}={}){
       this.validate(key);
+      const readOnly=isReadOnly(text),bounded=maxDurationMs!==undefined;
+      if(bounded&&(!this.otaSupported||!readOnly||!Number.isFinite(maxDurationMs)||maxDurationMs<=0))
+        throw Error('A finite positive remote read duration requires a guarded read-only command');
+      const started=bounded?Date.now():null,deadline=bounded?started+maxDurationMs:null;
+      let previous=started,completedAttempts=0,maxAttempts=this.authenticated||this.investigationAuthenticated?11:7;
+      const context={otaPath:targetPath(this,true),otaRadio:requestRadio(this)};
+      const remaining=()=>{
+        if(!bounded)return Infinity;
+        const now=Date.now();
+        if(!Number.isFinite(now)||!Number.isFinite(started)||started<0||!Number.isFinite(deadline)||now<previous)
+          throw remoteError(Error('Invalid remote read clock'),text,context);
+        previous=now;return deadline-now;
+      };
+      const exhausted=cause=>{
+        const error=cause?.loraReplyTimeout?cause:loraTimeout('Remote read time budget expired; result is unknown');
+        errorContext(error,{otaAttempt:completedAttempts,otaMaxAttempts:maxAttempts});
+        if(error.attempts===undefined)error.attempts=completedAttempts;
+        error.otaBudgetExhausted=true;
+        return remoteError(error,text,{...context,otaTimeoutMs:Math.max(0,deadline-previous)});
+      };
+      if(bounded&&remaining()<=0)throw exhausted();
       if(!this.otaSupported){
         if(!this.investigationAuthenticated||!this.investigationVerified)throw Error('Verify the target full public key before updating');
         if(password!==this.investigationPassword)throw Error('Disconnect and reconnect before changing the admin password');
@@ -958,9 +980,12 @@
         }));
       }
       return this.withAdmin(async()=>{
+        if(remaining()<=0)throw exhausted();
         if(!this.authenticated)await this.login(password);
-        if(!isReadOnly(text))return this.remoteReply(text);
-        const options=this.options,maxAttempts=3;
+        if(remaining()<=0)throw exhausted();
+        if(!readOnly)return this.remoteReply(text);
+        maxAttempts=this.authenticated||this.investigationAuthenticated?11:7;
+        const options=this.options;
         const timeout=Math.min(options.remoteTimeout??75000,this.investigationReplyTimeout(),20000);
         this.options={...options,remoteTimeout:timeout};
         try{
@@ -968,10 +993,18 @@
             this.assertInvestigationRunning();
             if(this.failure)throw this.failure;
             if(!this.running)throw Error('Companion is disconnected');
-            try{return await this.remoteReply(text);}
+            const left=remaining();if(left<=0)throw exhausted();
+            this.options.remoteTimeout=Math.min(timeout,left);
+            completedAttempts=attempt;
+            try{
+              const reply=await this.remoteReply(text);
+              if(remaining()<=0)throw exhausted();
+              return reply;
+            }
             catch(error){
               errorContext(error,{otaAttempt:attempt,otaMaxAttempts:maxAttempts});
               if(!error?.loraReplyTimeout||this.failure||!this.running||this.investigationCancelled||['USB Companion','USB Repeater'].includes(error.otaEndpoint))throw error;
+              if(remaining()<=0)throw exhausted(error);
               if(attempt===maxAttempts){if(error.attempts===undefined)error.attempts=attempt;throw error;}
             }
           }

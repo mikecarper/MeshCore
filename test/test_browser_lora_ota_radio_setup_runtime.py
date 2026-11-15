@@ -196,6 +196,44 @@ def primary_unreachable_after_source_radio2_harness(*, target_ack_lost=False):
     return harness
 
 
+def install_capability_before_radio2_harness(*, legacy=False):
+    """Only the original channel answers the harmless installer probe."""
+    harness = missed_switch_harness()
+    harness = replace_once(harness, 'let ignoredSwitches=1,mailboxPending=false;',
+        'let ignoredSwitches=0,blockedInstallReplies=0,mailboxPending=false;')
+    reply = 'Unknown OTA command' if legacy else 'ERR usage: ota installhash <64-hex-container-sha256>'
+    harness = replace_once(harness,
+        "else if(text==='ota installhash')reply='ERR usage: ota installhash <64-hex-container-sha256>';",
+        "else if(text==='ota installhash'){if(sourceTemp!=='off'){blockedInstallReplies++;mailboxPending=true;reply='';}else reply=%r;}" % reply)
+    harness = replace_once(harness,
+        "else if(/^ota installhash [0-9a-f]{64}$/.test(text)){if(!otaData)throw Error('installed before data');installed=true;reply='OK';}",
+        "else if(text==='ota install'||/^ota installhash [0-9a-f]{64}$/.test(text)){"
+        "if(!otaData)throw Error('installed before data');"
+        "if(%s?text!=='ota install':text==='ota install')throw Error('wrong installation verb');"
+        "installed=true;reply='OK';}" % ('true' if legacy else 'false'))
+    # Capture the actual page-built package for the unchanged fake RF endpoint.
+    # No session, transport or install method is replaced by this hook.
+    harness = replace_once(harness,
+        'packageBuilds++;return original.apply(this,args);',
+        "packageBuilds++;return Promise.resolve(original.apply(this,args)).then(async result=>{"
+        "if(name==='buildFullForSource'){pkg=await MeshCoreMotaPackage.parseMota(result.blob);mid=hex(pkg.merkleRoot);}return result;});")
+    harness = replace_once(harness, """    if(!false&&!false){
+      if(!prepared||inspectStatus.includes('Error:'))throw Error(inspectStatus);
+      await wait(()=>!el('radio-check').disabled);el('status').textContent='';el('radio-setup-status').textContent='';
+      el('radio-check').click();await wait(()=>el('radio-setup-status').textContent.startsWith('Channel ready:')||el('status').textContent.includes('Error:'));
+      if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);checked=el('radio-setup-status').textContent;
+    }""", """    if(!prepared||inspectStatus.includes('Error:'))throw Error(inspectStatus);""")
+    harness = replace_once(harness,
+        'const profiles=[window.testLink.otaRadioProfile,window.testLink.otaTargetProfile];',
+        "const profiles=[window.testLink.otaRadioProfile,window.testLink.otaTargetProfile];"
+        "el('update').click();await wait(()=>['complete','error'].includes(el('workflow-status').dataset.state));"
+        "const workflowState=el('workflow-status').dataset.state;"
+        "if(workflowState!=='complete')throw Error(el('workflow-status').textContent);")
+    return replace_once(harness,
+        'inspectStatus,prepared,checked,profiles,defaults,timeline,',
+        'workflowState,installed,otaData,blockedInstallReplies,inspectStatus,prepared,checked,profiles,defaults,timeline,')
+
+
 def explicit_region_with_active_window_harness():
     """An explicit profile must replace a matching old window after image checks."""
     harness = radio_setup_harness(secondary_supported=False)
@@ -299,6 +337,30 @@ class BrowserRadioSetupRuntime(unittest.TestCase):
         self.assertGreaterEqual(new_proofs[0][2] - writes[0][2], 5000, result)
         self.assertEqual(result['blockedOriginalReplies'], 0, result)
         self.assertFalse(any(row[0] == 0 and row[2] > writes[0][2] for row in trace), result)
+
+    def test_installer_capability_is_proved_before_radio2_and_actual_install_still_runs(self):
+        for legacy in (False, True):
+            with self.subTest(legacy=legacy):
+                result = run_harness(install_capability_before_radio2_harness(legacy=legacy), timeout=75)
+                self.assertNotIn('error', result, result)
+                self.assertTrue(result['prepared'], result)
+                self.assertEqual(result['workflowState'], 'complete', result)
+                self.assertTrue(result['installed'], result)
+                self.assertTrue(result['otaData'], result)
+                self.assertEqual(result['blockedInstallReplies'], 0, result)
+                self.assertEqual(result['cmds'].count('ota installhash'), 1, result)
+                timeline = result['timeline']
+                capability_at = timeline.index(['remote', 'ota installhash'])
+                for endpoint in ('local', 'remote'):
+                    self.assertLess(capability_at, next(i for i,row in enumerate(timeline)
+                        if row[0] == endpoint and row[1].startswith('set tempradio2 ')), result)
+                installers = [command for command in result['cmds']
+                    if command == 'ota install' or command.startswith('ota installhash ')]
+                self.assertEqual(len(installers), 1, result)
+                if legacy:
+                    self.assertEqual(installers, ['ota install'], result)
+                else:
+                    self.assertRegex(installers[0], r'^ota installhash [0-9a-f]{64}$')
 
     def test_missed_switch_is_rechecked_on_both_radios_then_requested_on_the_original_channel(self):
         result = run_harness(missed_switch_harness(), timeout=60)

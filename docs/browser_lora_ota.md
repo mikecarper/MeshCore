@@ -78,6 +78,10 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
     <p>A staged update is discarded only if you choose Replace and install update.</p>
     </details>
     <p>Prepare update checks the firmware and link, and finds a fitting update path. Intermediate updates, when needed, run automatically.</p>
+    <label><input type="checkbox" data-role="quiet-forwarding" checked> Pause normal forwarding during the update, then restore it</label>
+    <p>After radio2 is verified, radio1 floods pause. Older firmware pauses forwarding on both profiles. Keep this page open until forwarding is restored.</p>
+    <p data-role="quiet-forwarding-status" role="status" hidden></p>
+    <button type="button" data-role="restore-forwarding" class="lora-ota-secondary" hidden>Restore forwarding</button>
     <details class="lora-ota-advanced"><summary>Update path options</summary>
       <label><input type="checkbox" data-role="auto-search" checked> Compare compatible intermediate updates automatically</label>
       <label>Prefer<select data-role="auto-objective"><option value="steps">Fewest installs, then least data</option><option value="data">Least radio data, then fewest installs</option></select></label>
@@ -325,8 +329,10 @@ request reply is checked on the requested channel, not blindly sent again.
 An adopted matching target window is checked on its current update channel;
 the browser does not require it to answer on an old channel it has left.
 Probe timeouts account for radio
-airtime and allow at least five seconds for a reply. The original-channel check
-can try up to three times within the same 90-second setup deadline. Only
+airtime and allow at least five seconds for a reply. Read-only Companion CLI
+checks use up to seven attempts before a target response and eleven after one
+is confirmed. The channel handoff still has one 90-second deadline, which can
+stop those reads sooner. Only
 read-only identity and state checks are retried; a target switch still requires
 a fresh full-key proof on the original channel. Failures retain the command,
 stage and selected radio, rather than hiding the underlying timeout. The log
@@ -350,6 +356,29 @@ reporting the update complete and keeps the original profile in the update's
 recovery record. Existing temporary radio2 sessions, radio2 schedules and
 automatically owned runtime profiles are not replaced. This is a temporary
 frequency override on the same transceiver, not a second physical radio.
+
+Installer capability is checked on the working channel before radio setup.
+An explicit earlier result is reused only on the same connection, source,
+authenticated target and installed firmware identity. Changing hardware,
+version or the installed body hash requires another check. A timeout never
+authorizes a weaker installer. The final install command and post-reboot image
+verification are still required.
+
+**Pause normal forwarding** is enabled by default for direct updates once
+radio2 has been verified. It pauses primary-profile floods when `radio.flood`
+is supported; an explicit unsupported reply permits the older global `repeat`
+control, which pauses forwarding on both profiles. Locally addressed admin
+commands and the target's own OTA traffic remain enabled. An originally off
+setting is never turned on. This option does not change multi-hop relays.
+
+Forwarding settings persist across reboot. Before changing one, the browser
+saves its original value and full source/target identities in a local recovery
+record, without a password. It verifies restoration after the final update and
+tries restoration after Stop, an error or Disconnect when the source is healthy
+and idle. Keep the page open until restoration is confirmed. If interrupted,
+reconnect the same source, select the same target and use **Restore forwarding**.
+An unconfirmed restore is not silently repeated or reported complete; the
+recovery record remains until a readback confirms the original value.
 
 Firmware without
 the required USB radio readbacks cannot be configured or checked automatically;
@@ -405,16 +434,17 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_zip.js"></script>
 <script src="../_javascript/lora_ota_delta.js?v=auto-paths-3"></script>
 <script src="../_javascript/lora_ota_port.js"></script>
-<script src="../_javascript/lora_ota_serial.js"></script>
+<script src="../_javascript/lora_ota_serial.js?v=ota-quiet-1"></script>
 <script src="../_javascript/lora_ota_companion_source.js"></script>
-<script src="../_javascript/lora_ota_companion.js"></script>
+<script src="../_javascript/lora_ota_companion.js?v=ota-quiet-1"></script>
 <script src="../_javascript/lora_ota_contacts.js"></script>
-<script src="../_javascript/lora_ota_session.js?v=auto-paths-3"></script>
+<script src="../_javascript/lora_ota_session.js?v=ota-quiet-1"></script>
 <script src="../_javascript/lora_ota_route.js"></script>
 <script src="../_javascript/lora_ota_repeat.js"></script>
+<script src="../_javascript/lora_ota_quiet.js?v=1"></script>
 <script src="../_javascript/lora_ota_discovery.js"></script>
 <script src="../_javascript/lora_ota_collect.js"></script>
-<script src="../_javascript/lora_ota_routed_session.js?v=auto-paths-3"></script>
+<script src="../_javascript/lora_ota_routed_session.js?v=ota-quiet-1"></script>
 <script src="../_javascript/lora_ota_plan.js"></script>
 <script src="../_javascript/lora_ota_candidates.js?v=auto-paths-1"></script>
 <script src="../_javascript/lora_ota_sim.js"></script>
@@ -422,8 +452,8 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_chain_ui.js?v=auto-paths-3"></script>
 <script src="../_javascript/lora_ota_auto_chain.js?v=auto-paths-2"></script>
 <script src="../_javascript/lora_ota_region_profiles.js"></script>
-<script src="../_javascript/lora_ota_radio_setup.js"></script>
+<script src="../_javascript/lora_ota_radio_setup.js?v=ota-quiet-1"></script>
 <script src="../_javascript/lora_ota_recovery.js"></script>
 <script src="../_javascript/lora_ota_lease.js"></script>
 <script src="../_javascript/lora_ota_catalog.js?v=4aeb7bf86"></script>
-<script src="../_javascript/lora_ota_browser.js?v=auto-paths-3"></script>
+<script src="../_javascript/lora_ota_browser.js?v=ota-quiet-1"></script>

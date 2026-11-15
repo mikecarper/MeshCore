@@ -5,8 +5,21 @@ const crypto = require('node:crypto').webcrypto;
 const pkg = require('../docs/_javascript/lora_ota_package.js');
 const checks = require('../docs/_javascript/lora_ota_checks.js');
 const radioSetup = require('../docs/_javascript/lora_ota_radio_setup.js');
-const {DirectSession, temp, download, policy, installHash} = require('../docs/_javascript/lora_ota_session.js');
+const {DirectSession, temp, download, policy, installHash, rememberInstallCapability, clearInstallCapability} = require('../docs/_javascript/lora_ota_session.js');
 const installUsage = 'ERR usage: ota installhash <64-hex-container-sha256>';
+
+function installCapabilityFixture(reply = installUsage) {
+  const target = 'bb'.repeat(32), password = 'secret', calls = [];
+  const dest = {targetId:0x12345678,hwId:'board',version:0x01110109,baseHash:'1122334455667788'};
+  const link = {sourceKey:'aa'.repeat(32),knownRepeater:target,port:{},reader:{},writer:{},running:true,portOpened:true,
+    async remoteCommand(key, suppliedPassword, command) {
+      calls.push({key,password:suppliedPassword,command});
+      assert.equal(command, 'ota installhash');
+      if (reply instanceof Error) throw reply;
+      return reply;
+    }};
+  return {link,target,password,dest,calls,session:new DirectSession(link,target,password,{})};
+}
 
 test('ESP32 metadata avoids bootloader query while unknown or conflicting metadata does not', async () => {
   const status='hw=Station_G2 | target:DBB6A855 | maxblk:2048',self='base_hash=1122334455667788';
@@ -860,6 +873,171 @@ test('container install hash normalizes only the approval marker', async () => {
   assert.equal(await installHash(approved),expected);
   approved[210]^=1;
   assert.notEqual(await installHash(approved),expected);
+});
+
+test('only an exact authenticated installer reply is reusable for the same installed firmware and connection', async () => {
+  for (const [reply, mode] of [[installUsage,'hash'],['> '+installUsage,'hash'],
+    ['Unknown OTA command. Type `ota help`.','legacy'],['ERR unsupported command','legacy']]) {
+    const f = installCapabilityFixture();
+    assert.equal(rememberInstallCapability(f.link,f.target,f.password,f.dest,reply), true);
+    await f.session.requireInstallHash({...f.dest});
+    assert.equal(f.session.installMode, mode); assert.equal(f.calls.length, 0);
+    // A deliberate guard close/reopen or selected OTA radio change is not a USB reconnect.
+    f.link.guard = false; f.link.authenticated = false; f.link.otaRadioProfile = 1;
+    await f.session.requireInstallHash(f.dest);
+    assert.equal(f.session.installMode, mode); assert.equal(f.calls.length, 0);
+    assert.equal(Object.keys(f.link).some(name => /capability|password/i.test(name)), false);
+  }
+});
+
+test('installer cache rejects boolean, timeout, ambiguous and incomplete evidence rather than inferring legacy support', async () => {
+  for (const reply of [true,false,null,undefined,'',{},Error('Remote command timed out'),
+    'Remote command timed out; result is unknown','ERR usage: ota install','ERR permission denied','OK']) {
+    const f = installCapabilityFixture(Error('Fresh capability probe timed out'));
+    assert.equal(rememberInstallCapability(f.link,f.target,f.password,f.dest,reply), false);
+    await assert.rejects(f.session.requireInstallHash(f.dest), /Fresh capability probe timed out/);
+    assert.equal(f.session.installMode, null); assert.equal(f.calls.length, 1);
+  }
+  for (const change of [dest => {delete dest.baseHash;}, dest => {dest.baseHash='unknown';},
+    dest => {dest.targetId=undefined;}, dest => {dest.version='1.17.1';}, dest => {dest.hwId='';}]) {
+    const f = installCapabilityFixture(); change(f.dest);
+    assert.equal(rememberInstallCapability(f.link,f.target,f.password,f.dest,installUsage), false);
+    await f.session.requireInstallHash(f.dest); assert.equal(f.calls.length, 1);
+  }
+  const f = installCapabilityFixture(); delete f.link.reader;
+  assert.equal(rememberInstallCapability(f.link,f.target,f.password,f.dest,installUsage), false);
+  await f.session.requireInstallHash(f.dest); assert.equal(f.calls.length, 1);
+  for (const change of [entry => {entry.link.sourceKey='short';}, entry => {entry.target='short';},
+    entry => {entry.link.knownRepeater='cc'.repeat(32);}]) {
+    const entry = installCapabilityFixture(); change(entry);
+    assert.equal(rememberInstallCapability(entry.link,entry.target,entry.password,entry.dest,installUsage), false);
+  }
+});
+
+test('firmware, keys, password and physical connection changes invalidate installer evidence without wildcard matches', async () => {
+  const changes = [
+    f => {f.dest.targetId++;}, f => {f.dest.hwId='another-board';}, f => {f.dest.version++;},
+    f => {f.dest.baseHash='8877665544332211';}, f => {f.link.sourceKey='cc'.repeat(32);},
+    f => {f.session.key='dd'.repeat(32);f.link.knownRepeater=f.session.key;},
+    f => {f.session.password='different';}, f => {f.link.port={};}, f => {f.link.reader={};}, f => {f.link.writer={};},
+    f => {f.link={...f.link};f.session.link=f.link;}
+  ];
+  for (const change of changes) {
+    const f = installCapabilityFixture();
+    assert.equal(rememberInstallCapability(f.link,f.target,f.password,f.dest,installUsage), true);
+    change(f); await f.session.requireInstallHash(f.dest);
+    assert.equal(f.calls.length, 1);
+  }
+});
+
+test('cache invalidation is permanent across reconnect and restored old identity values', async () => {
+  const f = installCapabilityFixture(Error('Fresh capability probe timed out'));
+  assert.equal(rememberInstallCapability(f.link,f.target,f.password,f.dest,installUsage), true);
+  const writer = f.link.writer; f.link.writer = {};
+  await assert.rejects(f.session.requireInstallHash(f.dest), /Fresh capability probe timed out/);
+  f.link.writer = writer;
+  await assert.rejects(f.session.requireInstallHash(f.dest), /Fresh capability probe timed out/);
+  assert.equal(f.calls.length, 2); assert.equal(f.session.installMode, null);
+});
+
+test('new firmware cannot retain a cached legacy or hash mode when its fresh capability probe times out', async () => {
+  for (const reply of [installUsage,'Unknown OTA command']) {
+    const f = installCapabilityFixture(Error('Fresh capability probe timed out'));
+    assert.equal(rememberInstallCapability(f.link,f.target,f.password,f.dest,reply), true);
+    await f.session.requireInstallHash(f.dest); assert.equal(f.calls.length, 0);
+    f.dest.baseHash='8877665544332211';
+    await assert.rejects(f.session.requireInstallHash(f.dest), /Fresh capability probe timed out/);
+    assert.equal(f.session.installMode, null); assert.equal(f.calls.length, 1);
+  }
+});
+
+test('wrapped source connections bind the physical owner and reject changed or disconnected inner streams', async () => {
+  for (const change of [inner => {inner.reader={};}, inner => {inner.writer={};}, inner => {inner.port={};},
+    inner => {inner.running=false;}, inner => {inner.sourceKey='cc'.repeat(32);},
+    inner => {inner.knownRepeater='dd'.repeat(32); }]) {
+    const f = installCapabilityFixture();
+    const inner = {port:f.link.port,reader:f.link.reader,writer:f.link.writer,running:true,sourceKey:f.link.sourceKey};
+    delete f.link.port; delete f.link.reader; delete f.link.writer; f.link.link = inner;
+    assert.equal(rememberInstallCapability(f.link,f.target,f.password,f.dest,installUsage), true);
+    change(inner); await f.session.requireInstallHash(f.dest); assert.equal(f.calls.length, 1);
+  }
+});
+
+test('an async capability reply cannot be accepted or cached after its identity or stream changes', async () => {
+  for (const change of [f => {f.link.writer={};}, f => {f.link.sourceKey='cc'.repeat(32);},
+    f => {f.link.knownRepeater='dd'.repeat(32);}, f => {f.session.password='different';},
+    f => {f.dest.baseHash='8877665544332211';}]) {
+    const f = installCapabilityFixture();
+    const remote = f.link.remoteCommand;
+    f.link.remoteCommand = async (...args) => {const reply=await remote(...args);change(f);return reply;};
+    await assert.rejects(f.session.requireInstallHash(f.dest), /identity or USB connection changed/);
+    assert.equal(f.session.installMode, null);
+    f.link.remoteCommand = remote;
+    await f.session.requireInstallHash(f.dest); assert.equal(f.calls.length, 2);
+  }
+});
+
+test('explicit clearing and no-argument checks cannot reuse installer capability evidence', async () => {
+  const f = installCapabilityFixture();
+  assert.equal(rememberInstallCapability(f.link,f.target,f.password,f.dest,installUsage), true);
+  clearInstallCapability(f.link);
+  await f.session.requireInstallHash(f.dest); assert.equal(f.calls.length, 1);
+  await f.session.requireInstallHash(); await f.session.requireInstallHash();
+  assert.equal(f.calls.length, 3);
+});
+
+test('Prepare checks and caches installer support before the radio handoff and does not repeat it afterward', async () => {
+  const f = await recoveryFixture({state:'idle'}); f.setRecord(null);
+  Object.assign(f.link,{port:{},reader:{},writer:{},running:true,portOpened:true,
+    browserRawSource:true,otaSupported:true,localCliSupported:true,supportsOtaRadio2:true});
+  let handoff = false, probes = 0;
+  const local = f.link.localCommand, remote = f.link.remoteCommand;
+  const temporary = '> 906.525,250,5,5,rxtx,128; 0d2h0m (120 min) left';
+  const live = '> rxtx; RX=3,5 TX=0,0 switches=10 errors=0 max=200us preamble=32,128';
+  f.link.localCommand = async command => {
+    if (command==='get tempradio') {f.calls.push('local '+command);return 'TempRadio inactive';}
+    if (command==='get tempradio2') return temporary;
+    if (command==='get radio2.status') return live;
+    return local(command);
+  };
+  f.link.remoteCommand = async (...args) => {
+    const command = args[2];
+    if (command==='ota installhash') {
+      probes++;
+      if (handoff) throw Object.assign(Error('Post-handoff capability probe timed out'),{loraReplyTimeout:true});
+    }
+    if (handoff && command==='get tempradio') return '> off';
+    if (handoff && command==='get tempradio2') return temporary;
+    if (handoff && command==='get radio2.status') return live;
+    return remote(...args);
+  };
+  await assert.rejects(f.session.inspect(), error => error.radioSetupRequired===true);
+  assert.equal(probes, 1);
+  assert.ok(f.calls.indexOf('ota installhash') < f.calls.indexOf('local get tempradio'));
+  handoff = true; f.link.otaRadioProfile = f.link.otaTargetProfile = 1;
+  assert.equal((await f.session.inspect()).download, 'idle');
+  assert.equal(probes, 1); assert.equal(f.session.installMode, 'hash');
+  assert.equal(f.calls.filter(command => command==='ota self').length, 2);
+  assert.equal(f.calls.filter(command => command==='ver').length, 2);
+});
+
+test('investigation evidence avoids a redundant probe but still requires fresh target identity and image validation', async () => {
+  const f = await recoveryFixture({state:'idle'}); f.setRecord(null);
+  Object.assign(f.link,{port:{},reader:{},writer:{},running:true,portOpened:true});
+  const dest = checks.destination('hw=board target:12345678 maxblk:1024','base_hash=1122334455667788','v1.17.1.9');
+  assert.equal(rememberInstallCapability(f.link,f.target,'',dest,installUsage), true);
+  const remote = f.link.remoteCommand;
+  f.link.verifyPeer = async () => {f.calls.push('verify');};
+  f.link.remoteCommand = async (...args) => {
+    if (args[2]==='ota installhash') throw Error('Redundant installer capability query');
+    return remote(...args);
+  };
+  assert.equal((await f.session.inspect()).download, 'idle');
+  assert.equal(f.calls[0], 'verify');
+  for (const command of ['ota status','ota self','ver']) assert.ok(f.calls.includes(command));
+  f.session.image = new Uint8Array(100);
+  f.session.info = {...f.info,isFull:false};
+  await assert.rejects(f.session.inspect(), /Differential package|firmware image/);
 });
 
 test('ambiguous installhash response is refused before serving or pulling', async () => {

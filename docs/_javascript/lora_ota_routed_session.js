@@ -109,7 +109,7 @@
         }
       }
       this.tempRadio = shared;
-      await this.requireInstallHash();
+      await this.requireInstallHash(dest);
       const state = await this.readDownload();
       const disposition = this.downloadDisposition(state, options);
       if (!/\bfetch idle\b/i.test(await this.local('ota stats'))) throw Error('The source already has an OTA download');
