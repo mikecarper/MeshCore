@@ -122,8 +122,9 @@ class BrowserLoraOtaDeltaRuntimeTest(unittest.TestCase):
         self.assertEqual(result['journal']['bodyHash'], result['newHash'])
         self.assertEqual(result['codec'], 1)
         self.assertEqual(result['workerCount'], 1)
-        self.assertIn('/_javascript/lora_ota_delta_worker.js', requested)
-        self.assertIn('/_javascript/vendor/detools-js/bsdiff.js', requested)
+        requested_paths = [urlsplit(request).path for request in requested]
+        self.assertIn('/_javascript/lora_ota_delta_worker.js', requested_paths)
+        self.assertIn('/_javascript/vendor/detools-js/bsdiff.js', requested_paths)
         self.assertEqual(result['total'], len(result['served']))
         self.assertEqual(bytes(result['served'][:4]), b'mOTA')
         self.assertEqual(result['served'][64], 1)
