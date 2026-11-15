@@ -5,6 +5,7 @@
   if (!ui) return;
   const $ = name => ui.querySelector('[data-role="' + name + '"]');
   let link, session, info, expectedSigner, activeTask, preparing, chainPrepared, chainConfig, connectController;
+  let autoChain=null, autoStep='';
   let contacts=[], targetLocked=false, contactKey='', disconnectGeneration=0, activeSourceKind=null;
   const sourceKind=()=>activeSourceKind||($('source').value==='auto'?'companion':$('source').value);
   const aclIntent=()=>$('acl').checked||$('password').value.length===0;
@@ -23,6 +24,7 @@
     $('transfer-stop').disabled=updatePhase!=='transfer'||!!transferStopTask||transferStopJob===session;
   }
   function status(message, state='working') {
+    if(autoStep)message=autoStep+message;
     $('workflow-status').textContent=message;
     $('workflow-status').dataset.state=state;
     if(updatePhase){$('update-progress').hidden=false;$('update-progress').textContent=message;}
@@ -32,8 +34,8 @@
     for(let node=element;node && node!==ui;node=node.parentElement)if(node.tagName==='DETAILS')node.open=true;
   }
   function updateButton() {
-    $('update').disabled=uiBusy || !link || !session || !preparedDownload || updatesBlocked();
-    $('update').textContent=preparedDownload==='replace' ? 'Replace and install update' :
+    $('update').disabled=uiBusy || !link || (!session && !autoChain) || !preparedDownload || updatesBlocked();
+    $('update').textContent=autoChain?.resume ? 'Continue firmware update' : preparedDownload==='replace' ? 'Replace and install update' :
       preparedDownload==='failed' ? 'Restart and install update' : preparedDownload==='active' ? 'Resume and install update' :
       preparedDownload==='ready' ? 'Install and verify update' : 'Update remote firmware';
   }
@@ -165,9 +167,10 @@
     const summary=message.split('\n')[0]+'\n'+reason;
     status(summary, 'error');
     $('error-details').textContent=message;
-    // A halting error always reveals the useful context. The user can hide it
-    // again with the checkbox; ordinary success/progress stays compact.
-    $('verbose-errors').checked=true;showDetailedErrors();
+    // Local sizing failures have a complete, actionable summary. Keep their
+    // technical context available without opening the long transport report.
+    if(error?.otaLocalCheck!==true)$('verbose-errors').checked=true;
+    showDetailedErrors();
     if(error?.sourcePacketCapacity) {
       sourceOtaUnsupported=true;invalidate();
       showAvailability({state:'unsupported',message:error.message});
@@ -197,7 +200,7 @@
       status(summary+'\nUSB communication stopped. Select Reconnect USB source; your target and firmware choices are kept.', 'error');
       $('reconnect').hidden=false;$('reconnect').scrollIntoView?.({block:'nearest',behavior:'smooth'});
     }
-    if(typeof LoraOtaChecks.collectFailureIdentity!=='function')return;
+    if(error?.otaLocalCheck===true || typeof LoraOtaChecks.collectFailureIdentity!=='function')return;
     const sameDevice=()=>failureId===failureSerial&&link===connection&&disconnectGeneration===generation&&connection?.sourceKey===sourceKey&&$('key').value.trim().toLowerCase()===target;
     const canRead=()=>sameDevice()&&($('acl').checked?'':$('password').value)===password&&!!direct?.running&&!direct.failure&&!connection?.failure&&!direct.investigationCancelled&&!investigationStopping&&!direct.serving&&!direct.seeder&&!direct.folderUnknown&&!direct.usbFolderAttached;
     try{
@@ -236,7 +239,7 @@
   const readChainJournal = () => { try { return JSON.parse(localStorage.getItem('meshcore-browser-lora-ota-chain')); } catch (_) { return null; } };
   const readChainMeta = () => { try { return JSON.parse(localStorage.getItem('meshcore-browser-lora-ota-chain-meta')); } catch (_) { return null; } };
   const editable = ['source', 'key', 'acl', 'relays', 'candidates', 'snr', 'age', 'password', 'file', 'base', 'full-rebuild', 'image', 'signer',
-    'chain-files', 'chain-attest', 'chain-objective', 'chain-preamble', 'chain-minutes'];
+    'chain-files', 'chain-attest', 'chain-objective', 'chain-preamble', 'chain-minutes','auto-search','auto-objective','auto-depth'];
   const radioFields=['radio-frequency','radio-bandwidth','radio-sf','radio-cr','radio-preamble','radio-minutes'];
   const radioDefaults=Object.fromEntries([...radioFields,'radio-region'].map(name=>[name,$(name).value]));
   for(const profile of LoraOtaRadioSetup.regions||[]){
@@ -447,6 +450,7 @@
     $('chain-resume').disabled = active || !link || updatesBlocked() || !chainPrepared || !chainConfig || !pending || pending.phase === 'complete';
   }
   function invalidate() { preparedDownload=preparedReplacement=null; $('update').disabled=true;
+    autoChain=null;autoStep='';
     $('update-progress').hidden=true;
     $('update-summary').textContent='Prepare the firmware first. The update will transfer, install and verify the running firmware.';
     session = info = chainPrepared = chainConfig = null; $('transfer').disabled = true; $('resume').disabled = true;
@@ -643,7 +647,7 @@
     if (activeTask) { log('Waiting for the current radio request to finish...'); await activeTask.catch(() => {}); }
     if (link) await link.close();
     sourceOtaUnsupported=false;
-    link = session = chainPrepared = chainConfig = null;contacts=[];targetLocked=false;contactKey='';activeSourceKind=null;radioOverride=false;
+    link = session = chainPrepared = chainConfig = autoChain = null;autoStep='';contacts=[];targetLocked=false;contactKey='';activeSourceKind=null;radioOverride=false;
     transferStopJob=transferStopTask=null;
     for(const [name,value] of Object.entries(radioDefaults))$(name).value=value;
     $('radio-reset').hidden=true;
@@ -1088,9 +1092,107 @@
       busy(false); $('inspect').disabled = !link || updatesBlocked();
     }
   }
+  const autoCacheKey=(target,goalHash)=>link.sourceKey.toLowerCase()+':'+target.toLowerCase()+':'+goalHash;
+  const autoJournalKey=(key,kind)=>'meshcore-browser-lora-ota-auto-'+kind+':'+key;
+  const autoRead=(key,kind)=>{try{return JSON.parse(localStorage.getItem(autoJournalKey(key,kind)));}catch(_){return null;}};
+  const autoWrite=(key,kind,value)=>localStorage.setItem(autoJournalKey(key,kind),JSON.stringify(value));
+  function autoSession(step,target,password,key){
+    const Session=link.relays?.length?LoraOtaRoutedSession.RoutedSession:LoraOtaSession.DirectSession;
+    return new Session(link,target,password,step.package.info,{image:step.targetImage,inplacePlan:step.edge.inplacePlan,
+      allowSameVersion:step.edge.allowSameVersion===true,compress:supportedCompression(),progress:log,onStage:sessionStage,
+      journal:state=>autoWrite(key,'step',state),readJournal:()=>autoRead(key,'step')});
+  }
+  async function readyAutomatic(prepared,target,password,key,file,cached=false){
+    const record=autoRead(key,'chain'),resume=!!record&&record.phase!=='complete';
+    const index=resume?record.index:0;
+    if(!Number.isInteger(index)||!prepared.steps?.[index])throw Error('The saved intermediate update step is invalid');
+    const step=prepared.steps[index];session=autoSession(step,target,password,key);
+    let disposition;
+    try{disposition=await session.inspect({allowExisting:true,allowReplacement:true});}
+    catch(error){
+      if(!error.radioSetupRequired||!canPrepareRadioChannel())throw error;
+      if(preparing?.signal.aborted)throw Error('Update preparation cancelled. No firmware was uploaded.');
+      await ensureRadioChannel(target,password);disposition=await session.inspect({allowExisting:true,allowReplacement:true});
+    }
+    if(preparing?.signal.aborted)throw Error('Update preparation cancelled. No firmware was uploaded.');
+    autoChain={prepared,target,key,resume,replacement:disposition.download==='replace'?disposition.existingDownload:null};
+    preparedDownload='chain';
+    const totals=prepared.route.totals,estimate=Math.ceil(totals.radioDataBytes/1024);
+    $('update-summary').textContent=file.name+': '+prepared.steps.length+' automatic update steps'+
+      (Number.isFinite(estimate)?', about '+estimate+' KiB of radio data':'')+'. The browser handles each transfer, reboot and verification.';
+    const a=prepared.alternatives;
+    if(a&&a.data.installs!==a.steps.installs)log('Path comparison: fewest steps = '+a.steps.installs+' installs / '+
+      Math.ceil(a.steps.bytes/1024)+' KiB; least data = '+a.data.installs+' installs / '+Math.ceil(a.data.bytes/1024)+' KiB. These estimates exclude retries.');
+    log((cached?'Recovered':'Prepared')+' automatic update path: '+prepared.steps.length+' verified differential packages.');
+    if(autoChain.replacement)$('update-summary').textContent+=' Starting will replace the unfinished update on the target.';
+    status('Ready. Select '+(resume?'Continue firmware update':'Update remote firmware')+'.','ready');
+    // Separate transfer/install controls apply to one package; the main action
+    // owns the whole sequence, including reboots and saved recovery journals.
+    for(const name of ['transfer','resume','install'])$(name).disabled=true;
+  }
+  async function prepareAutomatic(base,input,destination,target,password,file,signal){
+    if(!destination.nrf||destination.external||destination.sd)return false;
+    status('Looking for a smaller update path...');
+    const index=await LoraOtaAutoChain.lookup(base,input,{signal});
+    if(!index)return false;
+    const caps=await LoraOtaChainUi.readLive(link,target,password);
+    const prepared=await LoraOtaAutoChain.prepare(base,input,caps,{signal,objective:$('auto-objective').value,deep:$('auto-depth').value==='deep',
+      index,relays:link.relays?.length||0,progress:message=>{status(message);log(message);}});
+    if(!prepared)return false;
+    await readyAutomatic(prepared,target,password,autoCacheKey(target,prepared.goalHash),file);
+    return true;
+  }
+  async function runAutomatic(){
+    const context=autoChain;if(!context)return;
+    const {prepared,target,key,resume}=context,password=$('acl').checked?'':$('password').value;
+    const connection=link,controller=new AbortController();preparing=controller;busy(true);preparedDownload=null;
+    status('Checking the saved update path...');
+    try{
+      // Saving the exact prepared path precedes all firmware writes. Passwords
+      // are never persisted with the images, packages or phase journals.
+      await LoraOtaAutoChain.cache('put',key,{source:link.sourceKey.toLowerCase(),target:target.toLowerCase(),prepared});
+      const readStepJournal=()=>autoRead(key,'step'),writeStepJournal=state=>autoWrite(key,'step',state);
+      const runner=new LoraOtaChain.ChainRunner({prepared,link,targetKey:target,
+        readLive:()=>LoraOtaChainUi.readLive(link,target,password),
+        readStepJournal,writeStepJournal,readChainJournal:()=>autoRead(key,'chain'),writeChainJournal:state=>autoWrite(key,'chain',state),
+        createSession:async(step,{index})=>{
+          autoStep='Step '+(index+1)+' of '+prepared.steps.length+': ';updatePhase='transfer';transferStage='';
+          status('Preparing firmware transfer...');log('Starting update step '+(index+1)+' of '+prepared.steps.length+'.');
+          const job=autoSession(step,target,password,key);
+          job.readJournal=readStepJournal;job.journal=writeStepJournal;
+          if(index===0&&context.replacement){const start=job.start.bind(job);job.start=options=>start({...options,replace:context.replacement});}
+          const install=job.install.bind(job);job.install=()=>{
+            updatePhase='install';operationErrorStep='Install and verify update step '+(index+1)+' of '+prepared.steps.length;
+            status('Installing and checking the rebooted device...');return install();
+          };
+          session=job;return job;
+        },
+        rearm:async()=>{
+          autoStep='';status('Preparing the radio channel for the next update step...');
+          await ensureRadioChannel(target,password);
+        },
+        confirmRearm:async()=>{try{await ensureRadioChannel(target,password);return true;}catch(_){return false;}}
+      });
+      const result=await runner.run({resume,signal:controller.signal});
+      autoStep='';autoChain=null;
+      status('Update complete. The remote device is running the verified firmware.','complete');
+      $('update-summary').textContent='Installed and verified on '+result.live.hwId+' in '+result.steps+' automatic steps. You can disconnect the USB radio.';
+      log('Automatic update complete; all '+result.steps+' installations verified.');
+    }catch(error){
+      if(transferStopJob===session&&!link?.failure&&!link?.folderUnknown)return;
+      await fail(error);
+      $('update-summary').textContent='Update paused. Select Prepare update to continue automatically from the saved step.';
+    }finally{
+      autoStep='';updatePhase='';preparing=null;
+      if(link===connection){busy(false);$('inspect').disabled=!link||updatesBlocked();}
+    }
+  }
   async function inspect() {
     const generation=disconnectGeneration;
-    const checkConnected=()=>{if(generation!==disconnectGeneration)throw Error('Preparation stopped because the USB source is disconnecting.');};
+    const checkConnected=()=>{
+      if(generation!==disconnectGeneration)throw Error('Preparation stopped because the USB source is disconnecting.');
+      if(preparing?.signal.aborted)throw Object.assign(Error('Update preparation cancelled. No firmware was uploaded.'),{otaLocalCheck:true,otaEndpoint:'Browser'});
+    };
     status('Preparing the update: checking firmware, access and the radio channel...');
     invalidate(); busy(true); $('inspect').disabled = true;
     try {
@@ -1122,6 +1224,11 @@
       const forceFull = isFirmware && $('full-rebuild').checked && !(catalogDest?.nrf && !catalogDest.external);
       const baseFile = forceFull ? null : ($('base').files[0] || (isFirmware ? catalogBaseFile : null));
       const input = isFirmware ? await firmwareBytes(file, baseFile ? 4 * 1024 * 1024 : undefined) : await bytes(file);
+      let cachedAuto=null;
+      if(isFirmware&&typeof indexedDB!=='undefined'){
+        const goal=await MeshCoreMotaPackage.parseEndF(input);
+        try{cachedAuto=await LoraOtaAutoChain.cache('get',autoCacheKey(targetKey,LoraOtaChecks.hex(goal.imageHash)));}catch(_){/* ordinary updates do not need recovery storage */}
+      }
       checkConnected();
       const signerText = $('signer').value.trim();
       let expectedImage = null, inplacePlan = null;
@@ -1161,7 +1268,7 @@
       };
       if (isFirmware) {
         if (expectedSigner) throw Error('A package created here is unsigned. Select a signed .mota file instead.');
-        if (baseFile) {
+        if (baseFile || cachedAuto) {
           await verify();
           const {status:receiverStatus,self} = await LoraOtaChecks.readReceiver(remote);
           liveTargetOtaStatus=receiverStatus+' '+self;
@@ -1178,6 +1285,13 @@
             log('Target identity, firmware version and reported body hash match the selected image.');
             return;
           }
+          if(cachedAuto?.source===link.sourceKey.toLowerCase()&&cachedAuto.target===targetKey.toLowerCase()&&
+              cachedAuto.prepared?.goalHash===LoraOtaChecks.hex(goal.imageHash)){
+            const liveNode=cachedAuto.prepared.nodes?.some(n=>n.targetId===destination.targetId&&n.hwId===destination.hwId&&
+              n.version===destination.version&&n.bodyHash===destination.baseHash);
+            if(liveNode){await readyAutomatic(cachedAuto.prepared,targetKey,password,autoCacheKey(targetKey,cachedAuto.prepared.goalHash),file,true);return;}
+          }
+          if(!baseFile)throw Error('Find matching firmware again to identify the exact installed image.');
           const base = await firmwareBytes(baseFile, 4 * 1024 * 1024);
           const current = await MeshCoreMotaPackage.parseEndF(base);
           if (current.targetId !== destination.targetId || current.hwId !== destination.hwId ||
@@ -1194,13 +1308,34 @@
             } else {
               const stage = LoraOtaChecks.internalStage(receiverStatus, self, destination);
               deltaOptions = {mode:'in-place', runtimeStorage:'internal', runtimeStageCeiling:stage};
+              if(layout.flags&16){
+                try{deltaOptions.runtimeHybridRam=await LoraOtaChecks.probeHybridRam(remote);}
+                catch(_){/* retain the entirely-flash budget until capability is proven */}
+              }
               inplacePlan = {storage:'internal', app:layout.app, layoutCeiling:layout.ceiling, layoutFlags:layout.flags};
             }
           } else await LoraOtaChecks.ensureSequentialTarget(receiverStatus, self, () => remote('get bootloader.ver'));
           checkConnected();
           preparing = new AbortController();
+          $('prepare-stop').hidden=false;$('prepare-stop').disabled=false;
           log('Preparing the differential package in this browser...');
-          const delta = await MeshCoreLoraDelta.buildInWorker(base, input, {...deltaOptions, signal:preparing.signal});
+          let delta,sizingFailure=null;
+          try{
+            delta = await MeshCoreLoraDelta.buildInWorker(base, input, {...deltaOptions,
+              searchWorkspaces:$('auto-search').checked?($('auto-depth').value==='deep'?'deep':$('auto-objective').value==='data'?'data':'fit'):undefined,
+              progress:state=>{if(state?.phase==='workspace')status('Preparing differential: workspace '+state.index+' of '+state.total+'...');},signal:preparing.signal});
+          }catch(error){
+            if(error?.code!=='OTA_DELTA_SPACE'||!$('auto-search').checked)throw error;
+            sizingFailure=error;log(error.message);
+          }
+          if($('auto-search').checked){
+            try{if(await prepareAutomatic(base,input,destination,targetKey,password,file,preparing.signal))return;}
+            catch(error){checkConnected();if(!delta)throw error;log('Could not compare intermediate paths: '+error.message+'. Keeping the verified direct package.');}
+          }
+          if(!delta){
+            sizingFailure.message+=' No fitting automatic update path is published for these exact images. Use USB/Bluetooth DFU or another compatible release.';
+            throw sizingFailure;
+          }
           if (inplacePlan) inplacePlan.memorySize = delta.memorySize;
           preparing = null;
           const full = (!destination.nrf || destination.external) ? await buildCompatibleFull(input) : null;
@@ -1277,7 +1412,7 @@
       if(link && sourceKind()==='companion' && link.otaSupported===false)
         $('firmware-catalog-status').textContent=failureMessage(error);
     }
-    finally { preparing = null; busy(false); $('inspect').disabled = !link || updatesBlocked(); }
+    finally { preparing = null;$('prepare-stop').hidden=true; busy(false); $('inspect').disabled = !link || updatesBlocked(); }
   }
   async function transfer(resume) {
     const job=session;transferStopJob=transferStopTask=null;
@@ -1289,6 +1424,7 @@
     finally { updatePhase='';busy(false); $('inspect').disabled = !link || updatesBlocked(); }
   }
   async function updateRemote() {
+    if(!uiBusy&&autoChain&&preparedDownload&&!updatesBlocked())return runAutomatic();
     if(uiBusy || !session || !preparedDownload || updatesBlocked())return;
     const job=session, download=preparedDownload, replacement=preparedReplacement;
     transferStopJob=transferStopTask=null;
@@ -1408,6 +1544,7 @@
     try { link.cancelInvestigation(); } catch(error) { fail(error,'Stop the remote device check'); }
   });
   $('inspect').addEventListener('click', () => run(()=>inspect(),'Prepare update: validate firmware and device'));
+  $('prepare-stop').addEventListener('click',()=>{if(preparing&&!updatePhase){$('prepare-stop').disabled=true;preparing.abort();status('Stopping update preparation...');}});
   $('find-route').addEventListener('click', () => run(()=>findRoute(),'Find an admin route'));
   $('transfer').addEventListener('click', () => run(()=>transfer(false),'Transfer firmware to the remote device'));
   $('resume').addEventListener('click', () => run(()=>transfer(true),'Resume the existing firmware transfer'));

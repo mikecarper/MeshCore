@@ -175,10 +175,14 @@ function search(I, old, oldsize, neu, newOff, newsize) {
  * @param {Buffer} neu
  * @returns {Array<{diff: Buffer, extra: Buffer, adjustment: number}>}
  */
-function createControl(old, neu) {
+function createControl(old, neu, suffixArray) {
   const oldsize = old.length;
   const newsize = neu.length;
-  const I = qsufsort(old, oldsize);
+  // An indexed source suffix preserves suffix ordering after removing earlier
+  // positions. In-place generation can reuse one index for all flash pages.
+  if (suffixArray && (!(suffixArray instanceof Int32Array) || suffixArray.length !== oldsize + 1))
+    throw new Error('Invalid source suffix array');
+  const I = suffixArray || qsufsort(old, oldsize);
 
   const controls = [];
 

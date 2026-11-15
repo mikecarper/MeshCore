@@ -18,6 +18,10 @@ ROOT = Path(__file__).resolve().parents[1]
 # Fake only the USB serial device. All UI, mOTA, and session logic is real.
 HARNESS = r'''<script>
 (() => {
+  const fixtureFetch=window.fetch.bind(window);
+  window.fetch=(input,options)=>String(input)==='https://mikecarper.github.io/MeshCore/_data/lora_ota_bridges/index.json'
+    ?Promise.resolve(new Response(JSON.stringify({schemaVersion:1,routes:[]}),{headers:{'Content-Type':'application/json'}}))
+    :fixtureFetch(input,options);
   const originalTimer=window.setTimeout;
   window.setTimeout=(fn,ms,...a)=>originalTimer(fn,ms===20000?5:ms,...a);
   const enc=new TextEncoder(), dec=new TextDecoder();

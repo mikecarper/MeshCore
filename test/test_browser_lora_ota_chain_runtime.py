@@ -116,6 +116,88 @@ def chain_harness(*,attested=True,bad_identity=False,external=False):
     return harness
 
 
+def automatic_harness(*, equal_version=False, bad_resource=False, interrupt=False, three_steps=False):
+    script = chain_harness()
+    script = one_replace(script,"'get tempradio':radio,'get radio':radio,",
+                         "'get tempradio':radio,'get radio':radio.split(',').slice(0,4).join(','),")
+    script = one_replace(script,
+        "if(cmd==='get tempradio')return targetTemp?radio:'off';",
+        """if(cmd==='get tempradio')return targetTemp?radio:'off';
+      if(cmd==='get public.key')return target;
+      if(['get radio2','get tempradio2','get radio2.cross','get radioat2','get tempradioat2'].includes(cmd))return 'Error: unsupported';
+      if(cmd.startsWith('tempradio ')){targetTemp=true;return 'OK - applying';}""")
+    script = one_replace(script,
+        "if(cmd==='ota folder')reply=",
+        """if(['get radio2','get tempradio2','get radio2.cross','get radioat2','get tempradioat2'].includes(cmd))reply='Error: unsupported';
+      if(cmd==='ota.peer radio'||cmd==='ota.peer radio radio')reply='OTApeer radio=radio';
+      if(cmd.startsWith('tempradio '))reply='OK - applying';
+      if(cmd==='get radioat'||cmd==='get tempradioat')reply='slots:';
+      if(cmd==='ota folder')reply=""")
+    start = script.index("      const put=(name,stage)=>")
+    end = script.index("    } catch(e){await report(", start)
+    replacement = r'''
+      const digest=async bytes=>hex(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)));
+      const hashes=await Promise.all(stages.map(stage=>digest(stage.image)));
+      const index={schemaVersion:1,routes:[{from:hashes[0],to:hashes.at(-1),targetId:0x12345678,hwId:'board',
+        images:stages.slice(1,-1).map((stage,i)=>({sha256:hashes[i+1],size:stage.image.length}))}]};
+      const resources=new Map();for(let i=1;i<stages.length-1;i++){
+        const gzip=new Uint8Array(await new Response(new Blob([stages[i].image]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());
+        resources.set(hashes[i],{encoding:'gzip-base64',data:btoa(Array.from(gzip,x=>String.fromCharCode(x)).join(''))});
+      }
+      const fetchOriginal=window.fetch.bind(window);let bridgeReads=0;
+      window.fetch=(input,options)=>{
+        const url=String(input),root='https://mikecarper.github.io/MeshCore/_data/lora_ota_bridges/';
+        if(url===root+'index.json')return Promise.resolve(new Response(JSON.stringify(index)));
+        const hash=url.startsWith(root)?url.slice(root.length,-5):'';
+        if(resources.has(hash)){bridgeReads++;return Promise.resolve(new Response(JSON.stringify(BAD_RESOURCE?{encoding:'gzip-base64',data:'H4sIAAAA'}:resources.get(hash))));}
+        return fetchOriginal(input,options);
+      };
+      const put=(name,stage)=>{const dt=new DataTransfer();dt.items.add(new File([stage.image],name+'.bin'));return dt.files;};
+      el('base').files=put('base',stages[0]);el('file').files=put('goal',stages.at(-1));el('key').value=target;
+      el('chain-attest').checked=false;
+      el('connect').click();await wait(()=>!el('inspect').disabled);
+      el('inspect').click();await wait(()=>!el('update').disabled||el('workflow-status').dataset.state==='error');
+      if(BAD_RESOURCE){await report({status:el('status').textContent,cmds,actualApplications,bridgeReads,disabled:el('update').disabled});return;}
+      if(el('update').disabled)throw Error(el('status').textContent);
+      const prepared=el('update-summary').textContent;
+      let interrupted=false;
+      if(INTERRUPT){
+        const remote=port.remote.bind(port);port.remote=async cmd=>{
+          if(cmd.startsWith('ota pull ')&&stageIndex===1&&!interrupted){interrupted=true;return 'ERR simulated transfer interruption';}
+          return remote(cmd);
+        };
+      }
+      el('update').click();el('update').click();
+      await wait(()=>el('workflow-status').dataset.state==='complete'||el('workflow-status').dataset.state==='error');
+      let recovered='';
+      if(INTERRUPT){
+        if(stageIndex!==1)throw Error('Interruption did not retain the first installed bridge');
+        // Clear selected base and rebuild from IndexedDB through the normal
+        // Prepare action. No intermediate files or advanced actions are used.
+        el('base').value='';el('inspect').click();
+        await wait(()=>!el('update').disabled||el('workflow-status').dataset.state==='error'&&!el('inspect').disabled);
+        recovered=el('update').textContent;
+        el('update').click();await wait(()=>el('workflow-status').dataset.state==='complete'||el('workflow-status').dataset.state==='error');
+      }
+      await report({status:el('status').textContent,notice:el('workflow-status').textContent,summary:el('update-summary').textContent,
+        prepared,recovered,cmds,stageIndex,folder,actualApplications,totals,bridgeReads});
+'''
+    replacement = replacement.replace('BAD_RESOURCE', 'true' if bad_resource else 'false').replace('INTERRUPT', 'true' if interrupt else 'false')
+    script = script[:start] + replacement + script[end:]
+    if equal_version:
+        script = one_replace(script, "make(a,0x01110109,'v1.17.1.9')", "make(a,0x01120001,'v1.18.0.1')")
+    if three_steps:
+        script = one_replace(script,'if(stageIndex>=2)', 'if(stageIndex>=stages.length-1)')
+        script = one_replace(script,'const length=356000,', 'const length=460000,')
+        script = one_replace(script,'i<layout/2;i++', 'i<layout/3;i++')
+        script = one_replace(script,'const c=b.slice();for(let i=Math.ceil(layout/2);i<layout;i++)c[i]^=rand()&255;',
+            'const c=b.slice();for(let i=Math.ceil(layout/3);i<2*layout/3;i++)c[i]^=rand()&255;\n'
+            '      const d=c.slice();for(let i=Math.ceil(2*layout/3);i<layout;i++)d[i]^=rand()&255;')
+        script = one_replace(script,"await make(c,0x01120002,'v1.18.0.2')",
+            "await make(c,0x01120001,'v1.18.0.1'),await make(d,0x01120002,'v1.18.0.2')")
+    return script
+
+
 class BrowserLoraOtaChainRuntimeTest(unittest.TestCase):
     def setUp(self):
         if not BROWSER:
@@ -164,6 +246,40 @@ class BrowserLoraOtaChainRuntimeTest(unittest.TestCase):
         self.assertFalse(result['folder'])
         self.assertFalse(any(c.startswith('remote ota pull ') for c in result['cmds']))
         self.assertNotIn('remote ota install',result['cmds'])
+
+    def test_ordinary_buttons_automatically_load_and_install_two_complete_images(self):
+        result = run_harness(automatic_harness(equal_version=True), timeout=120)
+        self.assertNotIn('error', result, result)
+        self.assertIn('2 automatic update steps', result['prepared'])
+        self.assertIn('Update complete', result['notice'])
+        self.assertEqual(result['actualApplications'], 2)
+        self.assertEqual(result['bridgeReads'], 1)
+        self.assertFalse(result['folder'])
+        self.assertEqual(len([c for c in result['cmds'] if c.startswith('remote ota installhash ')]), 2)
+
+    def test_bad_intermediate_resource_blocks_every_firmware_write(self):
+        result = run_harness(automatic_harness(bad_resource=True), timeout=120)
+        self.assertNotIn('error', result, result)
+        self.assertTrue(result['disabled'])
+        self.assertEqual(result['actualApplications'], 0)
+        self.assertFalse(any(c.startswith('remote ota pull ') for c in result['cmds']))
+
+    def test_prepare_automatically_recovers_the_saved_intermediate_after_interruption(self):
+        result = run_harness(automatic_harness(interrupt=True), timeout=120)
+        self.assertNotIn('error', result, result)
+        self.assertEqual(result['recovered'], 'Continue firmware update')
+        self.assertIn('Update complete', result['notice'])
+        self.assertEqual(result['actualApplications'], 2)
+        self.assertEqual(len([c for c in result['cmds'] if c.startswith('remote ota installhash ')]), 2)
+
+    def test_automatic_search_runs_three_steps_when_two_cannot_fit(self):
+        result = run_harness(automatic_harness(three_steps=True), timeout=120)
+        self.assertNotIn('error', result, result)
+        self.assertIn('3 automatic update steps', result['prepared'])
+        self.assertIn('Update complete', result['notice'])
+        self.assertEqual(result['actualApplications'], 3)
+        self.assertEqual(result['bridgeReads'], 2)
+        self.assertFalse(result['folder'])
 
 
 if __name__=='__main__':unittest.main()

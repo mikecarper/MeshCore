@@ -1,13 +1,15 @@
-/* Browser-compatible detools sequential patch generation for ESP32. */
+/* Browser-compatible detools application deltas for ESP32 and nRF52. */
 (function(root, factory) {
   const node = typeof module === 'object' && module.exports;
-  const workerUrl = !node && root.document?.currentScript?.src ? new URL('lora_ota_delta_worker.js', root.document.currentScript.src).href : null;
+  const scriptUrl=!node&&root.document?.currentScript?.src?new URL(root.document.currentScript.src):null;
+  const workerUrl=scriptUrl?new URL('lora_ota_delta_worker.js'+scriptUrl.search,scriptUrl).href:null;
   const api = factory(node ? require('./vendor/detools-js/bsdiff.js') : root.MeshCoreDetoolsBsdiff,
     node ? require('./vendor/detools-js/pack-size.js') : root.MeshCoreDetoolsPack,
     node ? require('./vendor/detools-js/crle.js') : root.MeshCoreDetoolsCrle,
-    node ? require('./lora_ota_package.js') : root.MeshCoreMotaPackage, workerUrl);
+    node ? require('./lora_ota_package.js') : root.MeshCoreMotaPackage, workerUrl,
+    node ? require('./lora_ota_checks.js') : root.LoraOtaChecks);
   if (node) module.exports = api; else root.MeshCoreLoraDelta = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function(bsdiff, pack, crle, mota, workerUrl) {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function(bsdiff, pack, crle, mota, workerUrl, checks) {
   'use strict';
   const MAX_IMAGE = 4 * 1024 * 1024;
   function join(parts) {
@@ -32,9 +34,9 @@
     }
     return leaves[0];
   }
-  function controlData(base, target) {
+  function controlData(base, target, index) {
     const parts = [pack.packSize(0)];
-    for (const c of bsdiff.createControl(base, target))
+    for (const c of bsdiff.createControl(base, target, index))
       parts.push(pack.packSize(c.diff.length), c.diff, pack.packSize(c.extra.length), c.extra, pack.packSize(c.adjustment));
     return join(parts);
   }
@@ -71,11 +73,13 @@
     if (r.position !== raw.length) throw new Error('Trailing delta data');
     return output;
   }
-  async function verifiedPair(baseBytes, targetBytes) {
+  async function verifiedPair(baseBytes, targetBytes, options = {}) {
     const [base, target] = await Promise.all([mota.parseEndF(baseBytes), mota.parseEndF(targetBytes)]);
     if (!base.targetId || !target.targetId || !base.hwId || !target.hwId || base.targetId !== target.targetId || base.hwId !== target.hwId)
       throw new Error('Base and target must have matching, nonempty board and role identities');
-    if (target.fwVersion <= base.fwVersion) throw new Error('Target firmware must be newer than the base');
+    if (target.fwVersion < base.fwVersion || (target.fwVersion === base.fwVersion && options.allowSameVersion !== true))
+      throw new Error('Target firmware must be newer than the base');
+    if (same(base.imageHash, target.imageHash)) throw new Error('The target image is already installed');
     return [base, target];
   }
   async function assemble(base, target, payload, codecId, options) {
@@ -100,7 +104,7 @@
     return {blob, payload, baseHash:base.bodyHash, targetHash:target.imageHash, target, blockSize};
   }
   async function buildSequentialDelta(baseBytes, targetBytes, options = {}) {
-    const [base, target] = await verifiedPair(baseBytes, targetBytes);
+    const [base, target] = await verifiedPair(baseBytes, targetBytes, options);
     const payload = sequential(base.image, target.image);
     if (!same(applySequential(base.image, payload), target.image)) throw new Error('Generated delta did not reconstruct the target');
     return assemble(base, target, payload, 1, options);
@@ -123,13 +127,16 @@
       throw new Error('Unsupported nRF52 flash layout');
     return {app, end, ceiling, flags};
   }
-  function inPlace(base, target, memorySize) {
+  function inPlace(base, target, memorySize, sourceIndex) {
     const shift = Math.max(memorySize - Math.ceil(base.length / PAGE) * PAGE, 2 * PAGE);
     if (base.length > memorySize - shift || target.length > memorySize) throw new Error('Firmware does not fit the in-place workspace');
     const shifted = base.subarray(0, memorySize - shift), parts = [];
+    const index=sourceIndex||bsdiff.qsufsort(shifted,shifted.length),suffix=new Int32Array(index.length);
     for (let offset = 0; offset < target.length; offset += PAGE) {
       const from = Math.max(offset + PAGE - shift, 0);
-      parts.push(controlData(shifted.subarray(from), target.subarray(offset, offset + PAGE)));
+      const start=Math.min(from,shifted.length);let count=0;
+      for(const position of index)if(position>=start)suffix[count++]=position-start;
+      parts.push(controlData(shifted.subarray(start), target.subarray(offset, offset + PAGE),suffix.subarray(0,count)));
     }
     return join([Uint8Array.of(0x12), pack.packSize(memorySize), pack.packSize(PAGE), pack.packSize(shift),
       pack.packSize(base.length), pack.packSize(target.length), crle.compress(join(parts))]);
@@ -161,7 +168,7 @@
     return mem.slice(0,toSize);
   }
   async function buildInPlaceDelta(baseBytes, targetBytes, options={}) {
-    const [base,target]=await verifiedPair(baseBytes,targetBytes), a=nrfLayout(base.image), b=nrfLayout(target.image);
+    const [base,target]=await verifiedPair(baseBytes,targetBytes,options), a=nrfLayout(base.image), b=nrfLayout(target.image);
     if(a.app!==b.app||a.end!==b.end||a.ceiling!==b.ceiling||a.flags!==b.flags) throw new Error('nRF52 flash layouts differ');
     const qspi=options.runtimeStorage==='qspi';
     if((a.flags & 32) && !['internal','qspi'].includes(options.runtimeStorage))
@@ -182,18 +189,42 @@
       usableCeiling=Math.min(a.ceiling,runtimeCeiling);
     }
     const align=n=>Math.ceil(n/PAGE)*PAGE;
-    const memorySize=Math.max(align(base.imageSize)+2*PAGE,align(target.imageSize));
-    if(memorySize>usableCeiling-a.app || target.imageSize>usableCeiling-a.app) throw new Error('In-place workspace exceeds available flash');
-    const payload=inPlace(base.image,target.image,memorySize);
-    if(!same(applyInPlace(base.image,payload),target.image)) throw new Error('Generated in-place delta did not reconstruct target');
-    const result=await assemble(base,target,payload,2,options);
-    if(205+Math.ceil(payload.length/result.blockSize)*4>PAGE) throw new Error('Delta metadata exceeds the first staging page');
-    // Charge the entire staged package to flash, including on hybrid-capable
-    // builds; this is stricter than the firmware's retained-RAM split.
-    if(qspi) {
-      if(result.blob.length>options.runtimeStorageBytes) throw new Error('Delta exceeds the confirmed QSPI storage capacity');
-    } else if(memorySize+align(result.blob.length)>usableCeiling-a.app) throw new Error('In-place workspace and staged package do not fit together');
-    return {...result,memorySize,layout:a};
+    const minimum=Math.max(align(base.imageSize)+2*PAGE,align(target.imageSize));
+    const spaceError = (workspace, staged) => {
+      const available=usableCeiling-a.app, required=workspace+staged;
+      const kb=n=>(n/1024).toFixed(1).replace(/\.0$/,'')+' KiB';
+      return Object.assign(new Error('This update needs '+kb(required)+' of flash, but '+kb(available)+
+        ' is available ('+kb(workspace)+' rewrite workspace + '+kb(staged)+' staged package in flash). '+
+        'No firmware was uploaded. An intermediate update is needed.'),
+      {code:'OTA_DELTA_SPACE',otaEndpoint:'Browser',otaStep:'Build differential package in this browser',
+        otaLocalCheck:true,space:{workspace,staged,required,available}});
+    };
+    if(minimum>usableCeiling-a.app || target.imageSize>usableCeiling-a.app) throw spaceError(minimum,0);
+    if(options.memorySize!==undefined&&(!Number.isInteger(options.memorySize)||options.memorySize%PAGE||options.memorySize<minimum||options.memorySize>usableCeiling-a.app))
+      throw Error('Invalid requested in-place workspace');
+    const maximum=usableCeiling-a.app-(qspi?0:PAGE);
+    const pages=options.searchWorkspaces==='deep'?Array.from({length:Math.max(0,Math.floor((maximum-minimum)/PAGE)+1)},(_,i)=>i):[0,1,2,4,8,16,32];
+    const index=bsdiff.qsufsort(base.image,base.image.length),choices=options.memorySize!==undefined?[options.memorySize]:
+      options.searchWorkspaces?pages.map(p=>minimum+p*PAGE).filter(n=>n<=maximum):[minimum];
+    let best=null,failure=null;
+    for(const memorySize of choices){
+      options.progress?.({phase:'workspace',index:choices.indexOf(memorySize)+1,total:choices.length});
+      const payload=inPlace(base.image,target.image,memorySize,index);
+      if(!same(applyInPlace(base.image,payload),target.image)) throw new Error('Generated in-place delta did not reconstruct target');
+      const result=await assemble(base,target,payload,2,options);
+      if(205+Math.ceil(payload.length/result.blockSize)*4>PAGE) throw new Error('Delta metadata exceeds the first staging page');
+      const stagedFlash=options.runtimeHybridRam==null ? align(result.blob.length) :
+        checks.stagedFlashBytes(result.blob.length,a.flags,usableCeiling,options.runtimeHybridRam);
+      if(qspi){
+        if(result.blob.length>options.runtimeStorageBytes){failure=Error('Delta exceeds the confirmed QSPI storage capacity');continue;}
+      }else if(memorySize+stagedFlash>usableCeiling-a.app){
+        const error=spaceError(memorySize,stagedFlash);if(!failure||error.space.required<failure.space.required)failure=error;continue;
+      }
+      if(!best||result.blob.length<best.blob.length)best={...result,memorySize,layout:a,stagedFlashBytes:stagedFlash};
+      if(!['data','deep'].includes(options.searchWorkspaces))break;
+    }
+    if(!best)throw failure||spaceError(minimum,PAGE);
+    return best;
   }
   function buildInWorker(base, target, options = {}) {
     if (typeof Worker !== 'function') return Promise.reject(new Error('Browser workers are unavailable'));
@@ -205,7 +236,8 @@
       let done = false;
       const cleanup = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort); worker.terminate(); };
       const fail = error => { if (!done) { done = true; cleanup(); reject(error); } };
-      const abort = () => fail(new Error('Differential preparation cancelled'));
+      const abort = () => fail(Object.assign(new Error('Differential preparation cancelled. No firmware was uploaded.'),
+        {otaLocalCheck:true,otaEndpoint:'Browser',otaStep:'Prepare differential package'}));
       const timer = setTimeout(() => fail(new Error('Differential preparation timed out')), options.timeoutMs || 120000);
       if (signal?.aborted) return abort();
       signal?.addEventListener('abort', abort, {once:true});
@@ -214,14 +246,23 @@
         const result = event.data;
         if (!result || result.id !== id) return;
         if (result.phase === 'building') { options.progress?.('building'); return; }
-        if (result.phase !== 'complete' || !(result.package instanceof ArrayBuffer)) return fail(new Error(result.error || 'Invalid differential worker response'));
+        if(result.phase==='workspace'&&Number.isInteger(result.index)&&Number.isInteger(result.total)&&result.index>=1&&result.index<=result.total&&result.total<=256){
+          options.progress?.({phase:result.phase,index:result.index,total:result.total});return;
+        }
+        if (result.phase !== 'complete' || !(result.package instanceof ArrayBuffer)) {
+          const error=new Error(result.error || 'Invalid differential worker response');
+          if(result.code==='OTA_DELTA_SPACE')Object.assign(error,{code:result.code,otaEndpoint:'Browser',
+            otaStep:'Build differential package in this browser',otaLocalCheck:true});
+          return fail(error);
+        }
         if (!done) { done = true; cleanup(); resolve({blob:new Uint8Array(result.package), payloadBytes:result.payloadBytes,
           baseHash:new Uint8Array(result.baseHash), targetHash:new Uint8Array(result.targetHash), memorySize:result.memorySize}); }
       };
       const a = Uint8Array.from(base).buffer, b = Uint8Array.from(target).buffer;
-      try { worker.postMessage({id, base:a, target:b, blockSize:options.blockSize, mode:options.mode || 'sequential',
+      try { worker.postMessage({id, base:a, target:b, blockSize:options.blockSize, mode:options.mode || 'sequential',allowSameVersion:options.allowSameVersion===true,
+        searchWorkspaces:options.searchWorkspaces,memorySize:options.memorySize,
         runtimeStageCeiling:options.runtimeStageCeiling, runtimeStorage:options.runtimeStorage,
-        runtimeQspiApply:options.runtimeQspiApply, runtimeStorageBytes:options.runtimeStorageBytes}, [a,b]); }
+        runtimeQspiApply:options.runtimeQspiApply, runtimeStorageBytes:options.runtimeStorageBytes,runtimeHybridRam:options.runtimeHybridRam}, [a,b]); }
       catch (error) { fail(error); }
     });
   }

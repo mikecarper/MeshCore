@@ -74,6 +74,9 @@
       this.link = link; this.key = key; this.password = password; this.info = info;
       this.signerVerified = !!options.signerVerified; this.image = options.image; this.compress = options.compress || null; this.inplacePlan = options.inplacePlan || null;
       this.onStage = options.onStage || (() => {});
+      // Only an explicit, hash-bound application chain can request an equal-
+      // version bridge. Discovery and ordinary single updates remain forward-only.
+      this.allowSameVersion = options.allowSameVersion === true;
       this.pollMs = options.pollMs || 20000; this.transferTimeoutMs = options.transferTimeoutMs || 4 * 60 * 60 * 1000; this.progress = options.progress || (() => {}); this.readJournal = options.readJournal || (() => null);
       this.verifiedRadio = null;
       this.journal = options.journal || (() => {});
@@ -323,8 +326,8 @@
           return {...dest, download:'installed'};
         }
       }
-      checks.validate(this.info, dest, this.signerVerified);
-      const hybridRamReply = await checks.readHybridRam(this.inplacePlan, this.info, () => this.remote('ota ram'));
+      checks.validate(this.info, dest, this.signerVerified, {allowSameVersion:this.allowSameVersion});
+      const hybridRamReply = await checks.readHybridRam(this.inplacePlan, this.info, () => this.remote('ota ram'),()=>this.remote('ota bootloader status'));
       checks.validateInternalPlan(this.inplacePlan, this.info, status, self, dest,
         this.inplacePlan?.storage === 'qspi' ? await this.remote('ota qspi') : null, hybridRamReply);
       if (!this.info.isFull && this.info.codecId === 1)

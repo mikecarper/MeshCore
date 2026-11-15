@@ -77,8 +77,14 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
     <label><input data-role="full-rebuild" type="checkbox"> Prepare a new full package instead of resuming</label>
     <p>A staged update is discarded only if you choose Replace and install update.</p>
     </details>
-    <p>Prepare update checks the firmware, sets up a temporary channel and tests the link. Your normal radio channels stay unchanged.</p>
-    <p class="lora-ota-actions"><button type="button" data-role="inspect" disabled>Prepare update</button></p>
+    <p>Prepare update checks the firmware and link, and finds a fitting update path. Intermediate updates, when needed, run automatically.</p>
+    <details class="lora-ota-advanced"><summary>Update path options</summary>
+      <label><input type="checkbox" data-role="auto-search" checked> Compare compatible intermediate updates automatically</label>
+      <label>Prefer<select data-role="auto-objective"><option value="steps">Fewest installs, then least data</option><option value="data">Least radio data, then fewest installs</option></select></label>
+      <label>Search<select data-role="auto-depth"><option value="standard">Automatic</option><option value="deep">Deep search (takes longer)</option></select></label>
+      <p>Deep search compares every page-aligned rewrite workspace and published bridge candidate for these exact images. Every patch must fit and reconstruct its complete firmware. Estimates exclude retries.</p>
+    </details>
+    <p class="lora-ota-actions"><button type="button" data-role="inspect" disabled>Prepare update</button> <button type="button" data-role="prepare-stop" class="lora-ota-secondary" hidden>Stop preparing</button></p>
   </section>
   <section class="lora-ota-step">
     <h2>3. Update the remote device</h2>
@@ -163,6 +169,28 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
 
 <details markdown="1">
 <summary>Compatibility and advanced update details</summary>
+
+### Automatic intermediate updates
+
+Prepare update compares compatible published application bridges automatically.
+Update remote firmware transfers, installs and verifies each selected step,
+then prepares the next radio window. Progress shows the current step. After an
+interruption, use Prepare update and Continue firmware update; the exact plan
+and completed steps are saved in this browser.
+
+Under Update path options, choose fewer installs or less radio data. Deep search
+also checks every page-aligned workspace that could fit. It takes longer and
+can be stopped before uploading firmware. Estimates exclude retries and other
+mesh traffic. The comparison covers the published candidates for the two exact
+images; it does not guarantee the best possible route through all firmware ever
+built.
+
+The initial published bridge bank covers the GAT562 30S Mesh Kit repeater from
+the original 1.18.0.1 Full image to 1.18.0.2 Full. Its hybrid staging requires
+confirmed retained-RAM support. Older applications without `ota ram` can use the
+exact published GAT562 OTAFIX 2.4.12 bootloader identity and CRC. Unknown
+bootloaders remain blocked. These are application updates; the bootloader and
+saved settings are retained.
 
 ## About guarded OTA
 
@@ -315,29 +343,30 @@ if preparation fails, remove the old image to use a full package instead.
 
 </details>
 
-<script src="../_javascript/lora_ota_checks.js"></script>
+<script src="../_javascript/lora_ota_checks.js?v=auto-paths-1"></script>
 <script src="../_javascript/lora_ota_package.js"></script>
 <script src="../_javascript/lora_ota_zip.js"></script>
-<script src="../_javascript/lora_ota_delta.js"></script>
+<script src="../_javascript/lora_ota_delta.js?v=auto-paths-1"></script>
 <script src="../_javascript/lora_ota_port.js"></script>
 <script src="../_javascript/lora_ota_serial.js"></script>
 <script src="../_javascript/lora_ota_companion_source.js"></script>
 <script src="../_javascript/lora_ota_companion.js"></script>
 <script src="../_javascript/lora_ota_contacts.js"></script>
-<script src="../_javascript/lora_ota_session.js"></script>
+<script src="../_javascript/lora_ota_session.js?v=auto-paths-1"></script>
 <script src="../_javascript/lora_ota_route.js"></script>
 <script src="../_javascript/lora_ota_repeat.js"></script>
 <script src="../_javascript/lora_ota_discovery.js"></script>
 <script src="../_javascript/lora_ota_collect.js"></script>
-<script src="../_javascript/lora_ota_routed_session.js"></script>
+<script src="../_javascript/lora_ota_routed_session.js?v=auto-paths-1"></script>
 <script src="../_javascript/lora_ota_plan.js"></script>
-<script src="../_javascript/lora_ota_candidates.js"></script>
+<script src="../_javascript/lora_ota_candidates.js?v=auto-paths-1"></script>
 <script src="../_javascript/lora_ota_sim.js"></script>
-<script src="../_javascript/lora_ota_chain.js"></script>
-<script src="../_javascript/lora_ota_chain_ui.js"></script>
+<script src="../_javascript/lora_ota_chain.js?v=auto-paths-1"></script>
+<script src="../_javascript/lora_ota_chain_ui.js?v=auto-paths-1"></script>
+<script src="../_javascript/lora_ota_auto_chain.js?v=auto-paths-1"></script>
 <script src="../_javascript/lora_ota_region_profiles.js"></script>
 <script src="../_javascript/lora_ota_radio_setup.js"></script>
 <script src="../_javascript/lora_ota_recovery.js"></script>
 <script src="../_javascript/lora_ota_lease.js"></script>
 <script src="../_javascript/lora_ota_catalog.js?v=4aeb7bf86"></script>
-<script src="../_javascript/lora_ota_browser.js"></script>
+<script src="../_javascript/lora_ota_browser.js?v=auto-paths-1"></script>

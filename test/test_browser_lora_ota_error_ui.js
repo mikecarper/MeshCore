@@ -64,6 +64,17 @@ test('verbose checkbox is off by default, opens for a halting error and can hide
   ui.get('verbose-errors').checked=false;ui.get('verbose-errors').emit('change');assert.equal(ui.get('verbose-error-panel').hidden,true);assert.equal(ui.get('diagnostics').open,false);
   ui.api.fail(Error('Another failure'),'Validate firmware');assert.equal(ui.get('verbose-errors').checked,true);assert.equal(ui.get('verbose-error-panel').hidden,false);
 });
+test('local preparation failures keep actionable text visible and technical details collapsed',async()=>{
+  const ui=workbench(),calls=[];
+  ui.api.setLink({running:true,sourceKey:'aa'.repeat(32),diagnosticRead:async command=>{calls.push(command);}});
+  await ui.api.fail(Object.assign(Error('Needs 840 KiB; 796 KiB is available. No firmware was uploaded.'),
+    {code:'OTA_DELTA_SPACE',otaLocalCheck:true,otaEndpoint:'Browser',otaStep:'Build differential package'}),'Prepare update');
+  assert.match(ui.get('workflow-status').textContent,/Needs 840 KiB; 796 KiB/);
+  assert.match(ui.get('workflow-status').textContent,/No firmware was uploaded/);
+  assert.match(ui.get('error-details').textContent,/Command: none \(local browser calculation\)/);
+  assert.equal(ui.get('verbose-errors').checked,false);assert.equal(ui.get('verbose-error-panel').hidden,true);
+  assert.deepEqual(calls,[]);
+});
 test('halting failures collect target ver and board while retaining cached source identity and original failure',async()=>{
   const ui=workbench(),key='bb'.repeat(32),calls=[],error=Object.assign(Error('Remote command timed out; result is unknown'),{otaCommand:'ota self',otaRadio:'Radio 2 (selected source OTA profile)',loraReplyTimeout:true});
   const link={running:true,sourceKey:'aa'.repeat(32),firmwareVersion:'v1.18.0.2-source',firmwareBoardName:'Source board',otaSupported:true,otaRadioProfile:1,diagnosticRead:async(target,password,command,options)=>{assert.equal(target,key);assert.equal(password,'');assert.equal(options.timeoutMs,5000);calls.push(command);link.otaRadioProfile=0;return command==='ver'?'v1.18.0.2-target':'Target board';}};

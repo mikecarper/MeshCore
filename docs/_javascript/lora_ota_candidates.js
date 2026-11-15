@@ -24,7 +24,7 @@
   }
   function nrfOptions(c) {
     return {runtimeStageCeiling:c.runtimeStageCeiling, runtimeStorage:c.runtimeStorage,
-      runtimeQspiApply:c.runtimeQspiApply, runtimeStorageBytes:c.runtimeStorageBytes};
+      runtimeQspiApply:c.runtimeQspiApply, runtimeStorageBytes:c.runtimeStorageBytes,runtimeHybridRam:c.runtimeHybridRam};
   }
   async function encodedSizes(info, caps, encode, signal) {
     if (caps.deflate !== true || !encode || caps.wireProfile === 'legacy') return undefined;
@@ -190,7 +190,7 @@
     const dest = {targetId:live.targetId,hwId:live.hwId,version:live.version,baseHash:String(live.bodyHash).toLowerCase(),
       nrf:live.nrf,external:live.external,sd:live.sd,maxBlock:live.maxBlock,
       codecs:live.codecs.reduce((bits,v)=>bits | (1<<v),0)};
-    checks.validate(info,dest,false);
+    checks.validate(info,dest,false,{allowSameVersion:step.edge.allowSameVersion===true});
     if (live.nrf && info.codecId === 2) {
       if (!step.edge.nrfGeometry || !step.edge.inplacePlan)
         throw Error('The prepared nRF52 storage geometry is missing');

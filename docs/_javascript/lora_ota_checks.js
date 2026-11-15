@@ -124,7 +124,7 @@
     const radio=safeText(detail.otaRadio,160);
     if(radio)lines.push('Radio: '+radio);
     const command=safeCommand(detail.otaCommand);
-    lines.push('Command: '+(command||'not identified for this failure'));
+    lines.push('Command: '+(detail.otaLocalCheck===true?'none (local browser calculation)':command||'not identified for this failure'));
     const requestStep=safeText(detail.otaRequestStep),requestCommand=safeCommand(detail.otaRequestCommand);
     if(requestStep&&requestStep!==stage)lines.push('Request step: '+requestStep);
     if(requestCommand&&requestCommand!==command)lines.push('Request command: '+requestCommand);
@@ -316,12 +316,14 @@
     if(result.state!=='supported')reject(result);
     return {status,self};
   }
-  function validate(info, dest, verifiedSigner) {
+  function validate(info, dest, verifiedSigner, options = {}) {
     if (!info || !dest || !(info.baseHash instanceof Uint8Array)) throw Error('Invalid package metadata');
     if (info.isBootloader) throw Error('Bootloader updates are not supported by this updater');
     if (info.signed && !verifiedSigner) throw Error('A signed package requires its full trusted signing key');
     if (info.targetId !== dest.targetId || info.hwId !== dest.hwId) throw Error('Package hardware or target does not match');
-    if (info.fwVersion <= dest.version) throw Error('Package is not newer than the installed firmware');
+    if (info.fwVersion < dest.version || (info.fwVersion === dest.version &&
+        !(options.allowSameVersion === true && !info.isFull && info.codecId === 2)))
+      throw Error('Package is not newer than the installed firmware');
     if (info.blockSize > dest.maxBlock) throw Error('Package block size exceeds target limit');
     if (!info.isFull && hex(info.baseHash.subarray(0, 8)) !== dest.baseHash) throw Error('Differential package does not match the exact installed firmware');
     if (dest.nrf && !(dest.codecs & (1 << info.codecId))) throw Error('Installed bootloader does not support the package codec');
@@ -388,12 +390,44 @@
       throw Error('This hybrid nRF52 package requires bootloader RAM capability that cannot be confirmed here');
     return reply.trim();
   }
-  async function readHybridRam(plan, info, getReply) {
+  function legacyHybridRam(status) {
+    // Published GAT562 OTAFIX 2.4.12 image: manifest/CRC verified on-device.
+    // Its SHA-256-pinned release ZIP is 86490cbca323a8b81fc8490f9a43fd06
+    // db4c776bac6aa0bda91ee807cf801c60. The sole aligned MOTARAMA record
+    // at bootloader offset 37648 is ABI 1 / record 72 / arena 65536.
+    // Older applications cannot expose that record through `ota ram` yet.
+    // Require the exact scanned identity, never a board/version-name guess.
+    if(!/^(?:>\s*)?BL board=239A0029 target=D50D2D44 name=GAT562_DFU crc=03F81FDD abi=3 caps=0A \| staged:none mid=-+ hash=-+$/i.test(String(status).trim()))
+      throw Error('This older target cannot confirm retained RAM support; its bootloader does not match a verified published image');
+    return 'OTA RAM: hybrid=1 abi=1 record=72 arena=65536';
+  }
+  function ramCommandUnsupported(reply){
+    return /^(?:>\s*)?(?:(?:err(?:or)?\s*:?\s*)?(?:unknown(?: OTA)? command|unsupported)\b)/i.test(String(reply).trim());
+  }
+  async function probeHybridRam(read) {
+    const reply=await read('ota ram');
+    return ramCommandUnsupported(reply)?legacyHybridRam(await read('ota bootloader status')):confirmHybridRam(reply);
+  }
+  async function readHybridRam(plan, info, getReply, getBootloader) {
     if (!needsHybridRam(plan, info)) return null;
     let reply;
     try { reply = await getReply(); }
-    catch (_) { throw Error('This hybrid nRF52 package requires bootloader RAM capability that cannot be confirmed here'); }
-    return confirmHybridRam(reply);
+    catch (error) {
+      if(getBootloader&&ramCommandUnsupported(error?.message))return legacyHybridRam(await getBootloader());
+      throw Error('This hybrid nRF52 package requires bootloader RAM capability that cannot be confirmed here');
+    }
+    return ramCommandUnsupported(reply)&&getBootloader?legacyHybridRam(await getBootloader()):confirmHybridRam(reply);
+  }
+  function stagedFlashBytes(size, flags, ceiling, hybridRamReply) {
+    if(!Number.isSafeInteger(size)||size<=0)throw Error('Invalid staged package size');
+    if((flags&16)&&size>4096&&hybridRamReply!==undefined&&hybridRamReply!==null){
+      confirmHybridRam(hybridRamReply);
+      if(ceiling!==0xED000)throw Error('Hybrid staging requires the expanded nRF52 flash layout');
+      // Match mota_nrf52_hybrid_stage_plan exactly: one flash page minimum,
+      // page-rounded prefix, and at most 64 KiB in the retained SRAM arena.
+      return Math.max(4096,Math.ceil((size-65536)/4096)*4096);
+    }
+    return Math.ceil(size/4096)*4096;
   }
   function validateInternalPlan(plan, info, status, self, dest, qspiDiagnostics, hybridRamReply) {
     if (!plan) return;
@@ -407,8 +441,8 @@
     const ceiling = Math.min(internalStage(status, self, dest), plan.layoutCeiling);
     if (needsHybridRam(plan, info)) confirmHybridRam(hybridRamReply);
     if (!Number.isInteger(plan.app) || !Number.isInteger(plan.memorySize) || !Number.isInteger(plan.layoutCeiling) ||
-        plan.memorySize + Math.ceil(info.blob.length / 4096) * 4096 > ceiling - plan.app)
+        plan.memorySize + stagedFlashBytes(info.blob.length,plan.layoutFlags,ceiling,hybridRamReply) > ceiling - plan.app)
       throw Error('The current nRF52 staging space no longer fits this differential');
   }
-  return { route, destination, availability, readReceiver, coldRakStatus, prepareColdRakStorage, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, needsHybridRam, confirmHybridRam, readHybridRam, validateInternalPlan, version, hex, failureAdvice, explicitMaxBlock, errorDetails, collectFailureIdentity };
+  return { route, destination, availability, readReceiver, coldRakStatus, prepareColdRakStorage, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, needsHybridRam, confirmHybridRam, legacyHybridRam, probeHybridRam, readHybridRam, stagedFlashBytes, validateInternalPlan, version, hex, failureAdvice, explicitMaxBlock, errorDetails, collectFailureIdentity };
 });

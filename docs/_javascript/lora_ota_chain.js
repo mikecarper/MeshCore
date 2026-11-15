@@ -143,7 +143,11 @@
               // A durable step record already proves install was attempted; the
               // fresh post-install live check below proves what is running now.
             } else if (record.phase==='pull attempted' || record.phase==='ready') {
-              await session.start({resume:true});
+              // A rejected pull or lost volatile staging can leave the exact
+              // source image running with no download. Prove that fresh state
+              // before restarting this same package; never replay an install.
+              const inspected=await session.inspect({allowExisting:true});
+              await session.start({resume:inspected.download!=='idle'});
             } else if (record.phase==='prepared') {
               await session.start({resume:false});
             } else throw Error('The saved step phase is not safe to resume');

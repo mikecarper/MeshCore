@@ -70,6 +70,14 @@ test('executes a validated chain serially and rearms only after verified reboot'
   assert.ok(f.calls.indexOf('rearm 0')<f.calls.indexOf('start 1 false'));
   assert.equal(f.chain.phase,'complete');assert.equal(f.chain.index,1);
 });
+test('recovery restarts the exact rejected pull after fresh inspection proves an idle target',async()=>{
+  const f=await fixture();f.failNextPull();
+  await assert.rejects(new ChainRunner(f.args).run(),/timed out/);
+  const create=f.args.createSession;
+  f.args.createSession=async(...args)=>{const job=await create(...args);job.inspect=async()=>({download:'idle'});return job;};
+  await new ChainRunner(f.args).run({resume:true});
+  assert.deepEqual(f.pulls,[0,0,1]);assert.deepEqual(f.installs,[0,1]);
+});
 
 test('uncertain pull resumes without a second initial pull',async()=>{
   const f=await fixture();f.failNextPull();
@@ -152,12 +160,12 @@ test('rejects a session factory bound to another package, source, target or jour
   }
 });
 
-test('actual DirectSession installs a two-image chain with independent journals',async()=>{
+for(const browserRawSource of [false,true])test('actual DirectSession installs a two-image chain with independent journals, Companion='+browserRawSource,async()=>{
   const f=await fixture();
   let node=f.args.prepared.nodes[0], state='idle', served=null, installs=0, resets=0, rearm=0;
   const radio='910.525,62.5,7,5,120', config='autofetch=off autoinstall=off hops=0';
   const version=n=>`v${n>>>24}.${(n>>>16)&255}.${(n>>>8)&255}.${n&255}`;
-  const link={sourceKey:source,
+  const link={sourceKey:source,browserRawSource,otaSupported:browserRawSource,
     async verifyPeer(k){assert.equal(k,target);}, async resetRemoteSession(k){assert.equal(k,target);resets++;},
     async localCommand(c){return c==='get radio'||c==='get tempradio'?radio:c==='get radio.rxps'?'off':c==='ota stats'?'fetch idle':c==='ota folder'?'folder=off':config;},
     async remoteCommand(k,p,c){

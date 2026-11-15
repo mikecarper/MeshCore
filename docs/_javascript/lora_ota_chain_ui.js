@@ -51,7 +51,7 @@
         caps.runtimeStorage='internal';caps.runtimeStageCeiling=checks.internalStage(status,self,d);
         // Older receivers may lack the diagnostic. They remain usable for
         // non-hybrid packages, while larger hybrid packages require proof.
-        try { caps.runtimeHybridRam=checks.confirmHybridRam(await link.remoteCommand(key,password,'ota ram')); }
+        try { caps.runtimeHybridRam=await checks.probeHybridRam(command=>link.remoteCommand(key,password,command)); }
         catch (_) { caps.runtimeHybridRam=null; }
       }
     }
