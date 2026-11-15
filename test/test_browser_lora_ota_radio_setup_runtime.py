@@ -94,7 +94,8 @@ def radio_setup_harness(*, secondary_supported=True, pending_firmware=False, fac
         else if(text==='get tempradio2')value=!SECONDARY_SUPPORTED?'Error: unsupported':sourceTemp==='off'?'> off':'> 909.950,500.000,5,7,rxtx,128; 0d2h0m (120 min) left';
         else if(text==='get radio2.cross')value=SECONDARY_SUPPORTED?'> off':'Error: unsupported';
         else if(text==='get radio2.status'){
-          if(sourceTemp==='pending'&&pendingReads++===0){value='> off; RX=0,0 TX=0,0 switches=0 errors=0 max=0us preamble=32,0';timeline.push(['source-pending']);}
+          if(sourceTemp==='off')value='> off; RX=0,0 TX=0,0 switches=0 errors=0 max=0us preamble=32,0';
+          else if(sourceTemp==='pending'&&pendingReads++===0){value='> off; RX=0,0 TX=0,0 switches=0 errors=0 max=0us preamble=32,0';timeline.push(['source-pending']);}
           else{sourceTemp='active';value='> rxtx; RX=0,0 TX=0,0 switches=8 errors=0 max=200us preamble=32,128; test=4/4,4/4 ready budget=220us';timeline.push(['source-active']);}
         }
         else if(text==='get radioat'||text==='get tempradioat')value='Error: unsupported';
@@ -178,13 +179,21 @@ def borrowed_secondary_harness():
         'pausedTargetSecondary,inspectStatus,prepared,checked,profiles,defaults,timeline,')
 
 
-def missed_original_probe_harness():
+def primary_unreachable_after_source_radio2_harness(*, target_ack_lost=False):
+    """Source R2 time-sharing must not gate the original-channel handoff."""
     harness = missed_switch_harness()
     harness = replace_once(harness, 'let ignoredSwitches=1,mailboxPending=false;',
-        'let ignoredSwitches=0,originalMisses=2,mailboxPending=false;')
-    return replace_once(harness, "if(text==='get public.key'&&selectedProfile===1&&targetTemp==='off')",
-        "if(text==='get public.key'&&selectedProfile===0&&sourceTemp==='active'&&targetTemp==='off'&&originalMisses-->0)"
-        "{mailboxPending=true;reply='';}else if(text==='get public.key'&&selectedProfile===1&&targetTemp==='off')")
+        'let ignoredSwitches=0,blockedOriginalReplies=0,mailboxPending=false;')
+    harness = replace_once(harness, 'profileTrace,sourceSaved:radio,sourceTemp,targetTemp,sourcePolicy,targetPolicy,',
+        'blockedOriginalReplies,profileTrace,sourceSaved:radio,sourceTemp,targetTemp,sourcePolicy,targetPolicy,')
+    harness = replace_once(harness, "if(text==='get public.key'&&selectedProfile===1&&targetTemp==='off')",
+        "if(text==='get public.key'&&selectedProfile===0&&sourceTemp!=='off')"
+        "{blockedOriginalReplies++;mailboxPending=true;reply='';}else if(text==='get public.key'&&selectedProfile===1&&targetTemp==='off')")
+    if target_ack_lost:
+        harness = replace_once(harness,
+            "targetTemp='active';targetAcknowledgedAt=Date.now();reply='OK - temporary channel applying';",
+            "targetTemp='active';targetAcknowledgedAt=Date.now();mailboxPending=true;reply='';")
+    return harness
 
 
 def explicit_region_with_active_window_harness():
@@ -231,13 +240,10 @@ class BrowserRadioSetupRuntime(unittest.TestCase):
         self.assertEqual(timeline.count(['remote',command]),1);self.assertEqual(timeline.count(['local',command]),1)
         trial=command if profile else command.replace(',120,128',',2,128')
         target_at=timeline.index(['remote',trial]);source_at=timeline.index(['local',trial]);file_at=timeline.index(['file-read'])
-        first, second = (source_at, target_at) if profile else (target_at, source_at)
-        self.assertLess(first, second)
-        self.assertTrue(any(row==['guard-close']for row in timeline[first+1:second]),timeline)
+        self.assertLess(target_at, source_at, timeline)
+        self.assertTrue(any(row==['guard-close']for row in timeline[target_at+1:source_at]),timeline)
         pending_at=timeline.index(['source-pending']);active_at=timeline.index(['source-active'])
         self.assertLess(source_at,pending_at);self.assertLess(pending_at,active_at);self.assertLess(file_at,target_at)
-        if profile:
-            self.assertLess(active_at, target_at, timeline)
         self.assertIn(['remote','get public.key'],timeline[active_at+1:]);self.assertGreaterEqual(timeline.count(['remote','get public.key']),2)
         self.assertFalse(any(row[0]in ('local','remote')and re.match(r'^(?:set radio(?:2)?\s|tempradio\.ifidle)',row[1])for row in timeline))
         self.assertFalse(any(frame[0]==65 for frame in result['frames']),result);self.assertFalse(result['guard'],result)
@@ -259,21 +265,40 @@ class BrowserRadioSetupRuntime(unittest.TestCase):
         self.assertFalse(any(row[0] in ('local','remote') and row[1].startswith(
             ('set radio2 ', 'del radioat2', 'del tempradioat2', 'normalradio')) for row in result['timeline']))
 
-    def test_two_missed_original_channel_probes_retry_reads_before_the_target_switch(self):
-        result = run_harness(missed_original_probe_harness(), timeout=60)
+    def test_target_is_requested_before_source_radio2_can_make_original_channel_unreachable(self):
+        result = run_harness(primary_unreachable_after_source_radio2_harness(), timeout=60)
         self.assert_automatic_setup(result, 1)
         trace = result['profileTrace']
         switch = 'set tempradio2 909.950,500,5,7,rxtx,120,128'
         target_switch = next(i for i,row in enumerate(trace) if row[1] == switch)
-        source_setup = next(row for row in result['timeline'] if row[:2] == ['local',switch])
-        self.assertEqual(source_setup[:2], ['local', switch])
-        # Preflight also proves the key. The final three primary proofs are
-        # the same post-source-setup check, with two real mailbox timeouts.
-        proofs = [row for row in trace[:target_switch] if row[:2] == [0,'get public.key']]
-        self.assertGreaterEqual(len(proofs), 3, result)
-        self.assertGreaterEqual(proofs[-1][2] - proofs[-3][2], 10000, result)
+        # The actual Companion transport must retain its authenticated primary
+        # admission until the single target request has been sent. Once local
+        # R2 is enabled this endpoint deliberately stops replying on primary;
+        # only a fresh full-key/readback proof on R2 can finish preparation.
+        self.assertIn([0, 'get public.key'], [row[:2] for row in trace[:target_switch]], result)
+        self.assertIn([0, 'get tempradio2'], [row[:2] for row in trace[:target_switch]], result)
         self.assertFalse(any(row[0] == 1 for row in trace[:target_switch]))
+        self.assertEqual(trace[target_switch][0], 0, result)
+        new_proofs = [row[:2] for row in trace[target_switch + 1:]]
+        self.assertIn([1, 'get public.key'], new_proofs, result)
+        self.assertIn([1, 'get tempradio2'], new_proofs, result)
+        self.assertFalse(any(row[0] == 0 for row in trace[target_switch + 1:]), result)
+        self.assertEqual(result['blockedOriginalReplies'], 0, result)
         self.assertEqual(sum(row[1] == switch for row in trace), 1)
+
+    def test_lost_target_ack_is_resolved_on_radio2_without_replaying_the_request(self):
+        result = run_harness(primary_unreachable_after_source_radio2_harness(target_ack_lost=True), timeout=60)
+        self.assert_automatic_setup(result, 1)
+        trace = result['profileTrace']
+        switch = 'set tempradio2 909.950,500,5,7,rxtx,120,128'
+        writes = [row for row in trace if row[1] == switch]
+        self.assertEqual(len(writes), 1, result)
+        self.assertEqual(writes[0][0], 0, result)
+        new_proofs = [row for row in trace if row[:2] == [1, 'get public.key']]
+        self.assertTrue(new_proofs, result)
+        self.assertGreaterEqual(new_proofs[0][2] - writes[0][2], 5000, result)
+        self.assertEqual(result['blockedOriginalReplies'], 0, result)
+        self.assertFalse(any(row[0] == 0 and row[2] > writes[0][2] for row in trace), result)
 
     def test_missed_switch_is_rechecked_on_both_radios_then_requested_on_the_original_channel(self):
         result = run_harness(missed_switch_harness(), timeout=60)

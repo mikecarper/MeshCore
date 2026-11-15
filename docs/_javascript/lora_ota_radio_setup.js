@@ -337,6 +337,10 @@
       }
       progress('Preparing both radios on ' + formatRadio(expected) + (legacy ? ' (Companion compatibility channel).' : '.'));
       const source = await baseline('source', local), target = await baseline('target', remote);
+      progress('Target saved primary: ' + formatRadio(target.saved) + '; temporary primary: ' +
+        (target.temporaryPrimary.state === 'active' ? formatRadio(target.temporaryPrimary.tuple) + ',preamble=' + target.temporaryPrimary.preamble : target.temporaryPrimary.state) +
+        '; temporary radio2: ' + (target.temporarySecondary.state === 'configured' ?
+          formatRadio(target.temporarySecondary.tuple) + ',preamble=' + target.temporarySecondary.preamble : target.temporarySecondary.state) + '.');
       need(!legacy || same(source.saved, expected), 'Companion saved channel changed during setup.');
       const sourceProfile = !legacy && source.temporaryPrimary.state === 'off' && link.supportsOtaRadio2 === true &&
         (source.adoptSecondary || source.secondaryFree && !source.overlapsPrimary) ? 1 : 0;
@@ -381,22 +385,17 @@
       need(required({otaPolicy: policy(await remote('ota config'))}), 'Target prerequisite settings changed before radio setup.');
       const dualProbe = companion && !legacy && sourceProfile === 1 && typeof link.probePeerRadio === 'function';
       if (dualProbe) {
-        // Prepare the USB radio first: primary keeps the known working link,
-        // while temporary radio2 can test the requested channel immediately.
-        await link.closeRadioSession();
+        // Keep the admitted primary session intact until the target's first
+        // switch request. Enabling source radio2 changes receive dwell times
+        // and can change its automatic primary preamble even when the saved
+        // primary tuple is unchanged. Do not invalidate our only working link
+        // and then demand another old-channel proof before sending the request.
         const sourceFresh = await baseline('source', local);
         need(sameSaved(sourceFresh, source) && samePrimary(sourceFresh.temporaryPrimary, source.temporaryPrimary) &&
           secondarySignature(sourceFresh.temporarySecondary) === secondarySignature(source.temporarySecondary) &&
           (sourceFresh.secondaryFree || sourceFresh.adoptSecondary) && required(sourceFresh),
           'Source radio or prerequisite settings changed before setup; no source write was sent.');
-        progress('Preparing temporary radio2 on the USB Companion; its primary channel stays available.');
-        if (!adoptSource) {
-          sourceAttempted = true;
-          need(/^(?:>\s*)?OK(?:\s|$)/i.test(String(await link.applyTemporaryRadio(trial.source)).trim()),
-            'Source temporary setup was not confirmed.');
-        }
-        const sourceLive = await verifyActive(local, sourceProfile, 'Source');
-        const oldPreamble = Number(/\bpreamble=(\d+),/i.exec(String(sourceLive.liveStatus))?.[1] || 128);
+        let oldPreamble = Number(/\bpreamble=(\d+),/i.exec(String(await local('get radio2.status')))?.[1] || 128);
         const started = now(), deadline = started + 90000;
         need(Number.isFinite(started), 'Invalid temporary-channel clock.');
         let previous = started, lastSwitch = started, misses = 0, verified = false, lastProbeError = null;
@@ -410,6 +409,9 @@
         const probe = async profile => {
           const remaining = deadline - clock();
           if (remaining <= 0) return {reachable:false};
+          const label = profile ? 'temporary OTA radio2' : 'original primary';
+          progress('Checking CLI on ' + label + ' settings ' + formatRadio(profile ? expected : source.saved) +
+            ': full target identity, then ' + (targetProfile ? 'get tempradio2 / get radio2.status' : 'get tempradio') + '.');
           const result = await link.probePeerRadio(key, password, profile, {
             radio: profile ? expected : source.saved, preamble: profile ? v.preamble : oldPreamble,
             maxDurationMs: remaining, readback: read => readTemporary(read, targetProfile)
@@ -427,6 +429,8 @@
             error.message = message + (result.error?.message ? ' ' + result.error.message : '');
             throw error;
           }
+          progress(result.reachable ? 'Target CLI answered on ' + label + ' settings; reported temporary state: ' + result.reply?.state + '.' :
+            'No target CLI reply on ' + label + ' settings; no setting write is authorized by this timeout.');
           return result;
         };
         const requestSwitch = async () => {
@@ -447,30 +451,44 @@
             progress('The switch reply was not received. Checking the requested channel before any further switch request.');
           }
         };
-        // This proof is on the unchanged primary, after source radio2 setup.
-        // The probe also pins all following admin TX to that proven profile.
-        let original, originalAttempts = 0;
-        for (; originalAttempts < 3 && clock() < deadline;) {
-          originalAttempts++;
-          original = await probe(0);
-          if (original.reachable) break;
-          if (originalAttempts < 3 && clock() < deadline) {
-            progress('The target did not answer the original-channel check. Retrying the same primary channel (' +
-              (originalAttempts + 1) + ' of 3); no target switch request has been sent.');
-            await wait(Math.min(500, deadline - clock()));
+        if (!adoptTarget) {
+          // Identity was just proved above on the admitted source profile.
+          // Reuse that working guard instead of closing it for a short probe.
+          // A stale selector must be explicitly returned to primary and proved
+          // there before it can authorize a new temporary-channel request.
+          if ((link.otaRadioProfile ?? 0) !== 0) {
+            await link.closeRadioSession();
+            await link.selectOtaRadio(0);
+            await link.verifyPeer(key, password); keyProof(await remote('get public.key'), key);
           }
+          progress('Reading target temporary state on the already-proven primary channel before enabling source radio2.');
+          const state = await readTemporary(remote, targetProfile);
+          need(clock() < deadline, 'Original-channel verification exceeded the 90-second setup deadline; no target switch request was sent.');
+          need(['off', 'pending', 'active'].includes(state.state), 'Target temporary state on its original channel is unknown.');
+          if (!matches(state) && state.state !== 'pending') await requestSwitch();
         }
-        if (!original?.reachable) {
-          const message = 'The target did not respond on its original channel after ' + originalAttempts +
-            ' checks; no target switch request was sent.';
-          const error = Object.assign(Error(message), lastProbeError || {});
-          error.message = message + (lastProbeError?.message ? ' ' + lastProbeError.message : '');
-          error.otaAttempt = originalAttempts; error.otaMaxAttempts = 3;
-          throw error;
+        // Matching target leases are already live and must not be contacted
+        // through an old primary channel they may no longer use. Both fresh
+        // requests (including lost acknowledgements) and adoption next prove
+        // the requested channel before considering any further target write.
+        need(clock() < deadline, 'Temporary-channel setup exceeded 90 seconds.');
+        await link.closeRadioSession();
+        const sourceBeforeActivation = await baseline('source', local);
+        need(sameSaved(sourceBeforeActivation, source) && samePrimary(sourceBeforeActivation.temporaryPrimary, source.temporaryPrimary) &&
+          secondarySignature(sourceBeforeActivation.temporarySecondary) === secondarySignature(source.temporarySecondary) &&
+          (sourceBeforeActivation.secondaryFree || sourceBeforeActivation.adoptSecondary) && required(sourceBeforeActivation),
+          'Source radio or prerequisite settings changed before activation; no source write was sent.');
+        need(clock() < deadline, 'Temporary-channel setup exceeded 90 seconds before source activation.');
+        progress('Preparing temporary radio2 on the USB Companion after the target request; saved primary settings stay unchanged.');
+        if (!adoptSource) {
+          sourceAttempted = true;
+          need(/^(?:>\s*)?OK(?:\s|$)/i.test(String(await link.applyTemporaryRadio(trial.source)).trim()),
+            'Source temporary setup was not confirmed.');
         }
-        need(original.reply && ['off', 'pending', 'active'].includes(original.reply.state), 'Target temporary state on its original channel is unknown.');
-        if (!adoptTarget && !matches(original.reply) && original.reply?.state !== 'pending') await requestSwitch();
-        progress('Checking the requested frequency through temporary radio2; the original primary stays available.');
+        const sourceLive = await verifyActive(local, sourceProfile, 'Source');
+        oldPreamble = Number(/\bpreamble=(\d+),/i.exec(String(sourceLive.liveStatus))?.[1] || oldPreamble);
+        need(clock() < deadline, 'Source activation exceeded the 90-second setup deadline.');
+        progress('Checking the requested frequency through temporary radio2 before checking the original channel again.');
         while (clock() < deadline) {
           const requested = await probe(1);
           if (requested.reachable && matches(requested.reply)) { verified = true; break; }
@@ -597,7 +615,7 @@
         same(prior.tuple||[],expected)&&prior.preamble===v.preamble&&prior.sourceProfile===sourceProfile&&prior.targetProfile===targetProfile);
       link.otaLeaseProof={source:link.sourceKey,target:key,tuple:expected.slice(),preamble:v.preamble,
         sourceProfile,targetProfile,explicitProfiles:[!adoptSource||refreshedSourcePrimary||previouslyOwned&&prior.explicitProfiles?.[0]===true,
-          !adoptTarget||previouslyOwned&&prior.explicitProfiles?.[1]===true]};
+          targetAttempted||previouslyOwned&&prior.explicitProfiles?.[1]===true]};
       const paused = pausedTargetSecondary || (previouslyOwned ? prior.pausedTargetSecondary : null);
       if (paused) link.otaLeaseProof.pausedTargetSecondary = {...paused, tuple:paused.tuple.slice()};
       return {ready: true, source: expected.slice(), target: expected.slice(), savedSource: source.saved, savedTarget: target.saved,

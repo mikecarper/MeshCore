@@ -317,13 +317,24 @@ temporary channels with the Companion's saved settings. It tests primary
 channels with a two-minute window before extending them; temporary radio2
 uses the full window and keeps the normal channel available. A missing USB
 reply during setup stops the operation and requires reconnecting. With a Companion that
-can select temporary radio2, the page keeps its original primary channel and
-probes the requested update channel on radio2. Probe timeouts account for radio
+can select temporary radio2, the page first sends the target's temporary-channel
+request over the already-proven primary link. Only afterward does it enable
+source radio2 and test the requested channel. This avoids changing the source's
+receive scanning and automatic preamble before the target is ready. A lost
+request reply is checked on the requested channel, not blindly sent again.
+An adopted matching target window is checked on its current update channel;
+the browser does not require it to answer on an old channel it has left.
+Probe timeouts account for radio
 airtime and allow at least five seconds for a reply. The original-channel check
 can try up to three times within the same 90-second setup deadline. Only
 read-only identity and state checks are retried; a target switch still requires
 a fresh full-key proof on the original channel. Failures retain the command,
-stage and selected radio, rather than hiding the underlying timeout.
+stage and selected radio, rather than hiding the underlying timeout. The log
+shows the cached saved and temporary target settings and labels each CLI check
+as original primary or temporary OTA radio2. A temporary primary window can make
+a target unreachable on its saved channel until the window expires; remote
+silence alone does not prove the processor has hung. The browser checks the
+requested channel first, then checks the original settings after missed replies.
 If the target still answers on the original channel without a pending
 switch, setup can send another switch request, with a pause and a bounded number
 of attempts. It continues only after verifying the target on the new channel.
