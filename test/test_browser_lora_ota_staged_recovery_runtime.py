@@ -18,7 +18,7 @@ def staged_recovery_harness(*, replacement=False, lost_cancel=False, changed_sta
                             staged_ready=False, missing_journal=False):
     script = legacy_setup_harness(matching=True)
     script = replace_once(script, 'let inbox=[],',
-        "let failNextPull=true,cancels=0,connects=0,requests=0,stagedId='',installedVersion='v1.18.0.1';let inbox=[],")
+        "let failNextPull=true,cancels=0,connects=0,requests=0,reconnectAt=-1,stagedId='',installedVersion='v1.18.0.1';let inbox=[],")
     script = replace_once(script, 'requestPort:async()=>port',
         'requestPort:async()=>{requests++;return port;}')
     script = replace_once(script,
@@ -35,13 +35,13 @@ def staged_recovery_harness(*, replacement=False, lost_cancel=False, changed_sta
         "else if(text.startsWith('ota pull ')){state='fetching';reply='OK';",
         """else if(text==='ota cancel'){
           cancels++;state='idle';stagedId='';
-          if(LOST_CANCEL&&cancels===1)return;
+          if(LOST_CANCEL&&cancels===1){reconnectAt=this.frames.length;return;}
           reply='OK';
         }
         else if(text.startsWith('ota pull ')){
           stagedId=text.split(' ')[2].toLowerCase();
           if(stagedId!==mid)throw Error('pull selected the wrong firmware');
-          if(failNextPull){failNextPull=false;state='failed';return;}
+          if(failNextPull){failNextPull=false;state='failed';reconnectAt=this.frames.length;return;}
           state='fetching';reply='OK';""".replace('LOST_CANCEL', 'true' if lost_cancel else 'false'))
     marker = "window.addEventListener('load',async()=>{try{"
     script = replace_once(script, marker, marker + """
@@ -52,16 +52,19 @@ def staged_recovery_harness(*, replacement=False, lost_cancel=False, changed_sta
     """)
     original = """    el('update').click();await wait(()=>el('workflow-status').dataset.state==='complete'||el('workflow-status').dataset.state==='error');
     if(el('workflow-status').dataset.state!=='complete')throw Error(el('workflow-status').textContent);"""
-    recovery = """    el('update').click();
-    await wait(()=>!el('reconnect').hidden&&!el('reconnect').disabled);
+    # USB timeouts reconnect the same port automatically. The interrupted
+    # operation must remain stopped until an explicit preparation/readback.
+    recovery = """    const selectedKey=el('key').value,selectedPassword=el('password').value,selectedFile=el('file').files[0];
+    el('update').click();
+    await wait(()=>reconnectAt>=0);
+    if(!el('update').disabled||!el('inspect').disabled)throw Error('Pending USB recovery still permits update commands');
+    await wait(()=>connects===2&&!el('inspect').disabled&&el('status').textContent.includes('USB source identity confirmed after retry.'));
     const firstRecord=JSON.parse(localStorage.getItem('meshcore-browser-lora-ota'));
     if(state!=='failed'||firstRecord.phase!=='pull attempted'||firstRecord.id!==stagedId)
       throw Error('Uncertain pull was not retained as the same failed download');
     if(cmds.filter(c=>c.startsWith('ota pull ')).length!==1||cancels!==0)
       throw Error('Uncertain pull was replayed or discarded');
-    if(!el('update').disabled||!el('inspect').disabled)throw Error('Poisoned USB still permits update commands');
-    const selectedKey=el('key').value,selectedPassword=el('password').value,selectedFile=el('file').files[0];
-    const reconnectAt=port.frames.length;el('reconnect').click();await wait(()=>!el('inspect').disabled);
+    if(!el('update').disabled||!el('transfer').disabled||!el('install').disabled)throw Error('Automatic reconnect restarted the interrupted update');
     if(requests!==1||connects!==2)throw Error('Reconnect asked for the USB device again');
     if(el('key').value!==selectedKey||el('password').value!==selectedPassword||el('file').files[0]!==selectedFile)
       throw Error('Reconnect lost the selected target or firmware');
@@ -102,10 +105,12 @@ def staged_recovery_harness(*, replacement=False, lost_cancel=False, changed_sta
       throw Error('Changed staged package was cancelled or updated');
     if(el('workflow-status').dataset.state!=='error')throw Error('Changed staged identity was accepted');"""
     elif lost_cancel:
-        after_update = """await wait(()=>!el('reconnect').hidden&&!el('reconnect').disabled);
+        after_update = """await wait(()=>connects===3&&!el('inspect').disabled);
     if(cancels!==1||state!=='idle'||installed||cmds.filter(c=>c.startsWith('ota pull ')).length!==1)
       throw Error('Lost cancellation acknowledgement was replayed or followed by a pull');
-    el('reconnect').click();await wait(()=>!el('inspect').disabled);
+    if(requests!==1)throw Error('Cancellation recovery asked for the USB device again');
+    if(port.frames.slice(reconnectAt).some(f=>[2,10,26,52,65].includes(f[0])))
+      throw Error('Cancellation recovery replayed target or OTA operations');
     el('inspect').click();await wait(()=>!el('inspect').disabled);
     if(el('update').disabled||el('update').textContent!=='Update remote firmware')
       throw Error('Already cancelled target was not recognized after fresh readback');
