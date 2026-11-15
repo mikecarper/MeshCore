@@ -39,8 +39,9 @@ The bounded lower-data search selected these packages:
 | 2 | Full bridge, `f3abf1d05` | 226260 | 638976 | 163840 | 12288 |
 | 3 | Published 1.18.0.2 Full | 237178 | 643072 | 172032 | 0 |
 
-Total: 703499 package bytes (687 KiB), three installs. The default faster
-workspace search also selects three installs, totaling 753613 package bytes.
+Total: 703499 package bytes (687 KiB), three installs. Automatic preparation
+compares seven workspace sizes per pair and chooses the lower-data packages
+within the fewest-install route. Deep search checks every allowed flash page.
 The reported radio-data estimate additionally includes modeled legacy framing,
 requests and proofs. Retries, congestion and unrelated mesh traffic are excluded.
 These are finite-candidate results, not a global minimum over possible builds.

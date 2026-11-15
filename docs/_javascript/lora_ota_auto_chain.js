@@ -107,7 +107,7 @@
       const a=images[i],b=images[j], allowSameVersion=a.fwVersion===b.fwVersion;
       let built;
       try{built=await build(a.image,b.image,{mode:'in-place',runtimeStorage:'internal',runtimeStageCeiling:caps.runtimeStageCeiling,
-        runtimeHybridRam:caps.runtimeHybridRam,allowSameVersion,searchWorkspaces:options.deep?'deep':options.objective==='data'?'data':'fit',blockSize:1024,signal:options.signal,
+        runtimeHybridRam:caps.runtimeHybridRam,allowSameVersion,searchWorkspaces:options.deep?'deep':'data',blockSize:1024,signal:options.signal,
         progress:state=>{if(state?.phase==='workspace')progress('Comparing patch '+checked+' of '+pairCount+', workspace '+state.index+' of '+state.total+'...');}});}
       catch(error){cancelled(options.signal);if(error?.code==='OTA_DELTA_SPACE')continue;throw error;}
       const info=await mota.parseMota(built.blob),layout=delta.nrfLayout(a.image);
