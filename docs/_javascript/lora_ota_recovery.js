@@ -7,9 +7,87 @@
 })(typeof globalThis!=='undefined'?globalThis:this,function(setup){
   'use strict';
   const owned=new WeakMap(), fullKey=value=>typeof value==='string'&&/^[a-f0-9]{64}$/i.test(value);
+  const passiveProfiles=new WeakMap(), passiveProfileLifetime=120000;
+  const object=value=>value!==null&&(typeof value==='object'||typeof value==='function');
   const bare=value=>String(value).trim().replace(/^>\s*/,'');
   const same=(a,b)=>Array.isArray(a)&&Array.isArray(b)&&a.length===b.length&&a.every((v,i)=>Math.abs(v-b[i])<=(i===0?.001:.00001));
   const waitDefault=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+  function captureSourceProfile(link,target,{now=()=>Date.now()}={}){
+    // USB transport failure is allowed here: capture the previous page's
+    // evidence before close() clears its identity. This token is RAM-only and
+    // cannot authorize a channel retune or any target setting write.
+    if(!link||link.browserRawSource!==true||link.otaSupported!==true||link.localCliSupported!==true||
+        !object(link.port)||!fullKey(link.sourceKey)||!fullKey(target)||
+        link.sourceKey.toLowerCase()===target.toLowerCase()||
+        typeof link.knownRepeater!=='string'||link.knownRepeater.toLowerCase()!==target.toLowerCase()||link.relays?.length||
+        link.otaRadioProfile!==1||![0,1].includes(link.otaTargetProfile))return null;
+    let tuple,preamble;
+    const proof=link.otaLeaseProof;
+    if(proof){
+      if(typeof proof.source!=='string'||typeof proof.target!=='string'||
+          proof.source.toLowerCase()!==link.sourceKey.toLowerCase()||proof.target.toLowerCase()!==target.toLowerCase()||
+          proof.sourceProfile!==1||proof.targetProfile!==link.otaTargetProfile)return null;
+      tuple=proof.tuple;preamble=proof.preamble;
+    }else{
+      const active=link.sourceTempRadio;
+      if(active?.state!=='active'||active.profile!==1)return null;
+      tuple=active.tuple||active.radio;preamble=active.preamble;
+    }
+    if(!Array.isArray(tuple)||tuple.length!==4)return null;
+    try{setup.settings({frequency:tuple[0],bandwidth:tuple[1],sf:tuple[2],cr:tuple[3],preamble,minutes:1});}
+    catch(_){return null;}
+    const at=now();if(!Number.isSafeInteger(at)||at<=0||!Number.isSafeInteger(at+passiveProfileLifetime))return null;
+    const token=Object.freeze({source:link.sourceKey.toLowerCase(),target:target.toLowerCase(),
+      tuple:Object.freeze(tuple.slice()),preamble,sourceProfile:1,targetProfile:link.otaTargetProfile,
+      capturedAt:at,expiresAt:at+passiveProfileLifetime});
+    passiveProfiles.set(token,{port:link.port});return token;
+  }
+  async function restoreSourceProfile(link,target,token,{now=()=>Date.now(),progress}={}){
+    const owner=object(token)?passiveProfiles.get(token):null;
+    const unavailable=reason=>({state:'unavailable',reason});
+    const unconfirmed=reason=>({state:'unconfirmed',reason});
+    if(!owner)return unavailable('No same-page source profile is available');
+    const current=()=>{
+      const at=now();
+      return Number.isSafeInteger(at)&&at>=token.capturedAt&&at<token.expiresAt&&
+        link?.port===owner.port&&link.browserRawSource===true&&link.otaSupported===true&&link.localCliSupported===true&&
+        fullKey(target)&&target.toLowerCase()===token.target&&fullKey(link.sourceKey)&&link.sourceKey.toLowerCase()===token.source&&
+        (!link.knownRepeater||typeof link.knownRepeater==='string'&&link.knownRepeater.toLowerCase()===token.target)&&
+        !link.failure&&link.running!==false&&link.portOpened!==false&&!link.serving&&!link.seeder&&!link.folderUnknown&&
+        !link.relays?.length&&typeof link.localCommand==='function'&&typeof link.probeOtaRadio==='function'&&
+        typeof link.selectOtaRadio==='function';
+    };
+    if(!current())return unavailable('The same USB port, source, target and unexpired profile are required');
+    if(link.guard||link.authenticated)return unconfirmed('Release the owned source mailbox before selecting its existing profile');
+    const read=async command=>{
+      if(!current())throw Error('The USB source changed or its passive profile recovery expired');
+      const reply=await link.localCommand(command);
+      if(!current())throw Error('The USB source changed or its passive profile recovery expired');
+      return reply;
+    };
+    if(!await link.probeOtaRadio()||!current()||link.supportsOtaRadio2!==true)
+      return unconfirmed('The USB source cannot confirm secondary OTA selection');
+    if(!/\bfetch idle\b/i.test(bare(await read('ota stats')))||!/^folder=off\b/i.test(bare(await read('ota folder'))))
+      return unconfirmed('The USB source still owns a firmware transfer or folder');
+    const primary=await setup.readTemporary(read,0);
+    if(primary.state!=='off')return unconfirmed('The primary temporary channel is not off; no profile was selected');
+    const active=await setup.readTemporary(read,1);
+    if(!matches(active,token))return unconfirmed('The recorded temporary radio2 is no longer active with the same settings');
+    if(setup.crossing(await read('get radio2.cross'))!=='off')
+      return unconfirmed('The source crossing policy changed; no profile was selected');
+    if(!current()||link.guard||link.authenticated)
+      return unconfirmed('The source session changed before profile selection');
+    progress?.('The same temporary radio2 is still active. Selecting it locally without changing either radio.');
+    await link.selectOtaRadio(1);
+    if(!current()||link.otaRadioProfile!==1)
+      return unconfirmed('The existing secondary OTA profile could not be confirmed');
+    link.otaTargetProfile=token.targetProfile;
+    // Preserve only the fresh USB readback, not a target identity/lease proof.
+    // A later same-page reconnect can validate this same local profile again.
+    link.sourceTempRadio={...active,profile:1,tuple:active.tuple.slice(),radio:active.tuple.slice()};
+    return {state:'selected',requiresVerification:true,source:token.source,target:token.target,
+      sourceProfile:1,targetProfile:token.targetProfile,tuple:token.tuple.slice(),preamble:token.preamble};
+  }
   function channel(record,sourceKey,targetKey,now=Date.now()){
     if(!fullKey(sourceKey)||!fullKey(targetKey)||sourceKey.toLowerCase()===targetKey.toLowerCase()||
       !record||!['pull attempted','ready'].includes(record.phase)||
@@ -148,5 +226,5 @@
     owned.delete(result);result.requiresVerification=false;
     return {...result,minutes:120};
   }
-  return {channel,restoreSource,confirmSource};
+  return {channel,restoreSource,confirmSource,captureSourceProfile,restoreSourceProfile};
 });

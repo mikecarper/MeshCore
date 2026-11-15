@@ -23,6 +23,10 @@
   // where closing the host port does not always reset the firmware owner.
   // Only this page's own exact SerialPort object may be recovered this way.
   const OWNED_USB_FOLDERS=new WeakMap();
+  // This page may reconnect the exact same SerialPort after a poisoned USB
+  // stream without the firmware observing a host-close edge. Never infer a
+  // guard owner from a busy status alone, and never persist this authority.
+  const OWNED_DIRECT_GUARDS=new WeakMap();
   const RADIO_PROBE_READS=new Set(['get public.key','get tempradio','get tempradio2','get radio2.status']);
   function loraTimeout(message){const error=Error(message);error.loraReplyTimeout=true;return error;}
   // Diagnostic metadata never changes the message: retry decisions elsewhere
@@ -214,10 +218,11 @@
           // not a CLI reply. Accept any response to this read-only probe.
           const frame=await this.commandAny(join(Uint8Array.of(66),enc.encode('get ota.direct')),[29],true);
           this.localCliSupported=frame[0]===29;
-          const status=this.localCliSupported?dec.decode(frame.slice(1)).trim():'';
+          let status=this.localCliSupported?dec.decode(frame.slice(1)).trim():'';
           if (/^>?\s*ota\.direct v=2 active=[01] busy=[01]\s*$/i.test(status)) {
             const cap=await this.localCommand('get ota.direct.capabilities');
             this.otaSupported=/^>?\s*ota\.direct\.cap guarded_cli=1 guarded_radio=1\s*$/i.test(cap);
+            if(this.otaSupported)status=await this.recoverOwnedDirectGuard(status);
             if(this.otaSupported&&!/^>?\s*ota\.direct v=2 active=0 busy=0\s*$/i.test(status))
               this.otaUnavailableReason='The Companion OTA mailbox is already in use';
             else if(this.otaSupported)this.otaUnavailableReason='';
@@ -313,7 +318,7 @@
         if(!this.running||this.failure)return reject(this.failure||Error('Companion is disconnected'));
         if(this.usbFolderSource?.blocksAppCommands())return reject(Error('USB folder must return to Binary mode before an app command'));
         if(payload.length>this.usbRawFrameMax)return reject(Error('Companion command exceeds its USB receive limit'));
-        const timer=setTimeout(()=>{this.pending=null;this.failure=Error('Companion response timed out while '+operation+'; reconnect before retrying');reject(this.failure);},timeoutMs);
+        const timer=setTimeout(()=>{this.pending=null;this.failure=Error('Companion response timed out while '+operation+'; reconnect before retrying');this.failure.otaUsbTimeout=true;reject(this.failure);},timeoutMs);
         this.pending={codes,anyResponse,resolve,reject,timer};this.writer.write(packet(payload)).catch(e=>{clearTimeout(timer);this.pending=null;this.failure=e;reject(e);});
       })).catch(error=>{throw errorContext(error,usbContext(payload,timeoutMs,radio));});this.queue=run.catch(()=>{});return run;
     }
@@ -338,15 +343,18 @@
       if(this.knownRepeater!==key)this.failureIdentityCache=null;
       this.knownRepeater=key;this.peerType=match?.type||2;this.radioProbeAdmission=null;
     }
-    localCommand(text){
-      if(this.usbFolderSource?.ownsStream())return this.withFolderPaused(()=>this.localCommandBinary(text),false);
-      return this.localCommandBinary(text);
+    localCommand(text,{timeoutMs}={}){
+      if(timeoutMs!==undefined&&(text!=='get ota.direct'||!Number.isFinite(timeoutMs)||timeoutMs<=0))
+        throw Error('A finite positive local status duration is required');
+      if(this.usbFolderSource?.ownsStream())return this.withFolderPaused(()=>this.localCommandBinary(text,timeoutMs),false);
+      return this.localCommandBinary(text,timeoutMs);
     }
-    async localCommandBinary(text){
+    async localCommandBinary(text,timeoutMs){
       try{
       if(!this.localCliSupported)throw Error('This Companion cannot report local CLI settings over USB');
       if(typeof text!=='string'||!text.length||/[\r\n\0]/.test(text)||enc.encode(text).length>180)throw Error('Invalid Companion command');
-      const reply=dec.decode((await this.command(join(Uint8Array.of(66),enc.encode(text)),29)).slice(1)).trim();
+      const reply=dec.decode((await this.commandAny(join(Uint8Array.of(66),enc.encode(text)),[29],false,
+        timeoutMs??this.options.commandTimeout??15000)).slice(1)).trim();
       if(text==='get radio'){
         const m=reply.match(/^>?\s*(\d+(?:\.\d+)?),(\d+(?:\.\d+)?),(\d+),(\d+)\s*$/);
         if(!m)throw Error('Cannot read current Companion radio settings');
@@ -480,7 +488,74 @@
     }
     withAdmin(fn){const p=this.admin.then(fn);this.admin=p.catch(()=>{});return p;}
     async guardMode(mode,extra=new Uint8Array()){
+      const source=this.sourceKey,target=this.knownRepeater;
+      const track=source&&/^[a-f0-9]{64}$/i.test(source)&&/^[a-f0-9]{64}$/i.test(target)&&
+        this.port&&(typeof this.port==='object'||typeof this.port==='function');
+      if(track&&mode===1){
+        // Prove the absence of another owner before journaling an arm that may
+        // be accepted even if its USB acknowledgement is subsequently lost.
+        const status=String(await this.localCommand('get ota.direct')).trim();
+        if(this.sourceKey!==source||this.knownRepeater!==target)
+          throw Error('The USB source or target changed before arming its OTA guard');
+        if(!/^>?\s*ota\.direct v=2 active=0 busy=[01]\s*$/i.test(status))
+          throw Error('The Companion OTA mailbox is already in use; reconnect before retrying');
+        OWNED_DIRECT_GUARDS.set(this.port,{source:source.toLowerCase(),target:target.toLowerCase(),closeAttempted:false});
+      }
+      const owned=track?OWNED_DIRECT_GUARDS.get(this.port):null;
+      if(mode===3&&owned&&owned.source===source.toLowerCase()&&owned.target===target.toLowerCase()){
+        if(owned.closeAttempted)throw Error('The previous OTA guard close is unconfirmed; reconnect to check it without repeating the close');
+        OWNED_DIRECT_GUARDS.set(this.port,{...owned,closeAttempted:true});
+      }
       await this.command(join(Uint8Array.of(52,mode),unhex(this.knownRepeater),extra),0);
+      if(mode===3&&owned&&owned.source===source.toLowerCase()&&owned.target===target.toLowerCase())
+        OWNED_DIRECT_GUARDS.delete(this.port);
+    }
+    async waitForDirectIdle(status=null,{maxDurationMs=this.options.guardIdleTimeoutMs??5000}={}){
+      const started=Date.now(),deadline=started+maxDurationMs;
+      const context={otaStep:'Waiting for the USB source radio to become idle',otaCommand:'get ota.direct',
+        otaEndpoint:'USB Companion',otaTimeoutMs:maxDurationMs,otaRadio:'USB/local command (no LoRa transmission)'};
+      if(!Number.isFinite(started)||!Number.isFinite(maxDurationMs)||maxDurationMs<=0||!Number.isFinite(deadline))
+        throw errorContext(Error('Invalid Companion radio-idle deadline'),context);
+      let previous=started;
+      const remaining=()=>{
+        const now=Date.now();if(!Number.isFinite(now)||now<previous)throw errorContext(Error('Invalid Companion radio-idle clock'),context);
+        previous=now;return deadline-now;
+      };
+      for(;;){
+        let left=remaining();
+        if(left<=0)throw errorContext(Error('The USB Companion radio is still busy; no OTA session was cleared or radio command retried'),context);
+        if(status===null){
+          status=await this.localCommand('get ota.direct',{timeoutMs:Math.min(this.options.commandTimeout??15000,left)});
+          if(remaining()<=0)throw errorContext(Error('The USB Companion radio-idle check exceeded its deadline'),context);
+        }
+        const match=/^>?\s*ota\.direct v=2 active=([01]) busy=([01])\s*$/i.exec(String(status).trim());
+        if(!match)throw errorContext(Error('Cannot verify the Companion OTA mailbox state'),context);
+        if(match[1]==='1')throw errorContext(Error('The Companion OTA mailbox is already in use'),context);
+        if(match[2]==='0')return status;
+        left=remaining();if(left>0)await sleep(Math.min(100,left));status=null;
+      }
+    }
+    async recoverOwnedDirectGuard(status){
+      const owned=OWNED_DIRECT_GUARDS.get(this.port);
+      if(!owned)return status;
+      if(!/^[a-f0-9]{64}$/i.test(this.sourceKey||''))throw Error('Verify the complete USB source identity before recovering its OTA guard');
+      if(owned.source!==this.sourceKey.toLowerCase()){
+        OWNED_DIRECT_GUARDS.delete(this.port);return status;
+      }
+      const parse=value=>/^>?\s*ota\.direct v=2 active=([01]) busy=([01])\s*$/i.exec(String(value).trim());
+      let current=parse(status);
+      if(!current)throw Error('Cannot verify the previous Companion OTA guard state');
+      if(current[1]==='1'){
+        if(owned.closeAttempted)
+          throw Error('The previous Companion OTA guard close is unconfirmed. Reconnect or restart the USB source; its close was not repeated');
+        OWNED_DIRECT_GUARDS.set(this.port,{...owned,closeAttempted:true});
+        // Mode 3 is local-only and the firmware compares the complete old
+        // target key. A different active peer is rejected, never reset.
+        await this.command(join(Uint8Array.of(52,3),unhex(owned.target)),0);
+        status=null;
+      }
+      status=await this.waitForDirectIdle(status,{maxDurationMs:this.options.guardRecoveryTimeoutMs??5000});
+      OWNED_DIRECT_GUARDS.delete(this.port);return status;
     }
     async checkClock(){
       try{
@@ -690,14 +765,14 @@
       })).catch(error=>{throw errorContext(error,{otaStep:'Logging in to target',otaCommand:'login <arguments hidden>',otaEndpoint:'remote target',otaTimeoutMs:this.investigationReplyTimeout(),otaPath:path,otaRadio:radio});});
     }
     async investigateCommand(key,password,text){this.validate(key);if(!this.investigationAuthenticated)throw Error('Verify the target before running investigation commands');if(password!==this.investigationPassword)throw Error('Disconnect and reconnect before changing the admin password');return this.withAdmin(()=>this.withFolderPaused(()=>this.retryInvestigation(text,()=>this.otaSupported?this.remoteReply(text):this.standardReply(text))));}
-    async login(password,investigation=false){
+    async login(password,investigation=false,{maxIdleDurationMs}={}){
       const radio=requestRadio(this),path=targetPath(this,true);
       try{
       if(typeof password!=='string'||enc.encode(password).length>15||/[\r\n\0]/.test(password))throw Error('Admin password must fit in 15 bytes');
       if(!this.knownRepeater)throw Error('Select a target first');
       if(!this.otaSupported)throw Error(this.otaUnavailableReason);
-      const status=await this.localCommand('get ota.direct');
-      if(!/^>?\s*ota\.direct v=2 active=0 busy=0\s*$/i.test(status))throw Error('The Companion OTA mailbox is already in use');
+      await this.waitForDirectIdle(null,{maxDurationMs:Math.min(this.options.guardIdleTimeoutMs??5000,maxIdleDurationMs??Infinity,
+        this.diagnosticDeadline===undefined?Infinity:Math.max(0,this.diagnosticDeadline-Date.now()))});
       await this.checkClock();await this.guardMode(1,Uint8Array.of(this.peerType));this.guard=true;
       if(password||investigation){
         const loginTimeout=investigation?this.investigationReplyTimeout():(this.options.remoteTimeout??75000);
@@ -981,7 +1056,7 @@
       }
       return this.withAdmin(async()=>{
         if(remaining()<=0)throw exhausted();
-        if(!this.authenticated)await this.login(password);
+        if(!this.authenticated)await this.login(password,false,bounded?{maxIdleDurationMs:remaining()}:undefined);
         if(remaining()<=0)throw exhausted();
         if(!readOnly)return this.remoteReply(text);
         maxAttempts=this.authenticated||this.investigationAuthenticated?11:7;

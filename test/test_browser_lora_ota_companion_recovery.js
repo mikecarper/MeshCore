@@ -66,6 +66,8 @@ test('USB timeouts identify the stalled operation without disclosing payloads or
     await assert.rejects(f.t.command(payload, 0), error => {
       failure = error;
       assert.equal(error.message, 'Companion response timed out while ' + operation + '; reconnect before retrying');
+      assert.equal(error.otaUsbTimeout, true);
+      assert.equal(error.loraReplyTimeout, undefined);
       assert.ok(!error.message.includes(secret));
       return true;
     });
@@ -75,6 +77,142 @@ test('USB timeouts identify the stalled operation without disclosing payloads or
     assert.equal(f.t.failure, failure);
     assert.equal(f.sent.length, 1);
   }
+});
+
+function guardOwnerFixture(port={},hardware={peer:null,frames:[]},options={}){
+  const t=new CompanionTransport(port,{commandTimeout:8,guardRecoveryTimeoutMs:500,...options});
+  Object.assign(t,{sourceKey:source,knownRepeater:key,running:true,localCliSupported:true,otaSupported:true});
+  t.writer={write:async bytes=>{
+    const frame=bytes.slice(3);hardware.frames.push(frame);
+    if(frame[0]===66){
+      assert.equal(new TextDecoder().decode(frame.slice(1)),'get ota.direct');
+      const status='> ota.direct v=2 active='+(hardware.peer?1:0)+' busy='+(hardware.busy?1:0);
+      t.onFrame(Uint8Array.of(29,...enc.encode(status)));return;
+    }
+    assert.equal(frame[0],52);const target=Buffer.from(frame.slice(2,34)).toString('hex');
+    if(frame[1]===1){
+      hardware.peer=target;
+      if(hardware.loseArm)return;
+    }else{
+      assert.equal(frame[1],3);
+      if(hardware.peer&&hardware.peer!==target){t.onFrame(Uint8Array.of(1,2));return;}
+      if(!hardware.closeNoApply)hardware.peer=null;
+      if(hardware.loseClose)return;
+    }
+    t.onFrame(Uint8Array.of(0));
+  }};
+  return {t,port,hardware,status:()=>'> ota.direct v=2 active='+(hardware.peer?1:0)+' busy='+(hardware.busy?1:0),
+    frames:()=>hardware.frames.filter(frame=>frame[0]===52),
+    reconnect(){const next=guardOwnerFixture(port,hardware,options);next.t.knownRepeater='';return next;}};
+}
+test('same-page exact-port recovery clears only its owned old full target after a lost arm acknowledgement',async()=>{
+  const f=guardOwnerFixture();f.hardware.loseArm=true;
+  await assert.rejects(f.t.guardMode(1,Uint8Array.of(2)),error=>error.otaUsbTimeout===true);
+  assert.equal(f.hardware.peer,key);
+  const next=f.reconnect();assert.equal(next.t.knownRepeater,'');
+  assert.equal(await next.t.recoverOwnedDirectGuard(next.status()),'> ota.direct v=2 active=0 busy=0');
+  assert.equal(next.t.knownRepeater,'');assert.equal(next.t.otaRadioProfile,0);
+  assert.deepEqual(f.frames().map(frame=>frame[1]),[1,3]);
+  assert.equal(Buffer.from(f.frames()[1].slice(2)).toString('hex'),key);
+  assert(f.hardware.frames.every(frame=>[52,66].includes(frame[0])));
+});
+test('unknown owners and another SerialPort object are never reset even when vendor and keys match',async()=>{
+  const unknown=guardOwnerFixture();unknown.hardware.peer=key;
+  assert.equal(await unknown.t.recoverOwnedDirectGuard(unknown.status()),unknown.status());assert.deepEqual(unknown.frames(),[]);
+  const f=guardOwnerFixture();await f.t.guardMode(1,Uint8Array.of(2));
+  const other=guardOwnerFixture({},f.hardware);
+  assert.equal(await other.t.recoverOwnedDirectGuard(other.status()),other.status());assert.deepEqual(f.frames().map(frame=>frame[1]),[1]);
+  const late=f.reconnect();await late.t.recoverOwnedDirectGuard(late.status());
+  assert.deepEqual(f.frames().map(frame=>frame[1]),[1,3]);
+});
+test('a different source identity retires stale authority without resetting any guard',async()=>{
+  const f=guardOwnerFixture();await f.t.guardMode(1,Uint8Array.of(2));
+  const next=f.reconnect();next.t.sourceKey='cc'.repeat(32);
+  assert.equal(await next.t.recoverOwnedDirectGuard(next.status()),next.status());
+  const old=f.reconnect();await old.t.recoverOwnedDirectGuard(old.status());
+  assert.deepEqual(f.frames().map(frame=>frame[1]),[1]);assert.equal(f.hardware.peer,key);
+});
+test('a host-reset idle guard retires ownership without close or selector writes',async()=>{
+  const f=guardOwnerFixture();await f.t.guardMode(1,Uint8Array.of(2));f.hardware.peer=null;
+  const next=f.reconnect();await next.t.recoverOwnedDirectGuard(next.status());
+  f.hardware.peer='cc'.repeat(32);
+  const later=f.reconnect();await later.t.recoverOwnedDirectGuard(later.status());
+  assert.deepEqual(f.frames().map(frame=>frame[1]),[1]);assert.equal(f.hardware.peer,'cc'.repeat(32));
+});
+test('exact-key recovery cannot close a different active peer and rejection is never automatically repeated',async()=>{
+  const f=guardOwnerFixture();await f.t.guardMode(1,Uint8Array.of(2));f.hardware.peer='cc'.repeat(32);
+  const next=f.reconnect();await assert.rejects(next.t.recoverOwnedDirectGuard(next.status()),/rejected/);
+  assert.equal(f.hardware.peer,'cc'.repeat(32));assert.equal(Buffer.from(f.frames()[1].slice(2)).toString('hex'),key);
+  const later=f.reconnect();await assert.rejects(later.t.recoverOwnedDirectGuard(later.status()),/close is unconfirmed/);
+  assert.deepEqual(f.frames().map(frame=>frame[1]),[1,3]);assert.equal(f.hardware.peer,'cc'.repeat(32));
+});
+test('a lost cleanup acknowledgement permits only idle reads on reconnect, never a second close',async()=>{
+  for(const closeNoApply of [false,true]){
+    const f=guardOwnerFixture();await f.t.guardMode(1,Uint8Array.of(2));
+    Object.assign(f.hardware,{loseClose:true,closeNoApply});
+    const next=f.reconnect();await assert.rejects(next.t.recoverOwnedDirectGuard(next.status()),error=>error.otaUsbTimeout===true);
+    const later=f.reconnect();
+    if(closeNoApply)await assert.rejects(later.t.recoverOwnedDirectGuard(later.status()),/close is unconfirmed/);
+    else assert.equal(await later.t.recoverOwnedDirectGuard(later.status()),'> ota.direct v=2 active=0 busy=0');
+    assert.deepEqual(f.frames().map(frame=>frame[1]),[1,3]);
+    f.hardware.peer=null;await later.t.recoverOwnedDirectGuard(later.status());
+  }
+});
+test('normal acknowledged close forgets ownership and an already-active foreign guard cannot be journaled by arm',async()=>{
+  const f=guardOwnerFixture();await f.t.guardMode(1,Uint8Array.of(2));await f.t.guardMode(3);
+  f.hardware.peer=key;const next=f.reconnect();await next.t.recoverOwnedDirectGuard(next.status());
+  assert.deepEqual(f.frames().map(frame=>frame[1]),[1,3]);
+  const foreign=guardOwnerFixture();foreign.hardware.peer=key;
+  await assert.rejects(foreign.t.guardMode(1,Uint8Array.of(2)),/mailbox is already in use/);
+  const later=foreign.reconnect();await later.t.recoverOwnedDirectGuard(later.status());assert.deepEqual(foreign.frames(),[]);
+});
+test('login waits through transient local radio work without closing a mailbox or retrying RF',async()=>{
+  const t=new CompanionTransport({}, {guardIdleTimeoutMs:1000});
+  Object.assign(t,{knownRepeater:key,otaSupported:true});
+  const events=[];let idleReads=0,guard=false;
+  t.localCommand=async(command,options)=>{
+    events.push(['local',command,options?.timeoutMs]);
+    if(guard)return '> ota.direct v=2 active=1 busy=0';
+    return '> ota.direct v=2 active=0 busy='+(++idleReads<3?1:0);
+  };
+  t.checkClock=async()=>{};
+  t.guardMode=async mode=>{events.push(['guard',mode]);if(mode===1)guard=true;};
+  t.remoteReply=async command=>{events.push(['remote',command]);return key;};
+  await t.login('');assert.equal(t.authenticated,true);assert.equal(idleReads,3);
+  assert.deepEqual(events.filter(row=>row[0]==='guard').map(row=>row[1]),[1,2]);
+  assert.deepEqual(events.filter(row=>row[0]==='remote'),[['remote','get public.key']]);
+  assert(events.slice(0,3).every(row=>row[0]==='local'&&row[2]>0&&row[2]<=1000));
+});
+test('foreign active guard is rejected without a close and persistent radio busy has a bounded USB-only error',async()=>{
+  for(const active of [true,false]){
+    const t=new CompanionTransport({}, {guardIdleTimeoutMs:15});
+    Object.assign(t,{knownRepeater:key,otaSupported:true});const events=[],options=t.options;
+    t.localCommand=async command=>{events.push(command);return '> ota.direct v=2 active='+(active?1:0)+' busy=1';};
+    t.guardMode=async()=>{throw Error('must not write a guard');};
+    t.remoteReply=async()=>{throw Error('must not transmit RF');};
+    await assert.rejects(t.login(''),error=>{
+      assert.match(error.message,active?/mailbox is already in use/:/radio is still busy/);
+      assert.equal(error.otaCommand,'get ota.direct');assert.equal(error.otaEndpoint,'USB Companion');
+      assert.equal(error.loraReplyTimeout,undefined);assert.equal(error.otaUsbTimeout,undefined);return true;
+    });assert.equal(t.options,options);assert.equal(t.authenticated,false);assert.equal(t.failure,null);
+    assert(events.every(command=>command==='get ota.direct'));
+  }
+});
+test('an outer guarded read budget caps the initial local idle wait without any radio write',async()=>{
+  const t=new CompanionTransport({}, {knownRepeater:key,guardIdleTimeoutMs:5000});
+  Object.assign(t,{otaSupported:true,running:true});const timeouts=[],options=t.options;
+  t.localCommand=async(command,limits)=>{assert.equal(command,'get ota.direct');timeouts.push(limits.timeoutMs);return '> ota.direct v=2 active=0 busy=1';};
+  t.guardMode=async()=>{throw Error('must not arm after the read deadline');};
+  await assert.rejects(t.remoteCommand(key,'','ota self',{maxDurationMs:12}),error=>
+    error.otaEndpoint==='USB Companion'&&!error.loraReplyTimeout&&/busy|deadline/.test(error.message));
+  assert(timeouts.length>=1);assert(timeouts.every(timeout=>timeout>0&&timeout<=12));assert.equal(t.options,options);
+});
+test('guard cleanup local status requests use the remaining deadline rather than the ordinary USB timeout',async()=>{
+  const f=transport(()=>{}, {commandTimeout:1000});f.t.localCliSupported=true;
+  await assert.rejects(f.t.waitForDirectIdle(null,{maxDurationMs:15}),error=>{
+    assert.equal(error.otaUsbTimeout,true);assert.equal(error.otaEndpoint,'USB Companion');
+    assert.equal(error.otaCommand,'get ota.direct');assert(error.otaTimeoutMs>0&&error.otaTimeoutMs<=15);return true;
+  });assert.equal(f.sent.length,1);assert.equal(f.sent[0][0],66);
 });
 
 test('slow inbox reply uses one dequeue and preserves unrelated messages; timeout leaves a reservation', async () => {

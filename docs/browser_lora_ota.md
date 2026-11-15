@@ -380,6 +380,19 @@ reconnect the same source, select the same target and use **Restore forwarding**
 An unconfirmed restore is not silently repeated or reported complete; the
 recovery record remains until a readback confirms the original value.
 
+If a Companion USB command times out, the page tries reopening that same USB
+port once and confirms the source's complete identity. This is a per-command
+acknowledgement timeout, not a USB inactivity limit. It does not restart the
+update or replay an unanswered install, pull or settings command. Select
+**Prepare update** afterward to read the target's current state.
+
+On that same-page reconnect, the browser can close its own abandoned local
+reply mailbox without waiting for its five-minute lease to expire. It cannot
+take over an unrecognized session. A surviving radio2 update channel is
+reselected only after its exact local temporary settings are confirmed; the
+target must still prove its full identity before forwarding is restored. An
+unconfirmed mailbox close is checked by reads, never automatically repeated.
+
 Firmware without
 the required USB radio readbacks cannot be configured or checked automatically;
 the page identifies the missing command and links to a Companion update.
@@ -436,7 +449,7 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_port.js"></script>
 <script src="../_javascript/lora_ota_serial.js?v=ota-quiet-1"></script>
 <script src="../_javascript/lora_ota_companion_source.js"></script>
-<script src="../_javascript/lora_ota_companion.js?v=ota-quiet-1"></script>
+<script src="../_javascript/lora_ota_companion.js?v=usb-retry-1"></script>
 <script src="../_javascript/lora_ota_contacts.js"></script>
 <script src="../_javascript/lora_ota_session.js?v=ota-quiet-1"></script>
 <script src="../_javascript/lora_ota_route.js"></script>
@@ -453,7 +466,7 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_auto_chain.js?v=auto-paths-2"></script>
 <script src="../_javascript/lora_ota_region_profiles.js"></script>
 <script src="../_javascript/lora_ota_radio_setup.js?v=ota-quiet-1"></script>
-<script src="../_javascript/lora_ota_recovery.js"></script>
+<script src="../_javascript/lora_ota_recovery.js?v=usb-retry-1"></script>
 <script src="../_javascript/lora_ota_lease.js"></script>
 <script src="../_javascript/lora_ota_catalog.js?v=4aeb7bf86"></script>
-<script src="../_javascript/lora_ota_browser.js?v=ota-quiet-1"></script>
+<script src="../_javascript/lora_ota_browser.js?v=usb-retry-1"></script>

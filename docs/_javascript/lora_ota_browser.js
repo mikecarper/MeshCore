@@ -15,6 +15,8 @@
   let investigationTimer=null, investigationStage='', investigationStopping=false, investigationActive=false;
   let operationErrorStep='LoRa update', investigationErrorContext=null;
   let failureSerial=0;
+  let usbRetryActive=false,disconnecting=false;
+  const usbRetryAttempted=new WeakSet();
   let sourceOtaUnsupported=false, targetAvailability=null, preparedDownload=null, preparedReplacement=null, uiBusy=false, updatePhase='';
   let sourceBytesRead=0, sourceActivityAt=0, sourceManifestReadLogged=false, lastTransferPercent=null, radioOverride=false, transferStage='';
   let targetRadioHwId=null;
@@ -121,11 +123,14 @@
         if(required)throw Error('Forwarding still needs restoration. Reconnect the same source and target, then select Restore forwarding.');
         return;
       }
+      if(link.otaRecoveryProfilePending&&!(link.authenticated===true&&link.knownRepeater?.toLowerCase()===target))
+        throw Error('USB is connected, but its previous temporary update channel could not be verified. Check the update channel before restoring forwarding; no target command was sent.');
       // A fresh connection needs selection; an authenticated same-target
       // session must not be reselected while its OTA guard is still active.
       if(link.knownRepeater?.toLowerCase()!==target)selectTarget();
       const result=await LoraOtaQuiet.restore(link,target,$('acl').checked?'':$('password').value,
         {store:quietStore,progress:quietProgress,retry});
+      link.otaRecoveryProfilePending=false;
       quietPlan=null;
       if(required&&!['restored','none','already-off'].includes(result?.state))
         throw Error('Firmware is verified, but forwarding restoration is still pending. Select Restore forwarding.');
@@ -273,6 +278,36 @@
       status(summary+'\nUSB communication stopped. Select Reconnect USB source; your target and firmware choices are kept.', 'error');
       $('reconnect').hidden=false;$('reconnect').scrollIntoView?.({block:'nearest',behavior:'smooth'});
     }
+    // Binary USB replies have no transaction ID. Reopen and re-identify the
+    // same port once instead of replaying an unanswered frame into that stream.
+    // The interrupted update remains stopped; only recovery reads/cleanup run.
+    if((error?.otaUsbTimeout||direct?.failure?.otaUsbTimeout)&&connection===link&&
+        generation===disconnectGeneration&&!connectController&&!usbRetryActive&&!disconnecting&&
+        sourceKind()==='companion'&&connection?.port&&/^[a-f0-9]{64}$/i.test(sourceKey||'')&&
+        !usbRetryAttempted.has(connection)){
+      usbRetryAttempted.add(connection);usbRetryActive=true;
+      status(summary+'\nRetrying the same USB connection once. The update is stopped; no install command will be repeated.', 'working');
+      log('USB command acknowledgement was lost. Reopening the same USB source once; no unanswered command is replayed.');
+      try{
+        const recovered=await reconnect({automatic:true});
+        if(recovered&&generation===disconnectGeneration&&$('key').value.trim().toLowerCase()===target){
+          busy(true);
+          if(globalThis.LoraOtaQuiet)await restoreQuietForwarding();
+          if(link?.failure){
+            $('reconnect').hidden=false;
+            status(summary+'\nUSB recovery encountered another communication failure. Select Reconnect USB source; the update remains stopped.', 'error');
+          }else{
+            status(summary+'\nUSB reconnected. The update is stopped. Select Prepare update to check the target before continuing.', 'error');
+            log('USB source identity confirmed after retry. Select Prepare update to read the target state; the interrupted update was not restarted.');
+          }
+        }
+      }catch(recoveryError){
+        log('Automatic USB reconnect did not finish: '+failureMessage(recoveryError,'Reconnect the same USB source'));
+        if(generation===disconnectGeneration)
+          status(summary+'\nThe USB retry failed. Select Connect USB source or reconnect its USB data cable; the update remains stopped.', 'error');
+      }finally{usbRetryActive=false;}
+      return;
+    }
     if(globalThis.LoraOtaQuiet)await restoreQuietForwarding();
     if(error?.otaLocalCheck===true || typeof LoraOtaChecks.collectFailureIdentity!=='function')return;
     const sameDevice=()=>failureId===failureSerial&&link===connection&&disconnectGeneration===generation&&connection?.sourceKey===sourceKey&&$('key').value.trim().toLowerCase()===target;
@@ -375,6 +410,7 @@
       adminVerified=true;
     }
     await LoraOtaRecovery.confirmSource(link,result,{verifiedKey,adminVerified,progress:log});
+    link.otaRecoveryProfilePending=false;
   }
   async function suggestRadioChannel() {
     if(!radioOverride) {
@@ -448,7 +484,7 @@
       $('radio-bandwidth').value=String(result.source[1]);$('radio-sf').value=String(result.source[2]);$('radio-cr').value=String(result.source[3]);
       $('radio-preamble').value=String(result.preamble);showRadioCommands();
       $('radio-region-status').textContent='Verified update channel: '+result.source[0].toFixed(3)+' MHz, BW'+result.source[1]+', SF'+result.source[2]+', CR'+result.source[3]+'.';
-      showChanges(result.changedSettings);
+      showChanges(result.changedSettings);link.otaRecoveryProfilePending=false;
       await pauseQuietForwarding(target,password,result);
       return result;
     }catch(error){showChanges(error.changedSettings);throw error;}
@@ -458,6 +494,7 @@
     try{
       const result=await probe.inspectRadios();
       if(!explicitRadioChoice()||chosenRadioMatches(probe)){
+        link.otaRecoveryProfilePending=false;
         await pauseQuietForwarding(target,password,probe.verifiedRadio);return result;
       }
     }
@@ -469,6 +506,7 @@
     if(!canPrepareRadioChannel())throw Error('This USB source cannot prepare your selected update channel automatically.');
     await prepareRadioChannel(target,password,{useActivePrimary:!explicitRadioChoice()});
     const result=await probe.inspectRadios();
+    link.otaRecoveryProfilePending=false;
     $('radio-setup-status').textContent='Update channel ready. Source: '+(link.otaRadioProfile===1?'temporary radio2':'temporary primary')+
       '; target: '+(link.otaTargetProfile===1?'temporary radio2':'temporary primary')+'.';
     await pauseQuietForwarding(target,password,probe.verifiedRadio);
@@ -723,6 +761,9 @@
     try { new CompressionStream('deflate-raw'); return compressor; } catch (_) { return null; }
   }
   async function close() {
+    if(disconnecting)return;
+    disconnecting=true;
+    try{
     disconnectGeneration++;
     if (connectController) connectController.abort();
     if (session) session.stop();
@@ -743,14 +784,21 @@
     $('key').value='';$('password').value='';$('contact-search').value='';clearInvestigation();renderContacts();busy(false); $('connect').disabled = false; $('inspect').disabled = true; $('find-route').disabled = true;
     $('chain-plan').disabled = true; $('chain-run').disabled = true; $('chain-resume').disabled = true;
     $('transfer').disabled = true; $('resume').disabled = true; $('install').disabled = true;
+    }finally{disconnecting=false;}
   }
-  async function reconnect() {
-    if(uiBusy || !link?.failure)return;
+  async function reconnect({automatic=false}={}) {
+    if(disconnecting||uiBusy&&!automatic || !link?.failure)return false;
     const previous=link, sourceKey=link.sourceKey, port=link.port, kind=sourceKind();
     if(!port || !sourceKey)throw Error('Disconnect, then connect the USB source again.');
+    const generation=disconnectGeneration,target=$('key').value.trim().toLowerCase();
+    const profileRequired=kind==='companion'&&(previous.otaRadioProfile===1||previous.otaRecoveryProfilePending===true);
+    const profile=globalThis.LoraOtaRecovery?.captureSourceProfile?.(previous,target);
     busy(true);invalidate();session=null;
-    await previous.close();link=null;targetLocked=false;
-    await connect({port,sourceKey,kind});
+    await previous.close();
+    if(generation!==disconnectGeneration||link!==previous)return false;
+    link=null;targetLocked=false;
+    await connect({port,sourceKey,kind,target,profile,profileRequired,automatic});
+    return generation===disconnectGeneration&&link?.port===port&&link.sourceKey===sourceKey&&!link.failure;
   }
   async function connect(recovery=null) {
     const controller = connectController = new AbortController();
@@ -825,6 +873,14 @@
         $('target-controls').hidden=false;
         if(!key)openDetails($('key'));
       }
+      if(recovery?.profileRequired){
+        const selected=recovery.profile&&recovery.target===key.toLowerCase()
+          ?await LoraOtaRecovery.restoreSourceProfile(link,key,recovery.profile,{progress:log}):null;
+        link.otaRecoveryProfilePending=selected?.state!=='selected';
+        if(selected?.state==='selected')
+          log('The same USB source still has the verified update channel. Target identity will be checked before any forwarding restoration.');
+        else log('USB is connected, but the previous temporary update channel is unconfirmed. No target command or channel rewrite was sent.');
+      }
       await suggestRadioChannel();
       busy(false); $('connect').disabled = true; $('inspect').disabled = updatesBlocked();
       $('chain-plan').disabled = updatesBlocked();
@@ -832,7 +888,7 @@
       log('Connected to source ' + link.sourceKey + '.');
       status(recovery ? 'USB reconnected. Select Prepare update to recheck the radios, or Find matching firmware to check the device.' : 'Connected. Choose the remote device and select Find matching firmware.', 'ready');
     } catch (error) {
-      if(!controller.signal.aborted && error?.name!=='NotFoundError')await fail(error);
+      if(!recovery?.automatic&&!controller.signal.aborted && error?.name!=='NotFoundError')await fail(error);
       if (link) { try { await link.close(); } catch (_) {} }
       link = session = null;activeSourceKind=null; $('connect').disabled = false; $('inspect').disabled = true;
       $('manual-contact-help').hidden=true;
@@ -844,6 +900,7 @@
         : error?.usbOpenFailed
           ? 'Could not open the USB port. It may be in use by another app or browser tab. Disconnect the radio there and try again. If it still fails, reconnect its USB data cable.'
           : failureMessage(error)+'\nTry again.';
+      if(recovery?.automatic)throw error;
     } finally {
       await detectedSource?.close();
       if(connectController===controller)connectController=null;

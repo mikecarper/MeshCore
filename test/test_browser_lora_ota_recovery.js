@@ -1,6 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
-const {channel,restoreSource,confirmSource}=require('../docs/_javascript/lora_ota_recovery.js');
+const {channel,restoreSource,confirmSource,captureSourceProfile,restoreSourceProfile}=require('../docs/_javascript/lora_ota_recovery.js');
 const {DirectSession}=require('../docs/_javascript/lora_ota_session.js');
 const SOURCE='aa'.repeat(32),TARGET='bb'.repeat(32);
 const record=()=>({phase:'pull attempted',source:SOURCE,target:TARGET,id:'01234567',
@@ -39,6 +39,130 @@ function source({repeater=false,active=false,secondary=false}={}){
   }
   return {link,calls,saved,set current(value){current=value;},get current(){return current;}};
 }
+
+function passiveSource(){
+  let clock=100000;
+  const calls=[],port={},tuple=[908.5,62.5,7,5],values=new Map([
+    ['ota stats','serve idle | fetch idle'],['ota folder','folder=off serving=0:'],
+    ['get tempradio','TempRadio inactive'],['get tempradio2','908.500,62.500,7,5,rxtx,128; 0d2h0m (120 min) left'],
+    ['get radio2.status','rxtx; RX=0,0 TX=0,0 switches=1 errors=0 max=200us preamble=32,128'],
+    ['get radio2.cross','off']]);
+  const previous={port,sourceKey:SOURCE,knownRepeater:TARGET,browserRawSource:true,otaSupported:true,localCliSupported:true,
+    otaRadioProfile:1,otaTargetProfile:1,failure:Error('USB response timed out'),
+    otaLeaseProof:{source:SOURCE,target:TARGET,sourceProfile:1,targetProfile:1,tuple:tuple.slice(),preamble:128},
+    sourceTempRadio:{state:'active',profile:1,tuple:tuple.slice(),preamble:128}};
+  const link={port,sourceKey:SOURCE,knownRepeater:'',browserRawSource:true,otaSupported:true,localCliSupported:true,
+    running:true,portOpened:true,guard:false,authenticated:false,serving:false,failure:null,otaRadioProfile:0,otaTargetProfile:0,
+    async probeOtaRadio(){calls.push(['probe']);link.supportsOtaRadio2=true;return true;},
+    async localCommand(command){
+      calls.push(['local',command]);assert(values.has(command),'Unexpected passive read '+command);
+      const value=values.get(command);if(value instanceof Error)throw value;return typeof value==='function'?value():value;
+    },
+    async selectOtaRadio(profile){calls.push(['select',profile]);link.otaRadioProfile=profile;},
+    async applyTemporaryRadio(){assert.fail('Passive profile recovery must not retune');},
+    async remoteCommand(){assert.fail('Passive profile recovery must not send target commands');},
+    async verifyPeer(){assert.fail('Target proof belongs to the caller after local profile selection');}};
+  return {previous,link,calls,values,now:()=>clock,set clock(value){clock=value;},get clock(){return clock;}};
+}
+
+test('same-page passive recovery selects an exact surviving radio2 after USB reset without retuning',async()=>{
+  for(const targetProfile of [0,1]){
+    const f=passiveSource();f.previous.otaTargetProfile=f.previous.otaLeaseProof.targetProfile=targetProfile;
+    const token=captureSourceProfile(f.previous,TARGET,{now:f.now});assert(token);
+    assert.equal(f.previous.failure.message,'USB response timed out');
+    const result=await restoreSourceProfile(f.link,TARGET,token,{now:f.now});
+    assert.equal(result.state,'selected');assert.equal(result.requiresVerification,true);
+    assert.equal(result.source,SOURCE);assert.equal(result.target,TARGET);
+    assert.deepEqual(result.tuple,[908.5,62.5,7,5]);assert.equal(result.preamble,128);
+    assert.equal(f.link.otaRadioProfile,1);assert.equal(f.link.otaTargetProfile,targetProfile);
+    assert.deepEqual(f.calls.filter(c=>c[0]==='select'),[['select',1]]);
+    assert(f.calls.every(c=>c[0]==='probe'||c[0]==='select'||c[0]==='local'&&/^(?:get |ota stats$|ota folder$)/.test(c[1])));
+    assert.equal(f.calls.at(-1)[0],'select');
+  }
+});
+
+test('passive capture uses active source readback only when no contradictory lease proof exists',()=>{
+  const f=passiveSource();delete f.previous.otaLeaseProof;
+  const token=captureSourceProfile(f.previous,TARGET,{now:f.now});assert(token);
+  assert(Object.isFrozen(token));assert(Object.isFrozen(token.tuple));
+  assert.throws(()=>{token.tuple[0]=433;},TypeError);
+  assert.deepEqual(f.previous.sourceTempRadio.tuple,[908.5,62.5,7,5]);
+  for(const mutate of [p=>{p.sourceTempRadio.state='pending';},p=>{p.sourceTempRadio.profile=0;},
+    p=>{p.sourceTempRadio.preamble=0;},p=>{p.otaRadioProfile=0;},p=>{p.otaTargetProfile=2;},
+    p=>{p.knownRepeater=42;},p=>{p.port=null;},p=>{p.otaSupported=false;},p=>{p.relays=[TARGET];}]){
+    const g=passiveSource();delete g.previous.otaLeaseProof;mutate(g.previous);
+    assert.equal(captureSourceProfile(g.previous,TARGET,{now:g.now}),null);
+  }
+  for(const mutate of [p=>{p.target='cc'.repeat(32);},p=>{p.source='cc'.repeat(32);},p=>{p.sourceProfile=0;},
+    p=>{p.targetProfile=0;},p=>{p.tuple=[908.5,62.5,13,5];},p=>{p.preamble=Infinity;}]){
+    const g=passiveSource();mutate(g.previous.otaLeaseProof);
+    assert.equal(captureSourceProfile(g.previous,TARGET,{now:g.now}),null);
+  }
+});
+
+test('fresh local passive readback permits another same-page reconnect without inventing target proof',async()=>{
+  const f=passiveSource(),token=captureSourceProfile(f.previous,TARGET,{now:f.now});
+  const result=await restoreSourceProfile(f.link,TARGET,token,{now:f.now});
+  assert.equal(result.requiresVerification,true);assert.equal(f.link.otaLeaseProof,undefined);
+  assert.deepEqual(f.link.sourceTempRadio.tuple,[908.5,62.5,7,5]);
+  assert.deepEqual(f.link.sourceTempRadio.radio,[908.5,62.5,7,5]);
+  assert.notEqual(f.link.sourceTempRadio.tuple,f.link.sourceTempRadio.radio);
+  assert.equal(f.link.sourceTempRadio.state,'active');assert.equal(f.link.sourceTempRadio.profile,1);
+  assert.equal(captureSourceProfile(f.link,TARGET,{now:f.now}),null,'The caller must first select the exact target');
+  f.link.knownRepeater=TARGET;f.link.failure=Error('Second USB timeout');
+  const next=captureSourceProfile(f.link,TARGET,{now:f.now});assert(next);
+  assert.deepEqual(next.tuple,[908.5,62.5,7,5]);assert.equal(next.targetProfile,1);
+  f.link.sourceTempRadio.tuple[0]=433;
+  assert.deepEqual(next.tuple,[908.5,62.5,7,5]);
+  assert.equal(f.link.otaLeaseProof,undefined);
+});
+
+test('foreign, copied, expired or changed passive profile ownership produces no source I/O',async()=>{
+  for(const kind of ['absent','copied','expired','clock-back','port','source','target','selected-target','failure','closed','serving']){
+    const f=passiveSource();let token=captureSourceProfile(f.previous,TARGET,{now:f.now}),target=TARGET;
+    if(kind==='absent')token=null;
+    if(kind==='copied')token={...token};
+    if(kind==='expired')f.clock=token.expiresAt;
+    if(kind==='clock-back')f.clock=token.capturedAt-1;
+    if(kind==='port')f.link.port={};
+    if(kind==='source')f.link.sourceKey='cc'.repeat(32);
+    if(kind==='target')target='cc'.repeat(32);
+    if(kind==='selected-target')f.link.knownRepeater='cc'.repeat(32);
+    if(kind==='failure')f.link.failure=Error('USB stopped');
+    if(kind==='closed')f.link.running=false;
+    if(kind==='serving')f.link.serving=true;
+    assert.equal((await restoreSourceProfile(f.link,target,token,{now:f.now})).state,'unavailable',kind);
+    assert.deepEqual(f.calls,[],kind);
+  }
+});
+
+test('busy guard, pending or different live profiles never authorize passive selection',async()=>{
+  for(const [command,reply] of [
+    ['guard',true],['authenticated',true],['ota stats','fetch active 1/2'],['ota folder','folder=on'],
+    ['get tempradio','TempRadio active: 910.525,62.5,7,5 120s left,preamble=32'],['get tempradio2','off'],
+    ['get tempradio2','908.600,62.500,7,5,rxtx,128'],['get tempradio2','908.500,62.500,7,5,rxtx,64'],
+    ['get radio2.status','radio2 change pending reply transmission; previous channel retained'],
+    ['get radio2.status','off; RX=0,0 TX=0,0 switches=1 errors=0 max=200us preamble=32,128'],
+    ['get radio2.cross','on'],['get radio2.cross','auto']]){
+    const f=passiveSource(),token=captureSourceProfile(f.previous,TARGET,{now:f.now});
+    if(command==='guard'||command==='authenticated')f.link[command]=reply;else f.values.set(command,reply);
+    assert.equal((await restoreSourceProfile(f.link,TARGET,token,{now:f.now})).state,'unconfirmed',command+':'+reply);
+    assert(!f.calls.some(c=>c[0]==='select'));
+  }
+});
+
+test('passive profile recovery preserves exact USB failures and rejects mid-read identity or deadline changes',async()=>{
+  const f=passiveSource(),token=captureSourceProfile(f.previous,TARGET,{now:f.now}),failure=Error('USB response timed out');
+  f.values.set('get tempradio2',failure);
+  await assert.rejects(restoreSourceProfile(f.link,TARGET,token,{now:f.now}),error=>error===failure);
+  assert(!f.calls.some(c=>c[0]==='select'));
+  for(const kind of ['identity','deadline']){
+    const g=passiveSource(),snapshot=captureSourceProfile(g.previous,TARGET,{now:g.now});
+    g.values.set('get radio2.cross',()=>{if(kind==='identity')g.link.sourceKey='cc'.repeat(32);else g.clock=snapshot.expiresAt;return 'off';});
+    await assert.rejects(restoreSourceProfile(g.link,TARGET,snapshot,{now:g.now}),/changed|expired/);
+    assert(!g.calls.some(c=>c[0]==='select'));
+  }
+});
 test('journal recovery requires exact devices, package identity and a fully validated verified channel',()=>{
   const valid=record();assert.deepEqual(channel(valid,SOURCE,TARGET).tuple,[908.5,62.5,7,5]);
   for(const change of [r=>{r.source='11'.repeat(32);},r=>{r.target='22'.repeat(32);},r=>{r.phase='installed';},
