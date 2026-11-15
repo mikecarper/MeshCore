@@ -16,11 +16,13 @@ before publication when the API is unavailable or the release is incomplete.
 """
 import argparse
 from datetime import datetime, timezone
+from http.client import HTTPException
 import json
 import os
 from pathlib import Path
 import re
 import socket
+import sys
 import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urlsplit
@@ -29,8 +31,10 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 API = 'https://api.github.com/repos/mikecarper/MeshCore/releases'
 REPO = 'https://github.com/mikecarper/MeshCore'
-PAGE_SIZE = 100
-MAX_PAGES = 100
+# Asset-heavy releases make 100-item pages tens of megabytes. Smaller pages
+# reduce truncated responses while retaining the same 10,000-release bound.
+PAGE_SIZE = 10
+MAX_PAGES = 1000
 PREFIXES = ('', 'repeater-room-', 'utility-', 'logging-', 'lora-ota-', 'full-profiles-')
 CHUNK_GROUPS = ('companion', 'repeater-room', 'utility', 'logging', 'lora-ota', 'full-profiles')
 
@@ -51,11 +55,17 @@ def fetch_github_releases(endpoint=API, token=None, opener=urlopen, sleep=time.s
                     batch = json.load(response)
                 break
             except HTTPError as error:
-                if error.code not in (429, 502, 503, 504) or attempt == 2:
-                    raise RuntimeError(f'GitHub releases page {page} returned HTTP {error.code}') from None
-            except (URLError, TimeoutError, socket.timeout, ConnectionError):
+                code = error.code
+                error.close()
+                if code not in (429, 500, 502, 503, 504) or attempt == 2:
+                    raise RuntimeError(f'GitHub releases page {page} returned HTTP {code}') from None
+                reason = f'HTTP {code}'
+            except (URLError, TimeoutError, socket.timeout, ConnectionError,
+                    HTTPException, json.JSONDecodeError, UnicodeDecodeError):
                 if attempt == 2:
-                    raise RuntimeError(f'GitHub releases page {page} could not be fetched') from None
+                    raise RuntimeError(f'GitHub releases page {page} could not be fetched completely after 3 attempts') from None
+                reason = 'incomplete or unreadable response'
+            print(f'GitHub releases page {page}: retry {attempt + 2}/3 after {reason}', file=sys.stderr)
             sleep(2 ** attempt)
         if not isinstance(batch, list) or len(batch) > PAGE_SIZE:
             raise ValueError('Invalid GitHub releases page')
