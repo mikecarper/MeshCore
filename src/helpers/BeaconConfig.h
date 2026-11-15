@@ -14,6 +14,7 @@ struct BeaconSlot {
   uint8_t preset = 0; // Meshtext preset; ignored for MeshCore Public.
   uint8_t hops = 0;
   bool enabled = false;
+  bool use_default_power = false; // Resolve the node's configured TX power when queued.
 };
 
 } // namespace mesh

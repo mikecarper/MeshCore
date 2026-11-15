@@ -39,10 +39,18 @@ struct GroupChannel {
 };
 class TestRadio {
 public:
-  bool valid = true, meshtext = true;
+  bool valid = true, meshtext = true, default_valid = true;
+  int8_t default_power = 14;
+  mutable unsigned default_reads = 0;
   RadioProfiles profiles;
   bool validateProfile(const RadioProfileParams& p) const { return valid && RadioProfiles::valid(p); }
   bool validateBeaconPower(float, int8_t power) const { return power >= -9 && power <= 22; }
+  bool getBeaconDefaultPower(int8_t& power) const {
+    ++default_reads;
+    if (!default_valid) return false;
+    power = default_power;
+    return true;
+  }
   bool supportsMeshtext() const { return meshtext; }
 };
 class TestClock {
@@ -259,6 +267,37 @@ static void admission() {
   { Mesh mesh; config = slot(); assert(!mesh.queueTextBeacon(config, "", 0, 0));
     assert(!mesh.queues && !mesh.obtained); }
 }
+static void auto_power() {
+  for (bool mt : {false, true}) {
+    Mesh mesh;
+    auto config = slot(mt);
+    config.use_default_power = true;
+    config.power = 100; // Ignored only because the explicit auto flag is set.
+    assert(mesh.validateTextBeacon(config));
+    mesh.radio.default_reads = 0;
+    assert(mesh.queueTextBeacon(config, "Node", 4, 1));
+    assert(mesh.queued_power == 14 && mesh.radio.default_reads == 1);
+    assert(config.use_default_power && config.power == 100);
+    mesh.radio.default_power = 3;
+    assert(mesh.queueTextBeacon(config, "Node", 4, 2));
+    assert(mesh.queued_power == 3 && mesh.radio.default_reads == 2);
+    config.use_default_power = false;
+    config.power = 20;
+    mesh.radio.default_valid = false;
+    assert(mesh.queueTextBeacon(config, "Node", 4, 3));
+    assert(mesh.queued_power == 20 && mesh.radio.default_reads == 2);
+  }
+  for (bool missing : {false, true}) {
+    Mesh mesh;
+    auto config = slot(); config.use_default_power = true;
+    mesh.radio.default_valid = !missing;
+    mesh.radio.default_power = 100;
+    assert(!mesh.validateTextBeacon(config));
+    assert(!mesh.queueTextBeacon(config, "Node", 0, 0));
+    assert(!mesh.queues && !mesh.obtained && !mesh.released && !mesh.tables.sent);
+    assert(mesh.clock.now == 0x12345678);
+  }
+}
 static void identity(const char* public_hex, const char* expected) {
   const auto public_key = unhex(public_hex);
   assert(public_key.size() == 32);
@@ -276,6 +315,7 @@ int main(int argc, char** argv) {
   else if (!strcmp(argv[1], "mediumfast")) { assert(argc == 3); meshtext_frame(argv[2], true); }
   else if (!strcmp(argv[1], "bounds")) bounds();
   else if (!strcmp(argv[1], "admission")) admission();
+  else if (!strcmp(argv[1], "auto-power")) auto_power();
   else if (!strcmp(argv[1], "identity")) { assert(argc == 4); identity(argv[2], argv[3]); }
   else assert(false);
   puts("PASS");
@@ -356,6 +396,9 @@ class BeaconFramesTest(unittest.TestCase):
 
     def test_queue_failure_pool_cleanup_temporary_radio_and_parameter_validation(self):
         self.run_case("admission")
+
+    def test_auto_power_snapshots_current_node_default_per_attempt_and_fails_before_allocation(self):
+        self.run_case("auto-power")
 
     def test_beacon_identity_is_domain_separated_from_normal_chat(self):
         for first in range(16):

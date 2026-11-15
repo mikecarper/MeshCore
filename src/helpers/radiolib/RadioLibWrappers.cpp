@@ -1050,6 +1050,12 @@ MC_RADIO_FAST_CODE_ATTR mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile
 }
 
 #if MESH_ENABLE_TX_BEACONS
+bool RadioLibWrapper::getBeaconDefaultPower(int8_t& power) const {
+  if (!_dbm_valid) return false;
+  power = _cur_dbm;
+  return true;
+}
+
 bool RadioLibWrapper::validateBeaconPower(float frequency_mhz, int8_t power) const {
   return isfinite(frequency_mhz) && mesh::isLoRaTxPowerValid(power, frequency_mhz)
       && checkBeaconOutputPower(frequency_mhz, power);

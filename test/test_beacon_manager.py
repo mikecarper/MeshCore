@@ -49,6 +49,28 @@ class BeaconManagerTest(unittest.TestCase):
     def test_commands_and_bounds(self):
         self.run_scenario("commands")
 
+    def test_automatic_power_aliases_canonical_output_and_saved_mode(self):
+        self.run_scenario("automatic_power")
+
+    def test_automatic_power_versioning_legacy_numeric_and_atomic_storage(self):
+        self.run_scenario("automatic_storage")
+
+    def test_v1_reader_holds_auto_images_without_using_numeric_backup(self):
+        source = (ROOT / "src/helpers/BeaconManager.cpp").read_text(encoding="ascii")
+        version_guard = "if (header[4] != 1 && header[4] != 2)"
+        self.assertEqual(source.count(version_guard), 1)
+        generated = Path(self.work.name) / "v1_reader.cpp"
+        generated.write_text(source.replace(version_guard, "if (header[4] != 1)"), encoding="ascii")
+        executable = Path(self.work.name) / "v1_reader"
+        command = list(self.build_command)
+        command[command.index(str(ROOT / "src/helpers/BeaconManager.cpp"))] = str(generated)
+        command[-1] = str(executable)
+        command[1:1] = ["-I", str(ROOT / "src/helpers")]
+        compiled = subprocess.run(command, capture_output=True, text=True, timeout=60)
+        self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+        result = subprocess.run([str(executable), "automatic_downgrade"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_plain_decimal_parser_matches_radio_grammar(self):
         production = (ROOT / "src/helpers/BeaconManager.cpp").read_text(encoding="ascii")
         parser = body(production, "bool floatValue(")
@@ -184,6 +206,9 @@ class BeaconNamespaceTest(unittest.TestCase):
 
     def test_healthy_publications_and_id_reservations(self):
         self.run_scenario("healthy")
+
+    def test_automatic_power_publication_preserves_atomic_v1_v2_transitions(self):
+        self.run_scenario("automatic")
 
     def test_config_acknowledgement_follows_observed_publication(self):
         self.run_scenario("config")

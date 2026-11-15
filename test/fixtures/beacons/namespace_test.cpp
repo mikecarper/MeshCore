@@ -56,6 +56,29 @@ void healthy() {
     f.mt(); f.tick(2 * H); assert(f.mesh.sends.size() == 1);
   }
 }
+void automaticConfig() {
+  const char* automatic = "set beacon 1 meshcore 907.5,125,8,6,A Auto";
+  for (bool replacing : {false, true}) for (unsigned move : {1U, 2U})
+      for (Fault fault : {MemoryFS::None, MemoryFS::Reject, MemoryFS::Noop, MemoryFS::LateError}) {
+    Fixture f(replacing); f.mc("Old"); f.tick(2 * H);
+    const auto old = f.fs.files.at("/beacons");
+    assert(old[4] == 1 && f.mesh.pending);
+    const auto cancellations = f.mesh.cancellations;
+    f.fs.clearFaults(); f.fs.faults[move] = fault;
+    const bool committed = fault == MemoryFS::None || fault == MemoryFS::LateError;
+    f.cmd(automatic, committed);
+    assert(!f.manager.hold_);
+    assert(f.mesh.cancellations == cancellations + unsigned(committed));
+    assert(f.mesh.pending != committed);
+    const auto& image = f.fs.files.at("/beacons");
+    assert(image[4] == (committed ? 2 : 1));
+    if (committed) assert(image[8 + 13] == 0 && image[8 + 16] == 3);
+    else assert(image == old);
+    f.reboot(); f.cmd("get beacon 1", true);
+    assert(std::strstr(f.reply, committed ? ",A," : ",14,"));
+    assert(f.mesh.sends.size() == 1); // Config/publication never triggers another TX.
+  }
+}
 void assertHeld(Fixture& f, bool existing) {
   assert(f.manager.hold_);
   f.oldRam(existing);
@@ -247,6 +270,7 @@ void ids() {
 int main(int argc, char** argv) {
   assert(argc == 2);
   if (!std::strcmp(argv[1], "healthy")) healthy();
+  else if (!std::strcmp(argv[1], "automatic")) automaticConfig();
   else if (!std::strcmp(argv[1], "config")) config();
   else if (!std::strcmp(argv[1], "uncertainty")) uncertainty();
   else if (!std::strcmp(argv[1], "rollback")) rollback();

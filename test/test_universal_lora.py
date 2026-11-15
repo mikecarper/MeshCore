@@ -541,6 +541,9 @@ def backend_method(method, index):
         result = "family_ == 126 || family_ == 1268 || family_ == 1121"
     elif name == "validateBeaconPower":
         result = "checkBeaconOutputPower(a0,a1)"
+    elif name == "getBeaconDefaultPower":
+        code += "a0=19;"
+        result = "true"
     elif method["result"] == "void":
         result = None
         if name == "getRxPowerSavingTimings":
@@ -627,6 +630,8 @@ def dispatch_check(method, index):
                 code += "assert(result==" + expected + ");"
             elif method["name"] == "validateBeaconPower":
                 code += "assert(result);"
+            elif method["name"] == "getBeaconDefaultPower":
+                code += "assert(result && p0==19);"
             else:
                 code += "assert(result==sample<%s>(%du));" % (result, index)
     code += "assert(last_method==%du && last_family==family && last_arguments==expected);" % index

@@ -4604,6 +4604,16 @@ See [TX beacons](tx_beacons.md) for the 12 independent MeshCore Public or
 Meshtext slots. `set beacon.interval 12|24|36|48` selects the shared cycle;
 the default is 24 hours. Slots are staggered and disabled until configured.
 
+```text
+set beacon 1 meshcore 910.525,62.5,7,5,A,32 MeshCore node is listening here
+set beacon 2 meshtext us longfast A MeshCore node also listens on LongFast
+```
+
+Beacon power accepts `A`, `a`, or `auto` to use the node's normal configured TX
+power at each scheduled attempt, not maximum power. A numeric dBm value stays
+fixed. The inherited value must pass the beacon frequency's driver and board
+limits; unavailable or invalid power skips that opportunity without transmitting.
+
 #### View or change the radio watchdog interval (MQTT observer only)
 **Usage:**
 - `get radio.watchdog`

@@ -19,6 +19,7 @@ namespace mesh {
 struct MainBoard {};
 struct Radio {
   @RADIO_CAPABILITY@
+  @DEFAULT_POWER_CAPABILITY@
 };
 }
 struct PhysicalLayer {
@@ -64,6 +65,8 @@ struct STM32WLx : PhysicalLayer {
 class RadioLibWrapper : public mesh::Radio {
 protected:
   PhysicalLayer* _radio;
+  int8_t _cur_dbm = 0;
+  bool _dbm_valid = false;
   virtual bool checkBeaconOutputPower(float, int8_t) const;
 public:
   RadioLibWrapper(PhysicalLayer& radio, mesh::MainBoard&) : _radio(&radio) {}
@@ -71,6 +74,9 @@ public:
   virtual int16_t applyCachedTxPower(int8_t) { ++power_hardware_calls; return 0; }
   bool setTxPower(int8_t power) { return applyCachedTxPower(power) == 0; }
   bool validateBeaconPower(float, int8_t) const override;
+  bool getBeaconDefaultPower(int8_t&) const override;
+  void cacheNormalPower(int8_t power) { _cur_dbm = power; _dbm_valid = true; }
+  void clearNormalPower() { _dbm_valid = false; }
   bool validateProfile(const mesh::RadioProfileParams&) const;
   bool supportsMeshtext() const { return true; }
   bool supportsEthernetTunnel() const { return true; }

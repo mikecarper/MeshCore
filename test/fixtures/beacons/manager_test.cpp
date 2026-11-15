@@ -104,7 +104,7 @@ void structuralStorage() {
     f.fs.files = mc.fs.files;
     f.fs.files["/beacons.bak"] = f.fs.files.at("/beacons");
     if (unreadable) f.fs.fail_read_open = true;
-    else f.fs.files.at("/beacons")[4] = 2;
+    else f.fs.files.at("/beacons")[4] = 3;
     const auto original = f.fs.files;
     f.manager.begin(&f.fs, &f.mesh, &f.clock, f.name);
     f.cmd("get beacon", false);
@@ -155,6 +155,124 @@ void commands() {
   char tiny[2] = {'x', 'x'};
   assert(f.manager.handle("get beacon", tiny, sizeof(tiny)) && tiny[1] == 0);
   assert(!f.manager.handle("get beacon", tiny, 0));
+}
+
+void automaticPower() {
+  for (bool meshtext : {false, true}) for (const char* token : {"A", "a", "auto"}) {
+    Fixture f;
+    const std::string command = meshtext ? "set beacon 1 meshtext US LongFast "
+                                        : "set beacon 1 meshcore 906.5,62.5,7,5,";
+    f.cmd(command + token + " Auto power");
+    assert(std::strstr(f.cmd("get beacon 1"), ",A,"));
+    const auto& image = f.fs.files.at("/beacons");
+    assert(image[4] == 2 && image[8 + 13] == 0 && image[8 + 16] == 3);
+    f.manager.begin(&f.fs, &f.mesh, &f.clock, f.name);
+    assert(std::strstr(f.cmd("get beacon 1"), ",A,"));
+    f.mesh.default_power = 20;
+    f.tick(2 * H);
+    assert(f.mesh.sends.size() == 1 && f.mesh.sends[0].slot.use_default_power);
+    assert(std::strstr(f.cmd("get beacon 1"), ",A,")); // Never freeze a resolved numeric value.
+    f.cmd("set beacon.interval 12");
+    assert(f.fs.files.at("/beacons")[4] == 2);
+    f.mc(2, "Numeric");
+    assert(f.fs.files.at("/beacons")[4] == 2
+        && f.fs.files.at("/beacons")[8 + 98 + 16] == 1);
+    f.cmd("delete beacon 1");
+    assert(f.fs.files.at("/beacons")[4] == 1); // Numeric-only images remain backward readable.
+    assert(std::strstr(f.cmd("get beacon 2"), ",14,"));
+    f.manager.begin(&f.fs, &f.mesh, &f.clock, f.name);
+    assert(std::strstr(f.cmd("get beacon 2"), ",14,"));
+  }
+  Fixture f;
+  f.cmd("set beacon 1 meshcore 906.5,62.5,7,5,A Auto");
+  const auto before = f.fs.files;
+  for (const char* invalid : {"D", "d", "default", "A1", "auto1", "-A", "-129", "128"}) {
+    f.cmd(std::string("set beacon 1 meshcore 906.5,62.5,7,5,") + invalid + " Bad", false);
+    f.cmd(std::string("set beacon 1 meshtext US LongFast ") + invalid + " Bad", false);
+    assert(f.fs.files == before && !f.mesh.attempts);
+  }
+  f.mesh.default_power = 23;
+  f.cmd("set beacon 1 meshcore 906.5,62.5,7,5,A Unsafe default", false);
+  f.tick(2 * H);
+  assert(f.mesh.attempts == 0 && f.fs.files == before);
+}
+
+void automaticStorage() {
+  Fixture numeric; numeric.mc(1, "Numeric");
+  Fixture automatic; automatic.cmd("set beacon 1 meshcore 906.5,62.5,7,5,A Auto");
+  const auto baseline = automatic.fs.files;
+  for (unsigned fault = 0; fault < 5; ++fault) {
+    Fixture f; f.fs.files = baseline;
+    auto& bytes = f.fs.files.at("/beacons");
+    switch (fault) {
+      case 0: bytes[4] = 1; break; // V1 never had an automatic-power flag.
+      case 1: bytes[8 + 16] = 2; break;
+      case 2: bytes[8 + 16] = 255; break;
+      case 3: bytes[8 + 13] = 14; break; // Auto's numeric placeholder must be canonical zero.
+      case 4: bytes[8 + 13] = 128; break;
+    }
+    fixCrc(bytes);
+    const auto original = f.fs.files;
+    f.manager.begin(&f.fs, &f.mesh, &f.clock, f.name);
+    f.cmd("get beacon", false); f.cmd("delete beacon all", false);
+    f.tick(48 * H);
+    assert(!f.mesh.attempts && f.fs.files == original);
+  }
+  for (uint8_t version : {uint8_t(0), uint8_t(3), uint8_t(255)}) {
+    Fixture f; f.fs.files = baseline;
+    f.fs.files["/beacons.bak"] = numeric.fs.files.at("/beacons");
+    auto& bytes = f.fs.files.at("/beacons"); bytes[4] = version; fixCrc(bytes);
+    const auto original = f.fs.files;
+    f.manager.begin(&f.fs, &f.mesh, &f.clock, f.name);
+    f.cmd("get beacon", false); f.tick(48 * H);
+    assert(!f.mesh.attempts && f.fs.files == original); // Never transmit an older backup.
+  }
+  {
+    Fixture f; f.fs.files = numeric.fs.files;
+    auto& bytes = f.fs.files.at("/beacons"); bytes[8 + 13] = 128; fixCrc(bytes);
+    f.manager.begin(&f.fs, &f.mesh, &f.clock, f.name);
+    assert(std::strstr(f.cmd("get beacon 1"), ",-128,"));
+    f.tick(48 * H);
+    assert(!f.mesh.attempts); // Legacy invalid numeric -128 must NEVER become auto.
+    f.mc(1, "Repaired");
+    assert(f.fs.files.at("/beacons")[4] == 1);
+  }
+  for (size_t boundary = 0; boundary < baseline.at("/beacons").size(); ++boundary) {
+    Fixture f; f.fs.files = numeric.fs.files;
+    f.manager.begin(&f.fs, &f.mesh, &f.clock, f.name);
+    const auto committed = f.fs.files.at("/beacons");
+    f.fs.fail_write_after = int(boundary);
+    f.cmd("set beacon 1 meshcore 906.5,62.5,7,5,A Auto", false);
+    assert(std::strstr(f.cmd("get beacon 1"), ",14,"));
+    assert(f.fs.files.at("/beacons") == committed && !f.mesh.attempts);
+  }
+  for (int rename : {1, 2}) {
+    Fixture f; f.fs.files = baseline;
+    f.manager.begin(&f.fs, &f.mesh, &f.clock, f.name);
+    const auto committed = f.fs.files.at("/beacons");
+    f.fs.fail_rename = rename;
+    f.cmd("set beacon 1 meshcore 906.5,62.5,7,5,14 Numeric replacement", false);
+    assert(std::strstr(f.cmd("get beacon 1"), ",A,") && !f.mesh.attempts);
+    assert(f.fs.files.at("/beacons") == committed);
+    f.fs.fail_rename = 0;
+    f.manager.begin(&f.fs, &f.mesh, &f.clock, f.name);
+    assert(std::strstr(f.cmd("get beacon 1"), ",A,"));
+  }
+}
+
+void automaticDowngrade() {
+  Fixture f; f.mc(1, "Numeric backup");
+  const auto numeric = f.fs.files.at("/beacons");
+  auto& bytes = f.fs.files.at("/beacons");
+  bytes[4] = 2; bytes[8 + 13] = 0; bytes[8 + 16] = 3; fixCrc(bytes);
+  f.fs.files["/beacons.bak"] = numeric;
+  const auto original = f.fs.files;
+  // This scenario is run against the original V1-only version guard. An
+  // older numeric backup must not reactivate transmissions on downgrade.
+  f.manager.begin(&f.fs, &f.mesh, &f.clock, f.name);
+  f.cmd("get beacon", false); f.cmd("delete beacon all", false);
+  f.tick(48 * H);
+  assert(!f.mesh.attempts && f.fs.files == original);
 }
 
 void schedule() {
@@ -266,7 +384,8 @@ void storage() {
   }
   for (bool future : {false, true}) {
     Fixture f; f.fs.files = baseline;
-    f.fs.files["/beacons"][future ? 4 : 40] ^= future ? 3 : 1;
+    if (future) f.fs.files["/beacons"][4] = 3;
+    else f.fs.files["/beacons"][40] ^= 1;
     f.manager.begin(&f.fs, &f.mesh, &f.clock, f.name);
     f.cmd("get beacon", false); f.cmd("get beacon.interval", false); f.cmd("delete beacon all", false);
     f.tick(48 * H); assert(f.mesh.sends.empty());
@@ -468,6 +587,9 @@ void liveBackupRollback() {
 int main(int argc, char** argv) {
   assert(argc == 2);
   if (!std::strcmp(argv[1], "commands")) commands();
+  else if (!std::strcmp(argv[1], "automatic_power")) automaticPower();
+  else if (!std::strcmp(argv[1], "automatic_storage")) automaticStorage();
+  else if (!std::strcmp(argv[1], "automatic_downgrade")) automaticDowngrade();
   else if (!std::strcmp(argv[1], "schedule")) schedule();
   else if (!std::strcmp(argv[1], "rolling")) rolling();
   else if (!std::strcmp(argv[1], "storage")) storage();

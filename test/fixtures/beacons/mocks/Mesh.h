@@ -23,11 +23,13 @@ class Mesh {
   std::vector<Send> sends;
   bool accept = true, wake_enabled = false, wire_supported = true, pending = false;
   uint32_t wake_delay = 0, wake_now = 0, attempts = 0, cancellations = 0;
+  int8_t default_power = 14;
   bool validateTextBeacon(const BeaconSlot& slot) const {
     const auto& p = slot.radio;
+    const int8_t power = slot.use_default_power ? default_power : slot.power;
     return slot.enabled && RadioProfiles::valid(p) && p.freq >= 300 && p.freq <= 1000
         && (p.bw == 31.25f || p.bw == 62.5f || p.bw == 125 || p.bw == 250 || p.bw == 500)
-        && slot.power >= -9 && slot.power <= 22 && slot.text[0]
+        && power >= -9 && power <= 22 && slot.text[0]
         && (p.protocol != RadioProfileProtocol::Meshtext || wire_supported);
   }
   bool queueTextBeacon(const BeaconSlot& slot, const char*, uint32_t from, uint32_t id) {

@@ -631,6 +631,7 @@ public:
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t profile) override;
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t profile, bool reply_rx_override) override;
 #if MESH_ENABLE_TX_BEACONS
+  bool getBeaconDefaultPower(int8_t& power) const override;
   bool validateBeaconPower(float frequency_mhz, int8_t power) const override;
   mesh::RadioParamApplyResult prepareBeaconTransmit(const mesh::RadioProfileParams& params,
                                                    int8_t power) override;

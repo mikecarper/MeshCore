@@ -135,13 +135,15 @@ does not bridge that traffic into MeshCore.
 From its USB CLI or an authorized remote admin session, for example:
 
 ```text
-set beacon 1 meshtext us longfast 14 A MeshCore repeater is listening here
+set beacon 1 meshtext us longfast A MeshCore repeater is listening here
 get beacon 1
 get beacon.interval
 ```
 
-Replace `us`, `longfast`, `14` (transmit power in dBm), and the text for your
-region, supported preset, hardware, and local rules. Settings are saved.
+Replace `us`, `longfast`, and the text for your region, supported preset,
+hardware, and local rules. `A` inherits the node's normal configured TX power
+at each scheduled attempt; use a numeric dBm value instead for fixed power.
+The beacon frequency's driver and board power limits still apply. Settings are saved.
 The beacon is scheduled, not sent immediately. At the default 24-hour cycle,
 slot 1 is due every 24 hours, beginning two hours after reboot.
 `delete beacon 1` removes this example.
@@ -153,7 +155,7 @@ if the command is unavailable, that firmware does not include it.
 On a supported room server, use the same beacon command from its CLI:
 
 ```text
-set beacon 1 meshtext us longfast 14 A MeshCore room is available here
+set beacon 1 meshtext us longfast A MeshCore room is available here
 get beacon 1
 ```
 

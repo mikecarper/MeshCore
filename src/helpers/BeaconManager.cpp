@@ -49,17 +49,21 @@ void encodeSlot(const BeaconSlot& slot, uint8_t bytes[RecordSize]) {
   bytes[8] = uint8_t(slot.radio.preamble);
   bytes[9] = uint8_t(slot.radio.preamble >> 8);
   bytes[10] = slot.radio.sf; bytes[11] = slot.radio.cr;
-  bytes[12] = uint8_t(slot.radio.protocol); bytes[13] = uint8_t(slot.power);
-  bytes[14] = slot.preset; bytes[15] = slot.hops; bytes[16] = 1;
+  bytes[12] = uint8_t(slot.radio.protocol);
+  bytes[13] = slot.use_default_power ? 0 : uint8_t(slot.power);
+  bytes[14] = slot.preset; bytes[15] = slot.hops;
+  bytes[16] = slot.use_default_power ? 3 : 1;
   memcpy(bytes + 17, slot.text, BeaconSlot::TextCapacity);
 }
-bool decodeSlot(const uint8_t bytes[RecordSize], BeaconSlot& slot) {
+bool decodeSlot(const uint8_t bytes[RecordSize], uint8_t version, BeaconSlot& slot) {
   slot = {};
   if (bytes[16] == 0) {
     for (size_t i = 0; i < RecordSize; ++i) if (bytes[i]) return false;
     return true;
   }
-  if (bytes[16] != 1 || bytes[12] > uint8_t(RadioProfileProtocol::Meshtext)
+  const bool automatic = version == 2 && bytes[16] == 3;
+  if ((bytes[16] != 1 && !automatic) || (automatic && bytes[13] != 0)
+      || bytes[12] > uint8_t(RadioProfileProtocol::Meshtext)
       || bytes[15] > 7 || !memchr(bytes + 17, 0, BeaconSlot::TextCapacity)
       || !bytes[17]) return false;
   uint32_t bits = get32(bytes); memcpy(&slot.radio.freq, &bits, 4);
@@ -68,6 +72,7 @@ bool decodeSlot(const uint8_t bytes[RecordSize], BeaconSlot& slot) {
   slot.radio.sf = bytes[10]; slot.radio.cr = bytes[11];
   slot.radio.protocol = RadioProfileProtocol(bytes[12]);
   slot.power = int8_t(bytes[13]); slot.preset = bytes[14]; slot.hops = bytes[15];
+  slot.use_default_power = automatic;
   slot.enabled = true;
   memcpy(slot.text, bytes + 17, BeaconSlot::TextCapacity);
   const size_t text_length = strlen(slot.text);
@@ -106,12 +111,16 @@ bool unsignedValue(const char* text, uint32_t& value) {
   }
   return true;
 }
-bool powerValue(const char* text, int8_t& value) {
+bool powerValue(const char* text, int8_t& value, bool& use_default) {
+  if (!strcmp(text, "A") || !strcmp(text, "a") || !strcmp(text, "auto")) {
+    value = 0; use_default = true; return true;
+  }
   bool negative = *text == '-';
   if (negative) ++text;
   uint32_t parsed;
   if (!unsignedValue(text, parsed) || parsed > (negative ? 128U : 127U)) return false;
   value = int8_t(negative ? -int(parsed) : int(parsed));
+  use_default = false;
   return true;
 }
 bool floatValue(const char* text, float& value) {
@@ -134,7 +143,7 @@ bool meshcoreTuple(char* text, BeaconSlot& slot) {
   if ((count != 5 && count != 6) || !floatValue(fields[0], slot.radio.freq)
       || !floatValue(fields[1], slot.radio.bw) || !unsignedValue(fields[2], sf)
       || !unsignedValue(fields[3], cr) || sf > 255 || cr > 255
-      || !powerValue(fields[4], slot.power)
+      || !powerValue(fields[4], slot.power, slot.use_default_power)
       || (count == 6 && !unsignedValue(fields[5], preamble))
       || preamble < 8 || preamble > RadioProfiles::MaxPreamble) return false;
   slot.radio.sf = uint8_t(sf); slot.radio.cr = uint8_t(cr);
@@ -220,7 +229,7 @@ BeaconManager::ReadResult BeaconManager::readConfig(
     file.close(); return ReadResult::Unreadable;
   }
   if (memcmp(header, "BCN!", 4) != 0) { file.close(); return ReadResult::Invalid; }
-  if (header[4] != 1) { file.close(); return ReadResult::Future; }
+  if (header[4] != 1 && header[4] != 2) { file.close(); return ReadResult::Future; }
   if (file.size() != ConfigSize || header[5] != SlotCount || header[6] > 1
       || !validInterval(header[7])) { file.close(); return ReadResult::Invalid; }
   uint32_t crc = updateCRC32(0xffffffffU, header, HeaderSize);
@@ -234,7 +243,7 @@ BeaconManager::ReadResult BeaconManager::readConfig(
     BeaconSlot slot;
     // Disk validity is independent of the current board's radio capabilities.
     // Preserve unsupported slots so an upgrade can still query/repair them.
-    if (!decodeSlot(bytes, slot)
+    if (!decodeSlot(bytes, header[4], slot)
         || (slot.enabled && slot.radio.protocol == RadioProfileProtocol::Meshtext && !header[6]))
       valid = false;
     if (output) output[i] = slot;
@@ -304,7 +313,14 @@ bool BeaconManager::saveConfig(unsigned changed_slot, const BeaconSlot* changed,
   if (!fs_ || hold_ || !validInterval(hours)) return false;
   File file = makeFile(fs_);
   if (!openWrite(fs_, ConfigTemp, file)) return false;
-  uint8_t header[HeaderSize] = {'B', 'C', 'N', '!', 1, SlotCount,
+  uint8_t version = 1;
+  if (!clear_all) for (unsigned i = 0; i < SlotCount; ++i) {
+    const BeaconSlot* slot = changed && changed_slot == i ? changed : (slots_ ? slots_ + i : nullptr);
+    if (slot && slot->enabled && slot->use_default_power) { version = 2; break; }
+  }
+  // V2 marks automatic power explicitly. Older firmware holds an unknown
+  // version instead of transmitting its zero placeholder or older backup.
+  uint8_t header[HeaderSize] = {'B', 'C', 'N', '!', version, SlotCount,
                                 uint8_t(initialized), hours};
   uint32_t crc = updateCRC32(0xffffffffU, header, sizeof(header));
   bool ok = file.write(header, sizeof(header)) == sizeof(header);
@@ -473,9 +489,12 @@ void BeaconManager::formatSlot(unsigned index, char* reply, size_t capacity) con
   }
   const BeaconSlot& slot = slots_[index];
   const char* protocol = slot.radio.protocol == RadioProfileProtocol::Meshtext ? "meshtext" : "meshcore";
-  snprintf(reply, capacity, "> %u %s %.4f,%g,%u,%u,%d,%u %s", index + 1, protocol,
+  char power[8];
+  if (slot.use_default_power) strcpy(power, "A");
+  else snprintf(power, sizeof(power), "%d", int(slot.power));
+  snprintf(reply, capacity, "> %u %s %.4f,%g,%u,%u,%s,%u %s", index + 1, protocol,
       double(slot.radio.freq), double(slot.radio.bw), slot.radio.sf, slot.radio.cr,
-      int(slot.power), slot.radio.preamble, slot.text);
+      power, slot.radio.preamble, slot.text);
 }
 
 bool BeaconManager::isCommand(const char* command) {
@@ -580,7 +599,7 @@ bool BeaconManager::handle(const char* command, char* reply, size_t capacity) {
       else if (!strcmp(region_text, "eu433")) region = mt::Region::EU433;
       else if (!strcmp(region_text, "anz")) region = mt::Region::ANZ;
       ok = mt::parsePreset(preset_text, preset) && mt::modemConfig(region, preset, candidate.radio)
-          && powerValue(power_text, candidate.power);
+          && powerValue(power_text, candidate.power, candidate.use_default_power);
       candidate.preset = uint8_t(preset);
       candidate.radio.protocol = RadioProfileProtocol::Meshtext;
       candidate.radio.preamble = 16;

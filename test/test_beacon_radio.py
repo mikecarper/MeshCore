@@ -176,6 +176,7 @@ struct RadioLibWrapper {
     void onSendFinished();
     uint32_t getBeaconAirtime(const mesh::RadioProfileParams&, int);
     bool validateBeaconPower(float, int8_t) const;
+    bool getBeaconDefaultPower(int8_t&) const;
     bool isTxPowerApplied(int8_t) const;
     virtual bool checkBeaconOutputPower(float, int8_t) const;
     void cacheBeaconRestoreParams();
@@ -218,6 +219,8 @@ int main() {
         assert(w.modem.freq == 915 && w.modem.power == 10);
         assert(w.modem.preamble == (mt ? 16 : 32));
         assert(w._cur_freq == (dual ? 908 : 906) && w._cur_dbm == 20);
+        int8_t normal_power = -128;
+        assert(w.getBeaconDefaultPower(normal_power) && normal_power == 20);
         assert(w._profiles.primary == before.primary && w._profiles.secondary.params == before.secondary.params);
         assert(w._profiles.generation[0] == before.generation[0] && w._profiles.generation[1] == before.generation[1]);
         assert(w._profiles.switches == 0 && w._profiles.switch_test_samples[0] == 0);
@@ -229,9 +232,19 @@ int main() {
         assert(w.restoreBeaconReceive() == Result::APPLIED);
         assert(!w._beacon_owned && w.state == STATE_RX && w._rx_ps_armed == rxps);
         assert(w.isTxPowerApplied(20));
+        assert(w.getBeaconDefaultPower(normal_power) && normal_power == 20);
         assert(w.modem.freq == (dual ? 908 : 906) && w.modem.power == 20);
         assert(w.modem.protocol == mesh::RadioProfileProtocol::MeshCore);
         assert(w.recalibrations == 0 && w.deep_calls == 0);
+        ++cases;
+    }
+    {
+        RadioLibWrapper w;
+        int8_t power = -128;
+        w._dbm_valid = false;
+        assert(!w.getBeaconDefaultPower(power) && power == -128);
+        w._dbm_valid = true; w._cur_dbm = 13;
+        assert(w.getBeaconDefaultPower(power) && power == 13);
         ++cases;
     }
     for (unsigned reason = 0; reason < 6; ++reason) {
@@ -395,6 +408,7 @@ class BeaconRadioTest(unittest.TestCase):
             "void RadioLibWrapper::onSendFinished()",
             "uint32_t RadioLibWrapper::getBeaconAirtime(",
             "bool RadioLibWrapper::validateBeaconPower(",
+            "bool RadioLibWrapper::getBeaconDefaultPower(",
             "bool RadioLibWrapper::isTxPowerApplied(",
             "bool RadioLibWrapper::checkBeaconOutputPower(",
             "void RadioLibWrapper::cacheBeaconRestoreParams()",

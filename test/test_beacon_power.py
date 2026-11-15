@@ -58,6 +58,8 @@ class BeaconPowerTests(unittest.TestCase):
         header = header.replace("@DRIVER_CHECKS@", "")
         header = header.replace("@RADIO_CAPABILITY@", body(
             (ROOT / "src/Dispatcher.h").read_text(encoding="ascii"), "virtual bool validateBeaconPower("))
+        header = header.replace("@DEFAULT_POWER_CAPABILITY@", body(
+            (ROOT / "src/Dispatcher.h").read_text(encoding="ascii"), "virtual bool getBeaconDefaultPower("))
         header = header.replace("@INDICATOR_WRAPPER@", body(
             (ROOT / "variants/sensecap_indicator-espnow/IndicatorSX1262Wrapper.h").read_text(encoding="ascii"),
             "class IndicatorSX1262Wrapper") + ";")
@@ -72,6 +74,7 @@ class BeaconPowerTests(unittest.TestCase):
         cls.shared = (RADIO / "RadioLibWrappers.cpp").read_text(encoding="utf-8")
         cls.mesh_source = (ROOT / "src/MeshBeacon.cpp").read_text(encoding="ascii")
         production = "\n".join(methods) + "\n" + "\n".join(body(cls.shared, signature) for signature in (
+            "bool RadioLibWrapper::getBeaconDefaultPower(",
             "bool RadioLibWrapper::validateBeaconPower(", "bool RadioLibWrapper::checkBeaconOutputPower(",
             "bool RadioLibWrapper::validateProfile("))
         production += "\nnamespace mesh {\n" + body(cls.mesh_source, "bool Mesh::validateTextBeacon(") + "\n}"
@@ -125,29 +128,33 @@ class BeaconPowerTests(unittest.TestCase):
                 ("stm32_hp", ["-DRADIO_CLASS=CustomSTM32WLx", "-DTEST_STM32=1", "-DTEST_HP_ONLY=1"]),
                 ("stm32_no_pa", ["-DRADIO_CLASS=CustomSTM32WLx", "-DTEST_STM32=1", "-DTEST_NO_PA=1"]),
                 ("board_cap", ["-DRADIO_CLASS=CustomSX1262", "-DMIN_LORA_TX_POWER=0", "-DMAX_LORA_TX_POWER=13"]),
+                ("m33s_drive_cap", ["-DRADIO_CLASS=CustomSX1262", "-DMAX_LORA_TX_POWER=8"]),
                 ("dac_cap", ["-DRADIO_CLASS=CustomSX1276", "-DMIN_LORA_TX_POWER=17", "-DMAX_LORA_TX_POWER=30"])):
             with self.subTest(chip=name):
                 self.compile_run(name, flags)
 
     def test_previous_mesh_validator_accepts_impossible_power_before_persistence(self):
-        guard = "!_radio->validateBeaconPower(slot.radio.freq, slot.power)"
+        guard = "!_radio->validateBeaconPower(slot.radio.freq, power)"
         self.assertEqual(self.production.count(guard), 1)
         old = self.production.replace(guard,
-            "(slot.power < -9 || !isLoRaTxPowerValid(slot.power, slot.radio.freq))")
+            "(power < -9 || !isLoRaTxPowerValid(power, slot.radio.freq))")
         self.compile_run("old_mesh", ["-DRADIO_CLASS=CustomSX1262"], old, "manager", negative=True)
 
+    def test_auto_current_power_is_revalidated_before_queue_or_meshtext_id_allocation(self):
+        self.compile_run("auto_manager", ["-DRADIO_CLASS=CustomSX1262"], scenario="auto_manager")
+
     def test_legacy_power_image_remains_queryable_and_repairable(self):
-        guard = "!_radio->validateBeaconPower(slot.radio.freq, slot.power)"
+        guard = "!_radio->validateBeaconPower(slot.radio.freq, power)"
         self.assertEqual(self.production.count(guard), 1)
         legacy = self.production.replace(guard,
-            "(slot.power < -9 || !isLoRaTxPowerValid(slot.power, slot.radio.freq))")
+            "(power < -9 || !isLoRaTxPowerValid(power, slot.radio.freq))")
         flags = ["-DRADIO_CLASS=CustomSX1262"]
         self.compile_run("legacy_image", flags, legacy, "legacy_write")
         self.compile_run("upgrade", flags, scenario="upgrade")
         # Restoring the former disk-time capability check bricks every beacon
         # command on precisely the same actual legacy image.
         source = (ROOT / "src/helpers/BeaconManager.cpp").read_text(encoding="ascii")
-        marker = "if (!decodeSlot(bytes, slot)"
+        marker = "if (!decodeSlot(bytes, header[4], slot)"
         self.assertEqual(source.count(marker), 1)
         held = self.directory / "held_manager.cpp"
         held.write_text(source.replace(marker,

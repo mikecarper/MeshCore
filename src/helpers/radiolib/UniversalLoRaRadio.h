@@ -212,6 +212,7 @@ class UniversalLoRaRadio : public mesh::Radio {
   MESH_AUTO_LORA_CONST(bool, supportsHostKiss, (), (), false)
 #endif
 #if MESH_ENABLE_TX_BEACONS
+  MESH_AUTO_LORA_CONST(bool, getBeaconDefaultPower, (int8_t& power), (power), false)
   MESH_AUTO_LORA_CONST(bool, validateBeaconPower, (float frequency_mhz, int8_t power), (frequency_mhz, power), false)
   MESH_AUTO_LORA_RET(mesh::RadioParamApplyResult, prepareBeaconTransmit, (const mesh::RadioProfileParams& params, int8_t power), (params, power), mesh::RadioParamApplyResult::FAILED)
   MESH_AUTO_LORA_RET(mesh::RadioParamApplyResult, restoreBeaconReceive, (), (), mesh::RadioParamApplyResult::FAILED)

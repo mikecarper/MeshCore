@@ -177,7 +177,10 @@ public:
   virtual bool supportsHostKiss() const { return false; }
 #endif
 #if MESH_ENABLE_TX_BEACONS
-  // Check the requested antenna power at the prospective beacon frequency.
+  // Return the normal configured TX-power request in this board's power
+  // units, not temporary beacon power or a maximum. Unknown defaults fail closed.
+  virtual bool getBeaconDefaultPower(int8_t&) const { return false; }
+  // Check the requested TX power at the prospective beacon frequency.
   // Validation must not retune the radio or alter its current power setting.
   virtual bool validateBeaconPower(float, int8_t) const { return false; }
   virtual RadioParamApplyResult prepareBeaconTransmit(const RadioProfileParams&, int8_t) {

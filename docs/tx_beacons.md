@@ -25,8 +25,8 @@ fresh schedule, with no immediate startup burst.
 ## Configuration
 
 ```text
-set beacon 1 meshcore 910.525,62.5,7,5,14,32 A MeshCore node is listening here
-set beacon 2 meshtext us longfast 14 A MeshCore node is also on LongFast
+set beacon 1 meshcore 910.525,62.5,7,5,A,32 MeshCore node is listening here
+set beacon 2 meshtext us longfast A MeshCore node also listens on LongFast
 set beacon 3 meshtext us mediumfast 14 A MeshCore node is also on MediumFast
 get beacon
 get beacon 2
@@ -34,19 +34,40 @@ delete beacon 2
 delete beacon all
 ```
 
-MeshCore tuple order is `MHz,kHz,SF,CR,dBm[,preamble]`; CR is 4 through 8,
+MeshCore tuple order is `MHz,kHz,SF,CR,power[,preamble]`; CR is 4 through 8,
 representing 4/4 (no payload FEC) through 4/8. The default beacon preamble is 32 symbols.
 Meshtext takes an explicit `us`, `eu868`, `eu433`, or `anz` region, a recognized
-preset, and dBm. Its frequency is calculated using the stock preset channel;
+preset, and power. Its frequency is calculated using the stock preset channel;
 its preamble is fixed at 16 symbols. Invalid modem, region, power, or text
 settings are rejected. Use settings permitted for your hardware and location.
-Power is checked against the driver's range at the beacon frequency and any
-explicit board limits. External-PA drivers interpret it in antenna dBm using
-their calibration range; the normal receive profile's power is unchanged.
+
+Use `A` (`a` or `auto` also works) to inherit the node's normal configured TX
+power. It is read again for each scheduled beacon attempt when the beacon is
+queued, so later changes to the node's TX power also affect these slots. `A`
+does not mean maximum power and does not freeze the power at configuration time.
+A number such as `14` instead saves a fixed power in the board's normal dBm
+units, independent of later normal TX-power changes.
+`get beacon <slot>` reports `A` for inherited power, not a frozen numeric value.
+
+Both choices must meet the driver's range at the beacon frequency and any
+explicit board limits. If inherited power is unavailable or invalid for that
+beacon, its opportunity is skipped without transmitting; the firmware does not
+substitute maximum power or silently clamp it. External-PA drivers interpret
+power according to their normal TX setting: calibrated PA drivers use antenna
+dBm, while fixed-gain PA boards retain radio-chip drive dBm. A board advertised
+as 33 dBm does not necessarily accept `33` as a setting. `A` copies the node's
+configured value in the correct units. Beacon transmission does not change
+the normal receive profile's power.
 
 Each message body is limited to 80 bytes and is prefixed with the node name.
 Settings are saved separately from ordinary preferences and channels.
 Configuration changes do not immediately transmit a beacon.
+
+Existing saved numeric powers remain fixed; no old value is reinterpreted as
+automatic. Saving a slot with `A` uses a newer beacon-file format. Firmware
+without automatic-power support safely holds that file without transmitting
+beacons or loading an older backup. Configurations containing only numeric
+powers retain the original format.
 
 A structurally valid saved slot that the current board or firmware cannot
 transmit remains available through `get beacon`. Its scheduled opportunity is

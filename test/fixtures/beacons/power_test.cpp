@@ -61,6 +61,17 @@ static bool driverAllows(int power, float frequency) {
 static void capability(RadioLibWrapper& wrapper, PhysicalLayer& chip) {
   mesh::Radio unsupported;
   assert(!unsupported.validateBeaconPower(909.5f, 17));
+  int8_t normal = -128;
+  assert(!unsupported.getBeaconDefaultPower(normal) && normal == -128);
+  assert(!wrapper.getBeaconDefaultPower(normal) && normal == -128);
+  mesh::Mesh mesh;
+  mesh._radio = &wrapper;
+  mesh::BeaconSlot automatic;
+  automatic.enabled = automatic.use_default_power = true;
+  automatic.radio.freq = 909.5f; automatic.radio.bw = 125;
+  automatic.radio.sf = 7; automatic.radio.cr = 5;
+  std::strcpy(automatic.text, "Automatic");
+  assert(!mesh.validateTextBeacon(automatic));
   assert(!wrapper.validateBeaconPower(std::numeric_limits<float>::quiet_NaN(), 10));
   for (bool normal_high_band : {false, true}) {
     chip.highFreq = normal_high_band;
@@ -69,11 +80,16 @@ static void capability(RadioLibWrapper& wrapper, PhysicalLayer& chip) {
       for (int power = -128; power <= 127; ++power) {
         const bool expected = boardAllows(power, requested) && driverAllows(power, requested);
         assert(wrapper.validateBeaconPower(requested, int8_t(power)) == expected);
+        wrapper.cacheNormalPower(int8_t(power));
+        assert(wrapper.getBeaconDefaultPower(normal) && normal == power);
+        automatic.radio.freq = requested;
+        assert(mesh.validateTextBeacon(automatic) == (expected && wrapper.validateProfile(automatic.radio)));
       }
       assert(chip.frequency == (normal_high_band ? 2440.0f : 909.5f));
       assert(chip.highFreq == normal_high_band && power_hardware_calls == 0);
     }
   }
+  wrapper.clearNormalPower();
 }
 
 #if !defined(TEST_NO_PA)
@@ -182,6 +198,36 @@ static void manager(RadioLibWrapper& wrapper) {
   assert(mesh.sends.size() == 1 && mesh.sends[0].slot.power == accepted);
   assert(power_hardware_calls == 0);
 }
+
+static void autoManager(RadioLibWrapper& wrapper) {
+  MemoryFS fs; mesh::Mesh mesh; mesh._radio = &wrapper;
+  mesh::RTCClock rtc; mesh::BeaconManager manager;
+  manager.begin(&fs, &mesh, &rtc, "Auto power test");
+  char reply[256];
+  wrapper.clearNormalPower();
+  assert(manager.handle("set beacon 1 meshcore 909.5,125,7,5,A Auto MC", reply, sizeof(reply)));
+  assert(!std::strncmp(reply, "Err", 3) && fs.files.empty());
+  wrapper.cacheNormalPower(10);
+  assert(manager.handle("set beacon 1 meshcore 909.5,125,7,5,A Auto MC", reply, sizeof(reply))
+      && !std::strncmp(reply, "OK", 2));
+  assert(manager.handle("set beacon 2 meshtext US LongFast A Auto MT", reply, sizeof(reply))
+      && !std::strncmp(reply, "OK", 2));
+  const auto original = fs.files;
+  wrapper.clearNormalPower();
+  g_mock_millis += 4 * mesh::BeaconManager::HourMillis;
+  manager.loop(g_mock_millis); // Missing default: no queue or durable packet-ID allocation.
+  assert(!mesh.attempts && mesh.sends.empty() && fs.files == original);
+  wrapper.cacheNormalPower(100);
+  g_mock_millis += 24 * mesh::BeaconManager::HourMillis;
+  manager.loop(g_mock_millis); // Invalid current default is never clipped to the maximum.
+  assert(!mesh.attempts && mesh.sends.empty() && fs.files == original);
+  wrapper.cacheNormalPower(3);
+  g_mock_millis += 24 * mesh::BeaconManager::HourMillis;
+  manager.loop(g_mock_millis);
+  assert(mesh.attempts == 1 && mesh.sends.size() == 1 && mesh.sends[0].id != 0);
+  assert(fs.files.at("/beacon_ids") != original.at("/beacon_ids"));
+  assert(power_hardware_calls == 0);
+}
 #endif
 
 #if MESH_RADIO_PROFILE_CHIP == 1276
@@ -197,6 +243,17 @@ static void externalAmplifier() {
   assert(!empty.validateBeaconPower(909.5f, 17));
   DacPaSX1276Wrapper impossible(chip, board, 4, levels, 4, 9);
   assert(!impossible.validateBeaconPower(909.5f, 17));
+  mesh::Mesh mesh; mesh._radio = &amplifier;
+  mesh::BeaconSlot slot;
+  slot.enabled = slot.use_default_power = true;
+  slot.radio.freq = 909.5f; slot.radio.bw = 125; slot.radio.sf = 7; slot.radio.cr = 5;
+  std::strcpy(slot.text, "Calibrated PA");
+  amplifier.cacheNormalPower(30);
+  int8_t configured = 0;
+  assert(amplifier.getBeaconDefaultPower(configured) && configured == 30);
+  assert(mesh.validateTextBeacon(slot)); // Antenna units, not the +2 dBm PA drive.
+  amplifier.cacheNormalPower(33);
+  assert(!mesh.validateTextBeacon(slot));
   assert(power_hardware_calls == 0);
 }
 #endif
@@ -228,6 +285,7 @@ int main(int argc, char** argv) {
   RadioLibWrapper wrapper(chip, board);
 #if !defined(TEST_NO_PA)
   if (argc == 2 && !std::strcmp(argv[1], "manager")) { manager(wrapper); return 0; }
+  if (argc == 2 && !std::strcmp(argv[1], "auto_manager")) { autoManager(wrapper); return 0; }
   if (argc == 2 && !std::strcmp(argv[1], "legacy_write")) { upgrade(wrapper, true); return 0; }
   if (argc == 2 && !std::strcmp(argv[1], "upgrade")) { upgrade(wrapper, false); return 0; }
 #else
