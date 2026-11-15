@@ -47,7 +47,8 @@
     const next=(locks.get(store)||Promise.resolve()).catch(()=>{}).then(action);
     locks.set(store,next.catch(()=>{}));return next;
   }
-  function binding(link,key,password,canContinue){
+  function binding(link,key,password,canContinue,allowReacquire=true){
+    if(typeof allowReacquire!=='boolean')throw error('Invalid forwarding authentication policy.','Verify forwarding target');
     if(canContinue!==undefined&&typeof canContinue!=='function')
       throw error('The forwarding pause cancellation check is invalid.','Validate forwarding pause cancellation');
     if(!link||!fullKey(link.sourceKey)||!fullKey(key)||link.sourceKey.toLowerCase()===key.toLowerCase()||
@@ -59,16 +60,24 @@
       if(canContinue)try{allowed=canContinue()===true;}catch(_){allowed=false;}
       if(!allowed)throw Object.assign(error('Forwarding pause cancelled; no further setting was changed.',
         'Cancel target forwarding pause'),{otaQuietCancelled:true});
-      if(link.failure||link.running===false||link.opened===false||link.portOpened===false||link.serving||link.seeder||link.folderUnknown||
+      if(link.failure)throw link.failure;
+      if(link.running===false||link.opened===false||link.portOpened===false)
+        throw Object.assign(error('The USB source disconnected during forwarding administration.','Verify forwarding target'),{otaQuietTransport:true});
+      if(link.serving||link.seeder||link.folderUnknown||
           link.relays!==undefined&&(!Array.isArray(link.relays)||link.relays.length)||
           !fullKey(link.sourceKey)||link.sourceKey.toLowerCase()!==source||
           typeof link.knownRepeater==='string'&&link.knownRepeater.toLowerCase()!==target||
           typeof link.target==='string'&&link.target.toLowerCase()!==target)
-        throw error('Forwarding changes require the same healthy, idle USB source and direct target.','Verify forwarding target');
+        throw Object.assign(error('Forwarding changes require the same healthy, idle USB source and direct target.','Verify forwarding target'),{otaQuietIdentityChanged:true});
     };
     const read=async command=>{
       active();let reply;
-      try{reply=await link.remoteCommand(target,password,command);}
+      // Bound optional GETs without abandoning an in-flight USB request or
+      // applying that retry budget to either state-changing setter.
+      const guarded=link.browserRawSource===true&&link.otaSupported===true;
+      const options=guarded?(command.startsWith('get ')?{maxDurationMs:5000,allowReacquire:false}:
+        {optionalReplyTimeoutMs:5000,allowReacquire:false}):null;
+      try{reply=await link.remoteCommand(target,password,command,...(options?[options]:[]));}
       catch(cause){
         if(cause&&typeof cause==='object'){
           if(!cause.otaCommand)cause.otaCommand=command;
@@ -81,9 +90,9 @@
       active();return reply;
     };
     const prove=async()=>{
-      active();await link.verifyPeer(target,password);active();
+      active();if(allowReacquire)await link.verifyPeer(target,password);active();
       if(bare(await read('get public.key')).toLowerCase()!==target)
-        throw error('The selected forwarding target did not prove its complete public key.','get public.key','remote target');
+        throw Object.assign(error('The selected forwarding target did not prove its complete public key.','get public.key','remote target'),{otaQuietIdentityChanged:true});
     };
     active();return {source,target,active,read,prove};
   }
@@ -128,9 +137,9 @@
     progress?.('Target forwarding restoration remains pending. Reconnect the same radio and use Restore forwarding; no setter was repeated.');
     return {state:'pending',record:copy(value),...(cause?{error:cause}:{})};
   }
-  async function plan(link,key,password,{store,progress,canContinue}={}){
+  async function plan(link,key,password,{store,progress,canContinue,allowReacquire=true}={}){
     return exclusive(store,async()=>{
-      const proof=binding(link,key,password,canContinue),previous=load(store);
+      const proof=binding(link,key,password,canContinue,allowReacquire),previous=load(store);
       if(previous){belongs(previous,proof);throw error('Restore the previous forwarding setting before preparing another pause.','Validate forwarding recovery record');}
       await proof.prove();
       let setting='radio.flood',reply=await proof.read('get '+setting);
@@ -148,10 +157,10 @@
       return {version:1,source:proof.source,target:proof.target,setting,original,state:'planned'};
     });
   }
-  async function pause(link,key,password,value,{store,progress,radioVerified,canContinue}={}){
+  async function pause(link,key,password,value,{store,progress,radioVerified,canContinue,allowReacquire=true}={}){
     return exclusive(store,async()=>{
       if(radioVerified!==true)throw error('Verify the update radio link before pausing forwarding.','Verify update radio link');
-      const proof=binding(link,key,password,canContinue);
+      const proof=binding(link,key,password,canContinue,allowReacquire);
       if(value?.state==='skipped'){
         belongs(value,proof);return {state:'skipped',reason:value.reason};
       }
@@ -183,11 +192,11 @@
       save(store,paused,proof.active);return {state:'paused',record:copy(paused)};
     });
   }
-  async function restore(link,key,password,{store,progress,retry=false}={}){
+  async function restore(link,key,password,{store,progress,retry=false,allowReacquire=true}={}){
     return exclusive(store,async()=>{
       if(typeof retry!=='boolean')throw error('An explicit restore retry must be confirmed by the user.','Validate forwarding restore retry');
       const saved=load(store);if(!saved)return {state:'none'};
-      const proof=binding(link,key,password);belongs(saved,proof);await proof.prove();
+      const proof=binding(link,key,password,undefined,allowReacquire);belongs(saved,proof);await proof.prove();
       const current=state(await proof.read('get '+saved.setting),saved.setting);
       if(!equal(load(store),saved))throw error('Forwarding recovery ownership changed; no setting was changed.','Validate forwarding recovery record');
       if(current===saved.original){clear(store);progress?.('Target forwarding is restored to its original setting.');return {state:'restored'};}

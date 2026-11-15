@@ -198,6 +198,33 @@
               // The real session rechecks remote staging again before writing
               // its first prepared record or starting this exact package.
               await startFresh();
+            } else if (record.phase==='replacement cancel attempted') {
+              // Cancellation may have succeeded before its final read failed.
+              // Recover only an exact, unchanged record and a positively idle
+              // target; never send another cancellation to infer its outcome.
+              if (!/^[0-9a-f]{8}$/.test(record.replaced?.id || '') ||
+                  !['active','failed','ready'].includes(record.replaced?.state))
+                throw recoveryError('The saved replacement cancellation record is invalid. Inspect the staged update; no cancellation or install was sent.');
+              const snapshot=JSON.stringify(record);
+              const unchanged=()=>{
+                this.cancelCheck(signal);
+                if(typeof this.link.sourceKey!=='string'||this.link.sourceKey.toLowerCase()!==this.sourceKey||
+                    typeof this.link.knownRepeater==='string'&&this.link.knownRepeater.toLowerCase()!==this.targetKey)
+                  throw recoveryError('The source or target changed during cancellation recovery; no update was started.');
+                if(JSON.stringify(this.readStep(step))!==snapshot)
+                  throw recoveryError('The saved cancellation record changed during recovery. Inspect it before retrying; no staged data was changed.');
+              };
+              unchanged();
+              const inspected=await session.inspect({allowExisting:true,allowReplacement:true});
+              unchanged();
+              if(inspected.download!=='idle')
+                throw recoveryError('The previous replacement cancellation is unconfirmed: the target is not positively idle. '+
+                  'Inspect its staged update before retrying; no second cancellation, pull or install was sent.');
+              const fresh=await this.live('recover replacement cancellation',index);
+              unchanged();await candidates.checkStep(this.prepared,index,fresh);unchanged();
+              // A fresh start rechecks idle staging before recording prepared.
+              // Do not pass replacement permission, even at a later step.
+              await session.start({resume:false});
             } else if (record.phase==='install attempted') {
               // An uncertain install must never be reissued. The session can
               // prove it already booted, or the operator must resolve it.

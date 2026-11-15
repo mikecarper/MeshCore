@@ -21,7 +21,7 @@
   let sourceBytesRead=0, sourceActivityAt=0, sourceManifestReadLogged=false, lastTransferPercent=null, radioOverride=false, transferStage='';
   let targetRadioHwId=null;
   const quietStoreKey='meshcore-browser-lora-ota-quiet-v1';
-  let quietPlan=null;
+  let quietPlan=null,quietWarning='',secondaryWarning='';
   const quietStore={
     read:()=>{const value=localStorage.getItem(quietStoreKey);return value?JSON.parse(value):null;},
     write:record=>localStorage.setItem(quietStoreKey,JSON.stringify(record)),
@@ -75,11 +75,14 @@
     if(!notice||!button)return;
     try{
       const record=quietStore.read();
-      notice.hidden=button.hidden=!record;
+      notice.hidden=!record&&!quietWarning&&!secondaryWarning;button.hidden=!record;
       if(record)notice.textContent=record.state==='paused'
-        ? 'Normal target forwarding is paused for this update. It will be restored before completion. Keep this page open.'
+        ? 'Forwarding for target '+String(record.target||'').slice(0,12)+' is paused. Restoration will be checked separately from firmware completion. Keep this page open.'
         : 'Forwarding restoration is pending for target '+String(record.target||'').slice(0,12)+
           '. Keep this page open. Reconnect the same USB source and target if necessary, then select Restore forwarding.';
+      else notice.textContent=quietWarning;
+      if(record&&quietWarning)notice.textContent+=' '+quietWarning;
+      if(secondaryWarning)notice.textContent+=(notice.textContent?' ':'')+secondaryWarning;
     }catch(_){
       notice.hidden=button.hidden=false;
       notice.textContent='The saved forwarding recovery record could not be read. No automatic setting change will be made.';
@@ -92,25 +95,56 @@
     const connection=link,generation=disconnectGeneration,controller=preparing;
     return ()=>link===connection&&disconnectGeneration===generation&&!controller?.signal.aborted;
   }
+  function quietDetail(error){
+    const secret=$('password').value;
+    let detail=error?String(error.message||error):'';
+    if(secret)detail=detail.split(secret).join('<hidden>');
+    return detail;
+  }
+  function quietWarn(message,error){
+    const detail=quietDetail(error);
+    quietWarning=message+(detail?' '+detail:'');log('Warning: '+quietWarning);refreshQuietRecovery();
+  }
+  function quietMustHalt(error,connection,canContinue){
+    if(!canContinue()||disconnecting||connection!==link||connection?.failure||
+        error?.otaQuietCancelled||error?.otaQuietIdentityChanged||error?.otaQuietTransport||error?.otaUsbTimeout||
+        (['USB Companion','USB Repeater'].includes(error?.otaEndpoint)&&error?.otaOptionalUnavailable!==true)||error?.name==='AbortError')
+      throw connection?.failure||error||Error('Forwarding administration stopped because the USB source changed.');
+  }
   async function prepareQuietForwarding(target,password){
     if(!quietEnabled())return null;
-    if(!globalThis.LoraOtaQuiet)throw Error('Forwarding pause support did not load. Refresh this page or turn off Pause forwarding.');
     if(!quietPlan||quietPlan.link!==link||quietPlan.target!==target.toLowerCase()||quietPlan.password!==password){
-      quietPlan={link,target:target.toLowerCase(),password,plan:await LoraOtaQuiet.plan(link,target,password,
-        {store:quietStore,progress:quietProgress,canContinue:quietContinuation()})};
+      const connection=link,canContinue=quietContinuation();let plan;
+      try{
+        if(!globalThis.LoraOtaQuiet)throw Error('Forwarding pause support did not load.');
+        if(connection.browserRawSource!==true||connection.otaSupported!==true)
+          throw Error('This source has no bounded optional forwarding reads; forwarding is unchanged.');
+        plan=await LoraOtaQuiet.plan(connection,target,password,{store:quietStore,progress:quietProgress,canContinue,allowReacquire:false});
+      }catch(error){
+        quietMustHalt(error,connection,canContinue);
+        quietWarn('Forwarding pause skipped; the firmware update can continue.',error);
+        plan={state:'skipped',source:connection.sourceKey,target:target.toLowerCase()};
+      }
+      quietPlan={link:connection,target:target.toLowerCase(),password,plan};
     }
     return quietPlan.plan;
   }
   async function pauseQuietForwarding(target,password,radio){
     if(!quietEnabled()||!radio||![radio.sourceProfile,radio.targetProfile].includes(1))return;
-    const canContinue=quietContinuation();
+    const connection=link,canContinue=quietContinuation();
     const plan=await prepareQuietForwarding(target,password);
     if(!canContinue())throw Error('Update preparation stopped before pausing forwarding.');
-    const result=await LoraOtaQuiet.pause(link,target,password,plan,
-      {store:quietStore,progress:quietProgress,radioVerified:true,canContinue});
-    refreshQuietRecovery();
-    if(!canContinue())throw Error('Update preparation stopped; forwarding restoration will be checked.');
-    if(!['paused','already-off','skipped'].includes(result?.state))throw result?.error||Error('The forwarding pause is unconfirmed. Restore forwarding before retrying.');
+    if(plan?.state==='skipped')return;
+    try{
+      const result=await LoraOtaQuiet.pause(connection,target,password,plan,
+        {store:quietStore,progress:quietProgress,radioVerified:true,canContinue,allowReacquire:false});
+      if(!canContinue())throw Error('Update preparation stopped; forwarding restoration will be checked.');
+      if(!['paused','already-off','skipped'].includes(result?.state))throw result?.error||Error('Forwarding pause is unconfirmed; its recovery record is retained.');
+    }catch(error){
+      quietMustHalt(error,connection,canContinue);
+      quietWarn('Forwarding pause is unconfirmed; continuing the firmware update without repeating its setter.',error);
+      quietPlan={link:connection,target:target.toLowerCase(),password,plan:{state:'skipped',source:connection.sourceKey,target:target.toLowerCase()}};
+    }finally{refreshQuietRecovery();}
   }
   async function restoreQuietForwarding({required=false,retry=false}={}){
     try{
@@ -125,19 +159,49 @@
       }
       if(link.otaRecoveryProfilePending&&!(link.authenticated===true&&link.knownRepeater?.toLowerCase()===target))
         throw Error('USB is connected, but its previous temporary update channel could not be verified. Check the update channel before restoring forwarding; no target command was sent.');
+      if(!required&&(link.browserRawSource!==true||link.otaSupported!==true))
+        throw Error('This source has no bounded automatic cleanup. Select Restore forwarding to check it explicitly.');
       // A fresh connection needs selection; an authenticated same-target
       // session must not be reselected while its OTA guard is still active.
       if(link.knownRepeater?.toLowerCase()!==target)selectTarget();
       const result=await LoraOtaQuiet.restore(link,target,$('acl').checked?'':$('password').value,
-        {store:quietStore,progress:quietProgress,retry});
+        {store:quietStore,progress:quietProgress,retry,allowReacquire:required});
       link.otaRecoveryProfilePending=false;
       quietPlan=null;
-      if(required&&!['restored','none','already-off'].includes(result?.state))
-        throw Error('Firmware is verified, but forwarding restoration is still pending. Select Restore forwarding.');
+      if(!['restored','none','already-off'].includes(result?.state))
+        throw Error('Forwarding restoration is still pending. Select Restore forwarding.');
+      quietWarning='';
     }catch(error){
-      log('Forwarding restoration: '+(error?.message||error));
+      quietWarn('Forwarding restoration remains pending; the firmware result is unchanged.',error);
+      if(link?.failure)$('reconnect').hidden=false;
       if(required)throw error;
     }finally{quietPlan=null;refreshQuietRecovery();}
+  }
+  async function finishQuietForwarding(job=session){
+    // The caller has already verified identity, installed version and image
+    // hash. Optional housekeeping must not turn that completed update red.
+    status('Firmware update DONE and verified. Checking forwarding restoration...', 'complete');
+    try{
+      const saved=job?.readJournal?.()||readJournal();
+      if(saved?.secondaryRestorationPending){
+        if(!job||job.link!==link||link?.browserRawSource!==true||link.otaSupported!==true||
+            link.failure||link.serving||link.folderUnknown||link.relays?.length)
+          throw Error('Use the same healthy guarded USB Companion to check the normal radio2 profile.');
+        await job.verifyRestoredTargetSecondary({maxDurationMs:5000});
+        if(job.readJournal()?.secondaryRestorationPending)throw Error('The saved radio2 profile remains unconfirmed.');
+        secondaryWarning='';
+      }
+    }catch(error){
+      secondaryWarning='Firmware is verified; normal radio2 restoration has not yet been confirmed. '+quietDetail(error);
+      log('Warning: '+secondaryWarning);refreshQuietRecovery();
+    }
+    await restoreQuietForwarding();
+  }
+  function completionDisconnectTip(){
+    let pending=!!secondaryWarning;
+    try{pending=pending||!!quietStore.read();}catch(_){pending=true;}
+    return pending?' Firmware is verified. Review the pending settings warning before disconnecting.':
+      ' You can disconnect the USB radio.';
   }
   function sessionStage(stage) {
     if(updatePhase!=='transfer' || transferStopJob===session || transferStage===stage)return;
@@ -500,7 +564,7 @@
     }catch(error){showChanges(error.changedSettings);throw error;}
   }
   async function ensureRadioChannel(target,password) {
-    const probe=new LoraOtaSession.DirectSession(link,target,password,null,{progress:log});
+    const probe=new LoraOtaSession.DirectSession(link,target,password,null,{progress:log,deferSecondaryRestoration:true});
     try{
       const result=await probe.inspectRadios();
       if(!explicitRadioChoice()||chosenRadioMatches(probe)){
@@ -533,7 +597,7 @@
       await link.verifyPeer(target,password);
       await confirmUpdateChannel(recovered,target,password);
       if(prepare)await prepareRadioChannel(target,password);
-      const probe=new LoraOtaSession.DirectSession(link,target,password,null,{progress:log});
+      const probe=new LoraOtaSession.DirectSession(link,target,password,null,{progress:log,deferSecondaryRestoration:true});
       const result=await probe.inspectRadios();
       const description=result.source[0].toFixed(3)+' MHz, BW'+result.source[1]+', SF'+result.source[2]+', CR4/'+result.source[3];
       const message=result.sourceReadback==='saved-only'
@@ -1257,7 +1321,7 @@
   const autoWrite=(key,kind,value)=>localStorage.setItem(autoJournalKey(key,kind),JSON.stringify(value));
   function autoSession(step,target,password,key){
     const Session=link.relays?.length?LoraOtaRoutedSession.RoutedSession:LoraOtaSession.DirectSession;
-    return new Session(link,target,password,step.package.info,{image:step.targetImage,inplacePlan:step.edge.inplacePlan,
+    return new Session(link,target,password,step.package.info,{image:step.targetImage,inplacePlan:step.edge.inplacePlan,deferSecondaryRestoration:true,
       allowSameVersion:step.edge.allowSameVersion===true,compress:supportedCompression(),progress:log,onStage:sessionStage,
       journal:state=>autoWrite(key,'step',state),readJournal:()=>autoRead(key,'step')});
   }
@@ -1349,10 +1413,10 @@
         confirmRearm:async()=>{try{await ensureRadioChannel(target,password);return true;}catch(_){return false;}}
       });
       const result=await runner.run({resume,signal:controller.signal});
-      await restoreQuietForwarding({required:true});
+      await finishQuietForwarding();
       autoStep='';autoChain=null;
       status('Update complete. The remote device is running the verified firmware.','complete');
-      $('update-summary').textContent='Installed and verified on '+result.live.hwId+' in '+result.steps+' automatic steps. You can disconnect the USB radio.';
+      $('update-summary').textContent='Installed and verified on '+result.live.hwId+' in '+result.steps+' automatic steps.'+completionDisconnectTip();
       log('Automatic update complete; all '+result.steps+' installations verified.');
     }catch(error){
       if(transferStopJob===session&&!link?.failure&&!link?.folderUnknown)return;
@@ -1463,7 +1527,7 @@
           checkConnected();
           if(goal.targetId===destination.targetId && goal.hwId===destination.hwId &&
               goal.fwVersion===destination.version && LoraOtaChecks.hex(goal.bodyHash)===destination.baseHash) {
-            await restoreQuietForwarding({required:true});
+            await finishQuietForwarding();
             status('The target already reports the selected firmware. No update is needed.', 'complete');
             $('update-summary').textContent=destination.hwId+': '+file.name+' is already running.';
             log('Target identity, firmware version and reported body hash match the selected image.');
@@ -1569,7 +1633,7 @@
       checkConnected();
       const Session = link.relays?.length ? LoraOtaRoutedSession.RoutedSession : LoraOtaSession.DirectSession;
       session = new Session(link, $('key').value.trim(), $('acl').checked ? '' : $('password').value, info, {
-        signerVerified:!!expectedSigner && info.signed, image:expectedImage, inplacePlan,
+        signerVerified:!!expectedSigner && info.signed, image:expectedImage, inplacePlan,deferSecondaryRestoration:true,
         compress:supportedCompression(), progress:log, onStage:sessionStage, journal, readJournal
       });
       // Reject a wrong/corrupt image before changing either radio. A completed
@@ -1587,7 +1651,7 @@
         await ensureRadioChannel(targetKey,password);
         dest=await session.inspect({allowExisting:true,allowReplacement:true});
       }
-      if(dest.download==='installed')await restoreQuietForwarding({required:true});
+      if(dest.download==='installed')await finishQuietForwarding();
       else await pauseQuietForwarding(targetKey,password,session.verifiedRadio);
       preparedDownload=['idle','active','failed','ready','replace'].includes(dest.download)?dest.download:null;
       preparedReplacement=dest.download==='replace' ? dest.existingDownload : null;
@@ -1650,10 +1714,10 @@
       operationErrorStep='Install firmware and verify the remote device after reboot';
       status('Installing on the remote device, then checking it after reboot...');
       const result=await job.install();
-      await restoreQuietForwarding({required:true});
+      await finishQuietForwarding(job);
       log('Installed and verified: '+result.hwId+' '+result.baseHash.toUpperCase());
       status('Update complete. The remote device is running the verified firmware.', 'complete');
-      $('update-summary').textContent='Installed and verified on '+result.hwId+'. You can disconnect the USB radio.';
+      $('update-summary').textContent='Installed and verified on '+result.hwId+'.'+completionDisconnectTip();
     } catch(error) {
       if(transferStopJob===job&&!link?.failure&&!link?.folderUnknown)return;
       await fail(error);
@@ -1788,7 +1852,7 @@
   async function install() {
     preparedDownload=null;
     $('install').disabled = true; $('inspect').disabled = true; busy(true);
-    try { const result = await session.install(); await restoreQuietForwarding({required:true});preparedDownload=null;log('Installed and verified: ' + result.hwId + ' ' + result.baseHash.toUpperCase());status('Update complete. The remote device is running the verified firmware.', 'complete'); }
+    try { const result = await session.install(); await finishQuietForwarding();preparedDownload=null;log('Installed and verified: ' + result.hwId + ' ' + result.baseHash.toUpperCase());status('Update complete. The remote device is running the verified firmware.', 'complete'); }
     catch (error) { await fail(error); }
     finally { busy(false); $('inspect').disabled = !link || updatesBlocked(); }
   }
@@ -1891,15 +1955,15 @@
       const runner=new LoraOtaChain.ChainRunner({
         prepared:chainPrepared, link, targetKey:target, readLive,
         readStepJournal,writeStepJournal,readChainJournal,writeChainJournal,
-        createSession:async step=>new Session(link,target,password,step.package.info,{
-          image:step.targetImage,inplacePlan:step.edge.inplacePlan,compress:supportedCompression(),
+        createSession:async step=>(session=new Session(link,target,password,step.package.info,{
+          image:step.targetImage,inplacePlan:step.edge.inplacePlan,compress:supportedCompression(),deferSecondaryRestoration:true,
           progress:log,journal:writeStepJournal,readJournal:readStepJournal
-        }),
+        })),
         rearm:async ({signal})=>LoraOtaChainUi.rearm(link,target,password,sourceRadio,minutes,{signal,preamble:targetPreamble}),
         confirmRearm:async()=>LoraOtaChainUi.activeRadio(link,target,password,sourceRadio,targetPreamble)
       });
       const result=await runner.run({resume,signal:signalController.signal});
-      await restoreQuietForwarding({required:true});
+      await finishQuietForwarding();
       log('Update sequence complete; verified '+result.steps+' installation(s).');
     } catch(error) { await fail(error); }
     finally { preparing=null;busy(false);$('inspect').disabled=!link || updatesBlocked(); }

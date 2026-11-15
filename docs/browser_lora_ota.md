@@ -189,6 +189,10 @@ missing record never authorizes replacing staged data or repeating an uncertain
 install. Existing mismatched or unreadable recovery records are retained and
 reported as local saved-state errors.
 
+If an explicitly requested replacement was cancelled before a connection
+failure, the same saved step can continue once fresh checks prove the original
+firmware and an idle target. Cancellation is not sent again to guess its result.
+
 Under Update path options, choose fewer installs or less radio data. Deep search
 also checks every page-aligned workspace that could fit. It takes longer and
 can be stopped before uploading firmware. Estimates exclude retries and other
@@ -377,15 +381,27 @@ is supported; an explicit unsupported reply permits the older global `repeat`
 control, which pauses forwarding on both profiles. Locally addressed admin
 commands and the target's own OTA traffic remain enabled. An originally off
 setting is never turned on. This option does not change multi-hop relays.
+This is optional: if preparation cannot establish the original setting and
+safe recovery storage, the updater skips the pause, warns, and continues the
+firmware checks. Older sources without bounded optional checks skip this
+optimization. A pause whose outcome is uncertain retains its recovery record.
 
 Forwarding settings persist across reboot. Before changing one, the browser
 saves its original value and full source/target identities in a local recovery
-record, without a password. It verifies restoration after the final update and
+record, without a password. It checks restoration after the final update and
 tries restoration after Stop, an error or Disconnect when the source is healthy
 and idle. Keep the page open until restoration is confirmed. If interrupted,
 reconnect the same source, select the same target and use **Restore forwarding**.
-An unconfirmed restore is not silently repeated or reported complete; the
-recovery record remains until a readback confirms the original value.
+Firmware **DONE** means the running target identity and image were verified.
+An optional forwarding or normal-radio2 check cannot turn that success into a
+failed firmware update. Pending cleanup stays visible as a warning; its recovery
+record remains until verification succeeds. An unconfirmed setting write is not
+silently repeated. Keep the page open if cleanup is still pending.
+
+The source's five-minute admin lease is checked before reusing cached access.
+When this page's exact session has expired, it reacquires access and proves the
+target again before continuing; an active unknown session is not taken over.
+Read retries are not multiplied after the transport exhausts its 7/11 attempts.
 
 If a Companion USB command times out, the page tries reopening that same USB
 port once and confirms the source's complete identity. This is a per-command
@@ -456,19 +472,19 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_port.js"></script>
 <script src="../_javascript/lora_ota_serial.js?v=ota-quiet-1"></script>
 <script src="../_javascript/lora_ota_companion_source.js"></script>
-<script src="../_javascript/lora_ota_companion.js?v=usb-retry-1"></script>
+<script src="../_javascript/lora_ota_companion.js?v=workflow-first-1"></script>
 <script src="../_javascript/lora_ota_contacts.js"></script>
-<script src="../_javascript/lora_ota_session.js?v=ota-quiet-1"></script>
+<script src="../_javascript/lora_ota_session.js?v=workflow-first-1"></script>
 <script src="../_javascript/lora_ota_route.js"></script>
 <script src="../_javascript/lora_ota_repeat.js"></script>
-<script src="../_javascript/lora_ota_quiet.js?v=1"></script>
+<script src="../_javascript/lora_ota_quiet.js?v=workflow-first-1"></script>
 <script src="../_javascript/lora_ota_discovery.js"></script>
 <script src="../_javascript/lora_ota_collect.js"></script>
 <script src="../_javascript/lora_ota_routed_session.js?v=ota-quiet-1"></script>
 <script src="../_javascript/lora_ota_plan.js"></script>
 <script src="../_javascript/lora_ota_candidates.js?v=auto-paths-1"></script>
 <script src="../_javascript/lora_ota_sim.js"></script>
-<script src="../_javascript/lora_ota_chain.js?v=initial-step-recovery-1"></script>
+<script src="../_javascript/lora_ota_chain.js?v=workflow-first-1"></script>
 <script src="../_javascript/lora_ota_chain_ui.js?v=auto-paths-3"></script>
 <script src="../_javascript/lora_ota_auto_chain.js?v=auto-paths-2"></script>
 <script src="../_javascript/lora_ota_region_profiles.js"></script>
@@ -476,4 +492,4 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_recovery.js?v=usb-retry-1"></script>
 <script src="../_javascript/lora_ota_lease.js"></script>
 <script src="../_javascript/lora_ota_catalog.js?v=4aeb7bf86"></script>
-<script src="../_javascript/lora_ota_browser.js?v=initial-step-recovery-1"></script>
+<script src="../_javascript/lora_ota_browser.js?v=workflow-first-1"></script>

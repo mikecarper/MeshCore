@@ -5,7 +5,7 @@ const enc=new TextEncoder(),dec=new TextDecoder(),key='bb'.repeat(32),source='aa
 const fromHex=s=>Uint8Array.from(s.match(/../g),x=>parseInt(x,16));
 function wire(body){return Uint8Array.of(62,body.length&255,body.length>>8,...body)}
 class Port{
-  constructor(){this.waiter=null;this.q=[];this.frames=[];this.guard=false;this.correlation='';this.reply='';this.remoteAttempts={};this.timeoutFirst={};this.pendingReply=false;this.clock=Math.floor(Date.now()/1000);this.legacy=false;this.noCli=false;this.loginPermissions=1;this.loginCode=0x85;this.suppressLogin=false;this.targetType=3;this.targetPath=255;this.rxps='Error: RX power saving is unsupported on this radio';}
+  constructor(){this.waiter=null;this.q=[];this.frames=[];this.guard=false;this.guardOwned=false;this.guardExpiresAt=Infinity;this.expireBeforeArm=false;this.correlation='';this.reply='';this.remoteAttempts={};this.timeoutFirst={};this.pendingReply=false;this.clock=Math.floor(Date.now()/1000);this.legacy=false;this.noCli=false;this.loginPermissions=1;this.loginCode=0x85;this.suppressLogin=false;this.targetType=3;this.targetPath=255;this.rxps='Error: RX power saving is unsupported on this radio';}
   push(v){if(this.waiter){let f=this.waiter;this.waiter=null;f({value:v,done:false});}else this.q.push(v);}
   async open(){
     this.readable={getReader:()=>({read:()=>this.q.length?Promise.resolve({value:this.q.shift(),done:false}):new Promise(r=>this.waiter=r),cancel:async()=>{if(this.waiter)this.waiter({done:true});},releaseLock(){}})};
@@ -13,6 +13,7 @@ class Port{
   }
   async write(b){
     assert.equal(b[0],60);assert.equal(b.length,b[1]+256*b[2]+3);const f=b.slice(3);this.frames.push(f);let out;
+    if(this.guard&&Date.now()>=this.guardExpiresAt)this.guard=false;
     assert.ok(f.length<=(f[0]===65?188:176),'Command exceeds the real USB receive envelope');
     if(f[0]===1){out=new Uint8Array(58);out[0]=5;out.set(fromHex(source),4);const v=new DataView(out.buffer);v.setUint32(48,910525,true);v.setUint32(52,62500,true);out[56]=7;out[57]=5;}
     else if(f[0]===22){out=new Uint8Array(82);out[0]=13;out[1]=13;out.set(enc.encode('06-Nov-2026'),8);out.set(enc.encode('Test board'),20);out.set(enc.encode(this.noCli?'v1.16.05':'v1.18.0.2-preview'),60);}
@@ -22,7 +23,18 @@ class Port{
     }
     else if(f[0]===5){out=Uint8Array.of(9,...new Uint8Array(new Uint32Array([this.clock]).buffer));}
     else if(f[0]===6){this.clock=new DataView(f.buffer,f.byteOffset,f.byteLength).getUint32(1,true);out=Uint8Array.of(0);}
-    else if(f[0]===52){assert.equal(Buffer.from(f.slice(2,34)).toString('hex'),key);if(f[1]===1)this.guard=true;if(f[1]===3)this.guard=false;if(f[1]===4)this.correlation=dec.decode(f.slice(34,36));out=Uint8Array.of(0);}
+    else if(f[0]===52){
+      assert.equal(Buffer.from(f.slice(2,34)).toString('hex'),key);
+      if(f[1]===4&&this.expireBeforeArm){this.expireBeforeArm=false;this.guard=false;}
+      if((f[1]===1&&this.guardOwned&&!this.guard)||([2,4].includes(f[1])&&!this.guard))out=Uint8Array.of(1,4);
+      else{
+        if(f[1]===1){this.guard=true;this.guardOwned=true;}
+        if(f[1]===3){this.guard=false;this.guardOwned=false;}
+        if(f[1]===4)this.correlation=dec.decode(f.slice(34,36));
+        if([1,2,4].includes(f[1]))this.guardExpiresAt=Date.now()+300000;
+        out=Uint8Array.of(0);
+      }
+    }
     else if(f[0]===26){assert(this.guard);assert(['','password'].includes(dec.decode(f.slice(33))));out=Uint8Array.of(6,0,0,0,0,0,0,0,0,0);if(!this.suppressLogin)queueMicrotask(()=>this.push(wire(Uint8Array.of(this.loginCode,this.loginPermissions,...fromHex(key).slice(0,6),0,0,0,0,3,1))));}
     else if(f[0]===2){assert(this.guard);assert.equal(f[1],1);assert.equal(Buffer.from(f.slice(7,13)).toString('hex'),key.slice(0,12));const txt=dec.decode(f.slice(13)),cmd=txt.slice(3);assert.equal(txt.slice(0,3),this.correlation+'|');this.remoteAttempts[cmd]=(this.remoteAttempts[cmd]||0)+1;this.pendingReply=this.remoteAttempts[cmd]<=(this.timeoutFirst[cmd]||0);this.reply=cmd==='get public.key'?'> '+key:'> 9';out=Uint8Array.of(6,0,0,0,0,0,0,0,0,0);}
     else if(f[0]===66&&this.noCli){out=Uint8Array.of(1,2);}
@@ -42,7 +54,80 @@ class Port{
   }
   async close(){}
 }
+// Retry/budget unit models replace the RF layer entirely. Authorization and
+// its live USB lease are exercised separately against the complete Port above.
+function modelAuthorization(c){c.ensureGuardedSession=async()=>{if(!c.authenticated)await c.login('');};return c;}
 async function run(){
+  // Prepare can be followed by an arbitrarily long human pause. The firmware
+  // lease expires after five minutes, not when the page clears its JS flags.
+  for(const nextAction of ['verify','read','write','burst','mailbox-race']){
+    const p=new Port(),c=new CompanionTransport(p,{openSettle:0,commandTimeout:1000,remoteTimeout:120});
+    await c.open();await c.contacts();c.selectTarget(key);await c.verifyPeer(key,'password');
+    const before=p.frames.length,proofs=p.remoteAttempts['get public.key'];
+    assert.equal(await c.verifyPeer(key,'password'),key);
+    assert.equal(p.remoteAttempts['get public.key'],proofs,'an active owned lease needs no extra LoRa identity read');
+    assert(p.frames.slice(before).every(frame=>frame[0]===66),'active cache refresh stays USB-only');
+    const savedNow=Date.now;
+    try{
+      if(nextAction==='mailbox-race')p.expireBeforeArm=true;
+      else{Date.now=()=>savedNow()+300001;p.clock=Math.floor(Date.now()/1000);}
+      if(nextAction==='verify')assert.equal(await c.verifyPeer(key,'password'),key);
+      else if(nextAction==='burst')assert.equal(await c.withOtaAdminBurst(key,'password',io=>io.remote('ota status')),'> 9');
+      else if(nextAction==='write'){
+        p.timeoutFirst['ota install']=1;
+        await assert.rejects(c.remoteCommand(key,'password','ota install'),error=>error.loraReplyTimeout===true);
+        assert.equal(p.remoteAttempts['ota install'],1,'a lost install reply never replays the install');
+      }else assert.equal(await c.remoteCommand(key,'password','ota status'),'> 9');
+      assert.equal(p.remoteAttempts['get public.key'],proofs+1,'expired ownership requires one new full-key proof');
+      assert.equal(p.frames.slice(before).filter(frame=>frame[0]===52&&frame[1]===3).length,1,'one exact-target local close clears the expired owner');
+      assert.equal(p.frames.slice(before).filter(frame=>frame[0]===26).length,1);
+      assert.equal(c.authenticated,true);assert.equal(c.authenticatedPassword,'password');assert.equal(c.guard,true);
+      assert(!p.frames.slice(before).some(frame=>frame[0]===65||frame[0]===66&&dec.decode(frame.slice(1)).startsWith('set ')));
+    }finally{Date.now=savedNow;await c.close();}
+  }
+  for(const lost of ['login','identity']){
+    const p=new Port(),c=new CompanionTransport(p,{openSettle:0,commandTimeout:1000,remoteTimeout:120});
+    await c.open();await c.contacts();c.selectTarget(key);
+    if(lost==='login')p.suppressLogin=true;else p.timeoutFirst['get public.key']=1;
+    await assert.rejects(c.verifyPeer(key,'password'),error=>error.loraReplyTimeout===true);
+    assert.equal(c.authenticated,false);assert.equal(c.guard,true);assert.equal(p.guard,true);
+    p.suppressLogin=false;const before=p.frames.length;
+    assert.equal(await c.verifyPeer(key,'password'),key);
+    assert.equal(p.frames.slice(before).filter(frame=>frame[0]===52&&frame[1]===3).length,1);
+    assert.equal(p.frames.slice(before).filter(frame=>frame[0]===26).length,1);
+    assert.equal(p.frames.slice(before).filter(frame=>frame[0]===2).length,1,'only the full-key proof goes over LoRa');
+    assert.equal(c.authenticated,true);await c.close();
+  }
+  {
+    const p=new Port(),c=new CompanionTransport(p,{openSettle:0,commandTimeout:1000,remoteTimeout:75000});
+    await c.open();await c.contacts();c.selectTarget(key);await c.verifyPeer(key,'password');
+    const options=c.options,proofs=p.remoteAttempts['get public.key'];
+    assert.equal(await c.remoteCommand(key,'password','ota status',{maxDurationMs:5000,allowReacquire:false}),'> 9');
+    assert.equal(p.remoteAttempts['get public.key'],proofs);
+    p.timeoutFirst['set repeat off']=1;
+    await assert.rejects(c.remoteCommand(key,'password','set repeat off',
+      {optionalReplyTimeoutMs:5,allowReacquire:false}),error=>error.loraReplyTimeout&&error.otaTimeoutMs===5);
+    assert.equal(p.remoteAttempts['set repeat off'],1);assert.equal(c.options,options);
+    p.expireBeforeArm=true;const beforeRace=p.frames.length;
+    await assert.rejects(c.remoteCommand(key,'password','set repeat on',
+      {optionalReplyTimeoutMs:5,allowReacquire:false}),error=>error.otaOptionalUnavailable===true);
+    assert.equal(p.remoteAttempts['set repeat on'],undefined);
+    assert(!p.frames.slice(beforeRace).some(frame=>frame[0]===26||frame[0]===52&&frame[1]===3));
+    const before=p.frames.length;
+    for(const [command,limits] of [['ota status',{maxDurationMs:5000,allowReacquire:false}],
+      ['set repeat on',{optionalReplyTimeoutMs:5000,allowReacquire:false}]])
+      await assert.rejects(c.remoteCommand(key,'password',command,limits),error=>
+        error.otaEndpoint==='USB Companion'&&error.otaOptionalUnavailable===true&&/optional check needs an active/.test(error.message));
+    assert(p.frames.slice(before).every(frame=>frame[0]===66),'optional expired-session checks never log in, close, or send RF');
+    const invalid=[['set repeat on',{optionalReplyTimeoutMs:5000}],['ota status',{optionalReplyTimeoutMs:5000,allowReacquire:false}],
+      ['ota install',{allowReacquire:false}],['set radio2.flood off',{optionalReplyTimeoutMs:5000,allowReacquire:false}],
+      ['set repeat off extra',{optionalReplyTimeoutMs:5000,allowReacquire:false}],['set repeat off',{optionalReplyTimeoutMs:10001,allowReacquire:false}],
+      ['set repeat off',{optionalReplyTimeoutMs:NaN,allowReacquire:false}],['ota status',{allowReacquire:'no'}]];
+    const sent=p.frames.length;
+    for(const [command,limits] of invalid)await assert.rejects(c.remoteCommand(key,'password',command,limits),/Optional command limits/);
+    assert.equal(p.frames.length,sent);assert.equal(c.options,options);
+    await c.close();
+  }
   // Preparation retries only unanswered read-only radio requests, never the
   // login, a mutation or a source USB failure; each attempt gets a fresh tag.
   {
@@ -55,14 +140,14 @@ async function run(){
     const tags=p.frames.filter(frame=>frame[0]===2).map(frame=>dec.decode(frame.slice(13)).slice(0,3));assert.equal(new Set(tags).size,tags.length);await c.close();
   }
   for(const [hops,expected] of [[0,7000],[null,20000],[1,20000]]){
-    const c=new CompanionTransport({}, {knownRepeater:key,remoteTimeout:75000});c.otaSupported=true;c.authenticated=true;c.running=true;c.contactList=[{publicKey:key,hops}];
+    const c=modelAuthorization(new CompanionTransport({}, {knownRepeater:key,remoteTimeout:75000}));c.otaSupported=true;c.authenticated=true;c.running=true;c.contactList=[{publicKey:key,hops}];
     const options=c.options,timeouts=[];c.remoteReply=async()=>{timeouts.push(c.options.remoteTimeout);if(timeouts.length===1){const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;throw error;}return '> self';};
     assert.equal(await c.remoteCommand(key,'','ota self'),'> self');assert.deepEqual(timeouts,[expected,expected]);assert.equal(c.options,options);
   }
   // A command that still has no confirmed authentication gets seven read
   // attempts; an authenticated guarded target gets eleven, not three.
   for(const confirmed of [false,true]){
-    const c=new CompanionTransport({}, {knownRepeater:key});c.otaSupported=true;c.running=true;c.authenticated=confirmed;
+    const c=modelAuthorization(new CompanionTransport({}, {knownRepeater:key}));c.otaSupported=true;c.running=true;c.authenticated=confirmed;
     c.login=async()=>{};let calls=0;
     c.remoteReply=async()=>{calls++;throw Object.assign(Error('Remote command timed out; result is unknown'),{loraReplyTimeout:true});};
     await assert.rejects(c.remoteCommand(key,'','ota self'),error=>{
@@ -71,7 +156,7 @@ async function run(){
     });assert.equal(calls,confirmed?11:7);
   }
   {
-    const make=()=>{const c=new CompanionTransport({}, {knownRepeater:key,remoteTimeout:75000});
+    const make=()=>{const c=modelAuthorization(new CompanionTransport({}, {knownRepeater:key,remoteTimeout:75000}));
       c.otaSupported=true;c.running=true;c.authenticated=true;c.supportsOtaRadio2=true;c.otaRadioProfile=1;return c;};
     const originalNow=Date.now;let now=1000;
     try{
@@ -106,12 +191,12 @@ async function run(){
     assert.equal(await c.remoteCommand(key,'','ota self',{replyTimeoutMs:5}),'> ok');assert.equal(calls,1);
   }
   for(const command of ['set tx 9','ota pull 01234567 flash','ota install','ota cancel','login','ota self extra']){
-    const c=new CompanionTransport({}, {knownRepeater:key});c.otaSupported=true;c.authenticated=true;c.running=true;let calls=0;
+    const c=modelAuthorization(new CompanionTransport({}, {knownRepeater:key}));c.otaSupported=true;c.authenticated=true;c.running=true;let calls=0;
     const original=Object.assign(Error('Remote command timed out; result is unknown'),{loraReplyTimeout:true});c.remoteReply=async()=>{calls++;throw original;};
     await assert.rejects(c.remoteCommand(key,'',command),error=>error===original);assert.equal(calls,1,command);
   }
   for(const kind of ['USB','failure','disconnect','cancel','other']){
-    const c=new CompanionTransport({}, {knownRepeater:key});c.otaSupported=true;c.authenticated=true;c.running=true;let calls=0;
+    const c=modelAuthorization(new CompanionTransport({}, {knownRepeater:key}));c.otaSupported=true;c.authenticated=true;c.running=true;let calls=0;
     const original=Object.assign(Error(kind==='other'?'Malformed mailbox':'Remote command timed out; result is unknown'),{loraReplyTimeout:kind!=='other'});
     if(kind==='USB')original.otaEndpoint='USB Companion';
     c.remoteReply=async()=>{calls++;if(kind==='failure')c.failure=original;if(kind==='disconnect')c.running=false;if(kind==='cancel')c.investigationCancelled=true;throw original;};

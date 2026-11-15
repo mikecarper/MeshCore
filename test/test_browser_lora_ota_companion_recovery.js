@@ -166,6 +166,50 @@ test('normal acknowledged close forgets ownership and an already-active foreign 
   await assert.rejects(foreign.t.guardMode(1,Uint8Array.of(2)),/mailbox is already in use/);
   const later=foreign.reconnect();await later.t.recoverOwnedDirectGuard(later.status());assert.deepEqual(foreign.frames(),[]);
 });
+
+test('a live authenticated lease needs only a local read and refuses changed source, target, password or owner',async()=>{
+  const f=guardOwnerFixture();
+  await f.t.guardMode(1,Uint8Array.of(2),{password:'password'});
+  Object.assign(f.t,{guard:true,authenticated:true,authenticatedPassword:'password'});
+  f.t.login=async()=>{throw Error('must not log in again while the lease is active');};
+  assert.equal(await f.t.verifyPeer(key,'password'),key);
+  assert.deepEqual(f.frames().map(frame=>frame[1]),[1]);
+  for(const change of ['source','target','password','owner']){
+    const item=guardOwnerFixture();await item.t.guardMode(1,Uint8Array.of(2),{password:'password'});
+    Object.assign(item.t,{guard:true,authenticated:true,authenticatedPassword:'password'});
+    let target=key,password='password';
+    if(change==='source')item.t.sourceKey='cc'.repeat(32);
+    if(change==='target')target=item.t.knownRepeater='cc'.repeat(32);
+    if(change==='password')password='different';
+    const candidate=change==='owner'?item.reconnect().t:item.t;
+    if(change==='owner')Object.assign(candidate,{knownRepeater:key,guard:true,authenticated:true,authenticatedPassword:'password'});
+    await assert.rejects(candidate.verifyPeer(target,password),/ownership|password/);
+    assert.deepEqual(item.frames().map(frame=>frame[1]),[1]);
+    assert.equal(item.hardware.peer,key,'unknown ownership must not close any active peer');
+  }
+  const foreign=guardOwnerFixture();foreign.hardware.peer=key;
+  Object.assign(foreign.t,{guard:true,authenticated:true,authenticatedPassword:''});
+  await assert.rejects(foreign.t.verifyPeer(key,''),/ownership/);
+  assert.deepEqual(foreign.frames(),[]);assert.equal(foreign.hardware.peer,key);
+});
+
+test('unreadable or changed local guard state stops before RF and a lost owned close is not replayed',async()=>{
+  for(const status of ['unknown','> ota.direct v=2 active=2 busy=0']){
+    const f=guardOwnerFixture();await f.t.guardMode(1,Uint8Array.of(2),{password:''});
+    Object.assign(f.t,{guard:true,authenticated:true,authenticatedPassword:''});
+    f.t.localCommand=async()=>status;
+    await assert.rejects(f.t.verifyPeer(key,''),/Cannot verify/);
+    assert.deepEqual(f.frames().map(frame=>frame[1]),[1]);
+  }
+  const f=guardOwnerFixture();await f.t.guardMode(1,Uint8Array.of(2),{password:''});
+  Object.assign(f.t,{guard:true,authenticated:true,authenticatedPassword:''});
+  f.hardware.peer=null;f.hardware.loseClose=true;
+  f.t.login=async()=>{throw Error('must not log in after an uncertain close');};
+  await assert.rejects(f.t.verifyPeer(key,''),error=>error.otaUsbTimeout===true);
+  await assert.rejects(f.t.verifyPeer(key,''),error=>error.otaUsbTimeout===true);
+  assert.deepEqual(f.frames().map(frame=>frame[1]),[1,3]);
+  assert.equal(f.t.authenticated,false);assert.equal(f.t.guard,false);
+});
 test('login waits through transient local radio work without closing a mailbox or retrying RF',async()=>{
   const t=new CompanionTransport({}, {guardIdleTimeoutMs:1000});
   Object.assign(t,{knownRepeater:key,otaSupported:true});
@@ -277,6 +321,9 @@ async function radioProbeFixture(options = {}) {
     return command==='get public.key'?'> '+key:command==='get tempradio2'?'> 909.950,250,7,5,rxtx,128':'> rxtx';
   };
   t.login=async()=>{throw Error('Probe must reuse the admitted admin session');};
+  // Probe state-machine tests model the admitted session. Live guard expiry
+  // and per-transport ownership have separate complete transport fixtures.
+  t.ensureGuardedSession=async()=>false;
   await t.verifyPeer(key,'password');events.length=0;
   return {t,events,originalOptions};
 }

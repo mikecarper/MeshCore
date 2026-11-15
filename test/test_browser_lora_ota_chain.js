@@ -221,6 +221,108 @@ test('only the previous verified chain container can be replaced automatically a
   }
 });
 
+async function interruptedReplacementCancellation(index=0) {
+  const f=await fixture(),create=f.args.createSession;
+  let interrupted=false;
+  f.args.createSession=async(step,context)=>{
+    const job=await create(step,context);
+    if(context.index===index){
+      job.inspect=async()=>({download:'idle'});
+      const start=job.start.bind(job);
+      job.start=async options=>{
+        if(!interrupted){
+          interrupted=true;
+          f.setStepRecord({phase:'replacement cancel attempted',source,target,
+            id:Buffer.from(step.package.info.merkleRoot).toString('hex'),packageHash:step.packageHash,
+            replaced:{id:'deadbeef',state:'active'},bodyHash:'1122334455667788'});
+          throw Error('cancel acknowledged; staging read disconnected');
+        }
+        // Recovery must not reauthorize cancellation, even at a later index.
+        assert.deepEqual(options,{resume:false});return start(options);
+      };
+    }
+    return job;
+  };
+  await assert.rejects(new ChainRunner(f.args).run(),/cancel acknowledged/);
+  assert.equal(f.chain.index,index);assert.equal(f.stepRecord.phase,'replacement cancel attempted');
+  return f;
+}
+
+test('acknowledged replacement cancellation recovers an exact idle step without repeating cancellation',async()=>{
+  for(const index of [0,1]){
+    const f=await interruptedReplacementCancellation(index);
+    const result=await new ChainRunner(f.args).run({resume:true});
+    assert.equal(result.phase,'complete');assert.deepEqual(f.pulls,[0,1]);assert.deepEqual(f.installs,[0,1]);
+    assert.ok(f.calls.includes('live recover replacement cancellation '+index));
+  }
+});
+
+test('replacement cancellation recovery refuses non-idle or unreadable staging without changing its record',async()=>{
+  for(const state of ['active','ready','failed','replace','unknown','unreadable']){
+    const f=await interruptedReplacementCancellation(),create=f.args.createSession,record=JSON.stringify(f.stepRecord);
+    const unknown=Error('staging read timed out');
+    f.args.createSession=async(...args)=>{
+      const job=await create(...args);
+      job.inspect=async options=>{
+        assert.deepEqual(options,{allowExisting:true,allowReplacement:true});
+        if(state==='unreadable')throw unknown;
+        return {download:state,existingDownload:{id:'deadbeef',state:'active'}};
+      };return job;
+    };
+    await assert.rejects(new ChainRunner(f.args).run({resume:true}),state==='unreadable'?error=>error===unknown:/not positively idle/);
+    assert.equal(JSON.stringify(f.stepRecord),record);assert.deepEqual(f.pulls,[]);assert.deepEqual(f.installs,[]);
+  }
+});
+
+test('invalid replacement metadata and mismatched complete-package bindings cannot authorize recovery',async()=>{
+  for(const changed of ['missing-replacement','bad-id','bad-state','source','target','packageHash','id']){
+    const f=await interruptedReplacementCancellation(),record=structuredClone(f.stepRecord);
+    if(changed==='missing-replacement')delete record.replaced;
+    else if(changed==='bad-id')record.replaced.id='not-an-id';
+    else if(changed==='bad-state')record.replaced.state='installed';
+    else record[changed]=changed==='source'||changed==='target'?'cc'.repeat(32):'00';
+    f.setStepRecord(record);
+    await assert.rejects(new ChainRunner(f.args).run({resume:true}),/record is invalid|saved step does not match/);
+    assert.deepEqual(f.pulls,[]);assert.deepEqual(f.installs,[]);assert.deepEqual(f.stepRecord,record);
+  }
+});
+
+test('cancellation recovery checks cancellation, identities and the unchanged record after its asynchronous proof',async()=>{
+  for(const changed of ['cancel','source','target','record']){
+    const f=await interruptedReplacementCancellation(),create=f.args.createSession,controller=new AbortController();
+    f.args.createSession=async(...args)=>{
+      const job=await create(...args);job.inspect=async()=>{
+        if(changed==='cancel')controller.abort();
+        if(changed==='source')f.args.link.sourceKey='cc'.repeat(32);
+        if(changed==='target')f.args.link.knownRepeater='cc'.repeat(32);
+        if(changed==='record')f.stepRecord.replaced.state='ready';
+        return {download:'idle'};
+      };return job;
+    };
+    await assert.rejects(new ChainRunner(f.args).run({resume:true,signal:controller.signal}),/Chain stopped|source or target changed|record changed/);
+    assert.deepEqual(f.pulls,[]);assert.deepEqual(f.installs,[]);
+  }
+});
+
+test('cancellation recovery rechecks the original firmware and complete package after idle proof',async()=>{
+  for(const changed of ['firmware','package','new-download']){
+    const f=await interruptedReplacementCancellation(),create=f.args.createSession;
+    f.args.createSession=async(...args)=>{
+      const job=await create(...args);job.inspect=async()=>{
+        if(changed==='firmware')f.setLive({...capability,...f.args.prepared.nodes[1]});
+        if(changed==='package')f.args.prepared.steps[0].package.blob[0]^=1;
+        return {download:'idle'};
+      };
+      if(changed==='new-download')job.start=async options=>{
+        assert.deepEqual(options,{resume:false});throw Error('Target already has a download');
+      };
+      return job;
+    };
+    await assert.rejects(new ChainRunner(f.args).run({resume:true}),changed==='firmware'?/no longer matches/:changed==='package'?/package changed/:/already has a download/);
+    assert.deepEqual(f.pulls,[]);assert.deepEqual(f.installs,[]);
+  }
+});
+
 test('uncertain pull resumes without a second initial pull',async()=>{
   const f=await fixture();f.failNextPull();
   await assert.rejects(new ChainRunner(f.args).run(),/timed out/);assert.equal(f.chain.phase,'step starting');

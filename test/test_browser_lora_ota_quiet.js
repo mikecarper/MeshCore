@@ -131,7 +131,7 @@ test('wrong target proof, changed source and unhealthy or non-direct sources fai
     f=>{f.link.running=false;},f=>{f.link.failure=Error('USB gone');},f=>{f.link.serving=true;},
     f=>{f.link.seeder={};},f=>{f.link.folderUnknown=true;},f=>{f.link.relays=['dd'.repeat(32)];},f=>{f.link.relays='invalid';}]){
     const f=fixture();await paused(f);const before=setters(f).length;mutate(f);
-    await assert.rejects(f.restore(),/record|healthy/);assert.equal(setters(f).length,before);assert(f.data);
+    await assert.rejects(f.restore(),/record|healthy|USB/);assert.equal(setters(f).length,before);assert(f.data);
   }
 });
 test('failed durable storage and a no-op store stop before the pause setter',async()=>{
@@ -207,4 +207,35 @@ test('exhausted transport read retries are not multiplied by forwarding confirma
   const f=fixture({offNoApply:true}),plan=await f.plan(),before=f.calls.filter(command=>command==='get radio.flood').length;
   assert.equal((await f.pause(plan)).state,'pending');
   assert.equal(f.calls.filter(command=>command==='get radio.flood').length-before,4,'one pre-pause GET and three successful old-state polls');
+});
+
+test('guarded optional GETs and single setters have five-second budgets without implicit reauthentication',async()=>{
+  const f=fixture(),remote=f.link.remoteCommand,options=[];
+  f.link.browserRawSource=true;f.link.otaSupported=true;
+  f.link.remoteCommand=async(...args)=>{options.push([args[2],args[3]]);return remote(...args);};
+  await paused(f);await f.restore();
+  for(const [command,budget] of options)
+    assert.deepEqual(budget,command.startsWith('get ')?{maxDurationMs:5000,allowReacquire:false}:
+      {optionalReplyTimeoutMs:5000,allowReacquire:false},command);
+  assert.deepEqual(setters(f),['set radio.flood off','set radio.flood on']);
+});
+
+test('automatic proof uses only existing authenticated reads while explicit restoration may reacquire',async()=>{
+  const f=fixture();f.link.browserRawSource=true;f.link.otaSupported=true;
+  const plan=await quiet.plan(f.link,TARGET,'secret',{...f.settings,allowReacquire:false});
+  await f.pause(plan,{allowReacquire:false});
+  await f.restore({allowReacquire:false});
+  assert(!f.calls.includes('verify'));assert(f.calls.includes('get public.key'));
+  const g=fixture();await paused(g);const before=g.calls.filter(c=>c==='verify').length;
+  await g.restore({allowReacquire:true});
+  assert.equal(g.calls.filter(c=>c==='verify').length,before+1);
+});
+
+test('USB failures and changed identity retain their halting classification rather than optional-warning errors',async()=>{
+  const f=fixture(),usb=Object.assign(Error('USB acknowledgement timed out'),{otaUsbTimeout:true});
+  f.link.failure=usb;
+  await assert.rejects(f.plan(),cause=>cause===usb);
+  const g=fixture({wrongKey:true});
+  await assert.rejects(g.plan(),cause=>cause.otaQuietIdentityChanged===true);
+  assert.deepEqual(setters(f),[]);assert.deepEqual(setters(g),[]);
 });

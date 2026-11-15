@@ -70,9 +70,12 @@ def quiet_forwarding_harness(*, original='on', lost_pause_ack=False, disconnect_
         "    el('quiet-forwarding').checked=true;"
         + ("window.testLink.options.remoteTimeout=250;" if lost_pause_ack else '')
         + "el('inspect').click();await wait(()=>!el('inspect').disabled);")
+    harness = replace_once(harness,
+        "el('update').click();await wait(()=>['complete','error'].includes(el('workflow-status').dataset.state));",
+        "el('update').click();await wait(()=>['complete','error'].includes(el('workflow-status').dataset.state)&&!el('inspect').disabled);")
     if disconnect_after_prepare:
         harness = replace_once(harness,
-            "el('update').click();await wait(()=>['complete','error'].includes(el('workflow-status').dataset.state));"
+            "el('update').click();await wait(()=>['complete','error'].includes(el('workflow-status').dataset.state)&&!el('inspect').disabled);"
             "const workflowState=el('workflow-status').dataset.state;"
             "if(workflowState!=='complete')throw Error(el('workflow-status').textContent);",
             "const workflowState='prepared';")
@@ -80,7 +83,7 @@ def quiet_forwarding_harness(*, original='on', lost_pause_ack=False, disconnect_
         "const workflowState=" + ("'prepared';" if disconnect_after_prepare else "el('workflow-status').dataset.state;"),
         "const workflowState=" + ("'prepared';" if disconnect_after_prepare else "el('workflow-status').dataset.state;")
         + "const quietAfterUpdate={repeat,record:JSON.parse(localStorage.getItem(quietKey)||'null'),"
-        "status:el('quiet-forwarding-status').textContent,workflowStatus:el('workflow-status').textContent};")
+        "summary:el('update-summary').textContent,status:el('quiet-forwarding-status').textContent,workflowStatus:el('workflow-status').textContent};")
     if restore_retry:
         reconnect = r'''
             const oldTransport=window.testLink;
@@ -98,7 +101,7 @@ def quiet_forwarding_harness(*, original='on', lost_pause_ack=False, disconnect_
         ''' if reconnect_restore else ''
         harness = replace_once(harness,
             "if(workflowState!=='complete')throw Error(el('workflow-status').textContent);",
-            "if(workflowState!=='error')throw Error('Expected pending forwarding restoration');"
+            "if(workflowState!=='complete')throw Error('Verified firmware must remain complete while forwarding restoration is pending');"
             "beforeExplicitRestore={writes:forwardingWrites.length,record:JSON.parse(localStorage.getItem(quietKey)||'null')};"
             "if(!beforeExplicitRestore.record||beforeExplicitRestore.writes!==2)throw Error('Restoration retried automatically');"
             + reconnect +
@@ -112,7 +115,7 @@ def quiet_forwarding_harness(*, original='on', lost_pause_ack=False, disconnect_
     if missing_module:
         harness = replace_once(harness,
             "if(workflowState!=='complete')throw Error(el('workflow-status').textContent);",
-            "if(workflowState!=='error')throw Error('Pending restoration without its module was reported complete');"
+            "if(workflowState!=='complete')throw Error('Missing optional restoration module blocked verified firmware completion');"
             "await wait(()=>!el('disconnect').disabled);")
     harness = replace_once(harness,
         'timeline,cmds,frames:port.frames,fileReads,packageBuilds});',
@@ -194,6 +197,78 @@ def failure_after_first_pause_harness():
         "const workflowState=el('workflow-status').dataset.state;")
     return replace_once(harness, "quietDefault:el('quiet-forwarding').defaultChecked,",
         "injectedFailure,quietDefault:el('quiet-forwarding').defaultChecked,")
+
+
+def optional_pause_failure_harness(kind):
+    """An optional forwarding failure must not suppress the real firmware workflow."""
+    harness = quiet_forwarding_harness()
+    for message in ('Target forwarding resumed before installation', 'Target forwarding resumed during transfer'):
+        harness = replace_once(harness, "if(repeat!=='off')throw Error(%r);" % message, '')
+    harness = replace_once(harness, 'let repeat=', 'let optionalReads=0;let repeat=')
+    if kind == 'plan-timeout':
+        harness = replace_once(harness,
+            "else if(text==='get radio.flood')reply='unknown config: radio.flood';",
+            "else if(text==='get radio.flood'){optionalReads++;mailboxPending=true;reply='';}")
+    elif kind in ('pause-timeout', 'usb'):
+        action = ("throw Error('fixture USB failure during optional pause getter');" if kind == 'usb'
+                  else "optionalReads++;mailboxPending=true;reply='';")
+        harness = replace_once(harness,
+            "forwardingReads.push({repeat,installed,sourceTemp,targetTemp});reply='> '+repeat;",
+            "forwardingReads.push({repeat,installed,sourceTemp,targetTemp});"
+            "if(sourceTemp==='active'&&!installed&&!forwardingWrites.length){%s}else reply='> '+repeat;" % action)
+    elif kind == 'pause-unconfirmed':
+        harness = replace_once(harness,
+            "if(false&&text==='set repeat on'&&++restoreAttempts===1)",
+            "if(text==='set repeat off')reply='Error: fixture pause not applied';else if(false&&text==='set repeat on'&&++restoreAttempts===1)")
+    elif kind == 'expired':
+        harness = replace_once(harness, 'let optionalReads=0;', 'let optionalReads=0,guardExpired=false;')
+        harness = replace_once(harness, "else if(text==='get tempradio'){",
+            "else if(text==='get tempradio'){if(sourceTemp==='off'&&!guardExpired&&cmds.includes('ota installhash')){guard=false;guardExpired=true;}")
+    elif kind in ('stale', 'foreign', 'corrupt', 'missing-module', 'secret-error'):
+        if kind == 'missing-module':
+            setup = 'delete window.LoraOtaQuiet;'
+        elif kind == 'secret-error':
+            setup = "window.LoraOtaQuiet.plan=async()=>{throw Error('fixture private error: password');};"
+        else:
+            record = {'version':1, 'source':'aa'*32, 'target':('cc' if kind == 'foreign' else 'bb')*32,
+                      'setting':'repeat', 'original':'on', 'state':'paused', 'restoreAttempted':False}
+            if kind == 'corrupt':
+                record['setting'] = 'unknown-setting'
+            setup = 'localStorage.setItem(quietKey,JSON.stringify(%s));' % json.dumps(record)
+        harness = replace_once(harness, "el('quiet-forwarding').checked=true;el('inspect').click();",
+            "el('quiet-forwarding').checked=true;%sel('inspect').click();" % setup)
+    else:
+        raise ValueError(kind)
+    return replace_once(harness, "quietDefault:el('quiet-forwarding').defaultChecked,",
+        "optionalReads,quietDefault:el('quiet-forwarding').defaultChecked,")
+
+
+def deferred_secondary_cleanup_harness():
+    """A saved R2 check may fail only after the actual image is verified."""
+    harness = quiet_forwarding_harness()
+    harness = replace_once(harness, 'let repeat=', 'let secondaryReads=0;let repeat=')
+    harness = replace_once(harness,
+        "else if(text==='get radio2')reply=true?'> off (manual)':'Error: unsupported';",
+        "else if(text==='get radio2'){if(installed){secondaryReads++;mailboxPending=true;reply='';}"
+        "else reply='> 908.150,250.000,7,5,rxtx,48';}")
+    harness = replace_once(harness, "else if(text==='get tempradio2')reply=",
+        "else if(text==='get tempradio2'&&installed)reply='> off';else if(text==='get tempradio2')reply=")
+    return replace_once(harness, "quietDefault:el('quiet-forwarding').defaultChecked,",
+        "secondaryReads,updateRecord:JSON.parse(localStorage.getItem('meshcore-browser-lora-ota')||'null'),"
+        "quietDefault:el('quiet-forwarding').defaultChecked,")
+
+
+def expired_ready_guard_harness():
+    """The firmware lease expires while the already-prepared page is idle."""
+    harness = quiet_forwarding_harness()
+    harness = replace_once(harness,
+        "el('update').click();await wait(()=>['complete','error'].includes(el('workflow-status').dataset.state)&&!el('inspect').disabled);",
+        "const expiredReady={browserGuard:window.testLink.guard,authenticated:window.testLink.authenticated,"
+        "writes:forwardingWrites.length,proofAt:timeline.length};"
+        "guard=false;targetAcknowledgedAt-=300000;"
+        "el('update').click();await wait(()=>['complete','error'].includes(el('workflow-status').dataset.state)&&!el('inspect').disabled);")
+    return replace_once(harness, "quietDefault:el('quiet-forwarding').defaultChecked,",
+        "expiredReady,quietDefault:el('quiet-forwarding').defaultChecked,")
 
 
 class BrowserQuietForwardingRuntime(unittest.TestCase):
@@ -286,8 +361,10 @@ class BrowserQuietForwardingRuntime(unittest.TestCase):
         self.assertNotIn('error', result, result)
         self.assertTrue(result['installed'], result)
         self.assertTrue(result['otaData'], result)
-        self.assertEqual(result['workflowState'], 'error', result)
+        self.assertEqual(result['workflowState'], 'complete', result)
         self.assertEqual(result['beforeExplicitRestore']['writes'], 2, result)
+        self.assertIn('pending settings warning', result['quietAfterUpdate']['summary'], result)
+        self.assertNotIn('You can disconnect', result['quietAfterUpdate']['summary'], result)
         pending = result['beforeExplicitRestore']['record']
         self.assertEqual(pending['state'], 'restore-pending', result)
         self.assertTrue(pending['restoreAttempted'], result)
@@ -296,13 +373,13 @@ class BrowserQuietForwardingRuntime(unittest.TestCase):
         self.assertEqual(result['repeat'], 'on', result)
         self.assertIsNone(result['quietRecord'], result)
 
-    def test_missing_restoration_module_with_a_pending_record_never_reports_update_complete(self):
+    def test_missing_restoration_module_keeps_verified_update_complete_with_pending_warning(self):
         result = run_harness(quiet_forwarding_harness(missing_module=True), timeout=60)
         self.assertNotIn('error', result, result)
         self.assertTrue(result['installed'], result)
         self.assertTrue(result['otaData'], result)
-        self.assertEqual(result['workflowState'], 'error', result)
-        self.assertIn('restoration support did not load', result['quietAfterUpdate']['workflowStatus'], result)
+        self.assertEqual(result['workflowState'], 'complete', result)
+        self.assertIn('restoration support did not load', result['quietAfterUpdate']['status'], result)
         self.assertEqual(result['repeat'], 'off', result)
         self.assertEqual([row['command'] for row in result['forwardingWrites']], ['set repeat off'], result)
         self.assertEqual(result['quietRecord']['state'], 'paused', result)
@@ -314,7 +391,7 @@ class BrowserQuietForwardingRuntime(unittest.TestCase):
         result = run_harness(quiet_forwarding_harness(reconnect_restore=True), timeout=60)
         self.assertNotIn('error', result, result)
         self.assertTrue(result['installed'], result)
-        self.assertEqual(result['workflowState'], 'error', result)
+        self.assertEqual(result['workflowState'], 'complete', result)
         recovery = result['beforeExplicitRestore']
         self.assertEqual(recovery['writes'], 2, result)
         self.assertEqual(recovery['record']['state'], 'restore-pending', result)
@@ -371,11 +448,11 @@ class BrowserQuietForwardingRuntime(unittest.TestCase):
         self.assertFalse(any(command.startswith(('ota pull ', 'ota installhash ', 'set tempradio2 ', 'tempradio '))
                              for command in result['cmds']), result)
 
-    def test_already_installed_selected_goal_cannot_report_complete_if_restoration_fails(self):
+    def test_already_installed_selected_goal_stays_complete_if_optional_restoration_fails(self):
         result = run_harness(already_installed_goal_harness(restore_fails=True), timeout=45)
         self.assertNotIn('error', result, result)
-        self.assertEqual(result['workflowState'], 'error', result)
-        self.assertIn('restoration is still pending', result['quietAfterUpdate']['workflowStatus'], result)
+        self.assertEqual(result['workflowState'], 'complete', result)
+        self.assertIn('restoration is still pending', result['quietAfterUpdate']['status'], result)
         self.assertEqual((result['fileReads'], result['packageBuilds']), (1, 0), result)
         self.assertEqual([row['command'] for row in result['forwardingWrites']], ['set repeat on'], result)
         self.assertEqual(result['repeat'], 'off', result)
@@ -398,6 +475,87 @@ class BrowserQuietForwardingRuntime(unittest.TestCase):
         self.assertIsNone(result['quietAfterUpdate']['record'], result)
         self.assertIsNone(result['quietRecord'], result)
         self.assertFalse(result['otaData'], result)
+
+
+    def test_optional_getter_timeouts_do_not_prevent_a_real_firmware_install(self):
+        for kind in ('plan-timeout', 'pause-timeout'):
+            with self.subTest(kind=kind):
+                result = run_harness(optional_pause_failure_harness(kind), timeout=60)
+                self.assertNotIn('error', result, result)
+                self.assertEqual(result['workflowState'], 'complete', result)
+                self.assertTrue(result['installed'], result)
+                self.assertTrue(result['otaData'], result)
+                self.assertEqual(result['forwardingWrites'], [], result)
+                self.assertEqual(result['repeat'], 'on', result)
+                self.assertEqual(result['optionalReads'], 1, result)
+                self.assertIsNone(result['quietRecord'], result)
+                self.assertIn('firmware update', result['quietAfterUpdate']['status'].lower(), result)
+
+    def test_stale_foreign_corrupt_or_missing_optional_pause_support_does_not_block_install(self):
+        for kind in ('stale', 'foreign', 'corrupt', 'missing-module', 'expired', 'secret-error'):
+            with self.subTest(kind=kind):
+                result = run_harness(optional_pause_failure_harness(kind), timeout=60)
+                self.assertNotIn('error', result, result)
+                self.assertEqual(result['workflowState'], 'complete', result)
+                self.assertTrue(result['installed'], result)
+                self.assertTrue(result['otaData'], result)
+                self.assertEqual(result['forwardingWrites'], [], result)
+                self.assertEqual(result['repeat'], 'on', result)
+                if kind in ('foreign', 'corrupt'):
+                    self.assertIsNotNone(result['quietRecord'], result)
+                else:
+                    self.assertIsNone(result['quietRecord'], result)
+                if kind == 'expired':
+                    self.assertIn('no login or radio command was sent', result['quietAfterUpdate']['status'], result)
+                if kind == 'secret-error':
+                    self.assertIn('<hidden>', result['quietAfterUpdate']['status'], result)
+                    self.assertNotIn('private error: password', result['quietAfterUpdate']['status'], result)
+
+    def test_uncertain_optional_pause_is_not_repeated_and_does_not_block_install(self):
+        result = run_harness(optional_pause_failure_harness('pause-unconfirmed'), timeout=60)
+        self.assertNotIn('error', result, result)
+        self.assertEqual(result['workflowState'], 'complete', result)
+        self.assertTrue(result['installed'], result)
+        self.assertTrue(result['otaData'], result)
+        self.assertEqual([row['command'] for row in result['forwardingWrites']], ['set repeat off'], result)
+        self.assertEqual(result['repeat'], 'on', result)
+        self.assertIsNone(result['quietRecord'], result)
+
+    def test_usb_failure_during_optional_pause_still_stops_before_firmware_writes(self):
+        result = run_harness(optional_pause_failure_harness('usb'), timeout=60)
+        self.assertIn('fixture USB failure', result.get('error', ''), result)
+        self.assertEqual(result['forwardingWrites'], [], result)
+        self.assertIsNone(result['quietRecord'], result)
+        self.assertFalse(any(command.startswith(('ota pull ', 'ota installhash ')) for command in result['cmds']), result)
+
+    def test_borrowed_radio2_cleanup_timeout_retains_done_and_its_bound_pending_journal(self):
+        result = run_harness(deferred_secondary_cleanup_harness(), timeout=60)
+        self.assertNotIn('error', result, result)
+        self.assertEqual(result['workflowState'], 'complete', result)
+        self.assertTrue(result['installed'], result)
+        self.assertTrue(result['otaData'], result)
+        self.assertEqual(result['secondaryReads'], 1, result)
+        self.assertEqual(result['updateRecord']['phase'], 'installed', result)
+        self.assertTrue(result['updateRecord']['secondaryRestorationPending'], result)
+        self.assertEqual(result['updateRecord']['radio']['pausedTargetSecondary']['tuple'], [908.15,250,7,5], result)
+        self.assertIn('pending settings warning', result['quietAfterUpdate']['summary'], result)
+        self.assertNotIn('You can disconnect', result['quietAfterUpdate']['summary'], result)
+        self.assertIn('radio2 restoration has not yet been confirmed', result['quietAfterUpdate']['status'], result)
+        self.assertEqual([row['command'] for row in result['forwardingWrites']], ['set repeat off', 'set repeat on'], result)
+        self.assertFalse(any(command.startswith(('set radio2 ', 'set radio2.cross ')) for command in result['cmds']), result)
+
+    def test_expired_firmware_guard_after_ready_is_reacquired_without_repeating_pause_or_install(self):
+        result = run_harness(expired_ready_guard_harness(), timeout=60)
+        self.assert_complete(result)
+        self.assertTrue(result['expiredReady']['browserGuard'], result)
+        self.assertTrue(result['expiredReady']['authenticated'], result)
+        self.assertEqual(result['expiredReady']['writes'], 1, result)
+        later = result['timeline'][result['expiredReady']['proofAt']:]
+        self.assertIn(['remote', 'get public.key'], later, result)
+        self.assertEqual([row['command'] for row in result['forwardingWrites']], ['set repeat off', 'set repeat on'], result)
+        installers = [command for command in result['cmds'] if command.startswith('ota installhash ')]
+        self.assertEqual(len(installers), 1, result)
+        self.assertEqual(sum(command.startswith('ota pull ') for command in result['cmds']), 1, result)
 
 
 if __name__ == '__main__':

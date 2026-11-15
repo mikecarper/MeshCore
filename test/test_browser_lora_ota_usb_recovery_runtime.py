@@ -13,12 +13,12 @@ from test_browser_lora_ota_runtime import BROWSER
 def usb_timeout_recovery_harness(*, reset_selector=False, automatic_open_fails=False, manual_disconnect=False):
     harness = quiet_forwarding_harness(disconnect_after_prepare=True)
     harness = replace_once(harness, 'const forwardingWrites=[],forwardingReads=[],quietKey=',
-        'let opens=0,appStarts=0,newSessionArms=0,droppedRawAck=null,rejectedOpens=0,chooserCalls=0,'
+        'let opens=0,appStarts=0,newSessionArms=0,droppedRawAck=null,rejectedOpens=0,chooserCalls=0,recoveryFrameAt=0,'
         'wrongProfileCommands=0,manualRetryAllowed=%s,explicitDisconnect=null;'
         'const recoveryCloses=[],appStartStates=[],postDisconnectFrames=[],physicalCloses=[];'
         'const forwardingWrites=[],forwardingReads=[],quietKey=' % ('false' if automatic_open_fails else 'true'))
     harness = replace_once(harness, '    async open(){this.readable=',
-        "    async open(){opens++;if(droppedRawAck&&!manualRetryAllowed){rejectedOpens++;"
+        "    async open(){opens++;if(opens>1)recoveryFrameAt=this.frames.length;if(droppedRawAck&&!manualRetryAllowed){rejectedOpens++;"
         "throw new DOMException('Fixture automatic USB open failed','NetworkError');}this.readable=")
     harness = replace_once(harness, '    async close(){}',
         '    async close(){physicalCloses.push({opens,afterExplicitDisconnect:!!explicitDisconnect});}')
@@ -68,26 +68,37 @@ def usb_timeout_recovery_harness(*, reset_selector=False, automatic_open_fails=F
         userRestoreConfirmed=true;manualRestoreClicked=true;el('restore-forwarding').click();
       }
     ''' if automatic_open_fails else ''
+    explicit_restore = r'''
+      await wait(()=>droppedRawAck&&window.testLink!==failedTransport&&!window.testLink.failure&&
+        window.testLink.sourceKey===source&&!el('inspect').disabled&&!el('restore-forwarding').disabled&&
+        el('status').textContent.includes('USB source identity confirmed after retry.'));
+      automaticRecovery={record:JSON.parse(localStorage.getItem(quietKey)||'null'),repeat,
+        writes:forwardingWrites.map(row=>row.command),frames:port.frames.slice(recoveryFrameAt),
+        notice:el('quiet-forwarding-status').textContent,restoreHidden:el('restore-forwarding').hidden,
+        restoreDisabled:el('restore-forwarding').disabled,elapsed:Date.now()-droppedRawAck.at};
+      userRestoreConfirmed=true;manualRestoreClicked=true;el('restore-forwarding').click();
+    ''' if not automatic_open_fails else ''
     scenario = r'''
       const profiles=[window.testLink.otaRadioProfile,window.testLink.otaTargetProfile];
       const failedTransport=window.testLink,beforeUpdateRecord=JSON.parse(localStorage.getItem(quietKey)||'null');
-      let fallback=null,manualRetryClicked=false,manualRestoreClicked=false;
+      let fallback=null,automaticRecovery=null,manualRetryClicked=false,manualRestoreClicked=false;
       el('update').click();
       MANUAL_RECOVERY
+      EXPLICIT_RESTORE
       await wait(()=>droppedRawAck&&window.testLink!==failedTransport&&!window.testLink.failure&&
         window.testLink.sourceKey===source&&!localStorage.getItem(quietKey)&&!el('inspect').disabled);
       const originalFailure={message:failedTransport.failure?.message,otaCommand:failedTransport.failure?.otaCommand,
         otaEndpoint:failedTransport.failure?.otaEndpoint,otaUsbTimeout:failedTransport.failure?.otaUsbTimeout};
       const elapsed=Date.now()-droppedRawAck.at;
       await report({profiles,beforeUpdateRecord,droppedRawAck,opens,appStarts,appStartStates,recoveryCloses,
-        rejectedOpens,chooserCalls,wrongProfileCommands,fallback,manualRetryClicked,manualRestoreClicked,
+        rejectedOpens,chooserCalls,wrongProfileCommands,fallback,automaticRecovery,manualRetryClicked,manualRestoreClicked,
         elapsed,originalFailure,forwardingWrites,repeat,installed,otaData,cmds,timeline,frames:port.frames,
         sourceProfile:window.testLink.otaRadioProfile,targetProfile:window.testLink.otaTargetProfile,physicalProfile:selectedProfile,
         quietRecord:JSON.parse(localStorage.getItem(quietKey)||'null'),
         updateRecord:JSON.parse(localStorage.getItem('meshcore-browser-lora-ota')||'null'),
         healthy:window.testLink.failure===null,errorDetails:el('error-details').textContent,
         workflowState:el('workflow-status').dataset.state,status:el('status').textContent});return;
-    '''.replace('MANUAL_RECOVERY', manual)
+    '''.replace('MANUAL_RECOVERY', manual).replace('EXPLICIT_RESTORE', explicit_restore)
     if manual_disconnect:
         scenario = r'''
           const profiles=[window.testLink.otaRadioProfile,window.testLink.otaTargetProfile];
@@ -143,20 +154,36 @@ class BrowserUsbTimeoutRecoveryRuntime(unittest.TestCase):
         self.assertNotEqual(result['workflowState'], 'complete', result)
         self.assertEqual(result['updateRecord']['phase'], 'prepared', result)
 
-    def test_usb_ack_timeout_automatically_recovers_its_exact_owned_guard_and_restores_forwarding(self):
+    def assert_automatic_recovery_keeps_forwarding_pending(self, result):
+        recovery = result['automaticRecovery']
+        self.assertIsNotNone(recovery, result)
+        self.assertEqual(recovery['record'], result['beforeUpdateRecord'], result)
+        self.assertEqual(recovery['record']['state'], 'paused', result)
+        self.assertFalse(recovery['record']['restoreAttempted'], result)
+        self.assertEqual(recovery['repeat'], 'off', result)
+        self.assertEqual(recovery['writes'], ['set repeat off'], result)
+        self.assertFalse(any(frame[0] in (2, 26, 65) for frame in recovery['frames']), result)
+        self.assertIn('restoration', recovery['notice'].lower(), result)
+        self.assertFalse(recovery['restoreHidden'], result)
+        self.assertFalse(recovery['restoreDisabled'], result)
+        self.assertTrue(result['manualRestoreClicked'], result)
+        self.assertTrue(result['forwardingWrites'][-1]['userConfirmed'], result)
+        self.assertLess(recovery['elapsed'], 10000, result)
+
+    def test_usb_ack_timeout_recovers_its_owned_guard_then_waits_for_explicit_forwarding_restore(self):
         result = run_harness(usb_timeout_recovery_harness(), timeout=45)
         self.assert_recovered_without_replaying_update(result)
+        self.assert_automatic_recovery_keeps_forwarding_pending(result)
         self.assertEqual(result['opens'], 2, result)
         self.assertEqual(result['appStartStates'][1], {'guard':True, 'profile':1}, result)
         self.assertEqual(result['recoveryCloses'], [{'target':'bb' * 32, 'profile':1}], result)
-        self.assertLess(result['elapsed'], 10000, result)
 
-    def test_usb_reset_selector_is_reselected_locally_before_any_target_restore_command(self):
+    def test_usb_reset_selector_is_reselected_locally_before_explicit_target_restore(self):
         result = run_harness(usb_timeout_recovery_harness(reset_selector=True), timeout=45)
         self.assert_recovered_without_replaying_update(result)
+        self.assert_automatic_recovery_keeps_forwarding_pending(result)
         self.assertEqual(result['appStartStates'][1], {'guard':False, 'profile':0}, result)
         self.assertEqual(result['recoveryCloses'], [], result)
-        self.assertLess(result['elapsed'], 10000, result)
 
     def test_failed_automatic_open_keeps_manual_same_port_reconnect_and_restore_available(self):
         result = run_harness(usb_timeout_recovery_harness(automatic_open_fails=True), timeout=45)

@@ -487,7 +487,7 @@
       return this.radio.slice();
     }
     withAdmin(fn){const p=this.admin.then(fn);this.admin=p.catch(()=>{});return p;}
-    async guardMode(mode,extra=new Uint8Array()){
+    async guardMode(mode,extra=new Uint8Array(),{password=this.authenticatedPassword}={}){
       const source=this.sourceKey,target=this.knownRepeater;
       const track=source&&/^[a-f0-9]{64}$/i.test(source)&&/^[a-f0-9]{64}$/i.test(target)&&
         this.port&&(typeof this.port==='object'||typeof this.port==='function');
@@ -499,7 +499,7 @@
           throw Error('The USB source or target changed before arming its OTA guard');
         if(!/^>?\s*ota\.direct v=2 active=0 busy=[01]\s*$/i.test(status))
           throw Error('The Companion OTA mailbox is already in use; reconnect before retrying');
-        OWNED_DIRECT_GUARDS.set(this.port,{source:source.toLowerCase(),target:target.toLowerCase(),closeAttempted:false});
+        OWNED_DIRECT_GUARDS.set(this.port,{source:source.toLowerCase(),target:target.toLowerCase(),transport:this,password,closeAttempted:false});
       }
       const owned=track?OWNED_DIRECT_GUARDS.get(this.port):null;
       if(mode===3&&owned&&owned.source===source.toLowerCase()&&owned.target===target.toLowerCase()){
@@ -556,6 +556,64 @@
       }
       status=await this.waitForDirectIdle(status,{maxDurationMs:this.options.guardRecoveryTimeoutMs??5000});
       OWNED_DIRECT_GUARDS.delete(this.port);return status;
+    }
+    async ensureGuardedSession(password,investigation=false,{maxIdleDurationMs,allowReacquire=true}={}){
+      const context={otaStep:'Checking the current guarded target session',otaCommand:'get ota.direct',
+        otaEndpoint:'USB Companion',otaRadio:'USB/local command (no LoRa transmission)'};
+      const source=this.sourceKey,target=this.knownRepeater,port=this.port;
+      const clear=()=>{this.guard=false;this.authenticated=false;this.authenticatedPassword=null;this.radioProbeAdmission=null;};
+      const current=()=>{
+        this.assertInvestigationRunning();
+        if(this.failure)throw this.failure;
+        if(!this.running||this.port!==port||this.sourceKey!==source||this.knownRepeater!==target){
+          clear();
+          throw errorContext(Error('The guarded USB source or target changed; reconnect before continuing'),context);
+        }
+      };
+      if(typeof password!=='string'||enc.encode(password).length>15||/[\r\n\0]/.test(password))throw Error('Admin password must fit in 15 bytes');
+      current();
+      if(this.authenticated&&this.authenticatedPassword!==password)
+        throw Error('Disconnect and reconnect before changing the admin password');
+      if(this.authenticated||this.guard){
+        const owned=OWNED_DIRECT_GUARDS.get(port);
+        if(!owned||owned.transport!==this||owned.source!==source?.toLowerCase()||owned.target!==target?.toLowerCase()||owned.closeAttempted){
+          clear();throw errorContext(Error('Cannot confirm ownership of the current Companion OTA session; reconnect before continuing'),context);
+        }
+        if(owned.password!==password)throw Error('Disconnect and reconnect before changing the admin password');
+        const started=Date.now(),deadline=maxIdleDurationMs===undefined?null:started+maxIdleDurationMs;
+        const remaining=()=>{
+          if(deadline===null)return Infinity;
+          const now=Date.now();
+          if(!Number.isFinite(now)||!Number.isFinite(started)||now<started||!Number.isFinite(deadline)||deadline<=now)
+            throw errorContext(Error('The guarded target-session check exceeded its deadline'),context);
+          return deadline-now;
+        };
+        const status=String(await this.localCommand('get ota.direct',
+          {timeoutMs:Math.min(this.options.commandTimeout??15000,remaining())})).trim();
+        current();remaining();
+        if(OWNED_DIRECT_GUARDS.get(port)!==owned){clear();throw errorContext(Error('Companion OTA ownership changed during the session check'),context);}
+        const match=/^>?\s*ota\.direct v=2 active=([01]) busy=([01])\s*$/i.exec(status);
+        if(!match){clear();throw errorContext(Error('Cannot verify the Companion OTA mailbox state'),context);}
+        if(match[1]==='1'){
+          if(this.authenticated)return false;
+        }
+        if(!allowReacquire)throw errorContext(Error('The optional check needs an active verified Companion session; no login or radio command was sent'),
+          {...context,otaOptionalUnavailable:true});
+        // Firmware expires its five-minute guard independently of the page's
+        // cached authentication; an initial login can also be unconfirmed.
+        // Close only this exact owned old full target once: an expired owner
+        // generation can otherwise reject re-arm. This is local cleanup,
+        // never a replay of the requested radio command.
+        clear();
+        await this.guardMode(3);
+        current();remaining();
+        await this.login(password,investigation,deadline===null?undefined:{maxIdleDurationMs:remaining()});
+        current();return true;
+      }
+      if(!allowReacquire)throw errorContext(Error('The optional check needs an active verified Companion session; no login or radio command was sent'),
+        {...context,otaOptionalUnavailable:true});
+      await this.login(password,investigation,{maxIdleDurationMs});
+      current();return true;
     }
     async checkClock(){
       try{
@@ -728,7 +786,7 @@
         if(this.otaSupported){
           this.investigationEnabled=true;this.assertInvestigationRunning();
           if(this.investigationAuthenticated&&password!==this.investigationPassword)throw Error('Disconnect and reconnect before changing the admin password');
-          if(!this.authenticated)await this.login(password,true);
+          await this.ensureGuardedSession(password,true);
           this.investigationPassword=password;this.investigationAuthenticated=true;this.investigationVerified=true;
           return this.knownRepeater;
         }
@@ -764,7 +822,7 @@
         this.investigationPassword=password;this.investigationAuthenticated=true;await this.ensureUsbFolderReady();return this.knownRepeater;
       })).catch(error=>{throw errorContext(error,{otaStep:'Logging in to target',otaCommand:'login <arguments hidden>',otaEndpoint:'remote target',otaTimeoutMs:this.investigationReplyTimeout(),otaPath:path,otaRadio:radio});});
     }
-    async investigateCommand(key,password,text){this.validate(key);if(!this.investigationAuthenticated)throw Error('Verify the target before running investigation commands');if(password!==this.investigationPassword)throw Error('Disconnect and reconnect before changing the admin password');return this.withAdmin(()=>this.withFolderPaused(()=>this.retryInvestigation(text,()=>this.otaSupported?this.remoteReply(text):this.standardReply(text))));}
+    async investigateCommand(key,password,text){this.validate(key);if(!this.investigationAuthenticated)throw Error('Verify the target before running investigation commands');if(password!==this.investigationPassword)throw Error('Disconnect and reconnect before changing the admin password');return this.withAdmin(()=>this.withFolderPaused(async()=>{if(this.otaSupported)await this.ensureGuardedSession(password,true);return this.retryInvestigation(text,()=>this.otaSupported?this.remoteReply(text):this.standardReply(text));}));}
     async login(password,investigation=false,{maxIdleDurationMs}={}){
       const radio=requestRadio(this),path=targetPath(this,true);
       try{
@@ -773,7 +831,7 @@
       if(!this.otaSupported)throw Error(this.otaUnavailableReason);
       await this.waitForDirectIdle(null,{maxDurationMs:Math.min(this.options.guardIdleTimeoutMs??5000,maxIdleDurationMs??Infinity,
         this.diagnosticDeadline===undefined?Infinity:Math.max(0,this.diagnosticDeadline-Date.now()))});
-      await this.checkClock();await this.guardMode(1,Uint8Array.of(this.peerType));this.guard=true;
+      await this.checkClock();await this.guardMode(1,Uint8Array.of(this.peerType),{password});this.guard=true;
       if(password||investigation){
         const loginTimeout=investigation?this.investigationReplyTimeout():(this.options.remoteTimeout??75000);
         const loginLabel=password?'login':'passwordless login';
@@ -803,7 +861,7 @@
       this.authenticated=true;this.authenticatedPassword=password;
       }catch(error){throw errorContext(error,{otaStep:'Logging in to target',otaCommand:'login <arguments hidden>',otaEndpoint:'remote target',otaTimeoutMs:investigation?this.investigationReplyTimeout():(this.options.remoteTimeout??75000),otaPath:path,otaRadio:radio});}
     }
-    async remoteReply(text){
+    async remoteReply(text,{allowReacquire=true}={}){
       const radio=requestRadio(this),path=targetPath(this,true);
       try{
       if(!text||/[\r\n\0]/.test(text)||enc.encode(text).length>152)throw Error('Invalid remote command');
@@ -811,7 +869,23 @@
       if(this.used.size>=7921)throw Error('Reconnect before sending more commands');
       let correlation;do{const r=crypto.getRandomValues(new Uint8Array(2));correlation=String.fromCharCode(33+r[0]%90,33+r[1]%90);}
       while(correlation.includes('|')||this.used.has(correlation));this.used.add(correlation);
-      const tag=correlation+'|';await this.guardMode(4,enc.encode(tag));
+      const tag=correlation+'|';
+      try{await this.guardMode(4,enc.encode(tag));}
+      catch(error){
+        // The lease can expire while a local USB request is queued after the
+        // action-boundary check. A rejected mailbox arm has not sent CMD2 to
+        // the radio yet. Reacquire only our now-inactive session, then arm
+        // once; an active/foreign owner or any unanswered USB write stops.
+        if(error?.companionErrorCode!==4||!this.authenticated||!this.guard||this.failure)throw error;
+        if(!allowReacquire){
+          await this.ensureGuardedSession(this.authenticatedPassword,false,{allowReacquire:false,
+            maxIdleDurationMs:Math.min(this.options.remoteTimeout??5000,5000)});
+          throw error;
+        }
+        const reacquired=await this.ensureGuardedSession(this.authenticatedPassword,!!this.investigationAttempt);
+        if(!reacquired)throw error;
+        await this.guardMode(4,enc.encode(tag));
+      }
       if(this.investigationAttempt)this.assertInvestigationRunning();
       this.timestamp=Math.max(Math.floor(Date.now()/1000),this.timestamp+1);
       if(isReadOnly(text))this.investigationProgress('sending-command',text,this.options.commandTimeout??15000);
@@ -867,7 +941,7 @@
         if(!this.investigationVerified)throw Error('Verify the target full public key before updating');
         return this.knownRepeater;
       }
-      return this.withAdmin(async()=>{if(!this.authenticated)await this.login(password);this.radioProbeAdmission={key:this.knownRepeater,password};return this.knownRepeater;});
+      return this.withAdmin(async()=>{await this.ensureGuardedSession(password);this.radioProbeAdmission={key:this.knownRepeater,password};return this.knownRepeater;});
     }
     async probePeerRadio(key,password,profile,{radio,preamble,readback='get tempradio',maxDurationMs}={}){
       let context={otaStep:'Validating radio link probe',otaCommand:'radio link probe (read-only)',otaEndpoint:'browser',
@@ -991,6 +1065,7 @@
             !this.guard||!this.authenticated||this.otaRadioProfile!==0||this.serving)
           throw Error('Prove the target on the primary radio before requesting temporary settings');
         if(maxDurationMs!==undefined&&maxDurationMs<timeout)throw loraTimeout('Not enough time remains for a temporary-radio request');
+        await this.ensureGuardedSession(password,false,{maxIdleDurationMs:maxDurationMs});
         const options=this.options;
         this.options={...options,remoteTimeout:Math.min(timeout,maxDurationMs??timeout)};
         try{
@@ -1002,9 +1077,14 @@
         }finally{this.options=options;}
       });
     }
-    async remoteCommand(key,password,text,{maxDurationMs}={}){
+    async remoteCommand(key,password,text,{maxDurationMs,allowReacquire=true,optionalReplyTimeoutMs}={}){
       this.validate(key);
       const readOnly=isReadOnly(text),bounded=maxDurationMs!==undefined;
+      const optionalWrite=optionalReplyTimeoutMs!==undefined;
+      if(typeof allowReacquire!=='boolean'||!allowReacquire&&(!this.otaSupported||!readOnly&&!optionalWrite)||
+          optionalWrite&&(!this.otaSupported||allowReacquire||!/^set (?:repeat|radio\.flood) (?:on|off)$/.test(text)||
+            !Number.isFinite(optionalReplyTimeoutMs)||optionalReplyTimeoutMs<1||optionalReplyTimeoutMs>10000))
+        throw Error('Optional command limits require an approved forwarding setting and an existing guarded session');
       if(bounded&&(!this.otaSupported||!readOnly||!Number.isFinite(maxDurationMs)||maxDurationMs<=0))
         throw Error('A finite positive remote read duration requires a guarded read-only command');
       const started=bounded?Date.now():null,deadline=bounded?started+maxDurationMs:null;
@@ -1056,9 +1136,14 @@
       }
       return this.withAdmin(async()=>{
         if(remaining()<=0)throw exhausted();
-        if(!this.authenticated)await this.login(password,false,bounded?{maxIdleDurationMs:remaining()}:undefined);
+        await this.ensureGuardedSession(password,false,{allowReacquire,
+          maxIdleDurationMs:bounded?remaining():optionalWrite?optionalReplyTimeoutMs:undefined});
         if(remaining()<=0)throw exhausted();
-        if(!readOnly)return this.remoteReply(text);
+        if(!readOnly){
+          if(!optionalWrite)return this.remoteReply(text);
+          const options=this.options;this.options={...options,remoteTimeout:optionalReplyTimeoutMs};
+          try{return await this.remoteReply(text,{allowReacquire:false});}finally{this.options=options;}
+        }
         maxAttempts=this.authenticated||this.investigationAuthenticated?11:7;
         const options=this.options;
         const timeout=Math.min(options.remoteTimeout??75000,this.investigationReplyTimeout(),20000);
@@ -1072,7 +1157,7 @@
             this.options.remoteTimeout=Math.min(timeout,left);
             completedAttempts=attempt;
             try{
-              const reply=await this.remoteReply(text);
+              const reply=await this.remoteReply(text,{allowReacquire});
               if(remaining()<=0)throw exhausted();
               return reply;
             }
@@ -1133,6 +1218,7 @@
       };
       authorized();
       return this.withAdmin(()=>this.withFolderPaused(async()=>{
+        if(this.otaSupported)await this.ensureGuardedSession(password);
         authorized();let active=true,commands=Promise.resolve();
         const requests=new Set();
         const invoke=fn=>{

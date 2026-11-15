@@ -7,6 +7,10 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (checks) {
   'use strict';
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const readBudgetExhausted = error => error?.otaBudgetExhausted===true||
+    Number.isInteger(error?.otaAttempt)&&Number.isInteger(error?.otaMaxAttempts)&&
+      error.otaMaxAttempts>0&&error.otaAttempt>=error.otaMaxAttempts||
+    [7,11].includes(error?.attempts);
   const radioSetup = () => typeof module === 'object' && module.exports ? require('./lora_ota_radio_setup.js') : globalThis.LoraOtaRadioSetup;
   const formatRadio = tuple => [Number(tuple[0]).toFixed(3), ...tuple.slice(1)].join(',');
   // Installer support belongs to the authenticated running firmware, not the
@@ -152,6 +156,9 @@
       // Only an explicit, hash-bound application chain can request an equal-
       // version bridge. Discovery and ordinary single updates remain forward-only.
       this.allowSameVersion = options.allowSameVersion === true;
+      this.deferSecondaryRestoration = options.deferSecondaryRestoration === true;
+      this.secondaryRestorationPending = false;
+      this.secondaryRestorationBinding = null;
       this.pollMs = options.pollMs || 20000; this.transferTimeoutMs = options.transferTimeoutMs || 4 * 60 * 60 * 1000; this.progress = options.progress || (() => {}); this.readJournal = options.readJournal || (() => null);
       this.verifiedRadio = null;
       this.journal = options.journal || (() => {});
@@ -165,7 +172,7 @@
     restorePausedSecondaryRecord(record) {
       // A journal cannot supply restoration expectations for another radio or
       // package. The image body is independently validated before this runs.
-      if (!record?.radio?.pausedTargetSecondary || !['prepared','pull attempted','ready','install attempted','installed'].includes(record.phase) ||
+      if (!record?.radio?.pausedTargetSecondary || !['replacement cancel attempted','prepared','pull attempted','ready','install attempted','installed'].includes(record.phase) ||
           typeof record.target !== 'string' || record.target.toLowerCase() !== this.key.toLowerCase() ||
           typeof record.source !== 'string' || record.source.toLowerCase() !== this.link.sourceKey?.toLowerCase() ||
           record.id !== checks.hex(this.info.merkleRoot) || record.packageHash !== this.packageHash ||
@@ -188,18 +195,84 @@
       if (!this.verifiedRadio) this.verifiedRadio = cloneRadio(radio);
       this.verifiedRadio.pausedTargetSecondary = expected;
     }
-    async verifyRestoredTargetSecondary() {
+    installedSecondaryRecord(record) {
+      if (!record || record.phase !== 'installed' || record.secondaryRestorationPending !== true ||
+          typeof record.source !== 'string' || record.source.toLowerCase() !== this.link.sourceKey?.toLowerCase() ||
+          typeof record.target !== 'string' || record.target.toLowerCase() !== this.key.toLowerCase() ||
+          record.id !== checks.hex(this.info.merkleRoot) || record.packageHash !== this.packageHash ||
+          record.bodyHash !== this.bodyHash || !record.radio?.pausedTargetSecondary || !this.verifiedRadio?.pausedTargetSecondary)
+        return false;
+      return JSON.stringify(cloneRadio(record.radio)) === JSON.stringify(cloneRadio(this.verifiedRadio));
+    }
+    secondaryConnectionBinding() {
+      return installCapabilityBinding(this.link, this.key, this.password,
+        {targetId:this.info.targetId,hwId:this.info.hwId,version:this.info.fwVersion,baseHash:this.bodyHash});
+    }
+    async recordVerifiedInstall(id, prior=null) {
+      const expected=this.verifiedRadio?.pausedTargetSecondary;
+      const pending=this.deferSecondaryRestoration && !!expected &&
+        !(prior?.phase==='installed' &&
+          (prior.secondaryRestorationPending===undefined||prior.secondaryRestorationPending===false));
+      if (!this.deferSecondaryRestoration) await this.verifyRestoredTargetSecondary();
+      this.recordJournal({phase:'installed',target:this.key,source:this.link.sourceKey,id,
+        packageHash:this.packageHash,bodyHash:this.bodyHash,...(pending?{secondaryRestorationPending:true}:{})});
+      this.secondaryRestorationPending=pending;
+      this.secondaryRestorationBinding=pending?this.secondaryConnectionBinding():null;
+    }
+    async verifyRestoredTargetSecondary({maxDurationMs}={}) {
       const expected = this.verifiedRadio?.pausedTargetSecondary;
-      if (!expected) return;
+      if (!expected) return {state:'none'};
       const setup = radioSetup(); let command = 'get tempradio2';
       try {
-        if (setup.secondary(await this.remote(command), command).state !== 'off')
+        const bounded=this.deferSecondaryRestoration || maxDurationMs!==undefined;
+        let snapshot,record,binding,deadline,previous;
+        if(bounded){
+          record=this.readJournal();
+          if(!record?.secondaryRestorationPending){
+            if(this.secondaryRestorationPending)
+              throw Error('The pending installed restoration record is missing or changed; its verification was not cleared.');
+            return {state:'none'};
+          }
+          if(!Number.isFinite(maxDurationMs??5000)||(maxDurationMs??5000)<=0||(maxDurationMs??5000)>5000)
+            throw Error('Radio2 restoration verification needs a positive time budget of at most 5 seconds.');
+          if(this.link.browserRawSource!==true||this.link.otaSupported!==true)
+            throw Error('This connection cannot perform a bounded radio2 restoration check.');
+          if(!this.installedSecondaryRecord(record)||!this.secondaryRestorationBinding)
+            throw Error('Verify the exact installed firmware before checking its pending radio2 restoration.');
+          snapshot=JSON.stringify(record);binding=this.secondaryRestorationBinding;
+          previous=Date.now();deadline=previous+(maxDurationMs??5000);
+        }
+        const current=()=>{
+          this.requireActive();
+          if(!bounded)return Infinity;
+          const now=Date.now();
+          if(!Number.isFinite(now)||now<previous||!Number.isFinite(deadline)||now>=deadline)
+            throw Error('The optional radio2 restoration check exceeded its time budget.');
+          previous=now;
+          const currentRecord=this.readJournal();
+          if(!sameInstallCapabilityBinding(binding,this.secondaryConnectionBinding())||
+              !this.installedSecondaryRecord(currentRecord)||JSON.stringify(currentRecord)!==snapshot)
+            throw Error('The installed firmware, connection or pending restoration record changed; its verification was not cleared.');
+          return deadline-now;
+        };
+        const read=async text=>{
+          const remaining=current();
+          const reply=bounded?await this.link.remoteCommand(this.key,this.password,text,
+            {maxDurationMs:remaining,allowReacquire:false}):await this.remote(text);
+          current();return value(reply);
+        };
+        if (setup.secondary(await read(command), command).state !== 'off')
           throw Error('The target temporary radio2 window is still active or pending.');
         command = 'get radio2';
-        const actual = setup.secondary(await this.remote(command));
+        const actual = setup.secondary(await read(command));
         if (setup.secondarySignature(actual) !== setup.secondarySignature(expected))
           throw Error('The target saved radio2 settings differ from the settings paused for this update.');
+        if(bounded){
+          current();const updated={...record};delete updated.secondaryRestorationPending;
+          this.journal(updated);this.secondaryRestorationPending=false;this.secondaryRestorationBinding=null;
+        }
         this.progress('Target normal radio2 restored; its saved settings are verified unchanged.');
+        return {state:'verified'};
       } catch (cause) {
         const error = cause instanceof Error ? cause : Error(String(cause));
         error.message = 'Firmware installed and verified, but normal target radio2 restoration could not be verified: ' + diagnostic(error.message);
@@ -461,8 +534,7 @@
         if (dest.baseHash === this.bodyHash && prior.bodyHash === this.bodyHash) {
           this.verifiedRadio = null;
           this.restorePausedSecondaryRecord(prior);
-          await this.verifyRestoredTargetSecondary();
-          this.recordJournal({phase:'installed', target:this.key, source:this.link.sourceKey, id:prior.id, packageHash:this.packageHash, bodyHash:this.bodyHash});
+          await this.recordVerifiedInstall(prior.id,prior);
           return {...dest, download:'installed'};
         }
       }
@@ -651,7 +723,7 @@
           let current;
           for (let attempt = 0; attempt < 3; attempt++) {
             try { current = await this.readDownload(); break; }
-            catch (error) { this.requireActive(); if (attempt === 2 || !/timeout|timed out|disconnect|result is unknown/i.test(String(error.message))) throw error; await this.waitForPoll(2000); }
+            catch (error) { this.requireActive(); if (readBudgetExhausted(error)||attempt === 2 || !/timeout|timed out|disconnect|result is unknown/i.test(String(error.message))) throw error; await this.waitForPoll(2000); }
           }
           if (this.cancelled) this.requireActive();
           if (current.id !== id) throw Error('Target download does not match the selected package');
@@ -763,8 +835,7 @@
           freshSession = false;
           const d = checks.destination(await this.remote('ota status'), await this.remote('ota self'), await this.remote('ver'));
           if (d.targetId === this.info.targetId && d.hwId === this.info.hwId && d.version === this.info.fwVersion && d.baseHash === this.bodyHash) {
-            await this.verifyRestoredTargetSecondary();
-            this.recordJournal({phase: 'installed', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, bodyHash: this.bodyHash}); return d;
+            await this.recordVerifiedInstall(id); return d;
           }
         } catch (error) {
           if (error?.otaRestorationVerification) throw error;
