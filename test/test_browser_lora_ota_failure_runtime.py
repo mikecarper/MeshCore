@@ -97,13 +97,14 @@ class BrowserLoraOtaFailureRuntime(unittest.TestCase):
         result = run_harness(script, timeout=45)
         self.assertNotIn('error', result, result)
         self.assertFalse(result['installed'], result)
-        self.assertEqual(result['cmds'].count('ota self'), 3)
+        # Authenticated guarded reads exhaust eleven attempts before diagnostics.
+        self.assertEqual(result['cmds'].count('ota self'), 11)
         self.assertEqual(result['cmds'].count('ver'), 1)
         self.assertNotIn('board', result['cmds'], 'reported hardware from ota status must not require another LoRa query')
         self.assertIn('v1.17.1.9', result['details'])
         self.assertIn('hardware ID board', result['details'])
         self.assertIn('Command: ota self', result['details'])
-        self.assertIn('Attempt: 3 of 3', result['details'])
+        self.assertIn('Attempt: 11 of 11', result['details'])
         self.assertIn('result is unknown', result['notice'])
         self.assertFalse(any(c.startswith('ota pull ') or c.startswith('ota installhash ') for c in result['cmds']))
 
