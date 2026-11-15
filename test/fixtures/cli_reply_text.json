@@ -507,7 +507,7 @@
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
       "verbose": "settings could not be saved",
-      "concise": "settings not saved"
+      "concise": "not saved"
     },
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
@@ -592,7 +592,7 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "use set radio.cad timings <auto|100-3500> <auto|1-60000> <auto|1-60000>",
-      "concise": "set radio.cad timings <auto|100-3500> <auto|1-60000> <auto|1-60000>"
+      "concise": "set radio.cad timings auto|100-3500 auto|1-60000 auto|1-60000"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -607,7 +607,7 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "use set radio.cad <on|off> or set radio.cad timings <scan_ms|auto> <retry_ms|auto> <max_ms|auto>",
-      "concise": "set radio.cad <on|off>; set radio.cad timings <scan_ms|auto> <retry_ms|auto> <max_ms|auto>"
+      "concise": "set radio.cad on|off; timings scan_ms|auto retry_ms|auto max_ms|auto"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -627,17 +627,17 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "storage unavailable; TX routing not saved",
-      "concise": "storage unavailable; TX route not saved"
+      "concise": "TX route not saved; storage error"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "key: needs 12-64 hexadecimal digits (whole bytes)",
-      "concise": "key: 12-64 hex digits (whole bytes)"
+      "concise": "key: 12-64 hex, whole bytes"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "prefix controls routing; rename channel",
-      "concise": "prefix sets routing; rename channel"
+      "concise": "prefix routes; rename channel"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -667,7 +667,7 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "USB debug setting could not be saved",
-      "concise": "USB debug setting not saved"
+      "concise": "USB debug not saved"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -772,7 +772,7 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "power saving could not be saved",
-      "concise": "power saving not saved"
+      "concise": "PS not saved"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -847,7 +847,7 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "RX power saving is unsupported on this radio",
-      "concise": "RX power saving unsupported on radio"
+      "concise": "RXPS unsupported"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -892,7 +892,7 @@
     {
       "file": "src/helpers/CommonRadioPrefs.cpp",
       "verbose": "Error: invalid airtime factor",
-      "concise": "Error: bad airtime factor"
+      "concise": "Error: airtime factor"
     },
     {
       "file": "src/helpers/CommonRadioPrefs.cpp",
@@ -1482,7 +1482,7 @@
     {
       "file": "src/helpers/MorseCLI.h",
       "verbose": "radio busy; stop Morse/CW or retry when idle",
-      "concise": "radio busy; stop Morse/CW or retry idle"
+      "concise": "busy; stop Morse/CW or retry idle"
     },
     {
       "file": "src/helpers/MorseCLI.h",
@@ -1507,22 +1507,22 @@
     {
       "file": "src/helpers/MorseCLI.h",
       "verbose": "Morse unsupported on this radio",
-      "concise": "Morse unsupported by radio"
+      "concise": "Morse unsupported"
     },
     {
       "file": "src/helpers/MorseCLI.h",
       "verbose": "Morse RX unsupported on this radio",
-      "concise": "Morse RX unsupported by radio"
+      "concise": "Morse RX unsupported"
     },
     {
       "file": "src/helpers/MorseCLI.h",
       "verbose": "saved Morse settings unavailable; verify and save morse.freq",
-      "concise": "Morse settings unavailable; verify/save morse.freq"
+      "concise": "settings unavailable; verify/save morse.freq"
     },
     {
       "file": "src/helpers/MorseCLI.h",
       "verbose": "verify and save morse.freq before changing Morse WPM",
-      "concise": "verify/save morse.freq before Morse WPM"
+      "concise": "verify/save morse.freq before WPM"
     },
     {
       "file": "src/helpers/MorseCLI.h",
@@ -1537,7 +1537,7 @@
     {
       "file": "src/helpers/MorseCLI.h",
       "verbose": "Morse settings could not be saved",
-      "concise": "Morse settings not saved"
+      "concise": "settings not saved"
     },
     {
       "file": "src/helpers/MorseCLI.h",
@@ -1547,12 +1547,12 @@
     {
       "file": "src/helpers/MorseCLI.h",
       "verbose": "Morse frequency unsupported by this radio",
-      "concise": "Morse frequency unsupported by radio"
+      "concise": "Morse freq unsupported"
     },
     {
       "file": "src/helpers/MorseCLI.h",
       "verbose": "Morse frequency overlaps radio or radio2; change morse.freq",
-      "concise": "Morse overlaps radio or radio2; set morse.freq"
+      "concise": "Morse/radio/radio2 overlap; set morse.freq"
     },
     {
       "file": "src/helpers/MorseCLI.h",
@@ -1562,12 +1562,12 @@
     {
       "file": "src/helpers/MorseCLI.h",
       "verbose": "Morse TX unsupported on this radio",
-      "concise": "Morse TX unsupported by radio"
+      "concise": "Morse TX unsupported"
     },
     {
       "file": "src/helpers/MorseCLI.h",
       "verbose": "supported Morse ASCII only (80 characters max)",
-      "concise": "Morse ASCII only (80 characters max)"
+      "concise": "Morse ASCII; max 80 chars"
     },
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
@@ -1597,7 +1597,7 @@
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
       "verbose": "radio acknowledgement pending",
-      "concise": "radio ack pending"
+      "concise": "ack pending"
     },
     {
       "file": "src/helpers/RadioProfileCLI.cpp",
@@ -1617,12 +1617,12 @@
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "setting changed but save failed",
-      "concise": "setting changed; save failed"
+      "concise": "changed; save failed"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
       "verbose": "board setting changed but save failed",
-      "concise": "board setting changed; save failed"
+      "concise": "board changed; save failed"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -1732,7 +1732,7 @@
     {
       "file": "src/helpers/MorseCLI.h",
       "verbose": "limit 80 characters/180 seconds; shorten text or raise WPM",
-      "concise": "80 characters/180 seconds max; shorten text or raise WPM"
+      "concise": "max 80 chars/180 sec; shorten text or raise WPM"
     },
     {
       "file": "examples/companion_radio/MyMesh.cpp",
@@ -1888,6 +1888,66 @@
       "file": "src/helpers/WirelessControl.h",
       "verbose": " (runtime apply failed)",
       "concise": " (apply failed)"
+    },
+    {
+      "file": "src/helpers/CommonRadioPrefs.cpp",
+      "verbose": "Error, invalid radio params",
+      "concise": "Error, radio params"
+    },
+    {
+      "file": "src/helpers/CommonRadioPrefs.cpp",
+      "verbose": "Error, invalid airtime factor",
+      "concise": "Error, airtime factor"
+    },
+    {
+      "file": "src/helpers/CommonRadioPrefs.cpp",
+      "verbose": "ERROR: dutycycle must be 1-100",
+      "concise": "ERROR: dutycycle 1-100"
+    },
+    {
+      "file": "src/helpers/CommonRadioPrefs.cpp",
+      "verbose": "Error: TX power rejected",
+      "concise": "Error: TX rejected"
+    },
+    {
+      "file": "src/helpers/CommonRadioPrefs.cpp",
+      "verbose": "Error, must be 0-20",
+      "concise": "Error, 0-20"
+    },
+    {
+      "file": "src/helpers/CommonRadioPrefs.cpp",
+      "verbose": "Error, must be 0,1, or 2",
+      "concise": "Error, 0|1|2"
+    },
+    {
+      "file": "src/helpers/CommonRadioPrefs.cpp",
+      "verbose": "Error, must be 0-2",
+      "concise": "Error, 0-2"
+    },
+    {
+      "file": "src/helpers/CarrierWaveCLI.h",
+      "verbose": "Error: CW unsupported on this radio",
+      "concise": "Error: CW unsupported"
+    },
+    {
+      "file": "src/helpers/CarrierWaveCLI.h",
+      "verbose": "Error: use %s on [seconds 0.001-60] | %s off",
+      "concise": "Error: %s on [seconds 0.001-60] | %s off"
+    },
+    {
+      "file": "src/helpers/CarrierWaveCLI.h",
+      "verbose": "Error: cw2 requires active radio2 rxtx",
+      "concise": "Error: cw2 needs radio2 rxtx"
+    },
+    {
+      "file": "src/helpers/CarrierWaveCLI.h",
+      "verbose": "Error: radio busy; stop active CW or retry when idle",
+      "concise": "Error: busy; stop CW or retry idle"
+    },
+    {
+      "file": "src/helpers/CarrierWaveCLI.h",
+      "verbose": "Error: CW transition failed; check radio recovery",
+      "concise": "Error: CW failed; check radio recovery"
     }
   ],
   "noncompact_tokens_sha256": {
@@ -1904,6 +1964,7 @@
     "examples/companion_radio/CompanionRetry.h": "e0ae10c7b2f778346f4645c4e147d87e1fbc7f8b99484752a8eed914bb21380f",
     "examples/companion_radio/Notifications.cpp": "74983770da7bcdf89af1b3e231bcf8058864e486cb99a425a369db859bd0ae43",
     "src/helpers/ota/OtaCli.cpp": "5848e6be0c22967c0ca8b672d70594497966d14319cffafb7a50aed57216b03d",
-    "src/helpers/MorseCLI.h": "fd6888f30dace1c4dbe929cc44ff1d5fa4a49b6938e26546fb21233ca7e5dbbb"
+    "src/helpers/MorseCLI.h": "fd6888f30dace1c4dbe929cc44ff1d5fa4a49b6938e26546fb21233ca7e5dbbb",
+    "src/helpers/CarrierWaveCLI.h": "2b071fc64a2d3a6b70eb001d77e228a19ef1be3b7bec2916eb133c5ee12d8978"
   }
 }

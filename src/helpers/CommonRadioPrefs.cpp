@@ -232,7 +232,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
     const char* args = command + strlen("set radio ");
     const size_t args_len = boundedLength(args, RADIO_ARGS_CAPACITY);
     if (args_len >= RADIO_ARGS_CAPACITY) {
-      strcpy(reply, "Error, invalid radio params");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error, invalid radio params", "Error, radio params"));
       return true;
     }
 
@@ -256,7 +256,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
       setBandwidth(bw);
       strcpy(reply, "OK - reboot to apply");
     } else {
-      strcpy(reply, "Error, invalid radio params");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error, invalid radio params", "Error, radio params"));
     }
     return true;
   }
@@ -277,7 +277,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
       setAirtimeFactor(factor);
       strcpy(reply, "OK");
     } else {
-      strcpy(reply, "Error, invalid airtime factor");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error, invalid airtime factor", "Error, airtime factor"));
     }
     return true;
   }
@@ -285,7 +285,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
   if (strcmp(command, "get dutycycle") == 0) {
     const float factor = getAirtimeFactor();
     if (!isfinite(factor) || factor < 0.0f) {
-      strcpy(reply, MESH_CLI_REPLY_TEXT("Error: invalid airtime factor", "Error: bad airtime factor"));
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error: invalid airtime factor", "Error: airtime factor"));
     } else {
       const int tenths = static_cast<int>(1000.0f / (factor + 1.0f) + 0.5f);
       sprintf(reply, "> %d.%d%%", tenths / 10, tenths % 10);
@@ -296,7 +296,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
     float dc = 0.0f;
     if (!parseDecimalStrict(command + strlen("set dutycycle "), dc)
         || dc < 1.0f || dc > 100.0f) {
-      strcpy(reply, "ERROR: dutycycle must be 1-100");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("ERROR: dutycycle must be 1-100", "ERROR: dutycycle 1-100"));
     } else {
       setAirtimeFactor((100.0f / dc) - 1.0f);
       const float actual = 100.0f / (getAirtimeFactor() + 1.0f);
@@ -366,7 +366,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
     if (!parseIntStrict(command + strlen("set tx "), -128, 127, dbm)) {
       strcpy(reply, MESH_CLI_REPLY_TEXT("Error: invalid TX power", "Error: bad TX power"));
     } else if (!radio_driver.setTxPower(static_cast<int8_t>(dbm))) {
-      strcpy(reply, "Error: TX power rejected");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error: TX power rejected", "Error: TX rejected"));
     } else {
       setTxPower(static_cast<int8_t>(dbm));
       strcpy(reply, "OK");
@@ -385,7 +385,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
       setRxDelay(db);
       strcpy(reply, "OK");
     } else {
-      strcpy(reply, "Error, must be 0-20");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error, must be 0-20", "Error, 0-20"));
     }
     return true;
   }
@@ -416,7 +416,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
       setHashMode(static_cast<uint8_t>(mode));
       strcpy(reply, "OK");
     } else {
-      strcpy(reply, "Error, must be 0,1, or 2");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error, must be 0,1, or 2", "Error, 0|1|2"));
     }
     return true;
   }
@@ -447,7 +447,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
       setFloodTxDelay(f);
       strcpy(reply, "OK");
     } else {
-      strcpy(reply, "Error, must be 0-2");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error, must be 0-2", "Error, 0-2"));
     }
     return true;
   }
@@ -463,7 +463,7 @@ bool CommonRadioPrefs::handleCommand(const char* command, uint32_t sender_timest
       setDirectTxDelay(f);
       strcpy(reply, "OK");
     } else {
-      strcpy(reply, "Error, must be 0-2");
+      strcpy(reply, MESH_CLI_REPLY_TEXT("Error, must be 0-2", "Error, 0-2"));
     }
     return true;
   }

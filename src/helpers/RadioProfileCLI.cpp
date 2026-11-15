@@ -1313,7 +1313,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("this role requires local USB for radio2 changes", "radio2: USB only")); return true;
   }
   if (hasReplyMutation() && verb != Get) {
-    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio acknowledgement pending", "radio ack pending")); return true;
+    cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio acknowledgement pending", "ack pending")); return true;
   }
   if ((timing || scan || status) && (verb != Get || *args)) {
     snprintf(reply, capacity, "Error: %s is read-only", timing ? "radio timing" : key);
@@ -1349,7 +1349,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     reply_setting_ = 0xb0 | policy | (force ? 8 : 0);
     if (!save(saved_, primary_preamble_, cross_)) {
       reply_setting_ = previous;
-      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("settings could not be saved", "settings not saved"));
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("settings could not be saved", "not saved"));
     } else {
       publish();
       snprintf(reply, capacity, "OK - tx.reply=%s%s", radioTxPolicyName(policy), force ? " force" : "");
@@ -1393,7 +1393,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
         publish();
         snprintf(reply, capacity, "OK");
       }
-      else cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("settings could not be saved", "settings not saved"));
+      else cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("settings could not be saved", "not saved"));
     } else {
 #if defined(STM32_PLATFORM) && MESH_CLI_COMPACT_REPLIES
       cli::formatError(reply, capacity, "auto|on|off");
@@ -1466,7 +1466,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
       return true;
     }
     if (!save({}, primary_preamble_, cross_, 0)) {
-      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("settings could not be saved", "settings not saved")); return true;
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("settings could not be saved", "not saved")); return true;
     }
     noteSecondaryManualChange();
     saved_ = {}; manual_secondary_ = false;
@@ -1481,7 +1481,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
   if ((base || temporary) && verb == Set && !strcmp(args, "off")) {
     if (base && !(remote_command_ ? prepareSavedImage(ReplyPath, {}, primary_preamble_, cross_, true)
                                  : save({}, primary_preamble_, cross_, true))) {
-      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("settings could not be saved", "settings not saved")); return true;
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("settings could not be saved", "not saved")); return true;
     }
     if (remote_command_) {
       stageRemoteMutation(base ? RemoteMutation::Off : RemoteMutation::TempOff);
@@ -1631,7 +1631,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
 #if MESH_ENABLE_FLEET_CONTROL
       if (remote_command_) {
         if (!stageRemoteSchedule(i, s)) {
-          cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio acknowledgement pending", "radio ack pending")); return true;
+          cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio acknowledgement pending", "ack pending")); return true;
         }
       } else { schedules_[first+i] = s; noteSecondaryManualChange(); publish(); }
 #else
@@ -1676,7 +1676,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     }
     snprintf(reply, capacity, "OK - radio2 %s%s; preamble=%u", modeName(config.mode),
         remote_command_ ? " pending after reply" : "", preview.preamble(1, 32));
-  } else cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("settings could not be saved", "settings not saved"));
+  } else cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("settings could not be saved", "not saved"));
   if (!strncmp(reply, "OK", 2)) appendSecondaryWarnings(reply, capacity, preview);
   return true;
 }

@@ -25,7 +25,7 @@ inline bool handleCarrierWaveCommand(Radio* radio, const char* command,
     return true;
   }
   if (!radio || !radio->supportsCarrierWave()) {
-    snprintf(reply, capacity, "Error: CW unsupported on this radio");
+    snprintf(reply, capacity, MESH_CLI_REPLY_TEXT("Error: CW unsupported on this radio", "Error: CW unsupported"));
     return true;
   }
   if (!*args) {
@@ -53,18 +53,18 @@ inline bool handleCarrierWaveCommand(Radio* radio, const char* command,
     }
   }
   if (!valid) {
-    snprintf(reply, capacity, "Error: use %s on [seconds 0.001-60] | %s off", name, name);
+    snprintf(reply, capacity, MESH_CLI_REPLY_TEXT("Error: use %s on [seconds 0.001-60] | %s off", "Error: %s on [seconds 0.001-60] | %s off"), name, name);
     return true;
   }
   if (on && secondary && (!radio->profiles() || !radio->profiles()->canTransmit(1))) {
-    snprintf(reply, capacity, "Error: cw2 requires active radio2 rxtx");
+    snprintf(reply, capacity, MESH_CLI_REPLY_TEXT("Error: cw2 requires active radio2 rxtx", "Error: cw2 needs radio2 rxtx"));
     return true;
   }
   const auto result = radio->setCarrierWave(secondary ? 1 : 0, duration);
   if (result == RadioParamApplyResult::BUSY) {
-    snprintf(reply, capacity, "Error: radio busy; stop active CW or retry when idle");
+    snprintf(reply, capacity, MESH_CLI_REPLY_TEXT("Error: radio busy; stop active CW or retry when idle", "Error: busy; stop CW or retry idle"));
   } else if (result != RadioParamApplyResult::APPLIED) {
-    snprintf(reply, capacity, "Error: CW transition failed; check radio recovery");
+    snprintf(reply, capacity, MESH_CLI_REPLY_TEXT("Error: CW transition failed; check radio recovery", "Error: CW failed; check radio recovery"));
   } else if (on) {
     snprintf(reply, capacity, "OK - %s on for %lu.%03lu seconds; RX paused", name,
         (unsigned long)(duration / 1000), (unsigned long)(duration % 1000));

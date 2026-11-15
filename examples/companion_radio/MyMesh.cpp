@@ -4247,7 +4247,7 @@ bool MyMesh::handleCadCommand(const char* command, char* reply,
               mesh::CAD_SCAN_MAX_TIMEOUT_MS, scan_ms)
         || !parseCadTimingMillis(tokens[1], 1, 60000, retry_ms)
         || !parseCadTimingMillis(tokens[2], 1, 60000, max_ms)) {
-      mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("use set radio.cad timings <auto|100-3500> <auto|1-60000> <auto|1-60000>", "set radio.cad timings <auto|100-3500> <auto|1-60000> <auto|1-60000>"));
+      mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("use set radio.cad timings <auto|100-3500> <auto|1-60000> <auto|1-60000>", "set radio.cad timings auto|100-3500 auto|1-60000 auto|1-60000"));
       return true;
     }
 
@@ -4273,7 +4273,7 @@ bool MyMesh::handleCadCommand(const char* command, char* reply,
     return true;
   }
 
-  mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("use set radio.cad <on|off> or set radio.cad timings <scan_ms|auto> <retry_ms|auto> <max_ms|auto>", "set radio.cad <on|off>; set radio.cad timings <scan_ms|auto> <retry_ms|auto> <max_ms|auto>"));
+  mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("use set radio.cad <on|off> or set radio.cad timings <scan_ms|auto> <retry_ms|auto> <max_ms|auto>", "set radio.cad on|off; timings scan_ms|auto retry_ms|auto max_ms|auto"));
   return true;
 }
 
@@ -4342,7 +4342,7 @@ bool MyMesh::handleTxRoutingCommand(const char* command, char* reply, size_t rep
   }
   if (parsed.set && (!canMutateContacts()
       || (parsed.channel && _store->hasIncompleteChannelLoad()))) {
-    mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("storage unavailable; TX routing not saved", "storage unavailable; TX route not saved"));
+    mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("storage unavailable; TX routing not saved", "TX route not saved; storage error"));
     return true;
   }
 
@@ -4365,7 +4365,7 @@ bool MyMesh::handleTxRoutingCommand(const char* command, char* reply, size_t rep
     uint8_t key[32]; size_t key_bytes = 0;
     const bool by_key = !parsed.quoted && !strncmp(parsed.target, "key:", 4);
     if (by_key && !mesh::companion::parseTxRouteKey(parsed.target + 4, key, key_bytes)) {
-      mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("key: needs 12-64 hexadecimal digits (whole bytes)", "key: 12-64 hex digits (whole bytes)"));
+      mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("key: needs 12-64 hexadecimal digits (whole bytes)", "key: 12-64 hex, whole bytes"));
       return true;
     }
     for (int i = MAX_ANON_CONTACTS; i < getTotalContactSlots(); ++i) {
@@ -4398,7 +4398,7 @@ bool MyMesh::handleTxRoutingCommand(const char* command, char* reply, size_t rep
       const auto alias = parseCompanionChannelAlias(channel.name);
       if (isAliasRadio2Defined()
           && (alias.kind == CompanionChannelKind::Radio2 || alias.kind == CompanionChannelKind::Meshtext)) {
-        mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("prefix controls routing; rename channel", "prefix sets routing; rename channel"));
+        mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("prefix controls routing; rename channel", "prefix routes; rename channel"));
         return true;
       }
       // Persist the app PSK, not the resolved wire-key copy used for reporting.
@@ -4416,7 +4416,7 @@ bool MyMesh::handleTxRoutingCommand(const char* command, char* reply, size_t rep
       }
     }
     if (!saved) {
-      mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("storage unavailable; TX routing not saved", "storage unavailable; TX route not saved"));
+      mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("storage unavailable; TX routing not saved", "TX route not saved; storage error"));
       return true;
     }
     policy = parsed.policy;
@@ -4766,7 +4766,7 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     } else {
       const uint8_t enabled = strcmp(value, "on") == 0 ? 1 : 0;
       if (!savePreference(_prefs.usb_debug_enabled, enabled)) {
-        mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("USB debug setting could not be saved", "USB debug setting not saved"));
+        mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("USB debug setting could not be saved", "USB debug not saved"));
       } else {
         snprintf(reply, reply_size, "OK - USB debug %s (saved)%s",
                  enabled ? "on" : "off",
@@ -9989,7 +9989,7 @@ bool MyMesh::applyAndSavePowerSaving(const char* value, char* reply) {
   }
 
   if (!savePreference(_prefs.powersaving_enabled, static_cast<uint8_t>(enabled))) {
-    mesh::cli::formatError(reply, 160, MESH_CLI_REPLY_TEXT("power saving could not be saved", "power saving not saved"));
+    mesh::cli::formatError(reply, 160, MESH_CLI_REPLY_TEXT("power saving could not be saved", "PS not saved"));
     return false;
   }
   sensors.setPowerSavingEnabled(enabled);
@@ -10069,7 +10069,7 @@ bool MyMesh::handleRxPowerSavingGetCommand(const char* command, char* reply,
   const bool config = strcmp(command, "get radio.rxps.config") == 0;
   if (!config && strcmp(command, "get radio.rxps") != 0) return false;
   if (!radio_driver.supportsRxPowerSaving()) {
-    mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("RX power saving is unsupported on this radio", "RX power saving unsupported on radio"));
+    mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("RX power saving is unsupported on this radio", "RXPS unsupported"));
     return true;
   }
 
@@ -12140,7 +12140,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
         _prefs.path_hash_mode = previous_hash_mode;
         _prefs.multi_acks = previous_multi_acks;
         _prefs.clearDirty();
-        mesh::cli::formatError(reply, reply_capacity, MESH_CLI_REPLY_TEXT("setting changed but save failed", "setting changed; save failed"));
+        mesh::cli::formatError(reply, reply_capacity, MESH_CLI_REPLY_TEXT("setting changed but save failed", "changed; save failed"));
       }
     }
     return true;
@@ -12155,7 +12155,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
   // runtime-aware FEM handlers above.
   if (board.handleCommand(command, sender_timestamp, reply)) {
     if (_prefs.isDirty() && !savePrefs()) {
-      mesh::cli::formatError(reply, reply_capacity, MESH_CLI_REPLY_TEXT("board setting changed but save failed", "board setting changed; save failed"));
+      mesh::cli::formatError(reply, reply_capacity, MESH_CLI_REPLY_TEXT("board setting changed but save failed", "board changed; save failed"));
     }
     return true;
   }
