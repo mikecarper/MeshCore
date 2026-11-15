@@ -142,10 +142,10 @@ def legacy_setup_harness(rxps_on=False, matching=False, reboot_channel=False):
 
 def recovery_harness(*, wrong_source=False, wrong_target=False):
     script = legacy_setup_harness(rxps_on=True, matching=True)
-    script = script.replace('let inbox=[],', 'let dropNextInbox=false,requests=0,connects=0;let inbox=[],', 1)
+    script = script.replace('let inbox=[],', 'let dropNextInbox=false,requests=0,connects=0,reconnectAt=-1;let inbox=[],', 1)
     script = script.replace('requestPort:async()=>port', 'requestPort:async()=>{requests++;return port;}', 1)
     script = script.replace("} else if(f[0]===10){out=inbox.length?inbox.shift():Uint8Array.of(10);",
-        "} else if(f[0]===10){out=inbox.length?inbox.shift():Uint8Array.of(10);if(dropNextInbox){dropNextInbox=false;return;}", 1)
+        "} else if(f[0]===10){out=inbox.length?inbox.shift():Uint8Array.of(10);if(dropNextInbox){dropNextInbox=false;reconnectAt=this.frames.length;return;}", 1)
     script = script.replace("if(f[0]===1){out=new Uint8Array(58);out[0]=5;out.set(unhex(source),4);",
         "if(f[0]===1){connects++;out=new Uint8Array(58);out[0]=5;out.set(unhex(WRONG_SOURCE&&connects>1?'dd'.repeat(32):source),4);", 1)
     script = script.replace('WRONG_SOURCE','true' if wrong_source else 'false')
@@ -158,23 +158,25 @@ def recovery_harness(*, wrong_source=False, wrong_target=False):
     script = script.replace(start, start + "const Transport=LoraOtaCompanion.CompanionTransport;LoraOtaCompanion.CompanionTransport=class extends Transport{constructor(port,options){super(port,{...options,inboxTimeout:80,inboxPollDelay:0});}};", 1)
     anchor = "el('inspect').click();await wait(()=>!el('inspect').disabled);if(el('transfer').disabled"
     assert script.count(anchor)==1
-    recover = """dropNextInbox=true;el('inspect').click();
-    await wait(()=>!el('reconnect').hidden&&!el('reconnect').disabled);
-    if(!el('inspect').disabled||!el('update').disabled||!el('investigate').disabled)throw Error('Failed USB connection still allows work');
-    if(el('legacy-inbox').hidden||!el('legacy-inbox-messages').textContent.includes('may have been removed'))throw Error('Interrupted inbox read not shown for export');
+    # A lost USB reply now triggers one automatic same-port reconnect. Record
+    # choices before the failure and audit every frame after the lost reply.
+    recover = """const selectedFile=el('file').files[0],selectedKey=el('key').value,selectedPassword=el('password').value;
+    dropNextInbox=true;el('inspect').click();
+    await wait(()=>reconnectAt>=0);
+    if(!el('inspect').disabled||!el('update').disabled||!el('investigate').disabled)throw Error('Pending USB recovery still allows work');
     const failureFrames=port.frames.length;el('inspect').click();
-    if(port.frames.length!==failureFrames)throw Error('Preparation retried on failed USB');
-    const selectedFile=el('file').files[0],selectedKey=el('key').value,selectedPassword=el('password').value;
-    const reconnectAt=port.frames.length;el('reconnect').click();
+    if(port.frames.length!==failureFrames)throw Error('Preparation retried during USB recovery');
     """
     if wrong_source:
-        recover += """await wait(()=>!el('connect').disabled);
+        recover += """await wait(()=>connects===2&&!el('connect').disabled);
     if(!el('status').textContent.includes('different identity'))throw Error('Wrong USB source accepted');
     if(port.frames.slice(reconnectAt).some(f=>[2,4,10,26,52,65].includes(f[0])))throw Error('Contact or RF operation sent before source identity validation');
     await report({wrongSourceBlocked:true,requests,connects,status:el('status').textContent});return;
     """
     else:
-        recover += """await wait(()=>!el('inspect').disabled);
+        recover += """await wait(()=>connects===2&&!el('inspect').disabled&&el('status').textContent.includes('USB source identity confirmed after retry.'));
+    if(!el('update').disabled||!el('transfer').disabled||!el('install').disabled)throw Error('Automatic reconnect restarted the interrupted update');
+    if(el('legacy-inbox').hidden||!el('legacy-inbox-messages').textContent.includes('may have been removed'))throw Error('Interrupted inbox read not shown for export');
     if(el('file').files[0]!==selectedFile||el('key').value!==selectedKey||el('password').value!==selectedPassword)throw Error('Reconnect lost update choices');
     if(requests!==1||connects!==2)throw Error('Reconnect asked for the USB device again');
     if(port.frames.slice(reconnectAt).some(f=>[2,10,26,52,65].includes(f[0])))throw Error('Reconnect replayed an operation');
