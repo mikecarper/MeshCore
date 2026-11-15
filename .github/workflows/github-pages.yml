@@ -2,6 +2,10 @@ name: Build and deploy Docs site to GitHub Pages
 
 on:
   workflow_dispatch:
+  release:
+    types: [published, edited, deleted]
+  schedule:
+    - cron: '43 10 * * *'
   push:
     branches:
       - main
@@ -26,6 +30,10 @@ jobs:
 
       - name: Checkout Repo
         uses: actions/checkout@v6
+        with:
+          # Release events point at a tag; docs and their pinned controls live
+          # on the default branch, not necessarily in that tagged tree.
+          ref: ${{ github.event_name == 'release' && github.event.repository.default_branch || github.ref }}
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -44,14 +52,16 @@ jobs:
           MKDOCS_SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
           MKDOCS_REPO_NAME: ${{ github.repository }}
           MKDOCS_REPO_URL: https://github.com/${{ github.repository }}/
-          MKDOCS_EDIT_URI: edit/${{ github.ref_name }}/docs/
+          MKDOCS_EDIT_URI: edit/${{ github.event_name == 'release' && github.event.repository.default_branch || github.ref_name }}/docs/
         run: |
           pip install mkdocs-material
           node test/test_firmware_picker.js
           node test/test_partition_catalog_viewer.js
           node test/test_release_features.js
           python -m unittest discover -s test -p test_deploy_historical_mirror.py
+          python -m unittest discover -s test -p test_firmware_release_snapshot.py
           python scripts/sync_bootloader_manifest.py
+          python scripts/build_firmware_release_snapshot.py
           mkdocs build
           cmp firmware/esp32_partition_catalog.json site/_data/esp32_partition_catalog.json
 

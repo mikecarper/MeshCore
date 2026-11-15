@@ -1579,6 +1579,8 @@ jobs:
           node test/test_firmware_picker.js
           node --test test/test_firmware_picker_pagination.js
           python3 -B test/test_firmware_picker_pagination_runtime.py
+          python3 -B test/test_firmware_release_snapshot.py
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_firmware_picker_snapshot_runtime.py
           node test/test_t114_picker.js
           node test/test_optional_display_picker.js
           node test/test_consolidated_picker.js

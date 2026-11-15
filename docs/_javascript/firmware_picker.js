@@ -289,6 +289,72 @@
     throw new Error("GitHub release catalog exceeds the pagination limit");
   }
 
+  // A compact, deploy-time snapshot avoids downloading every GitHub release
+  // and its assets before the picker can render. Reject incomplete families;
+  // the live release API remains the fallback if this snapshot is unavailable.
+  function snapshotReleasesForFamily(snapshot, familyTag, source, repository, controls, inventory) {
+    if (!snapshot || snapshot.schemaVersion !== 1 ||
+        !Number.isFinite(Date.parse(snapshot.generatedAt)) ||
+        !Array.isArray(snapshot.releases) || !snapshot.families ||
+        typeof snapshot.families !== "object") return null;
+    const family = snapshot.families[familyTag];
+    if (!family || family.source !== source || !Array.isArray(family.releaseTags) ||
+        !family.releaseTags.length || !family.releaseTags.includes(familyTag) ||
+        new Set(family.releaseTags).size !== family.releaseTags.length ||
+        !family.assetCounts || typeof family.assetCounts !== "object" ||
+        Object.keys(family.assetCounts).length !== family.releaseTags.length) return null;
+    const repo = repository || "mikecarper/MeshCore";
+    if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) return null;
+    const wanted = new Set(family.releaseTags), found = new Set();
+    // The independent reviewed inventory prevents a truncated snapshot from
+    // declaring its own missing release pages or assets to be complete.
+    const baseline = inventory && inventory.schemaVersion === 1 && inventory.families &&
+      inventory.families[familyTag];
+    if (!baseline || baseline.source !== source || !Array.isArray(baseline.releaseTags) ||
+        !baseline.releaseTags.length || !baseline.releaseTags.includes(familyTag) ||
+        new Set(baseline.releaseTags).size !== baseline.releaseTags.length ||
+        !baseline.assetCounts || typeof baseline.assetCounts !== "object" ||
+        Object.keys(baseline.assetCounts).length !== baseline.releaseTags.length ||
+        baseline.releaseTags.some(function (tag) {
+          const minimum = baseline.assetCounts[tag];
+          return !wanted.has(tag) || !Number.isSafeInteger(minimum) || minimum <= 0 ||
+            !Number.isSafeInteger(family.assetCounts[tag]) || family.assetCounts[tag] < minimum;
+        })) return null;
+    // A newly qualified supplemental release must not be silently omitted
+    // just because the main release and source commit have not changed.
+    const supplements = controls && Array.isArray(controls.supplementalReleases)
+      ? controls.supplementalReleases : [];
+    if (supplements.some(function (entry) {
+      return entry && t114PreviewControls(controls, entry.releaseTag) && !wanted.has(entry.releaseTag);
+    })) return null;
+    function exactUrl(value, expectedPath) {
+      try {
+        const url = new URL(value);
+        return url.protocol === "https:" && url.hostname === "github.com" &&
+          !url.port && !url.username && !url.password && !url.search && !url.hash &&
+          decodeURIComponent(url.pathname) === expectedPath;
+      } catch (_) { return false; }
+    }
+    for (const release of snapshot.releases) {
+      if (!release || typeof release.tag_name !== "string") return null;
+      if (!wanted.has(release.tag_name)) continue;
+      const tag = release.tag_name;
+      if (/[\/\\]/.test(tag) || found.has(tag) || release.draft ||
+          !exactUrl(release.html_url, "/" + repo + "/releases/tag/" + tag) ||
+          !Array.isArray(release.assets) ||
+          !Number.isSafeInteger(family.assetCounts[tag]) ||
+          family.assetCounts[tag] < 0 || family.assetCounts[tag] !== release.assets.length ||
+          release.assets.some(function (asset) {
+            return !asset || typeof asset.name !== "string" || !asset.name || /[\/\\]/.test(asset.name) ||
+              !exactUrl(asset.browser_download_url, "/" + repo + "/releases/download/" + tag + "/" + asset.name) ||
+              !Number.isSafeInteger(asset.size) || asset.size < 0;
+          })) return null;
+      if (new Set(release.assets.map(function (asset) { return asset.name; })).size !== release.assets.length) return null;
+      found.add(tag);
+    }
+    return found.size === wanted.size ? snapshot.releases : null;
+  }
+
   function isT114PreviewTag(tag) {
     return /^heltec-t114-v\d+(?:\.\d+){2,3}\.preview[1-9]\d*$/.test(tag || "");
   }
@@ -3437,6 +3503,8 @@
       renderBootloader();
     });
     let releaseRequest;
+    let snapshotRequest;
+    let inventoryRequest;
     const controlsRequests = {};
     function releasesForPicker() {
       if (!releaseRequest) {
@@ -3463,6 +3531,36 @@
       }
       return controlsRequests[version];
     }
+    function localPickerJson(attribute) {
+      const sourceUrl = root.getAttribute(attribute);
+      return Promise.resolve().then(function () {
+          if (!sourceUrl) return null;
+          const base = new URL(global.location.href);
+          const url = new URL(sourceUrl, base);
+          // Firmware metadata must come from this documentation site.
+          if (url.origin !== base.origin || !/^https?:$/.test(url.protocol)) return null;
+          const controller = typeof AbortController === "function" ? new AbortController() : null;
+          let timeout;
+          const deadline = new Promise(function (resolve) {
+            timeout = setTimeout(function () {
+              if (controller) controller.abort();
+              resolve(null);
+            }, 5000);
+          });
+          const request = fetch(url.href, controller ? { signal: controller.signal } : undefined)
+            .then(function (response) { return response.ok ? response.json() : null; })
+            .catch(function () { return null; });
+          return Promise.race([request, deadline]).finally(function () { clearTimeout(timeout); });
+        }).catch(function () { return null; });
+    }
+    function snapshotForPicker() {
+      if (!snapshotRequest) snapshotRequest = localPickerJson("data-snapshot-url");
+      return snapshotRequest;
+    }
+    function inventoryForPicker() {
+      if (!inventoryRequest) inventoryRequest = localPickerJson("data-inventory-url");
+      return inventoryRequest;
+    }
     function loadRelease(version) {
       const loadId = ++releaseLoadId;
       selectedRelease = version;
@@ -3485,14 +3583,35 @@
         status.textContent = "Choose an available firmware version.";
         return;
       }
-      Promise.all([releasesForPicker(), controlsForVersion(version)])
+      Promise.all([snapshotForPicker(), controlsForVersion(version), inventoryForPicker()])
       .then(function (data) {
         if (loadId !== releaseLoadId) return;
         const requestedTag = releaseFamilies[version];
         if (!data[1] || data[1].familyTag !== requestedTag || data[1].source !== releaseSources[version]) {
           throw new Error("Firmware details do not match the selected version");
         }
-        catalog = buildCatalog(data[0], data[1], requestedTag);
+        const compact = snapshotReleasesForFamily(data[0], requestedTag, data[1].source, repo, data[1], data[2]);
+        return (compact ? Promise.resolve(compact) : releasesForPicker()).then(function (releases) {
+          if (loadId !== releaseLoadId) return null;
+          let next;
+          try { next = buildCatalog(releases, data[1], requestedTag); }
+          catch (error) {
+            if (!compact) throw error;
+            return releasesForPicker().then(function (live) {
+              return loadId === releaseLoadId ? buildCatalog(live, data[1], requestedTag) : null;
+            });
+          }
+          if (compact && (!next.releaseSet || !next.profiles.length)) {
+            return releasesForPicker().then(function (live) {
+              return loadId === releaseLoadId ? buildCatalog(live, data[1], requestedTag) : null;
+            });
+          }
+          return next;
+        });
+      })
+      .then(function (next) {
+        if (!next || loadId !== releaseLoadId) return;
+        catalog = next;
         if (!catalog.releaseSet || !catalog.profiles.length) {
           throw new Error(catalog.unavailableL1OneWattProfiles ?
             "Wio Tracker L1 1W storage or update metadata could not be verified; refresh or check the release" :
@@ -3601,6 +3720,7 @@
     CANDIDATE_RESULT_LIMIT: CANDIDATE_RESULT_LIMIT,
     selectReleaseSet: selectReleaseSet,
     fetchAllReleases: fetchAllReleases,
+    snapshotReleasesForFamily: snapshotReleasesForFamily,
     flattenReleaseAssets: flattenReleaseAssets,
     parseFirmwareAsset: parseFirmwareAsset,
     parseTargetProfile: parseTargetProfile,

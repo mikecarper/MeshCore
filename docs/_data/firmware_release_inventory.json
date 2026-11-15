@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "families": {
+    "v1.18.0.2-halo-keymind-cascade-dev-a723af94": {
+      "source": "a723af94ed7d8036329fb1f57637e6a009864752",
+      "releaseTags": [
+        "full-profiles-v1.18.0.2-halo-keymind-cascade-dev-a723af94",
+        "lora-ota-2-v1.18.0.2-halo-keymind-cascade-dev-a723af94",
+        "lora-ota-3-v1.18.0.2-halo-keymind-cascade-dev-a723af94",
+        "lora-ota-v1.18.0.2-halo-keymind-cascade-dev-a723af94",
+        "utility-v1.18.0.2-halo-keymind-cascade-dev-a723af94",
+        "v1.18.0.2-halo-keymind-cascade-dev-a723af94"
+      ],
+      "assetCounts": {
+        "full-profiles-v1.18.0.2-halo-keymind-cascade-dev-a723af94": 667,
+        "lora-ota-2-v1.18.0.2-halo-keymind-cascade-dev-a723af94": 907,
+        "lora-ota-3-v1.18.0.2-halo-keymind-cascade-dev-a723af94": 587,
+        "lora-ota-v1.18.0.2-halo-keymind-cascade-dev-a723af94": 907,
+        "utility-v1.18.0.2-halo-keymind-cascade-dev-a723af94": 465,
+        "v1.18.0.2-halo-keymind-cascade-dev-a723af94": 560
+      }
+    },
+    "v1.18.0.1-halo-keymind-cascade-dev-03214a16": {
+      "source": "03214a16df2bd09d3272dfb001d2d322c6740f60",
+      "releaseTags": [
+        "full-profiles-v1.18.0.1-halo-keymind-cascade-dev-03214a16",
+        "lora-ota-2-v1.18.0.1-halo-keymind-cascade-dev-03214a16",
+        "lora-ota-3-v1.18.0.1-halo-keymind-cascade-dev-03214a16",
+        "lora-ota-v1.18.0.1-halo-keymind-cascade-dev-03214a16",
+        "utility-v1.18.0.1-halo-keymind-cascade-dev-03214a16",
+        "v1.18.0.1-halo-keymind-cascade-dev-03214a16"
+      ],
+      "assetCounts": {
+        "full-profiles-v1.18.0.1-halo-keymind-cascade-dev-03214a16": 601,
+        "lora-ota-2-v1.18.0.1-halo-keymind-cascade-dev-03214a16": 906,
+        "lora-ota-3-v1.18.0.1-halo-keymind-cascade-dev-03214a16": 36,
+        "lora-ota-v1.18.0.1-halo-keymind-cascade-dev-03214a16": 906,
+        "utility-v1.18.0.1-halo-keymind-cascade-dev-03214a16": 177,
+        "v1.18.0.1-halo-keymind-cascade-dev-03214a16": 533
+      }
+    }
+  }
+}

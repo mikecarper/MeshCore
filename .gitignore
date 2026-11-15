@@ -72,3 +72,7 @@ scripts/__pycache__/*
 # Reduced-TLS mbedTLS archives, ~6 MB per arch, fetched by scripts/fetch_mbedtls_4k.sh.
 # Not committed because they must be rebuilt for every espressif32 platform bump.
 .mbedtls-4k/
+
+# Generated during the Pages build from verified public release metadata.
+/docs/_data/firmware_releases.json
+/docs/_data/firmware_releases.json.tmp

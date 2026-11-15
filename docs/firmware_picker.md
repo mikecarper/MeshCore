@@ -4,7 +4,7 @@
 
 # Firmware picker
 
-<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-controls-url="../_data/firmware_controls.json?v=1.18.0.2-a723af94-9d961a19" data-legacy-controls-url="../_data/firmware_controls_1.18.0.1.json?v=03214a16" data-bootloaders-url="../_data/bootloader_manifest.json?v=otafix-2.4.12" data-share-url="https://mikecarper.github.io/MeshCore/p/">
+<div class="firmware-picker" data-firmware-picker data-release-repo="mikecarper/MeshCore" data-snapshot-url="../_data/firmware_releases.json?v=1.18.0.2-a723af94-03214a16" data-inventory-url="../_data/firmware_release_inventory.json?v=1.18.0.2-a723af94-03214a16" data-controls-url="../_data/firmware_controls.json?v=1.18.0.2-a723af94-9d961a19" data-legacy-controls-url="../_data/firmware_controls_1.18.0.1.json?v=03214a16" data-bootloaders-url="../_data/bootloader_manifest.json?v=otafix-2.4.12" data-share-url="https://mikecarper.github.io/MeshCore/p/">
   <div class="firmware-picker-control firmware-picker-select-control" data-role="release-control">
     <label for="firmware-picker-release">Firmware version</label>
     <select id="firmware-picker-release" data-role="release-version" disabled>
