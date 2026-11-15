@@ -178,7 +178,7 @@
       ...(companion ? ['applyTemporaryRadio'] : [])]) need(typeof link[method] === 'function', 'This connection cannot safely prepare a temporary channel.');
     key = key.toLowerCase();
     const remote = (command, options) => link.remoteCommand(key, password, command, options), local = command => link.localCommand(command);
-    let targetAttempted = false, sourceAttempted = false, targetSwitchWrites = 0;
+    let targetAttempted = false, sourceAttempted = false, targetSwitchWrites = 0, pausedTargetSecondary = null;
     const changedSettings = [];
     async function baseline(label, read) {
       const saved = primary(await read('get radio'));
@@ -221,18 +221,25 @@
       }
       const secondaryFree = savedSecondary.state === 'off' && temporarySecondary.state === 'off' && cross === 'off' &&
         schedules['get radioat2'].empty === true && schedules['get tempradioat2'].empty === true;
+      // Borrow only an ordinary saved profile. A temporary override pauses its
+      // normal traffic without rewriting its tuple, preamble or permission.
+      // Firmware restores that saved profile on reboot or lease expiry. Never
+      // replace a timed session, schedule or another automatic runtime owner.
+      const secondaryRestorable = label === 'target' && savedSecondary.state === 'configured' && !savedSecondary.autoOwned;
+      const secondaryBorrowable = secondaryRestorable && temporarySecondary.state === 'off' && cross === 'off' &&
+        schedules['get radioat2'].empty === true && schedules['get tempradioat2'].empty === true;
       const matchingSecondary = temporarySecondary.state === 'configured' && same(temporarySecondary.tuple.slice(0, 3), expected.slice(0, 3));
       const overlappingSecondary = [savedSecondary, temporarySecondary].some(config => config.state === 'configured' &&
         Math.abs(config.tuple[0] - v.frequency) <= (config.tuple[1] + v.bandwidth) / 2000 + 0.001);
       let adoptSecondary = false;
-      if (matchingSecondary && savedSecondary.state === 'off' && cross === 'off' &&
+      if (matchingSecondary && (savedSecondary.state === 'off' || secondaryRestorable) && cross === 'off' &&
           schedules['get radioat2'].empty === true && schedules['get tempradioat2'].empty === true &&
           same(temporarySecondary.tuple, expected) && temporarySecondary.preamble === v.preamble && temporarySecondary.mode === 'rxtx') {
         adoptSecondary = (await readTemporary(read, 1)).state === 'active';
       }
       const adoptPrimary = temporaryPrimary.state === 'active' && same(temporaryPrimary.tuple, expected) && temporaryPrimary.preamble === v.preamble;
       const overlapsPrimary = Math.abs(saved[0] - v.frequency) <= (saved[1] + v.bandwidth) / 2000 + 0.001;
-      return {saved, temporaryPrimary, savedSecondary, temporarySecondary, cross, schedules, secondaryFree, matchingSecondary, overlappingSecondary,
+      return {saved, temporaryPrimary, savedSecondary, temporarySecondary, cross, schedules, secondaryFree, secondaryBorrowable, secondaryRestorable, matchingSecondary, overlappingSecondary,
         overlapsPrimary, adoptPrimary, adoptSecondary, otaPolicy, existingDownload, idleSourceVerified};
     }
     function sameSaved(a, b) {
@@ -334,11 +341,15 @@
       const sourceProfile = !legacy && source.temporaryPrimary.state === 'off' && link.supportsOtaRadio2 === true &&
         (source.adoptSecondary || source.secondaryFree && !source.overlapsPrimary) ? 1 : 0;
       const targetProfile = target.temporaryPrimary.state === 'off' &&
-        (target.adoptSecondary || target.secondaryFree && !target.overlapsPrimary) ? 1 : 0;
+        (target.adoptSecondary || (target.secondaryFree || target.secondaryBorrowable) && !target.overlapsPrimary) ? 1 : 0;
       const adoptSource = sourceProfile ? source.adoptSecondary : source.adoptPrimary;
       const adoptTarget = targetProfile ? target.adoptSecondary : target.adoptPrimary;
+      if (targetProfile && target.secondaryRestorable)
+        pausedTargetSecondary = {...target.savedSecondary, tuple: target.savedSecondary.tuple.slice()};
       for (const [label, state, profile] of [['USB source', source, sourceProfile], ['Target', target, targetProfile]]) {
-        if (profile) progress(label + ': using temporary radio2; the normal channel stays available.');
+        if (label === 'Target' && pausedTargetSecondary)
+          progress('Target: pausing normal radio2 traffic during the update; its saved settings return on reboot or temporary-window expiry.');
+        else if (profile) progress(label + ': using temporary radio2; the normal channel stays available.');
         else progress(label + ': using a primary-channel trial (' + (state.temporaryPrimary.state === 'active' ? 'primary temporary channel already active' :
           state.overlapsPrimary ? 'update channel overlaps the normal channel' :
           state.savedSecondary.state === 'unsupported' || state.temporarySecondary.state === 'unsupported' ? 'radio2 unsupported' :
@@ -388,7 +399,7 @@
         const oldPreamble = Number(/\bpreamble=(\d+),/i.exec(String(sourceLive.liveStatus))?.[1] || 128);
         const started = now(), deadline = started + 90000;
         need(Number.isFinite(started), 'Invalid temporary-channel clock.');
-        let previous = started, lastSwitch = started, misses = 0, verified = false;
+        let previous = started, lastSwitch = started, misses = 0, verified = false, lastProbeError = null;
         const clock = () => {
           const at = now();
           need(Number.isFinite(at) && at >= previous, 'Invalid temporary-channel clock.');
@@ -404,8 +415,18 @@
             maxDurationMs: remaining, readback: read => readTemporary(read, targetProfile)
           });
           need(!link.failure, link.failure?.message || 'USB communication stopped during the channel check.');
-          need(clock() <= deadline, 'Temporary-channel link check exceeded 90 seconds.');
           need(result && typeof result.reachable === 'boolean', 'Cannot verify the temporary-channel probe result.');
+          if (!result.reachable && result.error) {
+            if (!result.error.loraReplyTimeout || ['USB Companion', 'USB Repeater'].includes(result.error.otaEndpoint))
+              throw result.error;
+            lastProbeError = result.error;
+          }
+          if (clock() > deadline) {
+            const message = 'Temporary-channel link check exceeded 90 seconds.';
+            const error = Object.assign(Error(message), result.error || {});
+            error.message = message + (result.error?.message ? ' ' + result.error.message : '');
+            throw error;
+          }
           return result;
         };
         const requestSwitch = async () => {
@@ -428,8 +449,25 @@
         };
         // This proof is on the unchanged primary, after source radio2 setup.
         // The probe also pins all following admin TX to that proven profile.
-        const original = await probe(0);
-        need(original.reachable, 'The target did not respond on its original channel; no target switch request was sent.');
+        let original, originalAttempts = 0;
+        for (; originalAttempts < 3 && clock() < deadline;) {
+          originalAttempts++;
+          original = await probe(0);
+          if (original.reachable) break;
+          if (originalAttempts < 3 && clock() < deadline) {
+            progress('The target did not answer the original-channel check. Retrying the same primary channel (' +
+              (originalAttempts + 1) + ' of 3); no target switch request has been sent.');
+            await wait(Math.min(500, deadline - clock()));
+          }
+        }
+        if (!original?.reachable) {
+          const message = 'The target did not respond on its original channel after ' + originalAttempts +
+            ' checks; no target switch request was sent.';
+          const error = Object.assign(Error(message), lastProbeError || {});
+          error.message = message + (lastProbeError?.message ? ' ' + lastProbeError.message : '');
+          error.otaAttempt = originalAttempts; error.otaMaxAttempts = 3;
+          throw error;
+        }
         need(original.reply && ['off', 'pending', 'active'].includes(original.reply.state), 'Target temporary state on its original channel is unknown.');
         if (!adoptTarget && !matches(original.reply) && original.reply?.state !== 'pending') await requestSwitch();
         progress('Checking the requested frequency through temporary radio2; the original primary stays available.');
@@ -450,7 +488,12 @@
           }
           if (clock() < deadline) await wait(Math.min(250, deadline - clock()));
         }
-        need(verified, 'The target did not confirm the requested frequency and preamble within 90 seconds.');
+        if (!verified) {
+          const message = 'The target did not confirm the requested frequency and preamble within 90 seconds.';
+          const error = Object.assign(Error(message), lastProbeError || {});
+          error.message = message + (lastProbeError?.message ? ' ' + lastProbeError.message : '');
+          throw error;
+        }
         link.otaTargetProfile = targetProfile;
         progress('The requested frequency is confirmed by the target.');
         // probePeerRadio left the exact target authenticated on source radio2.
@@ -555,20 +598,25 @@
       link.otaLeaseProof={source:link.sourceKey,target:key,tuple:expected.slice(),preamble:v.preamble,
         sourceProfile,targetProfile,explicitProfiles:[!adoptSource||refreshedSourcePrimary||previouslyOwned&&prior.explicitProfiles?.[0]===true,
           !adoptTarget||previouslyOwned&&prior.explicitProfiles?.[1]===true]};
+      const paused = pausedTargetSecondary || (previouslyOwned ? prior.pausedTargetSecondary : null);
+      if (paused) link.otaLeaseProof.pausedTargetSecondary = {...paused, tuple:paused.tuple.slice()};
       return {ready: true, source: expected.slice(), target: expected.slice(), savedSource: source.saved, savedTarget: target.saved,
         savedSourceSecondary: source.savedSecondary, savedTargetSecondary: target.savedSecondary,
         sourceProfile, targetProfile, preamble: v.preamble, minutes: v.minutes, changedSettings,
-        adoptedSource: adoptSource, adoptedTarget: adoptTarget, refreshedSourcePrimary};
+        adoptedSource: adoptSource, adoptedTarget: adoptTarget, refreshedSourcePrimary, pausedTargetSecondary: paused};
     } catch (error) {
       const partial = targetAttempted || sourceAttempted ? ' Temporary setup may be partially active; check both radios before any further write. ' +
         (targetSwitchWrites > 1 ? 'Further switch requests followed fresh checks on the original channel; no settings were automatically restored.' : 'No write was retried or automatically restored.') : '';
       const policies = changedSettings.some(change => !change.confirmed) ? ' Unverified setting changes are listed in the diagnostic log.' : '';
-      const result = Error((error?.message || 'Temporary channel setup failed.') + partial + policies);
+      const paused = targetAttempted && pausedTargetSecondary ? ' The target saved radio2 settings were not changed; its normal radio2 returns on reboot or temporary-window expiry.' : '';
+      const message = (error?.message || 'Temporary channel setup failed.') + partial + policies + paused;
+      const result = Object.assign(Error(message), error);
+      result.message = message;
       if (error.sourceUpdateRequired) result.sourceUpdateRequired = error.sourceUpdateRequired;
       result.changedSettings = changedSettings;
       result.targetSetupAttempted = targetAttempted; result.sourceSetupAttempted = sourceAttempted; throw result;
     }
   }
   return {recommend, recommendProfile, regions:profiles?.profiles || [], commands, prepare, readTemporary, formatRadio, primary, same, requiredReply,
-    settings, temporary, secondary, crossing, schedule};
+    settings, temporary, secondary, secondarySignature, crossing, schedule};
 });

@@ -166,6 +166,27 @@ def missed_switch_harness():
         'profileTrace,sourceSaved:radio,sourceTemp,targetTemp,sourcePolicy,targetPolicy,')
 
 
+def borrowed_secondary_harness():
+    harness = radio_setup_harness()
+    harness = replace_once(harness,
+        "else if(text==='get radio2')reply=true?'> off (manual)':'Error: unsupported';",
+        "else if(text==='get radio2')reply='> 908.150,250.000,7,5,rxtx,48';")
+    harness = replace_once(harness, 'const profiles=[window.testLink.otaRadioProfile,window.testLink.otaTargetProfile];',
+        'const pausedTargetSecondary=window.testLink.otaLeaseProof?.pausedTargetSecondary;'
+        'const profiles=[window.testLink.otaRadioProfile,window.testLink.otaTargetProfile];')
+    return replace_once(harness, 'inspectStatus,prepared,checked,profiles,defaults,timeline,',
+        'pausedTargetSecondary,inspectStatus,prepared,checked,profiles,defaults,timeline,')
+
+
+def missed_original_probe_harness():
+    harness = missed_switch_harness()
+    harness = replace_once(harness, 'let ignoredSwitches=1,mailboxPending=false;',
+        'let ignoredSwitches=0,originalMisses=2,mailboxPending=false;')
+    return replace_once(harness, "if(text==='get public.key'&&selectedProfile===1&&targetTemp==='off')",
+        "if(text==='get public.key'&&selectedProfile===0&&sourceTemp==='active'&&targetTemp==='off'&&originalMisses-->0)"
+        "{mailboxPending=true;reply='';}else if(text==='get public.key'&&selectedProfile===1&&targetTemp==='off')")
+
+
 def explicit_region_with_active_window_harness():
     """An explicit profile must replace a matching old window after image checks."""
     harness = radio_setup_harness(secondary_supported=False)
@@ -227,6 +248,32 @@ class BrowserRadioSetupRuntime(unittest.TestCase):
 
     def test_validated_firmware_automatically_prepares_unused_radio2(self):
         self.assert_automatic_setup(run_harness(radio_setup_harness(),timeout=60),1)
+
+    def test_saved_target_radio2_is_borrowed_without_changing_its_saved_profile(self):
+        result = run_harness(borrowed_secondary_harness(), timeout=60)
+        self.assert_automatic_setup(result, 1)
+        self.assertEqual(result['pausedTargetSecondary'], {
+            'state':'configured', 'tuple':[908.15,250,7,5], 'mode':'rxtx',
+            'preamble':48, 'automatic':False, 'autoOwned':False})
+        self.assertEqual(result['timeline'].count(['remote', 'set tempradio2 909.950,500,5,7,rxtx,120,128']), 1)
+        self.assertFalse(any(row[0] in ('local','remote') and row[1].startswith(
+            ('set radio2 ', 'del radioat2', 'del tempradioat2', 'normalradio')) for row in result['timeline']))
+
+    def test_two_missed_original_channel_probes_retry_reads_before_the_target_switch(self):
+        result = run_harness(missed_original_probe_harness(), timeout=60)
+        self.assert_automatic_setup(result, 1)
+        trace = result['profileTrace']
+        switch = 'set tempradio2 909.950,500,5,7,rxtx,120,128'
+        target_switch = next(i for i,row in enumerate(trace) if row[1] == switch)
+        source_setup = next(row for row in result['timeline'] if row[:2] == ['local',switch])
+        self.assertEqual(source_setup[:2], ['local', switch])
+        # Preflight also proves the key. The final three primary proofs are
+        # the same post-source-setup check, with two real mailbox timeouts.
+        proofs = [row for row in trace[:target_switch] if row[:2] == [0,'get public.key']]
+        self.assertGreaterEqual(len(proofs), 3, result)
+        self.assertGreaterEqual(proofs[-1][2] - proofs[-3][2], 10000, result)
+        self.assertFalse(any(row[0] == 1 for row in trace[:target_switch]))
+        self.assertEqual(sum(row[1] == switch for row in trace), 1)
 
     def test_missed_switch_is_rechecked_on_both_radios_then_requested_on_the_original_channel(self):
         result = run_harness(missed_switch_harness(), timeout=60)

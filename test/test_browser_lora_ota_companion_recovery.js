@@ -118,10 +118,14 @@ async function radioProbeFixture(options = {}) {
   Object.assign(t,{knownRepeater:key,sourceKey:source,otaSupported:true,supportsOtaRadio2:true,
     authenticated:true,guard:true,running:true});
   const originalOptions=t.options;
-  t.guardMode=async mode=>{events.push(['guard',mode]);if(options.guardFailure)throw options.guardFailure;};
+  t.guardMode=async mode=>{
+    events.push(['guard',mode]);if(options.guardFailure)throw options.guardFailure;
+    if(options.guard)return options.guard(mode,t);
+  };
   t.localCommand=async command=>{
     events.push(['local',command]);
     if(options.localFailure){t.failure=options.localFailure;throw options.localFailure;}
+    if(options.local)return options.local(command,t);
     if(command==='get ota.direct')return '> ota.direct v=2 active='+(t.guard?1:0)+' busy=0';
     if(command==='get ota.direct.radio')return '> ota.direct.radio v=1 profile='+(t.otaRadioProfile?'radio2':'radio');
     if(command==='set ota.direct.radio radio2'||command==='set ota.direct.radio radio'){
@@ -150,13 +154,19 @@ test('a guarded radio probe reuses admission but proves the full target on each 
     ['guard',1],['guard',2],['local','get ota.direct'],['remote','get public.key'],['remote','get tempradio2'],['remote','get radio2.status']]);
   assert.equal(f.t.otaRadioProfile,1);assert.equal(f.t.guard,true);assert.equal(f.t.authenticated,true);
   assert.equal(f.t.options,f.originalOptions);assert.equal(f.t.options.remoteTimeout,75000);
-  assert.ok(f.events.filter(row=>row[0]==='remote').every(row=>row[2]===1000));
+  assert.ok(f.events.filter(row=>row[0]==='remote').every(row=>row[2]===5000));
 });
 
 test('probe RF timeouts close the guard, preserve admission and restore ordinary command budgets', async()=>{
   const timeout=Object.assign(Error('Remote command timed out; result is unknown'),{loraReplyTimeout:true});
   const f=await radioProbeFixture({remote:()=>{throw timeout;}});
-  assert.deepEqual(await f.t.probePeerRadio(key,'password',1,probeSettings),{reachable:false});
+  const result=await f.t.probePeerRadio(key,'password',1,probeSettings);
+  assert.equal(result.reachable,false);assert.equal(result.error,timeout);
+  assert.equal(timeout.otaStep,'Verifying target identity');assert.equal(timeout.otaCommand,'get public.key');
+  assert.equal(timeout.otaEndpoint,'remote target');assert.equal(timeout.otaTimeoutMs,5000);
+  assert.equal(timeout.otaPath,'direct (0 hops; enforced by guarded session)');
+  assert.match(timeout.otaRadio,/Source: Radio 2 .*reception not confirmed/);
+  assert.ok(!JSON.stringify(timeout).includes('password'));
   assert.equal(f.t.guard,false);assert.equal(f.t.authenticated,false);assert.equal(f.t.options,f.originalOptions);
   assert.equal(f.events.filter(row=>row[0]==='remote').length,1);
   assert.deepEqual(f.events.at(-1),['guard',3]);
@@ -187,7 +197,12 @@ test('probe admission and readback whitelist cannot authorize mutation or legacy
   const f=await radioProbeFixture();
   await assert.rejects(f.t.probePeerRadio(key,'password',1,{...probeSettings,readback:'set tx 22'}),/Only temporary-radio readbacks/);
   assert.deepEqual(f.events,[]);
-  await assert.rejects(f.t.probePeerRadio(key,'password',1,{...probeSettings,readback:read=>read('ota cancel')}),/Only temporary-radio readbacks/);
+  await assert.rejects(f.t.probePeerRadio(key,'password',1,{...probeSettings,readback:read=>read('ota cancel private-value')}),error=>{
+    assert.match(error.message,/Only temporary-radio readbacks/);
+    assert.equal(error.otaStep,'Validating radio-probe readback');
+    assert.equal(error.otaCommand,'CLI command <arguments hidden>');assert.equal(error.otaEndpoint,'browser');
+    assert.ok(!JSON.stringify(error).includes('private-value'));return true;
+  });
   assert.deepEqual(f.events.filter(row=>row[0]==='remote').map(row=>row[1]),['get public.key']);
   assert.equal(f.t.guard,false);assert.equal(f.t.options,f.originalOptions);
 });
@@ -197,15 +212,106 @@ test('probe deadlines scale with airtime and an exhausted outer budget sends no 
   await f.t.probePeerRadio(key,'password',0,{radio:[910.525,62.5,12,5],preamble:128});
   assert.ok(f.events.filter(row=>row[0]==='remote').every(row=>row[2]>40000&&row[2]<75000));
   f.events.length=0;
-  assert.deepEqual(await f.t.probePeerRadio(key,'password',1,{...probeSettings,maxDurationMs:0}),{reachable:false});
+  const exhausted=await f.t.probePeerRadio(key,'password',1,{...probeSettings,maxDurationMs:0});
+  assert.equal(exhausted.reachable,false);assert.equal(exhausted.error.loraReplyTimeout,true);
+  assert.equal(exhausted.error.otaStep,'Checking radio probe deadline');assert.equal(exhausted.error.otaTimeoutMs,0);
   assert.deepEqual(f.events,[['guard',3]]);assert.equal(f.t.options,f.originalOptions);
+});
+
+test('the five-second probe allowance does not delay fast replies or extend the outer deadline', async()=>{
+  const savedNow=Date.now;let clock=10000;
+  Date.now=()=>clock;
+  try{
+    const f=await radioProbeFixture({remote:(command,t)=>{
+      if(command==='get public.key'){
+        assert.equal(t.options.remoteTimeout,5000);clock+=1500;return '> '+key;
+      }
+      assert.equal(command,'get tempradio');assert.equal(t.options.remoteTimeout,4500);return '> off';
+    }});
+    assert.deepEqual(await f.t.probePeerRadio(key,'password',0,{...probeSettings,maxDurationMs:6000}),
+      {reachable:true,reply:'> off'});
+    assert.equal(clock,11500);assert.equal(f.t.options,f.originalOptions);
+    assert.deepEqual(f.events.filter(row=>row[0]==='remote').map(row=>row[2]),[5000,4500]);
+  }finally{Date.now=savedNow;}
+});
+
+test('a late readback cannot establish reachability beyond the absolute probe budget', async()=>{
+  const savedNow=Date.now;let clock=10000;
+  Date.now=()=>clock;
+  try{
+    const f=await radioProbeFixture({remote:command=>{
+      clock+=command==='get public.key'?3500:3000;
+      return command==='get public.key'?'> '+key:'> off';
+    }});
+    const result=await f.t.probePeerRadio(key,'password',0,{...probeSettings,maxDurationMs:6000});
+    assert.equal(result.reachable,false);assert.equal(result.error.loraReplyTimeout,true);
+    assert.equal(result.error.otaCommand,'get tempradio');assert.equal(result.error.otaEndpoint,'remote target');
+    assert.equal(result.error.otaStep,'Waiting for remote command reply');assert.equal(result.error.otaTimeoutMs,2500);
+    assert.match(result.error.otaRadio,/Source: primary radio .*reception not confirmed/);
+    assert.equal(f.events.filter(row=>row[0]==='remote').length,2);
+    assert.equal(f.t.guard,false);assert.equal(f.t.authenticated,false);assert.equal(f.t.options,f.originalOptions);
+  }finally{Date.now=savedNow;}
+});
+
+test('source-idle timeouts keep local operation context and cannot be retried as target RF failures', async()=>{
+  const savedNow=Date.now;let clock=10000;
+  Date.now=()=>clock;
+  try{
+    const f=await radioProbeFixture({local:(command,t)=>{
+      assert.equal(command,'get ota.direct');clock+=5000;
+      return '> ota.direct v=2 active='+(t.guard?1:0)+' busy=1';
+    }});
+    await assert.rejects(f.t.probePeerRadio(key,'password',0,probeSettings),error=>{
+      assert.equal(error.loraReplyTimeout,true);assert.equal(error.otaEndpoint,'USB Companion');
+      assert.equal(error.otaCommand,'get ota.direct');assert.equal(error.otaStep,'Waiting for source radio to become idle');
+      assert.equal(error.otaTimeoutMs,5000);assert.match(error.otaRadio,/Source: primary radio/);return true;
+    });
+    assert.equal(f.events.filter(row=>row[0]==='remote').length,0);
+    assert.equal(f.t.guard,false);assert.equal(f.t.authenticated,false);assert.equal(f.t.options,f.originalOptions);
+  }finally{Date.now=savedNow;}
+});
+
+test('invalid or backwards probe clocks are fatal contextual failures without additional RF requests', async()=>{
+  const savedNow=Date.now;
+  try{
+    const invalid=await radioProbeFixture();Date.now=()=>NaN;
+    await assert.rejects(invalid.t.probePeerRadio(key,'password',0,probeSettings),error=>{
+      assert.equal(error.message,'Invalid radio probe clock');assert.equal(error.otaEndpoint,'browser');
+      assert.equal(error.otaStep,'Checking radio probe deadline');assert.match(error.otaRadio,/Source: primary radio/);return true;
+    });
+    assert.deepEqual(invalid.events,[]);assert.equal(invalid.t.options,invalid.originalOptions);
+    let clock=10000;Date.now=()=>clock;
+    const backwards=await radioProbeFixture({remote:()=>{clock--;return '> '+key;}});
+    await assert.rejects(backwards.t.probePeerRadio(key,'password',1,probeSettings),error=>{
+      assert.equal(error.message,'Invalid radio probe clock');assert.equal(error.otaCommand,'get public.key');
+      assert.equal(error.otaStep,'Verifying target identity');assert.equal(error.otaEndpoint,'remote target');return true;
+    });
+    assert.equal(backwards.events.filter(row=>row[0]==='remote').length,1);
+    assert.equal(backwards.t.guard,false);assert.equal(backwards.t.authenticated,false);
+    assert.equal(backwards.t.options,backwards.originalOptions);
+  }finally{Date.now=savedNow;}
+});
+
+test('probe cleanup errors stay fatal while retaining the interrupted request context', async()=>{
+  const timeout=Object.assign(Error('Remote command timed out; result is unknown'),{loraReplyTimeout:true});
+  const cleanup=Error('USB guard close failed');let closes=0;
+  const f=await radioProbeFixture({remote:()=>{throw timeout;},guard:mode=>{
+    if(mode===3&&++closes===2)throw cleanup;
+  }});
+  await assert.rejects(f.t.probePeerRadio(key,'password',1,probeSettings),error=>{
+    assert.equal(error,cleanup);assert.equal(error.otaStep,'Closing guarded radio probe');
+    assert.equal(error.otaEndpoint,'USB Companion');assert.equal(error.otaRequestCommand,'get public.key');
+    assert.equal(error.otaRequestStep,'Verifying target identity');assert.match(error.otaRequestRadio,/Source: Radio 2/);return true;
+  });
+  assert.equal(timeout.otaCommand,'get public.key');assert.equal(timeout.otaEndpoint,'remote target');
+  assert.equal(f.events.filter(row=>row[0]==='remote').length,1);assert.equal(f.t.options,f.originalOptions);
 });
 
 test('a bounded radio setter requires proven primary access and sends exactly one request', async()=>{
   const command='tempradio 909.950,250,7,5,2,128';
   const f=await radioProbeFixture({remote:()=> 'OK - temporary channel applying'});
   assert.equal(await f.t.requestRemoteRadio(key,'password',command,probeSettings),'OK - temporary channel applying');
-  assert.deepEqual(f.events,[['remote',command,2500]]);assert.equal(f.t.options,f.originalOptions);
+  assert.deepEqual(f.events,[['remote',command,5000]]);assert.equal(f.t.options,f.originalOptions);
   for(const change of [t=>{t.guard=false;},t=>{t.authenticated=false;},t=>{t.otaRadioProfile=1;},
       t=>{t.radioProbeAdmission=null;},t=>{t.radioProbeAdmission.password='different';}]){
     const g=await radioProbeFixture();change(g.t);
@@ -224,7 +330,7 @@ test('a bounded setter never retries a lost reply or changes USB timeout handlin
   const timeout=Object.assign(Error('Remote command timed out; result is unknown'),{loraReplyTimeout:true});
   const f=await radioProbeFixture({remote:()=>{throw timeout;}});
   await assert.rejects(f.t.requestRemoteRadio(key,'password',command,probeSettings),error=>error===timeout);
-  assert.deepEqual(f.events,[['remote',command,2500]]);
+  assert.deepEqual(f.events,[['remote',command,5000]]);
   assert.equal(f.t.options,f.originalOptions);assert.equal(f.t.options.commandTimeout,12345);
   f.events.length=0;
   await assert.rejects(f.t.requestRemoteRadio(key,'password',command,{...probeSettings,maxDurationMs:500}),error=>error.loraReplyTimeout===true);

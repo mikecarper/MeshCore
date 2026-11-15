@@ -98,7 +98,7 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
   <details class="lora-ota-advanced" data-role="advanced-tools"><summary>Advanced settings and diagnostics</summary>
   <details class="lora-ota-advanced" data-role="radio-setup-panel">
     <summary>Update channel and manual radio setup</summary>
-    <p>Prepare update configures both radios and tests the link automatically. It checks temporary radio2 first on each device, using the full window when available. Primary-channel fallback starts with a two-minute trial and extends only after the target responds on the new channel. Saved normal channels stay unchanged.</p>
+    <p>Prepare update configures both radios and tests the link. The target's normal radio2 may pause during the update; its saved settings return after reboot or temporary-window expiry. Primary-channel fallback starts with a two-minute trial. Saved radio settings stay unchanged.</p>
     <p>Recognized community radio settings select a regional update profile automatically. An active temporary channel is kept unless you choose a region or edit the radio settings. Unrecognized settings keep the current channel. <a href="#regional-update-defaults">Regional defaults and limits</a>.</p>
     <details class="lora-ota-advanced">
       <summary>Update channel options</summary>
@@ -319,11 +319,27 @@ uses the full window and keeps the normal channel available. A missing USB
 reply during setup stops the operation and requires reconnecting. With a Companion that
 can select temporary radio2, the page keeps its original primary channel and
 probes the requested update channel on radio2. Probe timeouts account for radio
-airtime. If the target still answers on the original channel without a pending
+airtime and allow at least five seconds for a reply. The original-channel check
+can try up to three times within the same 90-second setup deadline. Only
+read-only identity and state checks are retried; a target switch still requires
+a fresh full-key proof on the original channel. Failures retain the command,
+stage and selected radio, rather than hiding the underlying timeout.
+If the target still answers on the original channel without a pending
 switch, setup can send another switch request, with a pause and a bounded number
 of attempts. It continues only after verifying the target on the new channel.
 Other setup paths wait up to 35 seconds for matching temporary-radio readbacks;
 errors show the requested and reported settings, including preamble.
+
+When the target already has a saved radio2 profile, setup can temporarily use
+that profile for the update instead of changing the saved tuple or disabling it
+permanently. Its normal radio2 traffic pauses while the temporary update profile
+is active. The saved profile returns when the target reboots after installation
+or when the temporary window expires. The browser verifies restoration before
+reporting the update complete and keeps the original profile in the update's
+recovery record. Existing temporary radio2 sessions, radio2 schedules and
+automatically owned runtime profiles are not replaced. This is a temporary
+frequency override on the same transceiver, not a second physical radio.
+
 Firmware without
 the required USB radio readbacks cannot be configured or checked automatically;
 the page identifies the missing command and links to a Companion update.

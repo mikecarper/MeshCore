@@ -69,6 +69,25 @@
     if (!api) throw Error('Web Crypto is unavailable');
     return checks.hex(new Uint8Array(await api.digest('SHA-256', normalized)));
   }
+  function restorationRecordError(message) {
+    return Object.assign(Error(message), {otaStep:'Validate saved target radio2 restoration record',
+      otaEndpoint:'Browser',otaLocalCheck:true,otaRestorationVerification:true});
+  }
+  function pausedSecondary(config) {
+    if (!config || config.state !== 'configured' || config.autoOwned !== false ||
+        !['rx','rxtx'].includes(config.mode) || !Array.isArray(config.tuple) || config.tuple.length !== 4 ||
+        typeof config.automatic !== 'boolean') throw restorationRecordError('The saved target radio2 restoration record is invalid.');
+    const [frequency,bandwidth,sf,cr] = config.tuple;
+    try { radioSetup().settings({frequency,bandwidth,sf,cr,minutes:1,preamble:config.preamble}); }
+    catch (_) { throw restorationRecordError('The saved target radio2 restoration record is invalid.'); }
+    return {state:'configured',tuple:config.tuple.slice(),mode:config.mode,preamble:config.preamble,
+      automatic:config.automatic,autoOwned:false};
+  }
+  function cloneRadio(radio) {
+    return {...radio,tuple:radio.tuple.slice(),
+      ...(radio.explicitProfiles ? {explicitProfiles:radio.explicitProfiles.slice()} : {}),
+      ...(radio.pausedTargetSecondary ? {pausedTargetSecondary:pausedSecondary(radio.pausedTargetSecondary)} : {})};
+  }
   class DirectSession {
     constructor(link, key, password, info, options = {}) {
       this.link = link; this.key = key; this.password = password; this.info = info;
@@ -85,10 +104,59 @@
       this.pollWake = null;
     }
     recordJournal(state) {
-      this.journal(this.verifiedRadio ? {...state, radio: {
-        ...this.verifiedRadio, tuple:this.verifiedRadio.tuple.slice(),
-        ...(this.verifiedRadio.explicitProfiles?{explicitProfiles:this.verifiedRadio.explicitProfiles.slice()}: {})
-      }} : state);
+      this.journal(this.verifiedRadio ? {...state, radio:cloneRadio(this.verifiedRadio)} : state);
+    }
+    restorePausedSecondaryRecord(record) {
+      // A journal cannot supply restoration expectations for another radio or
+      // package. The image body is independently validated before this runs.
+      if (!record?.radio?.pausedTargetSecondary || !['prepared','pull attempted','ready','install attempted','installed'].includes(record.phase) ||
+          typeof record.target !== 'string' || record.target.toLowerCase() !== this.key.toLowerCase() ||
+          typeof record.source !== 'string' || record.source.toLowerCase() !== this.link.sourceKey?.toLowerCase() ||
+          record.id !== checks.hex(this.info.merkleRoot) || record.packageHash !== this.packageHash ||
+          record.bodyHash !== this.bodyHash) return;
+      const radio = record.radio;
+      if (radio.targetProfile !== 1 || ![0,1].includes(radio.sourceProfile) || !Array.isArray(radio.tuple) || radio.tuple.length !== 4)
+        throw restorationRecordError('The saved target radio2 restoration record is invalid.');
+      if (radio.explicitProfiles !== undefined && (!Array.isArray(radio.explicitProfiles) || radio.explicitProfiles.length !== 2 ||
+          radio.explicitProfiles.some(value => typeof value !== 'boolean')))
+        throw restorationRecordError('The saved target radio2 restoration record is invalid.');
+      try { radioSetup().settings({frequency:radio.tuple[0],bandwidth:radio.tuple[1],sf:radio.tuple[2],cr:radio.tuple[3],
+        minutes:1,preamble:radio.preamble}); }
+      catch (_) { throw restorationRecordError('The saved target radio2 restoration record is invalid.'); }
+      if (this.verifiedRadio && (!radioSetup().same(radio.tuple,this.verifiedRadio.tuple) ||
+          radio.preamble !== this.verifiedRadio.preamble || radio.sourceProfile !== this.verifiedRadio.sourceProfile ||
+          radio.targetProfile !== this.verifiedRadio.targetProfile)) return;
+      const expected = pausedSecondary(radio.pausedTargetSecondary), current = this.verifiedRadio?.pausedTargetSecondary;
+      if (current && radioSetup().secondarySignature(current) !== radioSetup().secondarySignature(expected))
+        throw restorationRecordError('The target radio2 restoration record differs from this update setup.');
+      if (!this.verifiedRadio) this.verifiedRadio = cloneRadio(radio);
+      this.verifiedRadio.pausedTargetSecondary = expected;
+    }
+    async verifyRestoredTargetSecondary() {
+      const expected = this.verifiedRadio?.pausedTargetSecondary;
+      if (!expected) return;
+      const setup = radioSetup(); let command = 'get tempradio2';
+      try {
+        if (setup.secondary(await this.remote(command), command).state !== 'off')
+          throw Error('The target temporary radio2 window is still active or pending.');
+        command = 'get radio2';
+        const actual = setup.secondary(await this.remote(command));
+        if (setup.secondarySignature(actual) !== setup.secondarySignature(expected))
+          throw Error('The target saved radio2 settings differ from the settings paused for this update.');
+        this.progress('Target normal radio2 restored; its saved settings are verified unchanged.');
+      } catch (cause) {
+        const error = cause instanceof Error ? cause : Error(String(cause));
+        error.message = 'Firmware installed and verified, but normal target radio2 restoration could not be verified: ' + diagnostic(error.message);
+        const step = 'Verify restored target radio2 after reboot';
+        if (error.otaStep || error.otaCommand || error.otaEndpoint) {
+          error.otaRequestStep = step; error.otaRequestCommand = command;
+        }
+        if (!error.otaStep) error.otaStep = step;
+        if (!error.otaEndpoint) error.otaEndpoint = 'remote target';
+        if (!error.otaCommand) error.otaCommand = command;
+        error.otaRestorationVerification = true;
+        throw error;
+      }
     }
     requireActive() {
       if (this.cancelled) throw Error('Stopped; no further update commands were sent.');
@@ -118,7 +186,7 @@
       const result=await leases.maintain(this.link,this.key,this.password,record,{progress:this.progress,
         journal:updated=>this.journal(updated)});
       if(result.state==='unavailable')this.leaseMaintenanceUnavailable=true;
-      if(result.record?.radio)this.verifiedRadio={...result.record.radio,tuple:result.record.radio.tuple.slice()};
+      if(result.record?.radio)this.verifiedRadio=cloneRadio(result.record.radio);
       this.requireActive();
     }
     async requireInstallHash() {
@@ -301,8 +369,11 @@
         const proof=this.link.otaLeaseProof,setup=radioSetup();
         if(proof&&proof.source===this.link.sourceKey&&proof.target===this.key&&setup.same(proof.tuple||[],sourceRadio)&&
           proof.preamble===sourcePreamble&&proof.sourceProfile===this.verifiedRadio.sourceProfile&&
-          proof.targetProfile===this.verifiedRadio.targetProfile&&Array.isArray(proof.explicitProfiles))
+          proof.targetProfile===this.verifiedRadio.targetProfile&&Array.isArray(proof.explicitProfiles)) {
           this.verifiedRadio.explicitProfiles=proof.explicitProfiles.map(value=>value===true);
+          if (proof.pausedTargetSecondary && proof.targetProfile === 1)
+            this.verifiedRadio.pausedTargetSecondary=pausedSecondary(proof.pausedTargetSecondary);
+        }
       }
       return {source:sourceRadio, target:targetRadio, savedSource:savedSourceRadio, sourceReadback};
     }
@@ -319,9 +390,12 @@
       this.packageHash = checks.hex(new Uint8Array(await cryptoApi.digest('SHA-256', this.info.blob)));
       this.installHash = await installHash(this.info.blob);
       const prior = this.readJournal();
-      if (options.allowExisting && ['install attempted', 'installed'].includes(prior?.phase) && prior.target?.toLowerCase() === this.key.toLowerCase() && prior.source?.toLowerCase() === this.link.sourceKey?.toLowerCase() && prior.id === checks.hex(this.info.merkleRoot) && prior.packageHash === this.packageHash && dest.targetId === this.info.targetId && dest.hwId === this.info.hwId && dest.version === this.info.fwVersion) {
+      if (options.allowExisting && ['install attempted', 'installed'].includes(prior?.phase) && typeof prior.target === 'string' && prior.target.toLowerCase() === this.key.toLowerCase() && typeof prior.source === 'string' && prior.source.toLowerCase() === this.link.sourceKey?.toLowerCase() && prior.id === checks.hex(this.info.merkleRoot) && prior.packageHash === this.packageHash && dest.targetId === this.info.targetId && dest.hwId === this.info.hwId && dest.version === this.info.fwVersion) {
         this.bodyHash = await expectedBody(this.info, this.image);
         if (dest.baseHash === this.bodyHash && prior.bodyHash === this.bodyHash) {
+          this.verifiedRadio = null;
+          this.restorePausedSecondaryRecord(prior);
+          await this.verifyRestoredTargetSecondary();
           this.recordJournal({phase:'installed', target:this.key, source:this.link.sourceKey, id:prior.id, packageHash:this.packageHash, bodyHash:this.bodyHash});
           return {...dest, download:'installed'};
         }
@@ -340,6 +414,7 @@
       this.bodyHash = await expectedBody(this.info, this.image);
       const checkSourceOta = !this.link.browserRawSource || this.link.otaSupported === true || this.link.usesUsbFolderFallback === true;
       await this.inspectRadios();
+      this.restorePausedSecondaryRecord(prior);
       await this.requireInstallHash();
       const state = await this.readDownload();
       const disposition = this.downloadDisposition(state, options);
@@ -622,9 +697,11 @@
           freshSession = false;
           const d = checks.destination(await this.remote('ota status'), await this.remote('ota self'), await this.remote('ver'));
           if (d.targetId === this.info.targetId && d.hwId === this.info.hwId && d.version === this.info.fwVersion && d.baseHash === this.bodyHash) {
+            await this.verifyRestoredTargetSecondary();
             this.recordJournal({phase: 'installed', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, bodyHash: this.bodyHash}); return d;
           }
-        } catch (_) {
+        } catch (error) {
+          if (error?.otaRestorationVerification) throw error;
           // Target reboot may take time; a failed USB stream needs reconnect.
           this.requireActive();
         }

@@ -7,7 +7,7 @@ const selected = {frequency: 909.95, bandwidth: 250, sf: 5, cr: 5, minutes: 120,
 const primary = setup.commands(selected), trial = setup.commands({...selected, minutes: 2}), secondary = setup.commands(selected, {sourceProfile: 1, targetProfile: 1});
 
 function fixture(options = {}) {
-  let clock = 10000, protectedWrite = false, proofs = 0, targetAckAt = null, targetSetters = 0, newProbes = 0, allProbes = 0;
+  let clock = 10000, protectedWrite = false, proofs = 0, targetAckAt = null, targetSetters = 0, newProbes = 0, originalProbes = 0, allProbes = 0;
   const events = [], overrides = new Map(options.overrides || []);
   const preferences = Object.fromEntries(['source', 'target'].map(label => [label, {
     rxps: options.factoryDefaults ? 'on' : 'off', hops: options.factoryDefaults ? '3' : '0',
@@ -17,8 +17,8 @@ function fixture(options = {}) {
   if (options.initialPrimary) for (const label of ['source', 'target']) states[label][0] = {started: 0, tuple: options.initialPrimary, minutes: options.initialMinutes ?? 120};
   const requested = options.legacy ? {...selected, frequency: saved.source[0], bandwidth: saved.source[1], sf: saved.source[2], cr: saved.source[3]} : selected;
   const expectedTuple = [requested.frequency, requested.bandwidth, requested.sf, requested.cr];
-  const savedSecondary = {source: options.sourceBusy ? '> 908.15,250,7,5,rxtx,48' : '> off (manual)',
-    target: options.targetBusy ? '> 908.15,250,7,5,rxtx,48' : '> off (manual)'};
+  const savedSecondary = {source: options.sourceSavedSecondary ?? (options.sourceBusy ? '> 908.15,250,7,5,rxtx,48' : '> off (manual)'),
+    target: options.targetSavedSecondary ?? (options.targetBusy ? '> 908.15,250,7,5,rxtx,48' : '> off (manual)')};
   const supported = {source: options.sourceSecondary !== false, target: options.targetSecondary !== false};
   if (options.adopt) { states.source[1] = {started: 0}; states.target[1] = {started: 0}; }
   const link = {
@@ -62,8 +62,8 @@ function fixture(options = {}) {
       return read('target', command);
     }
   };
-  if (options.fastProbe) link.probePeerRadio = async function(k, password, profile, {radio, preamble, readback} = {}) {
-    events.push(['peer-probe', profile, clock]);
+  if (options.fastProbe) link.probePeerRadio = async function(k, password, profile, {radio, preamble, readback, maxDurationMs} = {}) {
+    events.push(['peer-probe', profile, clock, maxDurationMs]);
     assert.equal(k, key); assert.equal(password, 'pw');
     assert.deepEqual(radio, profile ? expectedTuple : saved.source);
     if (profile) {
@@ -71,11 +71,14 @@ function fixture(options = {}) {
       assert.ok(live('source', 1), 'new-channel probe before source R2 became live');
     }
     assert.equal(states.source[0], null, 'dual-channel handshake retuned the original source radio');
-    clock += options.probeDelay ?? 1000;
+    clock += Math.min(options.probeDelay ?? 1000, options.lateProbe ? Infinity : maxDurationMs ?? Infinity);
     this.guard = this.authenticated = false; this.otaRadioProfile = profile;
     if (++allProbes === options.probeUsbFailureAt) {
       this.failure = Error('USB disconnected during channel probe'); throw this.failure;
     }
+    if (allProbes === options.probeFatalFailureAt) throw options.probeFatalError ?? Error('Invalid radio probe response');
+    if (!profile && ++originalProbes <= (options.originalProbeMisses ?? 0))
+      return {reachable: false, error: options.originalProbeError};
     const targetProfile = states.target[1] ? 1 : 0;
     const targetLive = live('target', targetProfile);
     const reachable = profile ? targetLive && ++newProbes > (options.newProbeMisses ?? 0) :
@@ -199,15 +202,118 @@ test('both unused secondary profiles are preferred, live pending is not credited
   assert.ok(f.events.some(row => row[0] === 'target' && row[1] === 'get radio2.status'));
 });
 
-test('source and target choices are independent; busy or explicitly unsupported secondary uses primary exactly once', async () => {
+test('source and target choices are independent; configured target secondary is borrowed while busy source falls back', async () => {
   for (const options of [{sourceSupports: false}, {targetBusy: true}, {sourceBusy: true}, {sourceSecondary: false, sourceSupports: false, targetSecondary: false}, {sourceBusy: true, targetBusy: true}]) {
     const f = fixture(options), before = f.before(), row = await setup.prepare(f.link, key, '', selected, f.options);
     assert.equal(row.sourceProfile, options.sourceSupports === false || options.sourceBusy ? 0 : 1);
-    assert.equal(row.targetProfile, options.targetBusy || options.targetSecondary === false ? 0 : 1);
+    assert.equal(row.targetProfile, options.targetSecondary === false ? 0 : 1);
     assert.equal(f.before(), before);
     assert.equal(f.writes().filter(row => row[0] === 'target').length, row.targetProfile ? 1 : 2);
     assert.equal(f.writes().filter(row => row[0] === 'source').length, row.sourceProfile ? 1 : 2);
     assert.ok(f.writes().every(row => !row[1].includes('.ifidle')));
+  }
+});
+
+test('a configured target secondary is paused only by a temporary lease and its saved identity is retained', async () => {
+  for (const targetSavedSecondary of [
+    '> 908.15,250,7,5,rxtx,48',
+    '> 909.900,250,7,5,rx,48',
+    '> 908.15,250,7,5,rxtx,48 (auto)'
+  ]) for (const fastProbe of [false, true]) {
+    const f = fixture({targetSavedSecondary, fastProbe, targetApplyDelay: 0}), before = f.before();
+    const expected = setup.secondary(targetSavedSecondary);
+    const result = await setup.prepare(f.link, key, 'pw', selected, f.options);
+    assert.equal(result.sourceProfile, 1); assert.equal(result.targetProfile, 1);
+    assert.equal(f.before(), before);
+    assert.deepEqual(result.pausedTargetSecondary, expected);
+    assert.deepEqual(result.savedTargetSecondary, expected);
+    assert.deepEqual(f.link.otaLeaseProof.pausedTargetSecondary, expected);
+    assert.notEqual(f.link.otaLeaseProof.pausedTargetSecondary, result.pausedTargetSecondary);
+    assert.notEqual(f.link.otaLeaseProof.pausedTargetSecondary.tuple, result.pausedTargetSecondary.tuple);
+    assert.deepEqual(f.writes().filter(row => row[0] === 'target').map(row => row[1]), [secondary.target]);
+    assert.ok(!f.events.some(row => /^(?:set radio2 |set radio2\.cross |set radioat2 |set tempradioat2 |normalradio)/.test(row[1] || '')));
+    assert.equal(f.states.target[0], null);
+  }
+});
+
+test('automatic preamble changes preserve the configured target signature without masking saved RF or ownership changes', () => {
+  const original = setup.secondary('> 908.15,250,7,5,rxtx,48 (auto)');
+  const changedEffectivePreamble = setup.secondary('> 908.15,250,7,5,rxtx,128 (auto)');
+  assert.equal(setup.secondarySignature(original), setup.secondarySignature(changedEffectivePreamble));
+  for (const reply of ['> 908.15,250,7,5,rxtx,48', '> 908.15,250,7,5,rx,48 (auto)',
+    '> 908.5,250,7,5,rxtx,48 (auto)', '> 908.15,250,7,5,rxtx,48 (auto); auto-owned'])
+    assert.notEqual(setup.secondarySignature(original), setup.secondarySignature(setup.secondary(reply)));
+});
+
+test('borrowed target secondary is never disabled or restored by a guessed saved-setting write on failure', async () => {
+  const f = fixture({targetBusy: true, targetTimeout: true}), before = f.before();
+  await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options), error => {
+    assert.match(error.message, /target saved radio2 settings were not changed/);
+    assert.match(error.message, /returns on reboot or temporary-window expiry/);
+    return true;
+  });
+  assert.equal(f.before(), before);
+  assert.deepEqual(f.writes().filter(row => row[0] === 'target').map(row => row[1]), [secondary.target]);
+  assert.equal(f.link.otaLeaseProof, undefined);
+});
+
+test('rechecking an owned borrowed target lease preserves settings and duration even with an existing matching download', async () => {
+  const f = fixture({targetBusy: true, fastProbe: true, targetApplyDelay: 0});
+  await setup.prepare(f.link, key, 'pw', selected, f.options);
+  const before = f.before(), states = JSON.stringify(f.states), written = f.writes().length;
+  f.overrides.set('target:ota status', 'download: id=12345678 active');
+  const result = await setup.prepare(f.link, key, 'pw', selected, f.options);
+  assert.equal(result.ready, true); assert.equal(result.adoptedSource, true); assert.equal(result.adoptedTarget, true);
+  assert.equal(f.writes().length, written); assert.equal(f.before(), before); assert.equal(JSON.stringify(f.states), states);
+  assert.deepEqual(result.changedSettings, []);
+  assert.deepEqual(result.pausedTargetSecondary, setup.secondary(f.savedSecondary.target));
+  assert.deepEqual(f.link.otaLeaseProof.pausedTargetSecondary, result.pausedTargetSecondary);
+  assert.deepEqual(f.link.otaLeaseProof.explicitProfiles, [true, true]);
+});
+
+test('adopting an already active borrowed target lease does not claim ownership or extend either window', async () => {
+  const f = fixture({adopt: true, targetBusy: true, targetDownload: true, fastProbe: true});
+  const before = f.before(), states = JSON.stringify(f.states);
+  const result = await setup.prepare(f.link, key, 'pw', selected, f.options);
+  assert.equal(result.ready, true); assert.equal(result.adoptedSource, true); assert.equal(result.adoptedTarget, true);
+  assert.equal(f.writes().length, 0); assert.equal(f.before(), before); assert.equal(JSON.stringify(f.states), states);
+  assert.deepEqual(result.changedSettings, []);
+  assert.deepEqual(result.pausedTargetSecondary, setup.secondary(f.savedSecondary.target));
+  assert.deepEqual(f.link.otaLeaseProof.explicitProfiles, [false, false]);
+});
+
+test('existing borrowed target leases are not adopted with pending, mismatched, automatic-owner or scheduled state', async () => {
+  for (const options of [
+    {pendingForever: true}, {targetPreamble: 64}, {targetFrequency: 908.5},
+    {targetSavedSecondary: '> 908.15,250,7,5,rxtx,48; auto-owned'},
+    {overrides: [['target:get radio2.cross', '> auto']]},
+    {overrides: [['target:get radioat2', '> slots: 1@2000000000']]},
+    {overrides: [['target:get tempradioat2', '> slots: 1@2000000000']]}
+  ]) {
+    const f = fixture({adopt: true, targetBusy: true, targetDownload: true, fastProbe: true, ...options});
+    const before = f.before(), states = JSON.stringify(f.states);
+    await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options));
+    assert.equal(f.writes().length, 0); assert.equal(f.before(), before); assert.equal(JSON.stringify(f.states), states);
+    assert.equal(f.link.otaLeaseProof, undefined);
+  }
+});
+
+test('automatic ownership and scheduled target secondary use primary without replacing their saved or temporary settings', async () => {
+  for (const options of [
+    {targetSavedSecondary: '> 908.15,250,7,5,rxtx,48; auto-owned'},
+    {targetBusy: true, overrides: [['target:get radioat2', '> slots: 1@2000000000']]},
+    {targetBusy: true, overrides: [['target:get tempradioat2', '> slots: 1@2000000000']]},
+    {targetBusy: true, overrides: [['target:get radio2.cross', '> auto']]},
+    {targetBusy: true, overrides: [['target:get tempradio2', '> 908.5,250,7,5,rxtx,48; 0d1h0m (60 min) left']]}
+  ]) {
+    const f = fixture(options), before = f.before();
+    const result = await setup.prepare(f.link, key, 'pw', selected, f.options);
+    assert.equal(result.sourceProfile, 1); assert.equal(result.targetProfile, 0);
+    assert.equal(result.pausedTargetSecondary, null);
+    assert.equal(f.link.otaLeaseProof.pausedTargetSecondary, undefined);
+    assert.equal(f.before(), before);
+    assert.deepEqual(f.writes().filter(row => row[0] === 'target').map(row => row[1]), [trial.target, primary.target]);
+    assert.ok(!f.events.some(row => row[0] === 'target' && /^set (?:tempradio2 |radio2(?:\.cross)? |radioat2 |tempradioat2 )/.test(row[1] || '')));
   }
 });
 
@@ -385,6 +491,106 @@ test('dual-channel setup prepares source R2 before switching the target and comp
   assert.equal(f.writes().filter(row => row[0] === 'source').length, 1);
   assert.equal(f.writes().filter(row => row[0] === 'target').length, 1);
   assert.ok(!f.events.some(row => row[0] === 'wait' && row[1] === 2500));
+});
+
+test('two original-channel RF misses retry the same primary and prove identity before any target switch', async () => {
+  const f = fixture({fastProbe: true, originalProbeMisses: 2, targetApplyDelay: 0}), before = f.before();
+  const result = await setup.prepare(f.link, key, 'pw', selected, f.options);
+  assert.equal(result.ready, true);
+  const targetWrite = f.events.findIndex(row => row[0] === 'target' && row[1] === secondary.target);
+  assert.ok(targetWrite >= 0);
+  const beforeSwitch = f.events.slice(0, targetWrite);
+  assert.deepEqual(beforeSwitch.filter(row => row[0] === 'peer-probe').map(row => row[1]), [0, 0, 0]);
+  assert.deepEqual(beforeSwitch.filter(row => row[0] === 'peer-probe-result').map(row => row[1]), [0]);
+  assert.equal(beforeSwitch.slice(beforeSwitch.findIndex(row => row[0] === 'peer-probe'))
+    .filter(row => row[0] === 'wait' && row[1] === 500).length, 2);
+  assert.ok(beforeSwitch.some(row => row[0] === 'target' && row[1] === 'get tempradio2'));
+  assert.deepEqual(f.writes().filter(row => row[0] === 'target').map(row => row[1]), [secondary.target]);
+  assert.deepEqual(f.writes().filter(row => row[0] === 'source').map(row => row[1]), [secondary.source]);
+  assert.equal(f.states.source[0], null); assert.equal(f.before(), before);
+});
+
+test('three original-channel RF misses stop without target writes and preserve the precise failed command context', async () => {
+  const originalProbeError = Object.assign(Error('Remote command timed out; result is unknown'), {
+    loraReplyTimeout: true, otaCommand: 'get public.key', otaTimeoutMs: 5000,
+    otaStage: 'Waiting for remote command reply', otaEndpoint: 'remote target',
+    otaPath: 'direct (0 hops; enforced by guarded session)', otaRadio: 'Source: radio1; target: radio1'
+  });
+  const f = fixture({fastProbe: true, originalProbeMisses: Infinity, originalProbeError}), before = f.before();
+  await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options), error => {
+    assert.match(error.message, /original channel after 3 checks; no target switch request was sent/);
+    assert.match(error.message, /Remote command timed out; result is unknown/);
+    for (const field of Object.keys(originalProbeError)) assert.deepEqual(error[field], originalProbeError[field], field);
+    assert.equal(error.otaAttempt, 3); assert.equal(error.otaMaxAttempts, 3);
+    assert.equal(error.targetSetupAttempted, false); assert.equal(error.sourceSetupAttempted, true);
+    return true;
+  });
+  assert.deepEqual(f.events.filter(row => row[0] === 'peer-probe').map(row => row[1]), [0, 0, 0]);
+  assert.equal(f.writes().filter(row => row[0] === 'target').length, 0);
+  assert.deepEqual(f.writes().filter(row => row[0] === 'source').map(row => row[1]), [secondary.source]);
+  assert.equal(f.before(), before); assert.equal(f.link.otaLeaseProof, undefined);
+});
+
+test('original-channel retries share one 90-second deadline rather than extending it on each miss', async () => {
+  const f = fixture({fastProbe: true, originalProbeMisses: Infinity, probeDelay: 60000});
+  const originalProbeError = Object.assign(Error('Original-channel reply timed out'), {loraReplyTimeout: true, otaCommand: 'get public.key'});
+  // Keep the same precise RF failure while the fake clock consumes the supplied remaining budget.
+  const probe = f.link.probePeerRadio;
+  f.link.probePeerRadio = async function(...args) {
+    const result = await probe.apply(this, args);
+    return result.reachable ? result : {...result, error: originalProbeError};
+  };
+  await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options), error => {
+    assert.equal(error.otaAttempt, 2); assert.equal(error.otaCommand, 'get public.key');
+    return true;
+  });
+  const probes = f.events.filter(row => row[0] === 'peer-probe');
+  assert.deepEqual(probes.map(row => row[1]), [0, 0]);
+  assert.equal(probes[0][3], 90000); assert.equal(probes[1][3], 29500);
+  assert.equal(f.options.now() - probes[0][2], 90000);
+  assert.equal(f.writes().filter(row => row[0] === 'target').length, 0);
+});
+
+test('an RF failure returned after the 90-second deadline retains its annotated command cause', async () => {
+  const originalProbeError = Object.assign(Error('Remote command timed out; result is unknown'), {
+    loraReplyTimeout: true, otaCommand: 'get public.key', otaTimeoutMs: 90000,
+    otaStage: 'Waiting for remote command reply', otaEndpoint: 'remote target',
+    otaPath: 'direct (0 hops; enforced by guarded session)', otaRadio: 'Source: radio1; target: radio1'
+  });
+  const f = fixture({fastProbe: true, lateProbe: true, probeDelay: 90001, originalProbeMisses: Infinity, originalProbeError});
+  await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options), error => {
+    assert.match(error.message, /exceeded 90 seconds/);
+    assert.match(error.message, /Remote command timed out; result is unknown/);
+    for (const field of Object.keys(originalProbeError)) assert.deepEqual(error[field], originalProbeError[field], field);
+    return true;
+  });
+  assert.equal(f.events.filter(row => row[0] === 'peer-probe').length, 1);
+  assert.equal(f.writes().filter(row => row[0] === 'target').length, 0);
+});
+
+test('USB and non-RF probe failures stop immediately rather than retrying the original channel', async () => {
+  for (const options of [
+    {probeUsbFailureAt: 1}, {probeUsbFailureAt: 2, originalProbeMisses: 1},
+    {probeFatalFailureAt: 1, probeFatalError: Error('Invalid radio probe response')}
+  ]) {
+    const f = fixture({fastProbe: true, ...options});
+    await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options), /USB disconnected|Invalid radio probe response/);
+    assert.equal(f.events.filter(row => row[0] === 'peer-probe').length, options.probeUsbFailureAt ?? options.probeFatalFailureAt);
+    assert.equal(f.writes().filter(row => row[0] === 'target').length, 0);
+    assert.equal(f.link.otaLeaseProof, undefined);
+  }
+});
+
+test('unreachable probe results retry only remote RF timeouts, never invalid responses or USB command timeouts', async () => {
+  for (const originalProbeError of [Error('Invalid radio probe response'),
+    Object.assign(Error('USB command timed out'), {loraReplyTimeout: true, otaEndpoint: 'USB Companion'})]) {
+    const f = fixture({fastProbe: true, originalProbeMisses: Infinity, originalProbeError});
+    await assert.rejects(setup.prepare(f.link, key, 'pw', selected, f.options), error => {
+      assert.match(error.message, new RegExp(originalProbeError.message)); return true;
+    });
+    assert.equal(f.events.filter(row => row[0] === 'peer-probe').length, 1);
+    assert.equal(f.writes().filter(row => row[0] === 'target').length, 0);
+  }
 });
 
 test('dual-channel setup keeps checking the new channel and checks the original only after failed new probes', async () => {
@@ -618,11 +824,11 @@ test('existing download adopts only both exact active secondary leases with unch
   }
 });
 
-test('automatic crossing with an existing temporary secondary and overlapping busy secondaries block before changes', async () => {
+test('automatic crossing with an existing temporary secondary and overlapping unborrowable secondaries block before changes', async () => {
   for (const label of ['source', 'target']) {
     for (const options of [
       {adopt: true, overrides: [[label + ':get radio2.cross', '> auto']]},
-      {overrides: [[label + ':get radio2', '> 909.900,250,7,5,rxtx,48']]},
+      {overrides: [[label + ':get radio2', '> 909.900,250,7,5,rxtx,48' + (label === 'target' ? '; auto-owned' : '')]]},
       {overrides: [[label + ':get tempradio2', '> 909.900,250,7,5,rxtx,48; 0d1h0m (60 min) left']]}
     ]) {
       const f = fixture({...options, factoryDefaults: true});

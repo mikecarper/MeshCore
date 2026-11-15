@@ -334,7 +334,7 @@
     }
     showRadioCommands();
     $('radio-setup-status').textContent=!link?'Connect a USB radio to prepare the update channel.':canPrepareRadioChannel()
-      ? 'The update channel will be prepared automatically when you check the firmware. Temporary radio2 is preferred when available and unused.'
+      ? 'The update channel is prepared automatically. The target\'s normal radio2 may pause temporarily; its saved settings return after reboot or window expiry.'
       : 'Update this Companion to enable automatic channel setup: its firmware cannot read and set temporary channels over USB.';
   }
   async function applyTargetRadioHardware(hwId){

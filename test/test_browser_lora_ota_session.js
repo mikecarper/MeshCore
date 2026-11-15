@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto').webcrypto;
 const pkg = require('../docs/_javascript/lora_ota_package.js');
 const checks = require('../docs/_javascript/lora_ota_checks.js');
+const radioSetup = require('../docs/_javascript/lora_ota_radio_setup.js');
 const {DirectSession, temp, download, policy, installHash} = require('../docs/_javascript/lora_ota_session.js');
 const installUsage = 'ERR usage: ota installhash <64-hex-container-sha256>';
 
@@ -142,6 +143,48 @@ test('selected temporary radio2 requires live RXTX proof and keeps the normal pr
     }
     assert(f.calls.every(([,command])=>command.startsWith('get ')||command==='ota config'));
   }
+});
+
+test('a bound borrowed-radio2 proof and journal keep independent restoration snapshots', async () => {
+  const source='aa'.repeat(32),target='bb'.repeat(32);
+  const paused=radioSetup.secondary('> 911.150,250,7,5,rx,32 (auto)');
+  const proof={source,target,tuple:[906.525,250,5,5],preamble:128,sourceProfile:1,targetProfile:1,
+    explicitProfiles:[true,true],pausedTargetSecondary:paused};
+  const f=radioPreflight({sourceTemp:'TempRadio inactive',targetTemp:'> off',
+    link:{sourceKey:source,otaRadioProfile:1,otaTargetProfile:1,supportsOtaRadio2:true,otaLeaseProof:proof}});
+  await f.session.inspectRadios();
+  let record; f.session.journal=value=>{record=value;};
+  f.session.recordJournal({phase:'prepared'});
+  assert.deepEqual(record.radio.pausedTargetSecondary,paused);
+  proof.pausedTargetSecondary.tuple[0]=912.5; proof.explicitProfiles[1]=false;
+  assert.equal(f.session.verifiedRadio.pausedTargetSecondary.tuple[0],911.15);
+  assert.equal(record.radio.pausedTargetSecondary.tuple[0],911.15);
+  record.radio.pausedTargetSecondary.tuple[0]=913.5;
+  f.session.recordJournal({phase:'ready'});
+  assert.equal(record.radio.pausedTargetSecondary.tuple[0],911.15);
+  assert.deepEqual(record.radio.explicitProfiles,[true,true]);
+});
+
+test('a same-package journal cannot attach restoration metadata from a different live update window', async () => {
+  const source='aa'.repeat(32),target='bb'.repeat(32);
+  const f=radioPreflight({sourceTemp:'TempRadio inactive',targetTemp:'> off',
+    link:{sourceKey:source,otaRadioProfile:1,otaTargetProfile:1,supportsOtaRadio2:true}});
+  await f.session.inspectRadios();
+  f.session.info={merkleRoot:Uint8Array.from([1,2,3,4])};
+  f.session.packageHash='cc'.repeat(32);f.session.bodyHash='1122334455667788';
+  const paused=radioSetup.secondary('> 911.150,250,7,5,rx,32 (auto)');
+  const record={phase:'ready',source,target,id:'01020304',packageHash:f.session.packageHash,bodyHash:f.session.bodyHash,
+    radio:{...structuredClone(f.session.verifiedRadio),pausedTargetSecondary:paused}};
+  for(const change of [{tuple:[907.525,250,5,5]},{preamble:64},{sourceProfile:0}]) {
+    f.session.restorePausedSecondaryRecord({...record,radio:{...record.radio,...change}});
+    assert.equal(f.session.verifiedRadio.pausedTargetSecondary,undefined);
+  }
+  f.session.verifiedRadio.targetProfile=0;
+  f.session.restorePausedSecondaryRecord(record);
+  assert.equal(f.session.verifiedRadio.pausedTargetSecondary,undefined);
+  f.session.verifiedRadio.targetProfile=1;
+  f.session.restorePausedSecondaryRecord(record);
+  assert.deepEqual(f.session.verifiedRadio.pausedTargetSecondary,paused);
 });
 test('source and target profiles are selected independently for older primary-only peers', async () => {
   for(const [sourceProfile,targetProfile]of [[1,0],[0,1]]) {
@@ -999,6 +1042,115 @@ async function rebootFixture({sourceKind = 'guarded', oldTarget = false, differe
   session = new DirectSession(link, target, password, p, {pollMs:1, readJournal:() => record, journal:r => {record = r;}});
   return {session, link, calls, installed:() => installed, record:() => record, savedTarget};
 }
+
+async function borrowedRebootFixture({expected='> 911.150,250,7,5,rxtx,32 (auto)',actual=expected,temporary='> off',errorCommand=null,errorEndpoint=null,errorActualCommand=null,errorActualStep=null}={}) {
+  const f=await rebootFixture({sourceKind:'radio2'}),paused=radioSetup.secondary(expected),progress=[];
+  const state={actual,temporary,errorCommand};
+  f.link.otaLeaseProof={source:f.link.sourceKey,target:f.session.key,tuple:[909.95,250,5,5],preamble:128,
+    sourceProfile:1,targetProfile:1,explicitProfiles:[true,true],pausedTargetSecondary:paused};
+  f.session.progress=message=>progress.push(message);
+  const remote=f.link.remoteCommand.bind(f.link);
+  f.link.remoteCommand=async(key,password,command)=>{
+    if(f.installed()&&(command==='get tempradio2'||command==='get radio2')) {
+      assert.equal(key,f.session.key);assert.equal(password,f.session.password);
+      f.calls.push('restore '+command);
+      if(state.errorCommand===command)throw Object.assign(Error('Remote command timed out; result is unknown'),
+        {otaStep:errorActualStep||'Waiting for remote command reply',otaCommand:errorActualCommand||command,otaTimeoutMs:75000,...(errorEndpoint?{otaEndpoint:errorEndpoint}:{})});
+      return command==='get radio2'?state.actual:state.temporary;
+    }
+    return remote(key,password,command);
+  };
+  return {...f,state,paused,progress};
+}
+
+test('install verifies borrowed target radio2 restoration only after the running image is proved', async () => {
+  for(const mode of ['rx','rxtx']) {
+    const f=await borrowedRebootFixture({expected:'> 911.150,250,7,5,'+mode+',32 (auto)',
+      actual:'> 911.150,250,7,5,'+mode+',128 (auto)'});
+    await f.session.install();
+    assert.equal(f.record().phase,'installed');
+    assert.deepEqual(f.record().radio.pausedTargetSecondary,f.paused);
+    assert(f.progress.some(message=>/normal radio2 restored/.test(message)));
+    const install=f.calls.findIndex(command=>command.startsWith('remote ota installhash '));
+    assert(install>=0&&f.calls.indexOf('restore get tempradio2')>install);
+    assert.deepEqual(f.calls.filter(command=>command.startsWith('restore ')),['restore get tempradio2','restore get radio2']);
+    assert(!f.calls.some(command=>/^remote set (?:radio2|tempradio2)/.test(command)));
+  }
+});
+
+test('restoration failure stops promptly with its exact read command and never repeats installation', async () => {
+  for(const change of [
+    {temporary:'> 909.950,250,5,5,rxtx,128; 0d2h0m (120 min) left',command:'get tempradio2'},
+    {actual:'> 912.150,250,7,5,rxtx,32 (auto)',command:'get radio2'},
+    {actual:'> 911.150,250,7,5,rx,32 (auto)',command:'get radio2'},
+    {actual:'Error: unsupported',command:'get radio2'},
+    {errorCommand:'get radio2',command:'get radio2'},
+    {errorCommand:'get tempradio2',errorEndpoint:'USB source',errorActualCommand:'get ota.direct.reply 23',
+      errorActualStep:'Reading Companion direct-reply mailbox',command:'get tempradio2'},
+    {expected:'> 911.150,250,7,5,rxtx,32',actual:'> 911.150,250,7,5,rxtx,64',command:'get radio2'}
+  ]) {
+    const f=await borrowedRebootFixture(change);
+    await assert.rejects(f.session.install(),error=>{
+      assert.match(error.message,/Firmware installed and verified, but normal target radio2 restoration/);
+      assert.equal(error.otaStep,change.errorActualStep||(change.errorCommand?'Waiting for remote command reply':'Verify restored target radio2 after reboot'));
+      assert.equal(error.otaCommand,change.errorActualCommand||change.command);assert.equal(error.otaEndpoint,change.errorEndpoint||'remote target');
+      assert.equal(error.otaRestorationVerification,true);
+      if(change.errorCommand) {
+        assert.equal(error.otaRequestStep,'Verify restored target radio2 after reboot');
+        assert.equal(error.otaRequestCommand,change.command);
+      }
+      return true;
+    });
+    assert.equal(f.record().phase,'install attempted');
+    assert.deepEqual(f.record().radio.pausedTargetSecondary,f.paused);
+    assert.equal(f.calls.filter(command=>command.startsWith('remote ota installhash ')).length,1);
+    assert(!f.progress.some(message=>/normal radio2 restored/.test(message)));
+    assert(!f.calls.some(command=>/^remote set (?:radio2|tempradio2)/.test(command)));
+  }
+});
+
+test('reload retains a bound restoration obligation and recovery verifies it without another install', async () => {
+  const f=await borrowedRebootFixture({errorCommand:'get radio2'});
+  await assert.rejects(f.session.install(),/restoration could not be verified/);
+  delete f.link.otaLeaseProof;
+  let record=structuredClone(f.record());
+  const recovered=new DirectSession(f.link,f.session.key,f.session.password,f.session.info,
+    {readJournal:()=>record,journal:value=>{record=value;}});
+  await assert.rejects(recovered.inspect({allowExisting:true}),error=>error.otaCommand==='get radio2');
+  assert.equal(record.phase,'install attempted');
+  f.state.errorCommand=null;
+  assert.equal((await recovered.inspect({allowExisting:true})).download,'installed');
+  assert.equal(record.phase,'installed');assert.deepEqual(record.radio.pausedTargetSecondary,f.paused);
+  f.state.temporary='> 909.950,250,5,5,rxtx,128; 0d2h0m (120 min) left';
+  await assert.rejects(recovered.inspect({allowExisting:true}),error=>error.otaCommand==='get tempradio2');
+  assert.equal(f.calls.filter(command=>command.startsWith('remote ota installhash ')).length,1);
+});
+
+test('foreign journals never supply saved-radio2 restoration expectations', async () => {
+  const f=await borrowedRebootFixture();await f.session.install();delete f.link.otaLeaseProof;
+  for(const change of [{source:'cc'.repeat(32)},{target:'cc'.repeat(32)},{id:'01234567'},
+    {packageHash:'00'.repeat(32)},{bodyHash:'0000000000000000'},{source:17},{target:17}]) {
+    const record={...structuredClone(f.record()),...change};
+    const before=f.calls.filter(command=>command.startsWith('restore ')).length;
+    const recovered=new DirectSession(f.link,f.session.key,f.session.password,f.session.info,{readJournal:()=>record});
+    await assert.rejects(recovered.inspect({allowExisting:true}));
+    assert.equal(f.calls.filter(command=>command.startsWith('restore ')).length,before);
+    assert.equal(recovered.verifiedRadio,null);
+  }
+  assert.equal(f.calls.filter(command=>command.startsWith('remote ota installhash ')).length,1);
+});
+
+test('a malformed matching restoration record fails closed without a setting write', async () => {
+  const f=await borrowedRebootFixture();await f.session.install();delete f.link.otaLeaseProof;
+  for(const flag of [true,undefined,null,0,'false']) {
+    const record=structuredClone(f.record());record.radio.pausedTargetSecondary.autoOwned=flag;
+    const recovered=new DirectSession(f.link,f.session.key,f.session.password,f.session.info,{readJournal:()=>record});
+    await assert.rejects(recovered.inspect({allowExisting:true}),error=>{
+      assert.match(error.message,/restoration record is invalid/);assert.equal(error.otaLocalCheck,true);return true;
+    });
+  }
+  assert.equal(f.calls.filter(command=>command.startsWith('remote ota installhash ')).length,1);
+});
 
 for (const sourceKind of ['legacy', 'guarded', 'radio2', 'repeater']) for (const oldTarget of [false, true]) {
   test(sourceKind + ' source verifies reboot on the saved channel of ' + (oldTarget ? 'old' : 'new') + ' target', async () => {

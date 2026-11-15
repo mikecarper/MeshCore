@@ -74,7 +74,7 @@
     radioSetup().commands({frequency,bandwidth,sf,cr,preamble,minutes:1});
     const symbol=2**sf/(bandwidth*1000),de=symbol>=.016?1:0;
     const airtime=(preamble+4.25+8+Math.max(0,Math.ceil((8*186-4*sf+44)/(4*(sf-2*de))))*cr)*symbol;
-    return Math.max(1000,Math.ceil((2*airtime+.5)*1000));
+    return Math.max(5000,Math.ceil((2*airtime+.5)*1000));
   }
   const READ_ONLY=new Set(['get public.key','ota status','ota self','ota ram','ver','board','get bootloader.ver','get usb.raw.max',
     'ota bootloader status','ota config','ota key list','get tempradio','get radio','get radio.rxps','ota installhash','ota qspi','ota stats','ota ls',
@@ -794,57 +794,91 @@
       return this.withAdmin(async()=>{if(!this.authenticated)await this.login(password);this.radioProbeAdmission={key:this.knownRepeater,password};return this.knownRepeater;});
     }
     async probePeerRadio(key,password,profile,{radio,preamble,readback='get tempradio',maxDurationMs}={}){
-      this.validate(key);
-      if(!this.otaSupported||!this.supportsOtaRadio2||this.serving||![0,1].includes(profile))
-        throw Error('Radio link probes need an idle guarded Companion with selectable OTA radios');
-      if(typeof readback!=='function'&&!RADIO_PROBE_READS.has(readback))throw Error('Only temporary-radio readbacks are allowed in a link probe');
-      const timeout=radioProbeTimeout(radio,preamble);
-      if(maxDurationMs!==undefined&&(!Number.isFinite(maxDurationMs)||maxDurationMs<0))throw Error('Invalid radio probe duration');
+      let context={otaStep:'Validating radio link probe',otaCommand:'radio link probe (read-only)',otaEndpoint:'browser',
+        otaPath:targetPath(this,true),otaRadio:'Source: '+(profile===1?'Radio 2':profile===0?'primary radio':'unconfirmed profile')+
+          ' (requested OTA probe profile; reception not confirmed); target: profile not confirmed'};
+      const stage=(step,command,endpoint,timeoutMs)=>{
+        context={...context,otaStep:step,otaCommand:command,otaEndpoint:endpoint,otaTimeoutMs:timeoutMs};
+      };
+      let timeout;
+      try{
+        this.validate(key);
+        if(!this.otaSupported||!this.supportsOtaRadio2||this.serving||![0,1].includes(profile))
+          throw Error('Radio link probes need an idle guarded Companion with selectable OTA radios');
+        if(typeof readback!=='function'&&!RADIO_PROBE_READS.has(readback))throw Error('Only temporary-radio readbacks are allowed in a link probe');
+        timeout=radioProbeTimeout(radio,preamble);
+        if(maxDurationMs!==undefined&&(!Number.isFinite(maxDurationMs)||maxDurationMs<0))throw Error('Invalid radio probe duration');
+      }catch(error){throw errorContext(error,context);}
       return this.withAdmin(async()=>{
         const admission=this.radioProbeAdmission;
         if(!admission||admission.key!==this.knownRepeater||admission.password!==password)
           throw Error('Verify this target and password before probing another radio channel');
         if(this.serving)throw Error('Stop the transfer before probing another radio channel');
-        const options=this.options,deadline=Date.now()+(maxDurationMs??timeout*5);
+        const options=this.options;
+        stage('Checking radio probe deadline','radio link probe (read-only)','browser',maxDurationMs??timeout*5);
+        const started=Date.now(),deadline=started+(maxDurationMs??timeout*5);
+        if(!Number.isFinite(started)||started<0||!Number.isFinite(deadline))throw Error('Invalid radio probe clock');
+        let previous=started;
+        const clock=()=>{
+          const at=Date.now();
+          if(!Number.isFinite(at)||at<previous)throw Error('Invalid radio probe clock');
+          previous=at;return at;
+        };
         this.options={...options,remoteTimeout:timeout};
         const remaining=()=>{
-          const left=deadline-Date.now();
+          const left=deadline-clock();
           if(left<=0)throw loraTimeout('Radio link probe timed out');
           return left;
         };
         const closeGuard=async()=>{
+          stage('Closing guarded radio probe','USB OTA guard close','USB Companion',options.commandTimeout??15000);
           if(this.guard&&!this.failure)await this.guardMode(3);
           this.guard=false;this.authenticated=false;
         };
         const waitIdle=async active=>{
-          const until=Math.min(deadline,Date.now()+timeout);
-          while(Date.now()<until){
+          stage(active?'Waiting for source return-path transmission':'Waiting for source radio to become idle',
+            'get ota.direct','USB Companion',Math.min(timeout,remaining()));
+          const until=Math.min(deadline,clock()+timeout);
+          while(clock()<until){
             const status=String(await this.localCommand('get ota.direct')).trim().replace(/^>\s*/,'');
+            clock();
             const match=/^ota\.direct v=2 active=([01]) busy=([01])$/.exec(status);
             if(!match||Number(match[1])!==active)throw Error('Companion direct session changed during the radio probe');
             if(match[2]==='0')return;
-            await sleep(Math.min(100,Math.max(0,until-Date.now())));
+            await sleep(Math.min(100,Math.max(0,until-clock())));
           }
           throw loraTimeout('Return path timed out during the radio probe');
         };
         const read=async command=>{
+          stage('Validating radio-probe readback',safeCommand(command),'browser');
           if(!RADIO_PROBE_READS.has(command))throw Error('Only temporary-radio readbacks are allowed in a link probe');
+          stage(command==='get public.key'?'Verifying target identity':'Waiting for remote command reply',
+            safeCommand(command),'remote target',Math.min(timeout,remaining()));
           // Request timestamps are replay counters measured in whole seconds.
           // Do not make rapid channel probes push that counter into the future.
-          const delay=this.radioProbeNextRequestAt-Date.now();
+          const delay=this.radioProbeNextRequestAt-clock();
           if(delay>0){if(delay>=remaining())throw loraTimeout('Radio link probe timed out');await sleep(delay);}
-          this.radioProbeNextRequestAt=Date.now()+1000;
+          this.radioProbeNextRequestAt=clock()+1000;
           this.options.remoteTimeout=Math.min(timeout,remaining());
+          context.otaTimeoutMs=this.options.remoteTimeout;
           const reply=await this.remoteReply(command);
+          remaining();
           const text=String(reply).trim().replace(/^>\s*/,'');
           if(/^(?:err(?:or)?\b|unknown\b|unsupported\b)/i.test(text))throw Error('Target rejected the radio probe: '+text);
           return reply;
         };
         try{
-          await closeGuard();remaining();await waitIdle(0);
+          await closeGuard();
+          stage('Checking radio probe deadline','radio link probe (read-only)','browser',maxDurationMs??timeout*5);
+          remaining();await waitIdle(0);
           if(remaining()<timeout)throw loraTimeout('Not enough time remains for a radio link probe');
+          stage('Selecting source radio for probe','set ota.direct.radio '+(profile?'radio2':'radio'),'USB Companion',options.commandTimeout??15000);
           await this.selectOtaRadio(profile);
+          remaining();
+          stage('Preparing guarded radio probe','USB OTA guard prepare','USB Companion',options.commandTimeout??15000);
           await this.guardMode(1,Uint8Array.of(this.peerType));this.guard=true;
+          remaining();
+          stage('Sending direct return path','USB OTA return path','USB Companion',timeout);
           await this.guardMode(2);await waitIdle(1);
           // The existing admin session was admitted on the old channel. Each
           // candidate channel still needs a fresh full-key proof, but no new
@@ -855,11 +889,18 @@
           this.authenticated=true;
           return {reachable:true,reply};
         }catch(error){
-          await closeGuard();
-          if(error?.loraReplyTimeout&&!this.failure)return {reachable:false};
+          errorContext(error,context);
+          try{await closeGuard();}
+          catch(cleanupError){
+            errorContext(cleanupError,context);
+            errorContext(cleanupError,{otaRequestCommand:error?.otaCommand,otaRequestStep:error?.otaStep,otaRequestRadio:error?.otaRadio});
+            throw cleanupError;
+          }
+          if(error?.loraReplyTimeout&&!this.failure&&!['USB Companion','USB Repeater'].includes(error.otaEndpoint))
+            return {reachable:false,error};
           throw error;
         }finally{this.options=options;}
-      });
+      }).catch(error=>{throw errorContext(error,context);});
     }
     async requestRemoteRadio(key,password,text,{radio,preamble,maxDurationMs}={}){
       this.validate(key);
