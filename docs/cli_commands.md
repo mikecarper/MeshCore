@@ -7718,10 +7718,20 @@ OTAFIX/fork revision.
 
 `unknown` remains possible for a bootloader exposing none of these version
 sources, invalid geometry/vectors, or unresolved ambiguity. There is no universal
-version field shared by every third-party bootloader. This is diagnostic only:
-displaying a version neither grants OTA capability nor bypasses install checks.
+version field shared by every third-party bootloader. Displaying a version does
+not bypass firmware, storage-profile or install checks. For older applications
+without `ota ram`, the browser updater can combine a reviewed stable OTAFIX
+version with the live internal-storage bootloader identity to establish the
+retained-RAM staging capability.
 The fix is in MeshCore application firmware; installing another bootloader alone
 does not update an older application's version reader.
+
+**Retained-RAM cutoff:** OTAFIX **2.4.6** introduced the extra 64 KiB staging
+arena for normal internal-storage nRF52840 profiles. OTAFIX 2.4.5 and earlier
+lack it. External-only QSPI/SD, custom builds and other release families cannot
+be inferred from that cutoff. The browser currently recognizes official stable
+2.4.6 through 2.4.12 with the matching internal profile. See the
+[browser updater's version and profile checks](browser_lora_ota.md#bootloader-ram-staging-cutoff).
 
 See the [stock bootloader audit](test-results/bootloader_version_stock_audit.md) for tested
 manufacturer images and the boards still requiring untouched factory dumps.

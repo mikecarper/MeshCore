@@ -1,7 +1,7 @@
 'use strict';
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {errorDetails,collectFailureIdentity}=require('../docs/_javascript/lora_ota_checks.js');
+const {errorDetails,collectFailureIdentity,probeHybridRam,legacyHybridRam,readHybridRam}=require('../docs/_javascript/lora_ota_checks.js');
 
 test('remote failures name action, command, endpoint, path and bounded retry details',()=>{
   const error=Object.assign(Error('Remote command timed out; result is unknown'),{
@@ -258,4 +258,136 @@ test('identity display distinguishes cached source, fresh target and per-field u
   assert.equal(original.message,'Original OTA failure');assert.equal(original.otaIdentity,identity);assert.equal(identity.source.board,'Heltec V4 '+secret+' 192.168.1.25');assert.ok(!output.includes('192.168.1.25'));
   const unavailable=errorDetails({message:'Failed',otaIdentity:{source:{},target:{}}});
   assert.match(unavailable,/Source version \(cached USB identity\): not available/);assert.match(unavailable,/Target version: not available \(not read\)/);
+});
+
+test('preparation diagnostics preserve full released firmware basenames and hashes without mutating metadata',()=>{
+  const installedName='GAT562_30S_Mesh_Kit_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.1-halo-keymind-cascade-dev-03214a16.bin';
+  const selectedName='GAT562_30S_Mesh_Kit_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.2-halo-keymind-cascade-dev-6cc343a3.bin';
+  const imageHash='c308f6e097045692d3b9ab7f4f542b8a01ce6ed21954e905734ab1f84fe4706e',bodyHash='1122334455667788';
+  const preparation={installed:{name:'/home/private-owner/firmware/'+installedName,hwId:'GAT562_30S_Mesh_Kit',version:0x01120001,imageHash,bodyHash},
+    selected:{name:'C:\\private-owner\\firmware\\'+selectedName,hwId:'GAT562_30S_Mesh_Kit',version:0x01120002,imageHash:'92'.repeat(32),bodyHash:'ab'.repeat(8)},
+    search:{enabled:true,depth:'deep',objective:'data',result:'No published path for these exact images',candidates:6},
+    ram:{confirmed:false,reason:'The bootloader identity could not be confirmed',bootloaderVersion:'0.11.0-OTAFIX2.4.5',
+      bootloaderStatus:'BL board=239A0029 target=D50D2D44 name=GAT562_DFU crc=12345678 abi=3 caps=0A | staged:none mid=- hash=-'},
+    space:{workspace:643072,staged:327680,required:970752,available:815104}};
+  const snapshot=structuredClone(preparation);
+  for(const entry of Object.values(preparation))Object.freeze(entry);Object.freeze(preparation);
+  const error=Object.freeze(Object.assign(Error('An intermediate update is needed.'),{otaPreparation:preparation,otaLocalCheck:true}));
+  const output=errorDetails(error,{step:'Prepare update'});
+  assert.ok(output.includes('Installed firmware file: '+installedName));assert.ok(output.includes('Selected firmware file: '+selectedName));
+  assert.ok(!output.includes('private-owner'));assert.ok(!output.includes('/home/'));assert.ok(!output.includes('C:\\'));
+  assert.match(output,/Installed firmware hardware: GAT562_30S_Mesh_Kit/);
+  assert.match(output,/Installed firmware version: 1\.18\.0\.1/);assert.match(output,/Selected firmware version: 1\.18\.0\.2/);
+  assert.ok(output.includes('Installed firmware image SHA-256: '+imageHash));assert.ok(output.includes('Installed firmware body hash: '+bodyHash));
+  assert.ok(output.includes('Selected firmware image SHA-256: '+'92'.repeat(32)));
+  assert.match(output,/Automatic search: enabled; depth: deep; objective: least radio data; candidates: 6/);
+  assert.match(output,/Search result: No published path for these exact images/);
+  assert.match(output,/Retained RAM support: not confirmed \(The bootloader identity could not be confirmed\)/);
+  assert.match(output,/Reported bootloader version: 0\.11\.0-OTAFIX2\.4\.5/);
+  assert.match(output,/Reported bootloader identity: BL board=239A0029 target=D50D2D44 name=GAT562_DFU crc=12345678 abi=3 caps=0A/);
+  assert.match(output,/Rewrite workspace: 628 KiB \(643072 bytes\)/);
+  assert.match(output,/Staged package in flash: 320 KiB \(327680 bytes\)/);
+  assert.match(output,/Total flash required: 948 KiB \(970752 bytes\)/);
+  assert.match(output,/Flash available: 796 KiB \(815104 bytes\)/);
+  assert.match(output,/Reason: An intermediate update is needed\.$/);
+  assert.deepEqual(preparation,snapshot);assert.equal(error.message,'An intermediate update is needed.');
+});
+
+test('preparation diagnostics redact secrets, reject invalid image metadata, and never retain addresses or paths',()=>{
+  const secret='VERY_PRIVATE_'+('s'.repeat(150))+'_END',hashSecret='ba'.repeat(32),url='https://private.example/firmware.bin?token=secret';
+  const output=errorDetails({message:'Preparation failed',otaPreparation:{
+    installed:{name:'/private/'+secret+'/release-'+secret+'.bin',hwId:'board-'+secret,version:-1,imageHash:hashSecret,bodyHash:'not-a-firmware-hash'},
+    selected:{name:url,hwId:'Board\nInjected: yes',version:'1.18.0.2',imageHash:'ff'.repeat(31),bodyHash:'a'.repeat(17)},
+    search:{enabled:'yes',depth:'untrusted',objective:'untrusted',result:secret+' '+url,candidates:Infinity},
+    ram:{confirmed:true,reason:secret+' '+url,bootloaderVersion:secret,bootloaderStatus:url+' '+secret},space:{workspace:-1,staged:NaN,required:Infinity,available:'815104'}
+  }},{secrets:[secret,hashSecret]});
+  for(const value of [secret,'s'.repeat(20),'VERY_PRIVATE','_END',hashSecret,url,'private.example','/private/','Injected:'])assert.ok(!output.includes(value),value);
+  assert.match(output,/Installed firmware file: release-<hidden>\.bin/);
+  assert.match(output,/Installed firmware image SHA-256: <hidden>/);
+  assert.match(output,/Selected firmware file: <address hidden>/);
+  assert.match(output,/Installed firmware version: not available/);assert.match(output,/Selected firmware version: not available/);
+  assert.match(output,/Selected firmware hardware: not available/);assert.match(output,/Selected firmware image SHA-256: not available/);
+  assert.match(output,/Selected firmware body hash: not available/);
+  assert.match(output,/Automatic search: not available; depth: not available; objective: not available; candidates: not available/);
+  for(const label of ['Rewrite workspace','Staged package in flash','Total flash required','Flash available'])assert.ok(output.includes(label+': not available'));
+  assert.ok(!/[^\x20-\x7e\n]/.test(output));assert.ok(output.length<3500);
+  for(const name of ['bad\nname.bin','x'.repeat(513)+'.bin','invalid.txt','',null]){
+    const text=errorDetails({message:'Failed',otaPreparation:{installed:{name}}});assert.match(text,/Installed firmware file: not available/);
+  }
+  const addresses=errorDetails({message:'Failed',otaPreparation:{installed:{name:'/home/private/release-192.168.1.22.bin',hwId:'board-8.8.8.8'},
+    selected:{name:'release-8.8.4.4.bin',hwId:'fd00::1234'}}});
+  for(const address of ['192.168.1.22','8.8.8.8','8.8.4.4','fd00::1234'])assert.ok(!addresses.includes(address),address);
+  const pathSecret=errorDetails({message:'Failed',otaPreparation:{installed:{name:'/private/PRIVATE/SECRET.bin'}}},{secrets:['PRIVATE/SECRET']});
+  assert.ok(!pathSecret.includes('SECRET'));assert.ok(!pathSecret.includes('PRIVATE'));
+});
+
+test('preparation diagnostics distinguish missing fields and bound packed versions',()=>{
+  const missing=errorDetails({message:'Failed',otaPreparation:{}});
+  assert.match(missing,/Installed firmware file: not available/);assert.match(missing,/Selected firmware version: not available/);
+  assert.match(missing,/Retained RAM support: not available/);assert.match(missing,/Search result: not available/);
+  for(const [input,expected] of [[0,'0.0.0.0'],[0xffffffff,'255.255.255.255'],[0x01120002,'1.18.0.2'],[1.5,'not available'],[0x100000000,'not available']]){
+    assert.ok(errorDetails({message:'Failed',otaPreparation:{selected:{version:input}}}).includes('Selected firmware version: '+expected));
+  }
+  for(const value of [null,[],42,'invalid'])assert.ok(!errorDetails({message:'Failed',otaPreparation:value}).includes('Update preparation details:'));
+});
+
+test('retained RAM probing uses an exact legacy identity after explicit unsupported replies or exceptions only',async()=>{
+  const verified='BL board=239A0029 target=D50D2D44 name=GAT562_DFU crc=03F81FDD abi=3 caps=0A | staged:none mid=- hash=-';
+  for(const exception of [false,true]){
+    const calls=[],reply=await probeHybridRam(async command=>{
+      calls.push(command);if(command==='ota ram'){if(exception)throw Error('Unknown OTA command. Type `ota help`.');return 'Error: unsupported';}return verified;
+    });
+    assert.equal(reply,'OTA RAM: hybrid=1 abi=1 record=72 arena=65536');assert.deepEqual(calls,['ota ram','ota bootloader status']);
+  }
+  for(const message of ['Remote command timed out','Access denied','Unexpected response']){
+    const original=Error(message),calls=[];
+    await assert.rejects(probeHybridRam(async command=>{calls.push(command);throw original;}),error=>error===original);
+    assert.deepEqual(calls,['ota ram']);
+  }
+  await assert.rejects(probeHybridRam(async command=>command==='ota ram'?'unsupported':verified.replace('03F81FDD','DEADBEEF')),/does not match a verified published image/);
+});
+
+test('legacy retained RAM version proof is restricted to stable internal OTAFIX 2.4.6 through 2.4.12',()=>{
+  const status='BL board=239A0029 target=2D0DF000 name=4631_DFU crc=FF374B1B abi=3 caps=0A | staged:none mid=- hash=-';
+  const proof='OTA RAM: hybrid=1 abi=1 record=72 arena=65536';
+  for(let minor=6;minor<=12;minor++)for(const value of ['OTAFIX2.4.'+minor,'0.11.0-OTAFIX2.4.'+minor,'v0.11.0-OTAFIX2.4.'+minor,'> 0.11.0-OTAFIX2.4.'+minor])
+    assert.equal(legacyHybridRam(status,value),proof,value);
+  for(const value of [undefined,null,5,{},'','OTAFIX2.4.5','OTAFIX2.4.13','OTAFIX2.5.0','0.11.0-OTAFIX2.5.1','OTAFIX2.4.12-preview',
+    '0.11.0-OTAFIX2.4.12-custom','0.11.0-OTAFIX2.4.6-tests','vendor-OTAFIX2.4.12','OTAFIX2.4.06','0.12.0-OTAFIX2.4.12','0.11.0','OTAFIX2.4.12 anything'])
+    assert.throws(()=>legacyHybridRam(status,value),/cannot confirm retained RAM/,String(value));
+  for(const bad of [status.replace('caps=0A','caps=09'),status.replace('caps=0A','caps=06'),status.replace('caps=0A','caps=1E'),
+    status.replace('abi=3','abi=4'),status.replace('abi=3','abi=2'),status.replace('board=239A0029','board=00000000'),
+    status.replace('target=2D0DF000','target=FFFFFFFF'),status.replace('crc=FF374B1B','crc=00000000'),status.replace('crc=FF374B1B','crc=FFFFFFFF'),
+    status.replace('name=4631_DFU','name='),status.replace('name=4631_DFU','name=4631_QSPI_DFU'),status.replace('name=4631_DFU','name=4631_SD_DFU'),
+    status.replace('staged:none','staged:ready'),status.replace('mid=-','mid=12345678'),status.replace('hash=-','hash=abcdef'),status+' caps=0A'])
+    assert.throws(()=>legacyHybridRam(bad,'0.11.0-OTAFIX2.4.12'),/cannot confirm retained RAM/,bad);
+});
+
+test('legacy retained RAM probe reads version only when the exact CRC is not already known',async()=>{
+  const status='BL board=239A0029 target=2D0DF000 name=4631_DFU crc=FF374B1B abi=3 caps=0A | staged:none mid=- hash=-';
+  const proof='OTA RAM: hybrid=1 abi=1 record=72 arena=65536';
+  for(const throws of [false,true]){
+    const calls=[];
+    assert.equal(await probeHybridRam(async command=>{
+      calls.push(command);
+      if(command==='ota ram'){if(throws)throw Error('Error: unsupported');return 'Unknown OTA command';}
+      return command==='ota bootloader status'?status:'0.11.0-OTAFIX2.4.6';
+    }),proof);
+    assert.deepEqual(calls,['ota ram','ota bootloader status','get bootloader.ver']);
+  }
+  for(const reply of ['OTA RAM: hybrid=0','OTA RAM: hybrid=1 abi=1 record=72 arena=32768','OTA RAM: hybrid=1 abi=1 record=72 arena=65536 extra']){
+    const calls=[];await assert.rejects(probeHybridRam(async command=>{calls.push(command);return reply;}),/cannot be confirmed/);
+    assert.deepEqual(calls,['ota ram']);
+  }
+  const calls=[],timeout=Error('Version read timed out');
+  await assert.rejects(probeHybridRam(async command=>{
+    calls.push(command);if(command==='ota ram')return 'unsupported';if(command==='ota bootloader status')return status;throw timeout;
+  }),error=>error===timeout);
+  assert.deepEqual(calls,['ota ram','ota bootloader status','get bootloader.ver']);
+  const plan={storage:'internal',layoutFlags:16},info={blob:new Uint8Array(5000)},sessionCalls=[];
+  assert.equal(await readHybridRam(plan,info,async()=>{sessionCalls.push('ram');throw Error('Unknown OTA command');},
+    async()=>{sessionCalls.push('identity');return status;},async()=>{sessionCalls.push('version');return 'OTAFIX2.4.12';}),proof);
+  assert.deepEqual(sessionCalls,['ram','identity','version']);
+  await assert.rejects(readHybridRam(plan,info,async()=> 'unsupported',async()=>status),/RAM capability/);
+  let read=false;assert.equal(await readHybridRam({storage:'qspi',layoutFlags:16},info,()=>{read=true;}),null);assert.equal(read,false);
 });

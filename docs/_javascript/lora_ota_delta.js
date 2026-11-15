@@ -251,8 +251,12 @@
         }
         if (result.phase !== 'complete' || !(result.package instanceof ArrayBuffer)) {
           const error=new Error(result.error || 'Invalid differential worker response');
-          if(result.code==='OTA_DELTA_SPACE')Object.assign(error,{code:result.code,otaEndpoint:'Browser',
-            otaStep:'Build differential package in this browser',otaLocalCheck:true});
+          if(result.code==='OTA_DELTA_SPACE'){
+            Object.assign(error,{code:result.code,otaEndpoint:'Browser',otaStep:'Build differential package in this browser',otaLocalCheck:true});
+            const s=result.space;
+            if(s&&['workspace','staged','required','available'].every(k=>Number.isSafeInteger(s[k])&&s[k]>=0&&s[k]<=64*1024*1024)&&
+                s.required===s.workspace+s.staged)error.space={workspace:s.workspace,staged:s.staged,required:s.required,available:s.available};
+          }
           return fail(error);
         }
         if (!done) { done = true; cleanup(); resolve({blob:new Uint8Array(result.package), payloadBytes:result.payloadBytes,

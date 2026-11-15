@@ -327,7 +327,8 @@
         }
       }
       checks.validate(this.info, dest, this.signerVerified, {allowSameVersion:this.allowSameVersion});
-      const hybridRamReply = await checks.readHybridRam(this.inplacePlan, this.info, () => this.remote('ota ram'),()=>this.remote('ota bootloader status'));
+      const hybridRamReply = await checks.readHybridRam(this.inplacePlan, this.info, () => this.remote('ota ram'),
+        ()=>this.remote('ota bootloader status'),()=>this.remote('get bootloader.ver'));
       checks.validateInternalPlan(this.inplacePlan, this.info, status, self, dest,
         this.inplacePlan?.storage === 'qspi' ? await this.remote('ota qspi') : null, hybridRamReply);
       if (!this.info.isFull && this.info.codecId === 1)

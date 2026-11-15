@@ -15,5 +15,5 @@ self.onmessage = async event => {
     self.postMessage({id, phase:'complete', package:result.blob.buffer, payloadBytes:result.payload.length,
       baseHash:result.baseHash, targetHash:result.targetHash, memorySize:result.memorySize}, [result.blob.buffer]);
   } catch (error) { self.postMessage({id, phase:'error', error:String(error?.message || error),
-    ...(error?.code==='OTA_DELTA_SPACE'?{code:error.code}:{})}); }
+    ...(error?.code==='OTA_DELTA_SPACE'?{code:error.code,space:error.space}:{})}); }
 };

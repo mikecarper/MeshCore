@@ -148,6 +148,52 @@
         lines.push(label+(value?' ('+origin+'): '+value:': not available ('+(safeText(record.error,240)||'not read')+')'));
       }
     }
+    const preparation=detail.otaPreparation;
+    if(preparation&&typeof preparation==='object'&&!Array.isArray(preparation)){
+      // These dedicated image fields are calculated from firmware files, not
+      // device keys. Validate each shape before retaining long release names
+      // and complete hashes; generic free-text redaction would erase them.
+      const object=value=>value&&typeof value==='object'&&!Array.isArray(value)?value:{};
+      const addressText=value=>redact(value)
+        .replace(/(?:https?:\/\/|file:\/\/)[^\s<>]+/gi,'<address hidden>')
+        .replace(/(^|[^A-Za-z0-9])(?:\d{1,3}\.){3}\d{1,3}(?=$|[^A-Za-z0-9])/g,'$1<address hidden>')
+        .replace(/(?:\b(?:f[cd][a-f0-9]{2}|fe80):[a-f0-9:]+|::1\b)/gi,'<address hidden>');
+      const filename=value=>{
+        if(typeof value!=='string'||value.length>2048||/[^\x20-\x7e]/.test(value))return 'not available';
+        if(/(?:https?:\/\/|file:\/\/)/i.test(value))return '<address hidden>';
+        // Strip local directories before displaying a file selected in the
+        // browser or supplied by a desktop wrapper. Never retain a home path.
+        const name=value.replace(/\\/g,'/').split('/').at(-1);
+        if(!/^[A-Za-z0-9][A-Za-z0-9._() +@-]{0,511}\.(?:bin|zip|mota|uf2)$/i.test(name))return 'not available';
+        return addressText(redact(value).replace(/\\/g,'/').split('/').at(-1));
+      };
+      const firmwareHash=(value,length)=>typeof value==='string'&&new RegExp('^[0-9a-f]{'+length+'}$','i').test(value)
+        ?redact(value).toLowerCase():'not available';
+      const packedVersion=value=>Number.isInteger(value)&&value>=0&&value<=0xffffffff
+        ?redact([24,16,8,0].map(shift=>(value>>>shift)&255).join('.')):'not available';
+      lines.push('Update preparation details:');
+      for(const [field,label] of [['installed','Installed'],['selected','Selected']]){
+        const image=object(preparation[field]);
+        lines.push(label+' firmware file: '+filename(image.name));
+        lines.push(label+' firmware hardware: '+(typeof image.hwId==='string'&&/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/.test(image.hwId)?addressText(safeText(image.hwId,64)):'not available'));
+        lines.push(label+' firmware version: '+packedVersion(image.version));
+        lines.push(label+' firmware image SHA-256: '+firmwareHash(image.imageHash,64));
+        lines.push(label+' firmware body hash: '+firmwareHash(image.bodyHash,16));
+      }
+      const search=object(preparation.search),searchState=search.enabled===true?'enabled':search.enabled===false?'disabled':'not available';
+      const depth=['standard','deep'].includes(search.depth)?search.depth:'not available';
+      const objective=search.objective==='steps'?'fewest steps':search.objective==='data'?'least radio data':'not available';
+      const candidates=Number.isInteger(search.candidates)&&search.candidates>=0&&search.candidates<=1000000?search.candidates:'not available';
+      lines.push('Automatic search: '+redact(searchState+'; depth: '+depth+'; objective: '+objective+'; candidates: '+candidates));
+      lines.push('Search result: '+(safeText(search.result,240)||'not available'));
+      const ram=object(preparation.ram),ramState=ram.confirmed===true?'confirmed':ram.confirmed===false?'not confirmed':'not available';
+      lines.push('Retained RAM support: '+ramState+(safeText(ram.reason,240)?' ('+safeText(ram.reason,240)+')':''));
+      lines.push('Reported bootloader version: '+(safeText(ram.bootloaderVersion,160)||'not available'));
+      lines.push('Reported bootloader identity: '+(safeText(ram.bootloaderStatus||ram.status,320)||'not available'));
+      const space=object(preparation.space),bytes=value=>Number.isInteger(value)&&value>=0&&value<=0xffffffff;
+      for(const [field,label] of [['workspace','Rewrite workspace'],['staged','Staged package in flash'],['required','Total flash required'],['available','Flash available']])
+        lines.push(label+': '+(bytes(space[field])?redact(Math.ceil(space[field]/1024)+' KiB ('+space[field]+' bytes)'):'not available'));
+    }
     const reason=safeText(typeof error==='string'?error:detail.message,2048,true)||'Unknown failure';
     lines.push('Reason: '+reason);
     return lines.join('\n');
@@ -390,33 +436,50 @@
       throw Error('This hybrid nRF52 package requires bootloader RAM capability that cannot be confirmed here');
     return reply.trim();
   }
-  function legacyHybridRam(status) {
+  function legacyHybridRam(status, version) {
     // Published GAT562 OTAFIX 2.4.12 image: manifest/CRC verified on-device.
     // Its SHA-256-pinned release ZIP is 86490cbca323a8b81fc8490f9a43fd06
     // db4c776bac6aa0bda91ee807cf801c60. The sole aligned MOTARAMA record
     // at bootloader offset 37648 is ABI 1 / record 72 / arena 65536.
     // Older applications cannot expose that record through `ota ram` yet.
-    // Require the exact scanned identity, never a board/version-name guess.
-    if(!/^(?:>\s*)?BL board=239A0029 target=D50D2D44 name=GAT562_DFU crc=03F81FDD abi=3 caps=0A \| staged:none mid=-+ hash=-+$/i.test(String(status).trim()))
-      throw Error('This older target cannot confirm retained RAM support; its bootloader does not match a verified published image');
-    return 'OTA RAM: hybrid=1 abi=1 record=72 arena=65536';
+    const proof='OTA RAM: hybrid=1 abi=1 record=72 arena=65536',text=typeof status==='string'?status.trim():'';
+    if(/^(?:>[ \t]*)?BL board=239A0029 target=D50D2D44 name=GAT562_DFU crc=03F81FDD abi=3 caps=0A \| staged:none mid=-+ hash=-+$/i.test(text))return proof;
+    // Official stable INTERNAL OTAFIX 2.4.6 introduced the 64 KiB arena;
+    // verified releases through 2.4.12 retain that ABI/record geometry.
+    // https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6
+    // Introduction: f969518b3abe9fe38a787f0adba0fe1699a6b98a.
+    // Do not extrapolate to preview/custom builds or the separate 2.5 line.
+    const release=/^(?:>[ \t]*)?(?:v?0\.11\.0-)?OTAFIX2\.4\.(6|7|8|9|10|11|12)$/i.exec(typeof version==='string'?version.trim():'');
+    const identity=/^(?:>[ \t]*)?BL board=([0-9a-f]{8}) target=([0-9a-f]{8}) name=([A-Za-z0-9_][A-Za-z0-9_.-]{0,62}) crc=([0-9a-f]{8}) abi=3 caps=0A \| staged:none mid=-+ hash=-+$/i.exec(text);
+    if(release&&identity&&!identity.slice(1,3).concat(identity[4]).some(value=>/^(?:00000000|ffffffff)$/i.test(value))&&
+        !/(?:^|[_-])(?:QSPI|SD)(?:[_-]|$)/i.test(identity[3]))return proof;
+    throw Error('This older target cannot confirm retained RAM support; its bootloader does not match a verified published image or stable internal OTAFIX 2.4.6 through 2.4.12');
   }
   function ramCommandUnsupported(reply){
     return /^(?:>\s*)?(?:(?:err(?:or)?\s*:?\s*)?(?:unknown(?: OTA)? command|unsupported)\b)/i.test(String(reply).trim());
   }
   async function probeHybridRam(read) {
-    const reply=await read('ota ram');
-    return ramCommandUnsupported(reply)?legacyHybridRam(await read('ota bootloader status')):confirmHybridRam(reply);
-  }
-  async function readHybridRam(plan, info, getReply, getBootloader) {
-    if (!needsHybridRam(plan, info)) return null;
+    const legacy=async()=>{
+      const status=await read('ota bootloader status');
+      try{return legacyHybridRam(status);}catch(_){/* exact CRC needs no version query */}
+      return legacyHybridRam(status,await read('get bootloader.ver'));
+    };
     let reply;
-    try { reply = await getReply(); }
-    catch (error) {
-      if(getBootloader&&ramCommandUnsupported(error?.message))return legacyHybridRam(await getBootloader());
-      throw Error('This hybrid nRF52 package requires bootloader RAM capability that cannot be confirmed here');
+    try{reply=await read('ota ram');}
+    catch(error){
+      if(ramCommandUnsupported(error?.message))return legacy();
+      throw error;
     }
-    return ramCommandUnsupported(reply)&&getBootloader?legacyHybridRam(await getBootloader()):confirmHybridRam(reply);
+    return ramCommandUnsupported(reply)?legacy():confirmHybridRam(reply);
+  }
+  async function readHybridRam(plan, info, getReply, getBootloader, getVersion) {
+    if (!needsHybridRam(plan, info)) return null;
+    return probeHybridRam(command=>{
+      if(command==='ota ram')return getReply();
+      if(command==='ota bootloader status'&&getBootloader)return getBootloader();
+      if(command==='get bootloader.ver'&&getVersion)return getVersion();
+      throw Error('This hybrid nRF52 package requires bootloader RAM capability that cannot be confirmed here');
+    });
   }
   function stagedFlashBytes(size, flags, ceiling, hybridRamReply) {
     if(!Number.isSafeInteger(size)||size<=0)throw Error('Invalid staged package size');

@@ -1130,15 +1130,27 @@
     // owns the whole sequence, including reboots and saved recovery journals.
     for(const name of ['transfer','resume','install'])$(name).disabled=true;
   }
-  async function prepareAutomatic(base,input,destination,target,password,file,signal){
-    if(!destination.nrf||destination.external||destination.sd)return false;
+  async function prepareAutomatic(base,input,destination,target,password,file,signal,diagnostics){
+    if(!destination.nrf||destination.external||destination.sd){
+      diagnostics.search.result='Not applicable to this target storage';return false;
+    }
+    diagnostics.search.result='Loading the published intermediate catalog';
     status('Looking for a smaller update path...');
     const index=await LoraOtaAutoChain.lookup(base,input,{signal});
-    if(!index)return false;
+    if(!index){
+      diagnostics.search.result='No published intermediates for these exact installed and selected image hashes';
+      diagnostics.search.candidates=0;return false;
+    }
+    const route=index.routes.find(r=>r.from===diagnostics.installed.imageHash&&r.to===diagnostics.selected.imageHash);
+    diagnostics.search.candidates=route?.images.length;
     const caps=await LoraOtaChainUi.readLive(link,target,password);
+    diagnostics.ram={...caps.runtimeHybridRamDiagnostics,confirmed:!!caps.runtimeHybridRam,reason:caps.runtimeHybridRam?
+      'Confirmed by the live target RAM or pinned bootloader check':caps.runtimeHybridRamError||'Retained RAM support was not confirmed'};
+    diagnostics.search.result='Comparing published intermediate images';
     const prepared=await LoraOtaAutoChain.prepare(base,input,caps,{signal,objective:$('auto-objective').value,deep:$('auto-depth').value==='deep',
       index,relays:link.relays?.length||0,progress:message=>{status(message);log(message);}});
     if(!prepared)return false;
+    diagnostics.search.result='Found '+prepared.steps.length+' fitting update steps';
     await readyAutomatic(prepared,target,password,autoCacheKey(target,prepared.goalHash),file);
     return true;
   }
@@ -1189,6 +1201,10 @@
   }
   async function inspect() {
     const generation=disconnectGeneration;
+    const diagnostics={search:{enabled:$('auto-search').checked,depth:$('auto-depth').value,
+      objective:$('auto-objective').value,result:$('auto-search').checked?'Not started':'Disabled in Update path options'}};
+    const imageDetails=(name,image)=>({name,hwId:image.hwId,version:image.fwVersion,
+      imageHash:LoraOtaChecks.hex(image.imageHash),bodyHash:LoraOtaChecks.hex(image.bodyHash)});
     const checkConnected=()=>{
       if(generation!==disconnectGeneration)throw Error('Preparation stopped because the USB source is disconnecting.');
       if(preparing?.signal.aborted)throw Object.assign(Error('Update preparation cancelled. No firmware was uploaded.'),{otaLocalCheck:true,otaEndpoint:'Browser'});
@@ -1223,6 +1239,8 @@
       // selected differential even if the full-package recovery option was set.
       const forceFull = isFirmware && $('full-rebuild').checked && !(catalogDest?.nrf && !catalogDest.external);
       const baseFile = forceFull ? null : ($('base').files[0] || (isFirmware ? catalogBaseFile : null));
+      diagnostics.selected={name:file.name};
+      if(baseFile)diagnostics.installed={name:baseFile.name};
       const input = isFirmware ? await firmwareBytes(file, baseFile ? 4 * 1024 * 1024 : undefined) : await bytes(file);
       let cachedAuto=null;
       if(isFirmware&&typeof indexedDB!=='undefined'){
@@ -1277,6 +1295,7 @@
           // After a successful differential, the old base is deliberately no
           // longer running. Verify the selected goal before requiring that base.
           const goal = await MeshCoreMotaPackage.parseEndF(input);
+          diagnostics.selected=imageDetails(file.name,goal);
           checkConnected();
           if(goal.targetId===destination.targetId && goal.hwId===destination.hwId &&
               goal.fwVersion===destination.version && LoraOtaChecks.hex(goal.bodyHash)===destination.baseHash) {
@@ -1294,6 +1313,7 @@
           if(!baseFile)throw Error('Find matching firmware again to identify the exact installed image.');
           const base = await firmwareBytes(baseFile, 4 * 1024 * 1024);
           const current = await MeshCoreMotaPackage.parseEndF(base);
+          diagnostics.installed=imageDetails(baseFile.name,current);
           if (current.targetId !== destination.targetId || current.hwId !== destination.hwId ||
               current.fwVersion !== destination.version || LoraOtaChecks.hex(current.bodyHash) !== destination.baseHash)
             throw Error('The installed firmware image does not exactly match the target.');
@@ -1309,8 +1329,19 @@
               const stage = LoraOtaChecks.internalStage(receiverStatus, self, destination);
               deltaOptions = {mode:'in-place', runtimeStorage:'internal', runtimeStageCeiling:stage};
               if(layout.flags&16){
-                try{deltaOptions.runtimeHybridRam=await LoraOtaChecks.probeHybridRam(remote);}
-                catch(_){/* retain the entirely-flash budget until capability is proven */}
+                try{
+                  deltaOptions.runtimeHybridRam=await LoraOtaChecks.probeHybridRam(async command=>{
+                    const reply=await remote(command);
+                    if(command==='get bootloader.ver')diagnostics.ram={...diagnostics.ram,bootloaderVersion:reply};
+                    if(command==='ota bootloader status')diagnostics.ram={...diagnostics.ram,bootloaderStatus:reply};
+                    return reply;
+                  });
+                  diagnostics.ram={...diagnostics.ram,confirmed:true,reason:'Confirmed by the live target RAM, bootloader version or pinned identity check'};
+                }catch(error){
+                  // Keep the entirely-flash budget, but explain why the SRAM
+                  // allowance was unavailable rather than hiding the cause.
+                  diagnostics.ram={...diagnostics.ram,confirmed:false,reason:error?.message||String(error)};
+                }
               }
               inplacePlan = {storage:'internal', app:layout.app, layoutCeiling:layout.ceiling, layoutFlags:layout.flags};
             }
@@ -1326,11 +1357,16 @@
               progress:state=>{if(state?.phase==='workspace')status('Preparing differential: workspace '+state.index+' of '+state.total+'...');},signal:preparing.signal});
           }catch(error){
             if(error?.code!=='OTA_DELTA_SPACE'||!$('auto-search').checked)throw error;
-            sizingFailure=error;log(error.message);
+            sizingFailure=error;diagnostics.space=error.space;
+            log('The direct update exceeds available flash. Searching intermediate updates automatically...');
+            status('The direct update does not fit. Looking for an intermediate update path...');
           }
           if($('auto-search').checked){
-            try{if(await prepareAutomatic(base,input,destination,targetKey,password,file,preparing.signal))return;}
-            catch(error){checkConnected();if(!delta)throw error;log('Could not compare intermediate paths: '+error.message+'. Keeping the verified direct package.');}
+            try{if(await prepareAutomatic(base,input,destination,targetKey,password,file,preparing.signal,diagnostics))return;}
+            catch(error){
+              diagnostics.search.result='Search stopped: '+(error?.message||String(error));
+              checkConnected();if(!delta)throw error;log('Could not compare intermediate paths: '+error.message+'. Keeping the verified direct package.');
+            }
           }
           if(!delta){
             sizingFailure.message+=' No fitting automatic update path is published for these exact images. Use USB/Bluetooth DFU or another compatible release.';
@@ -1408,9 +1444,11 @@
       if (dest.download === 'ready') log('The matching package is ready to install.');
       if (dest.download === 'installed') log('The previously requested install is verified.');
     } catch (error) {
-      invalidate(); await fail(error);
+      const failure={...error,message:error?.message||String(error),otaPreparation:diagnostics};
+      if(error?.space)diagnostics.space=error.space;
+      invalidate(); await fail(failure);
       if(link && sourceKind()==='companion' && link.otaSupported===false)
-        $('firmware-catalog-status').textContent=failureMessage(error);
+        $('firmware-catalog-status').textContent=failureMessage(failure);
     }
     finally { preparing = null;$('prepare-stop').hidden=true; busy(false); $('inspect').disabled = !link || updatesBlocked(); }
   }

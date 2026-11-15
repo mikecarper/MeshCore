@@ -116,7 +116,8 @@ def chain_harness(*,attested=True,bad_identity=False,external=False):
     return harness
 
 
-def automatic_harness(*, equal_version=False, bad_resource=False, interrupt=False, three_steps=False):
+def automatic_harness(*, equal_version=False, bad_resource=False, interrupt=False, three_steps=False,
+                      missing_route=False, search_disabled=False, missing_ram=False, version_fallback=False):
     script = chain_harness()
     script = one_replace(script,"'get tempradio':radio,'get radio':radio,",
                          "'get tempradio':radio,'get radio':radio.split(',').slice(0,4).join(','),")
@@ -155,9 +156,14 @@ def automatic_harness(*, equal_version=False, bad_resource=False, interrupt=Fals
       const put=(name,stage)=>{const dt=new DataTransfer();dt.items.add(new File([stage.image],name+'.bin'));return dt.files;};
       el('base').files=put('base',stages[0]);el('file').files=put('goal',stages.at(-1));el('key').value=target;
       el('chain-attest').checked=false;
+      if(SEARCH_DISABLED)el('auto-search').checked=false;
       el('connect').click();await wait(()=>!el('inspect').disabled);
       el('inspect').click();await wait(()=>!el('update').disabled||el('workflow-status').dataset.state==='error');
-      if(BAD_RESOURCE){await report({status:el('status').textContent,cmds,actualApplications,bridgeReads,disabled:el('update').disabled});return;}
+      const preparationLog=el('status').textContent;
+      if(EXPECT_ERROR){await report({status:el('status').textContent,details:el('error-details').textContent,
+        cmds,actualApplications,bridgeReads,disabled:el('update').disabled});return;}
+      if(PREPARE_ONLY){await report({status:el('status').textContent,cmds,actualApplications,
+        disabled:el('update').disabled,summary:el('update-summary').textContent});return;}
       if(el('update').disabled)throw Error(el('status').textContent);
       const prepared=el('update-summary').textContent;
       let interrupted=false;
@@ -180,10 +186,22 @@ def automatic_harness(*, equal_version=False, bad_resource=False, interrupt=Fals
         el('update').click();await wait(()=>el('workflow-status').dataset.state==='complete'||el('workflow-status').dataset.state==='error');
       }
       await report({status:el('status').textContent,notice:el('workflow-status').textContent,summary:el('update-summary').textContent,
-        prepared,recovered,cmds,stageIndex,folder,actualApplications,totals,bridgeReads});
+        prepared,recovered,cmds,stageIndex,folder,actualApplications,totals,bridgeReads,preparationLog});
 '''
     replacement = replacement.replace('BAD_RESOURCE', 'true' if bad_resource else 'false').replace('INTERRUPT', 'true' if interrupt else 'false')
+    replacement = replacement.replace('SEARCH_DISABLED', 'true' if search_disabled else 'false')
+    replacement = replacement.replace('PREPARE_ONLY', 'true' if version_fallback else 'false')
+    replacement = replacement.replace('EXPECT_ERROR', 'true' if bad_resource or missing_route or search_disabled or missing_ram else 'false')
     script = script[:start] + replacement + script[end:]
+    if missing_route:
+        script = one_replace(script, 'JSON.stringify(index)', "JSON.stringify({schemaVersion:1,routes:[]})")
+    if missing_ram or version_fallback:
+        script = one_replace(script, 'v.setUint8(layout+9,0)', 'v.setUint8(layout+9,16)')
+        script = one_replace(script, "if(cmd==='get bootloader.ver')return '> 0.11.0-OTAFIX2.4.12';",
+            "if(cmd==='ota ram')return \"Unknown OTA command. Type 'ota help'.\";\n"
+            "      if(cmd==='get bootloader.ver')return '> 0.11.0-OTAFIX2.4."+('6' if version_fallback else '5')+"';")
+        if version_fallback:
+            script = one_replace(script, 'stage=D4000', 'stage=ED000')
     if equal_version:
         script = one_replace(script, "make(a,0x01110109,'v1.17.1.9')", "make(a,0x01120001,'v1.18.0.1')")
     if three_steps:
@@ -251,11 +269,52 @@ class BrowserLoraOtaChainRuntimeTest(unittest.TestCase):
         result = run_harness(automatic_harness(equal_version=True), timeout=120)
         self.assertNotIn('error', result, result)
         self.assertIn('2 automatic update steps', result['prepared'])
+        self.assertIn('Searching intermediate updates automatically', result['preparationLog'])
+        self.assertNotIn('An intermediate update is needed.', result['preparationLog'])
         self.assertIn('Update complete', result['notice'])
         self.assertEqual(result['actualApplications'], 2)
         self.assertEqual(result['bridgeReads'], 1)
         self.assertFalse(result['folder'])
         self.assertEqual(len([c for c in result['cmds'] if c.startswith('remote ota installhash ')]), 2)
+
+    def test_no_published_route_reports_exact_images_and_search_result(self):
+        result = run_harness(automatic_harness(missing_route=True), timeout=120)
+        self.assertNotIn('error', result, result)
+        self.assertTrue(result['disabled'])
+        for value in ['base.bin', 'goal.bin', '1.17.1.9', '1.18.0.2', 'SHA-256',
+                      'No published intermediates', 'Flash']:
+            self.assertIn(value, result['details'])
+        self.assertIn('No fitting automatic update path is published', result['status'])
+        self.assertEqual(result['actualApplications'], 0)
+        self.assertFalse(any(c.startswith('remote ota pull ') for c in result['cmds']))
+
+    def test_disabled_search_and_worker_geometry_are_in_the_failure_report(self):
+        result = run_harness(automatic_harness(search_disabled=True), timeout=120)
+        self.assertNotIn('error', result, result)
+        self.assertTrue(result['disabled'])
+        for value in ['base.bin', 'goal.bin', 'Disabled in Update path options', 'workspace', 'staged']:
+            self.assertIn(value, result['details'])
+        self.assertEqual(result['bridgeReads'], 0)
+        self.assertEqual(result['actualApplications'], 0)
+
+    def test_missing_retained_ram_proof_reports_the_failed_capability_check(self):
+        result = run_harness(automatic_harness(missing_ram=True), timeout=120)
+        self.assertNotIn('error', result, result)
+        self.assertTrue(result['disabled'])
+        self.assertIn('retained RAM', result['details'])
+        self.assertIn('OTAFIX2.4.5', result['details'])
+        self.assertEqual(result['actualApplications'], 0)
+        self.assertFalse(any(c.startswith('remote ota pull ') for c in result['cmds']))
+
+    def test_older_application_automatically_uses_bootloader_version_cutoff(self):
+        result = run_harness(automatic_harness(version_fallback=True), timeout=120)
+        self.assertNotIn('error', result, result)
+        self.assertFalse(result['disabled'])
+        self.assertIn('automatic update steps', result['summary'])
+        self.assertIn('remote ota ram', result['cmds'])
+        self.assertIn('remote get bootloader.ver', result['cmds'])
+        self.assertIn('remote ota bootloader status', result['cmds'])
+        self.assertEqual(result['actualApplications'], 0)
 
     def test_bad_intermediate_resource_blocks_every_firmware_write(self):
         result = run_harness(automatic_harness(bad_resource=True), timeout=120)

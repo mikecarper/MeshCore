@@ -51,8 +51,14 @@
         caps.runtimeStorage='internal';caps.runtimeStageCeiling=checks.internalStage(status,self,d);
         // Older receivers may lack the diagnostic. They remain usable for
         // non-hybrid packages, while larger hybrid packages require proof.
-        try { caps.runtimeHybridRam=await checks.probeHybridRam(command=>link.remoteCommand(key,password,command)); }
-        catch (_) { caps.runtimeHybridRam=null; }
+        caps.runtimeHybridRamDiagnostics={};
+        try { caps.runtimeHybridRam=await checks.probeHybridRam(async command=>{
+          const reply=await link.remoteCommand(key,password,command);
+          if(command==='get bootloader.ver')caps.runtimeHybridRamDiagnostics.bootloaderVersion=reply;
+          if(command==='ota bootloader status')caps.runtimeHybridRamDiagnostics.bootloaderStatus=reply;
+          return reply;
+        }); }
+        catch (error) { caps.runtimeHybridRam=null;caps.runtimeHybridRamError=error?.message||String(error); }
       }
     }
     return caps;

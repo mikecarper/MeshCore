@@ -187,10 +187,40 @@ built.
 
 The initial published bridge bank covers the GAT562 30S Mesh Kit repeater from
 the original 1.18.0.1 Full image to 1.18.0.2 Full. Its hybrid staging requires
-confirmed retained-RAM support. Older applications without `ota ram` can use the
-exact published GAT562 OTAFIX 2.4.12 bootloader identity and CRC. Unknown
-bootloaders remain blocked. These are application updates; the bootloader and
-saved settings are retained.
+confirmed retained-RAM support. These are application updates; the bootloader
+and saved settings are retained.
+
+### Bootloader RAM staging cutoff
+
+[OTAFIX 2.4.6](https://github.com/mikecarper/Adafruit_nRF52_Bootloader_OTAFIX/releases/tag/0.11.0-OTAFIX2.4.6)
+introduced the extra **64 KiB of retained RAM** for normal internal-storage
+nRF52840 bootloaders. It holds part of the update package across a software
+reset; removing power loses that part of the transfer.
+
+| Installed bootloader | Retained-RAM staging |
+| --- | --- |
+| Stock Adafruit or OTAFIX 2.4.5 and earlier | Not available from the version alone. |
+| Official stable OTAFIX 2.4.6 through 2.4.12, normal internal-storage profile | Available; the browser checks the version and live internal-storage identity. |
+| External-only QSPI or SD profile | Uses its storage backend; the version does not establish a RAM arena. |
+| Custom, preview, unknown or another release family | Requires an explicit `ota ram` capability or an exact verified bootloader identity. |
+
+The browser reads `ota ram` first. When older application firmware does not
+provide it, the browser uses `get bootloader.ver` with `ota bootloader status`.
+The version fallback requires a reviewed stable 2.4.6-2.4.12 version, ABI 3,
+internal profile `caps=0A`, and a hybrid application with expanded `ED000`
+staging. Normal adaptive RAK3401/RAK4631 2.4.10 and later also report that
+internal profile. SD/internal combined profiles still require the explicit
+RAM capability or exact identity check.
+
+An explicit `hybrid=0` is never overridden by the version. A bare
+`0.11.0 (base)`, missing reply, or timeout does not establish support. The
+exact published GAT562 OTAFIX 2.4.12 identity and CRC remains a fallback when
+the older version reader cannot identify it. A larger version in another
+OTAFIX lineage is not assumed compatible.
+
+Preparation failures include the installed and selected filenames, versions,
+full firmware hashes, retained-RAM check, search result and flash budget in
+the diagnostic log. Passwords and local file paths are omitted.
 
 ## About guarded OTA
 
@@ -343,30 +373,30 @@ if preparation fails, remove the old image to use a full package instead.
 
 </details>
 
-<script src="../_javascript/lora_ota_checks.js?v=auto-paths-1"></script>
+<script src="../_javascript/lora_ota_checks.js?v=auto-paths-3"></script>
 <script src="../_javascript/lora_ota_package.js"></script>
 <script src="../_javascript/lora_ota_zip.js"></script>
-<script src="../_javascript/lora_ota_delta.js?v=auto-paths-1"></script>
+<script src="../_javascript/lora_ota_delta.js?v=auto-paths-3"></script>
 <script src="../_javascript/lora_ota_port.js"></script>
 <script src="../_javascript/lora_ota_serial.js"></script>
 <script src="../_javascript/lora_ota_companion_source.js"></script>
 <script src="../_javascript/lora_ota_companion.js"></script>
 <script src="../_javascript/lora_ota_contacts.js"></script>
-<script src="../_javascript/lora_ota_session.js?v=auto-paths-1"></script>
+<script src="../_javascript/lora_ota_session.js?v=auto-paths-3"></script>
 <script src="../_javascript/lora_ota_route.js"></script>
 <script src="../_javascript/lora_ota_repeat.js"></script>
 <script src="../_javascript/lora_ota_discovery.js"></script>
 <script src="../_javascript/lora_ota_collect.js"></script>
-<script src="../_javascript/lora_ota_routed_session.js?v=auto-paths-1"></script>
+<script src="../_javascript/lora_ota_routed_session.js?v=auto-paths-3"></script>
 <script src="../_javascript/lora_ota_plan.js"></script>
 <script src="../_javascript/lora_ota_candidates.js?v=auto-paths-1"></script>
 <script src="../_javascript/lora_ota_sim.js"></script>
 <script src="../_javascript/lora_ota_chain.js?v=auto-paths-2"></script>
-<script src="../_javascript/lora_ota_chain_ui.js?v=auto-paths-1"></script>
+<script src="../_javascript/lora_ota_chain_ui.js?v=auto-paths-3"></script>
 <script src="../_javascript/lora_ota_auto_chain.js?v=auto-paths-2"></script>
 <script src="../_javascript/lora_ota_region_profiles.js"></script>
 <script src="../_javascript/lora_ota_radio_setup.js"></script>
 <script src="../_javascript/lora_ota_recovery.js"></script>
 <script src="../_javascript/lora_ota_lease.js"></script>
 <script src="../_javascript/lora_ota_catalog.js?v=4aeb7bf86"></script>
-<script src="../_javascript/lora_ota_browser.js?v=auto-paths-1"></script>
+<script src="../_javascript/lora_ota_browser.js?v=auto-paths-3"></script>
