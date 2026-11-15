@@ -332,6 +332,61 @@ class InfrastructureRxSettingsTests(unittest.TestCase):
     def test_actual_commands_and_pending_transactions(self):
         self.compile_run(fixture())
 
+    def test_w12_rxps_off_live_pending_and_failed_save_transactions(self):
+        code = fixture(("USE_LR2021", "MESHNOLOGY_W12", "MESH_W12_RXPS_EXPERIMENT"))
+        code = code.split("static bool ok(", 1)[0]
+        code += r'''
+int main() {
+  for (bool busy : {false, true}) {
+    CommonCLI cli; char reply[160];
+    cli.command("radio.rxps level 5", reply);
+    assert(!strncmp(reply, "OK - level 5,on,", 16));
+    assert(cli.prefs.rx_powersaving_enabled && cli.callbacks.hardware_ps.enabled);
+    const Prefs before = cli.callbacks.persisted;
+    const unsigned saved_on = cli.callbacks.saves;
+    cli.callbacks.transmitting = busy;
+    cli.command("radio.rxps off", reply);
+    assert(!strncmp(reply, "OK - off,", 9));
+    assert(!cli.prefs.rx_powersaving_enabled && !cli.callbacks.persisted.rx_powersaving_enabled);
+    assert(cli.callbacks.saves == saved_on + 1);
+    assert(cli.prefs.rx_ps_rx_us == before.rx_ps_rx_us
+        && cli.prefs.rx_ps_sleep_us == before.rx_ps_sleep_us
+        && cli.prefs.rx_ps_level == before.rx_ps_level
+        && cli.prefs.rx_ps_preamble == before.rx_ps_preamble);
+    assert(cli.callbacks.hardware_ps.enabled == busy);
+    assert(cli.hasPendingRadioSettings() == busy);
+    cli.callbacks.transmitting = false;
+    cli.loop();
+    assert(!cli.callbacks.hardware_ps.enabled && !cli.hasPendingRadioSettings());
+    assert(cli.callbacks.saves == saved_on + 1);
+    // Reapplying the accepted persisted snapshot must remain continuous RX.
+    // File I/O and the LR2021 chip are mocked in this CLI transaction harness.
+    CommonCLI restarted;
+    restarted.prefs = cli.callbacks.persisted;
+    assert(restarted.applyRxSetting(CommonCLI::RxPowerSaving) == Result::APPLIED);
+    assert(!restarted.callbacks.hardware_ps.enabled);
+  }
+  CommonCLI cli; char reply[160];
+  cli.command("radio.rxps level 5", reply);
+  assert(cli.callbacks.persisted.rx_powersaving_enabled);
+  const unsigned saved_on = cli.callbacks.saves;
+  cli.callbacks.save_ok = false;
+  cli.command("radio.rxps off", reply);
+  assert(!strcmp(reply, "Error: RX save unconfirmed; reboot may differ"));
+  assert(cli.prefs.rx_powersaving_enabled && cli.callbacks.persisted.rx_powersaving_enabled
+      && cli.callbacks.hardware_ps.enabled && !cli.hasPendingRadioSettings());
+  assert(cli.callbacks.saves == saved_on + 1);
+  cli.callbacks.save_ok = true;
+  cli.callbacks.ps_results = {Result::FAILED, Result::APPLIED};
+  cli.command("radio.rxps off", reply);
+  assert(!strcmp(reply, "Error: RX setting rejected"));
+  assert(cli.prefs.rx_powersaving_enabled && cli.callbacks.persisted.rx_powersaving_enabled
+      && cli.callbacks.hardware_ps.enabled && !cli.hasPendingRadioSettings());
+  assert(cli.callbacks.saves == saved_on + 1);
+}
+'''
+        self.compile_run(code)
+
     def test_integrated_stm32_preserves_unsupported_errors_and_off_transactions(self):
         code = fixture(("STM32_PLATFORM", "STM32WLxx", "USE_STM32WL")).split("static bool ok(", 1)[0]
         code += r'''
