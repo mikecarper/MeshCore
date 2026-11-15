@@ -7,7 +7,7 @@ const vm=require('node:vm');
 const checks=require('../docs/_javascript/lora_ota_checks.js');
 const source=fs.readFileSync(require.resolve('../docs/_javascript/lora_ota_browser.js'),'utf8');
 function workbench(){
-  const elements=new Map();
+  const elements=new Map(),storage=new Map();
   const get=name=>{
     if(!elements.has(name)){const listeners=new Map();elements.set(name,{value:'',textContent:'',hidden:true,disabled:false,checked:false,dataset:{},files:[],options:[],tagName:'DIV',parentElement:null,addEventListener(type,fn){listeners.set(type,fn);},emit(type){return listeners.get(type)?.();},querySelectorAll:()=>[],replaceChildren(){},scrollIntoView(){}});}
     return elements.get(name);
@@ -15,11 +15,39 @@ function workbench(){
   const ui={querySelector:selector=>get(/data-role="([^"]+)"/.exec(selector)[1]),querySelectorAll:()=>[],addEventListener(){},dispatchEvent(){}};
   for(const name of ['diagnostics','investigation-details'])get(name).tagName='DETAILS';
   get('source').value='companion';get('radio-region').value='auto';
-  const context=vm.createContext({document:{querySelector:()=>ui},navigator:{serial:{}},LoraOtaChecks:checks,LoraOtaRadioSetup:{regions:[]},LoraOtaCompanion:{preservedMessages:()=>[],preservedSnapshot:()=>({messages:[],token:''})},console,setTimeout,clearTimeout,TextEncoder,TextDecoder,URL,URLSearchParams,Uint8Array,Date,CustomEvent:class{constructor(type,init){this.type=type;this.detail=init?.detail;}}});
-  const instrumented=source.replace(/\}\)\(\);\s*$/,'globalThis.failureUi={fail,run,onInvestigationProgress,failurePath,failureRadio,setLink(value){link=value;},setContacts(value){contacts=value;},setInvestigation(value){investigationActive=value;},setStep(value){operationErrorStep=value;},setPhase(value){updatePhase=value;}};})();');
+  const context=vm.createContext({document:{querySelector:()=>ui},navigator:{serial:{}},localStorage:{getItem:key=>storage.has(key)?storage.get(key):null,setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)},LoraOtaChecks:checks,LoraOtaRadioSetup:{regions:[]},LoraOtaCompanion:{preservedMessages:()=>[],preservedSnapshot:()=>({messages:[],token:''})},console,setTimeout,clearTimeout,TextEncoder,TextDecoder,URL,URLSearchParams,Uint8Array,Date,CustomEvent:class{constructor(type,init){this.type=type;this.detail=init?.detail;}}});
+  const instrumented=source.replace(/\}\)\(\);\s*$/,'globalThis.failureUi={fail,run,autoRead,readStepJournal,onInvestigationProgress,failurePath,failureRadio,setLink(value){link=value;},setContacts(value){contacts=value;},setInvestigation(value){investigationActive=value;},setStep(value){operationErrorStep=value;},setPhase(value){updatePhase=value;}};})();');
   assert.notEqual(instrumented,source);vm.runInContext(instrumented,context);
-  return {get,api:context.failureUi};
+  return {get,api:context.failureUi,storage};
 }
+
+test('a missing initial step is distinct from malformed or explicit-null recovery data',()=>{
+  const ui=workbench(),key='test-source:target:goal',automatic='meshcore-browser-lora-ota-auto-step:'+key;
+  assert.equal(ui.api.autoRead(key,'step'),null);assert.equal(ui.api.readStepJournal(),null);
+  for(const storageKey of [automatic,'meshcore-browser-lora-ota-chain-step']){
+    const read=storageKey===automatic?()=>ui.api.autoRead(key,'step'):()=>ui.api.readStepJournal();
+    for(const raw of ['{','null','[]','42','false','"not a step"']){
+      ui.storage.set(storageKey,raw);
+      assert.throws(read,error=>error.otaLocalStateCheck===true&&error.otaLocalCheck===true&&/unreadable/.test(error.message));
+      assert.equal(ui.storage.get(storageKey),raw,'corrupt recovery evidence is never cleared');
+    }
+    ui.storage.set(storageKey,JSON.stringify({phase:'install attempted',packageHash:'original-package'}));
+    assert.equal(read().phase,'install attempted');assert.equal(read().packageHash,'original-package');
+    ui.storage.delete(storageKey);
+  }
+});
+
+test('saved-state errors identify the local check without sending failure identity requests',async()=>{
+  const ui=workbench(),key='test-source:target:goal',calls=[];
+  ui.storage.set('meshcore-browser-lora-ota-auto-step:'+key,'null');
+  ui.api.setLink({running:true,sourceKey:'aa'.repeat(32),diagnosticRead:async(...args)=>calls.push(args)});
+  let error;try{ui.api.autoRead(key,'step');}catch(cause){error=cause;}
+  assert.ok(error);await ui.api.fail(error,'Continue automatic update');
+  const details=ui.get('error-details').textContent;
+  assert.match(details,/Read saved update-step recovery data/);assert.match(details,/Endpoint: Browser/);
+  assert.match(details,/Command: none \(local saved-state check\)/);assert.doesNotMatch(details,/not identified for this failure/);
+  assert.match(ui.get('workflow-status').textContent,/No recovery data was cleared/);assert.deepEqual(calls,[]);
+});
 test('main error and diagnostic log show identity command, direct path and Radio 2 without changing the error',()=>{
   const ui=workbench(),error=Object.assign(Error('Remote command timed out; result is unknown'),{otaStep:'Verifying target identity',otaCommand:'get public.key',otaEndpoint:'remote target',otaPath:'direct (0 hops; enforced by guarded session)',otaRadio:'Radio 2 (selected source OTA profile)',otaTimeoutMs:7000,otaAttempt:7,otaMaxAttempts:7,loraReplyTimeout:true});
   ui.api.setLink({otaSupported:true,otaRadioProfile:0});ui.api.setStep('Find matching firmware');ui.api.fail(error);

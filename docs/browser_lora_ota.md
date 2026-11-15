@@ -182,6 +182,13 @@ then prepares the next radio window. Progress shows the current step. After an
 interruption, use Prepare update and Continue firmware update; the exact plan
 and completed steps are saved in this browser.
 
+A connection failure before step 1 creates its transfer record can still be
+recovered. The browser rechecks the exact starting image and package, confirms
+the target has no staged download, and then starts that same first step. A
+missing record never authorizes replacing staged data or repeating an uncertain
+install. Existing mismatched or unreadable recovery records are retained and
+reported as local saved-state errors.
+
 Under Update path options, choose fewer installs or less radio data. Deep search
 also checks every page-aligned workspace that could fit. It takes longer and
 can be stopped before uploading firmware. Estimates exclude retries and other
@@ -442,7 +449,7 @@ if preparation fails, remove the old image to use a full package instead.
 
 </details>
 
-<script src="../_javascript/lora_ota_checks.js?v=auto-paths-3"></script>
+<script src="../_javascript/lora_ota_checks.js?v=initial-step-recovery-1"></script>
 <script src="../_javascript/lora_ota_package.js"></script>
 <script src="../_javascript/lora_ota_zip.js"></script>
 <script src="../_javascript/lora_ota_delta.js?v=auto-paths-3"></script>
@@ -461,7 +468,7 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_plan.js"></script>
 <script src="../_javascript/lora_ota_candidates.js?v=auto-paths-1"></script>
 <script src="../_javascript/lora_ota_sim.js"></script>
-<script src="../_javascript/lora_ota_chain.js?v=auto-paths-2"></script>
+<script src="../_javascript/lora_ota_chain.js?v=initial-step-recovery-1"></script>
 <script src="../_javascript/lora_ota_chain_ui.js?v=auto-paths-3"></script>
 <script src="../_javascript/lora_ota_auto_chain.js?v=auto-paths-2"></script>
 <script src="../_javascript/lora_ota_region_profiles.js"></script>
@@ -469,4 +476,4 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_recovery.js?v=usb-retry-1"></script>
 <script src="../_javascript/lora_ota_lease.js"></script>
 <script src="../_javascript/lora_ota_catalog.js?v=4aeb7bf86"></script>
-<script src="../_javascript/lora_ota_browser.js?v=usb-retry-1"></script>
+<script src="../_javascript/lora_ota_browser.js?v=initial-step-recovery-1"></script>

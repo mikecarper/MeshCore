@@ -8,6 +8,10 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (candidates, checks) {
   'use strict';
   const KEY = /^[0-9a-f]{64}$/i;
+  function recoveryError(message) {
+    return Object.assign(Error(message), {otaLocalCheck:true,otaLocalStateCheck:true,
+      otaEndpoint:'Browser',otaStep:'Check saved update-step recovery state'});
+  }
   async function hash(value) {
     const api = globalThis.crypto?.subtle || (typeof require === 'function' ? require('node:crypto').webcrypto.subtle : null);
     if (!api) throw Error('Web Crypto is unavailable');
@@ -52,9 +56,17 @@
     save(planHash,phase,index) { this.writeChainJournal(this.state(planHash,phase,index)); }
     readStep(step) {
       const record=this.readStepJournal(), id=checks.hex(step.package.info.merkleRoot);
-      if (!record || String(record.source || '').toLowerCase() !== this.sourceKey ||
-          String(record.target || '').toLowerCase() !== this.targetKey || record.packageHash !== step.packageHash || record.id !== id)
-        throw Error('The saved step does not match this source, target and complete package');
+      const failed=[];
+      if(record===null||record===undefined)failed.push('missing record');
+      else {
+        if(String(record.source || '').toLowerCase()!==this.sourceKey)failed.push('source identity');
+        if(String(record.target || '').toLowerCase()!==this.targetKey)failed.push('target identity');
+        if(record.packageHash!==step.packageHash)failed.push('complete package hash');
+        if(record.id!==id)failed.push('package ID');
+      }
+      if(failed.length)
+        throw recoveryError('The saved step does not match this source, target and complete package. '+
+          'Failed checks: '+failed.join(', ')+'. No install was authorized by this check.');
       return record;
     }
     async live(stage,index) {
@@ -112,9 +124,11 @@
           index++; phase='step starting'; recovery=false; this.save(planHash,phase,index); continue;
         }
         const before=await this.live('pre-install',index);
-        let recoveringRecord=null;
+        let recoveringRecord=null, missingInitialStep=false;
         if(recovery){
-          try{recoveringRecord=this.readStep(step);}
+          const raw=this.readStepJournal();
+          if(index===0&&(raw===null||raw===undefined))missingInitialStep=true;
+          else try{recoveringRecord=this.readStep(step);}
           catch(error){
             // A disconnect can land after advancing the chain journal but
             // before the next session has written its first step record.
@@ -160,7 +174,31 @@
         try {
           if (recovery) {
             const record=recoveringRecord;
-            if (record.phase==='install attempted') {
+            if(missingInitialStep){
+              // The chain journal precedes the first session's journal. A USB
+              // failure in that gap has sent no journaled pull or install.
+              // Absence alone is not permission to replace an RF download.
+              const stillMissing=()=>{
+                this.cancelCheck(signal);
+                if(typeof this.link.sourceKey!=='string'||this.link.sourceKey.toLowerCase()!==this.sourceKey||
+                    typeof this.link.knownRepeater==='string'&&this.link.knownRepeater.toLowerCase()!==this.targetKey)
+                  throw recoveryError('The source or target changed during initial-step recovery; no update was started.');
+                const current=this.readStepJournal();
+                if(current!==null&&current!==undefined)
+                  throw recoveryError('An update-step record appeared during initial-step recovery. Inspect it before retrying; no staged data was changed.');
+              };
+              stillMissing();
+              const inspected=await session.inspect({allowExisting:true});
+              stillMissing();
+              if(inspected.download!=='idle')
+                throw recoveryError('The initial update-step record is missing, but the target is not positively idle. '+
+                  'Inspect its staged update before retrying; no staged data was replaced.');
+              const fresh=await this.live('recover initial step',index);
+              stillMissing();await candidates.checkStep(this.prepared,index,fresh);stillMissing();
+              // The real session rechecks remote staging again before writing
+              // its first prepared record or starting this exact package.
+              await startFresh();
+            } else if (record.phase==='install attempted') {
               // An uncertain install must never be reissued. The session can
               // prove it already booted, or the operator must resolve it.
               const inspected=await session.inspect({allowExisting:true});

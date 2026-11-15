@@ -124,7 +124,9 @@
     const radio=safeText(detail.otaRadio,160);
     if(radio)lines.push('Radio: '+radio);
     const command=safeCommand(detail.otaCommand);
-    lines.push('Command: '+(detail.otaLocalCheck===true?'none (local browser calculation)':command||'not identified for this failure'));
+    lines.push('Command: '+(detail.otaLocalCheck===true
+      ?detail.otaLocalStateCheck===true?'none (local saved-state check)':'none (local browser calculation)'
+      :command||'not identified for this failure'));
     const requestStep=safeText(detail.otaRequestStep),requestCommand=safeCommand(detail.otaRequestCommand);
     if(requestStep&&requestStep!==stage)lines.push('Request step: '+requestStep);
     if(requestCommand&&requestCommand!==command)lines.push('Request command: '+requestCommand);

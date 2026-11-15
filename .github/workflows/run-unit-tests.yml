@@ -96,6 +96,7 @@ jobs:
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_zip_ui_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 MESHCORE_REQUIRE_DETOOLS=1 python3 -B test/test_browser_lora_ota_candidates_runtime.py -v
           MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_chain_runtime.py -v
+          MESHCORE_REQUIRE_OTA_BROWSER=1 python3 -B test/test_browser_lora_ota_initial_chain_recovery_runtime.py -v
 
   wifi-diagnostics:
     runs-on: ubuntu-26.04

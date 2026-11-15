@@ -343,7 +343,17 @@
   function journal(state) { localStorage.setItem('meshcore-browser-lora-ota', JSON.stringify({...state, at: new Date().toISOString()})); }
   function readJournal() { try { return JSON.parse(localStorage.getItem('meshcore-browser-lora-ota')); } catch (_) { return null; } }
   const writeStepJournal = state => localStorage.setItem('meshcore-browser-lora-ota-chain-step', JSON.stringify(state));
-  const readStepJournal = () => { try { return JSON.parse(localStorage.getItem('meshcore-browser-lora-ota-chain-step')); } catch (_) { return null; } };
+  function readStepRecord(storageKey) {
+    const raw=localStorage.getItem(storageKey);
+    if(raw===null)return null;
+    let value;
+    try{value=JSON.parse(raw);}catch(_){}
+    if(!value||typeof value!=='object'||Array.isArray(value))
+      throw Object.assign(Error('The saved update-step record is unreadable. No recovery data was cleared. This local check did not send a radio command.'),
+        {otaLocalCheck:true,otaLocalStateCheck:true,otaEndpoint:'Browser',otaStep:'Read saved update-step recovery data'});
+    return value;
+  }
+  const readStepJournal = () => readStepRecord('meshcore-browser-lora-ota-chain-step');
   const writeChainJournal = state => localStorage.setItem('meshcore-browser-lora-ota-chain', JSON.stringify({...state, at:Date.now()}));
   const readChainJournal = () => { try { return JSON.parse(localStorage.getItem('meshcore-browser-lora-ota-chain')); } catch (_) { return null; } };
   const readChainMeta = () => { try { return JSON.parse(localStorage.getItem('meshcore-browser-lora-ota-chain-meta')); } catch (_) { return null; } };
@@ -1240,7 +1250,10 @@
   }
   const autoCacheKey=(target,goalHash)=>link.sourceKey.toLowerCase()+':'+target.toLowerCase()+':'+goalHash;
   const autoJournalKey=(key,kind)=>'meshcore-browser-lora-ota-auto-'+kind+':'+key;
-  const autoRead=(key,kind)=>{try{return JSON.parse(localStorage.getItem(autoJournalKey(key,kind)));}catch(_){return null;}};
+  const autoRead=(key,kind)=>{
+    if(kind==='step')return readStepRecord(autoJournalKey(key,kind));
+    try{return JSON.parse(localStorage.getItem(autoJournalKey(key,kind)));}catch(_){return null;}
+  };
   const autoWrite=(key,kind,value)=>localStorage.setItem(autoJournalKey(key,kind),JSON.stringify(value));
   function autoSession(step,target,password,key){
     const Session=link.relays?.length?LoraOtaRoutedSession.RoutedSession:LoraOtaSession.DirectSession;
@@ -1261,6 +1274,9 @@
       await ensureRadioChannel(target,password);disposition=await session.inspect({allowExisting:true,allowReplacement:true});
     }
     if(preparing?.signal.aborted)throw Error('Update preparation cancelled. No firmware was uploaded.');
+    if(resume&&index===0&&record.phase==='step starting'&&autoRead(key,'step')==null&&disposition.download!=='idle')
+      throw Object.assign(Error('The first update step has no saved transfer record, and the target is not idle. Its staged update was left unchanged; no pull or install was sent.'),
+        {otaLocalCheck:true,otaLocalStateCheck:true,otaEndpoint:'Browser',otaStep:'Check initial update-step recovery state'});
     if(disposition.download!=='installed')await pauseQuietForwarding(target,password,session.verifiedRadio);
     autoChain={prepared,target,key,resume,replacement:disposition.download==='replace'?disposition.existingDownload:null};
     preparedDownload='chain';

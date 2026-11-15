@@ -60,7 +60,7 @@ async function fixture() {
     confirmRearm:async ({index})=>{calls.push('confirm '+index);return rearmConfirmed;}};
   return {args,calls,pulls,installs,rearms,get chain(){return chain;},get stepRecord(){return stepRecord;},
     failNextPull(){failPull=true;},failNextInstall(apply){failInstall=true;applyBeforeFail=apply;},
-    failNextRearm(){rearmFails=true;},setRearmConfirmed(v){rearmConfirmed=v;},setLive(v){live=v;}};
+    failNextRearm(){rearmFails=true;},setRearmConfirmed(v){rearmConfirmed=v;},setLive(v){live=v;},setStepRecord(v){stepRecord=v;}};
 }
 
 test('executes a validated chain serially and rearms only after verified reboot',async()=>{
@@ -88,6 +88,122 @@ test('a disconnect between steps resumes after the previous installed journal wi
   assert.equal(f.chain.index,1);assert.equal(f.stepRecord.phase,'installed');
   await new ChainRunner(f.args).run({resume:true});
   assert.deepEqual(f.installs,[0,1]);assert.deepEqual(f.pulls,[0,1]);
+});
+async function interruptedBeforeFirstStep(){
+  const f=await fixture(),create=f.args.createSession;let first=true;
+  f.args.createSession=async(...args)=>{
+    if(first){first=false;throw Error('USB stopped before the first step journal');}
+    const job=await create(...args);
+    if(args[1].index===0)job.inspect=async()=>{f.calls.push('inspect initial idle');return {download:'idle'};};
+    return job;
+  };
+  await assert.rejects(new ChainRunner(f.args).run(),/before the first step journal/);
+  assert.equal(f.chain.phase,'step starting');assert.equal(f.chain.index,0);assert.equal(f.stepRecord,null);
+  assert.deepEqual(f.pulls,[]);assert.deepEqual(f.installs,[]);return f;
+}
+test('a matching initial chain with a genuinely absent step journal restarts only after idle and fresh source proof',async()=>{
+  for(const absent of [null,undefined]){
+    const f=await interruptedBeforeFirstStep();f.setStepRecord(absent);
+    const result=await new ChainRunner(f.args).run({resume:true});
+    assert.equal(result.phase,'complete');assert.deepEqual(f.pulls,[0,1]);assert.deepEqual(f.installs,[0,1]);
+    assert.ok(f.calls.indexOf('inspect initial idle')<f.calls.indexOf('live recover initial step 0'));
+    assert.ok(f.calls.indexOf('live recover initial step 0')<f.calls.indexOf('start 0 false'));
+  }
+});
+test('a missing initial journal never adopts or replaces a non-idle staged download, even its exact planned MID',async()=>{
+  for(const download of ['active','ready','failed','replace','installed',undefined]){
+    const f=await interruptedBeforeFirstStep(),create=f.args.createSession;
+    f.args.createSession=async(...args)=>{
+      const job=await create(...args);
+      job.inspect=async options=>{
+        assert.deepEqual(options,{allowExisting:true});
+        return {download,id:Buffer.from(f.args.prepared.steps[0].package.info.merkleRoot).toString('hex')};
+      };return job;
+    };
+    await assert.rejects(new ChainRunner(f.args).run({resume:true}),error=>{
+      assert.match(error.message,/not positively idle/);assert.equal(error.otaLocalCheck,true);
+      assert.equal(error.otaLocalStateCheck,true);assert.equal(error.otaEndpoint,'Browser');
+      assert.equal(error.otaCommand,undefined);return true;
+    });assert.deepEqual(f.pulls,[]);assert.deepEqual(f.installs,[]);assert.equal(f.stepRecord,null);
+  }
+});
+test('nonnull mismatched or corrupt first-step journals retain strict complete-package binding',async()=>{
+  for(const raw of [false,{}, {phase:'install attempted',source,target,id:'12345678',packageHash:'ff'.repeat(32)},
+    {phase:'ready',source:'cc'.repeat(32),target,id:'12345678',packageHash:'ff'.repeat(32)}]){
+    const f=await interruptedBeforeFirstStep();f.setStepRecord(raw);
+    await assert.rejects(new ChainRunner(f.args).run({resume:true}),error=>{
+      assert.match(error.message,/saved step does not match/);assert.equal(error.otaLocalStateCheck,true);
+      assert.equal(error.otaCommand,undefined);return true;
+    });assert.deepEqual(f.pulls,[]);assert.deepEqual(f.installs,[]);assert.equal(f.stepRecord,raw);
+  }
+});
+test('saved-step failure diagnostics identify only fixed failed fields without exposing keys or hashes',async()=>{
+  const f=await fixture(),runner=new ChainRunner(f.args),step=f.args.prepared.steps[0];
+  const valid={phase:'ready',source,target,packageHash:step.packageHash,id:Buffer.from(step.package.info.merkleRoot).toString('hex')};
+  for(const [field,label] of [['source','source identity'],['target','target identity'],
+    ['packageHash','complete package hash'],['id','package ID'],[null,'missing record']]){
+    const invalid=field?{...valid,[field]:field==='id'?'deadbeef':'dd'.repeat(32)}:null;
+    f.setStepRecord(invalid);
+    assert.throws(()=>runner.readStep(step),error=>{
+      assert.match(error.message,/^The saved step does not match this source, target and complete package\./);
+      assert(error.message.includes('Failed checks: '+label+'.'),error.message);
+      assert(error.message.includes('No install was authorized by this check.'));
+      for(const secret of [source,target,step.packageHash,valid.id,'dd'.repeat(32),'deadbeef'])assert(!error.message.includes(secret));
+      assert.equal(error.otaLocalStateCheck,true);assert.equal(error.otaCommand,undefined);return true;
+    });
+  }
+  f.setStepRecord(false);
+  assert.throws(()=>runner.readStep(step),error=>!error.message.includes('missing record')&&error.message.includes('source identity'));
+  f.setStepRecord(valid);assert.equal(runner.readStep(step),valid);
+});
+test('initial recovery stops if its journal, source or target changes during the idle check',async()=>{
+  for(const change of [f=>f.setStepRecord({phase:'prepared'}),f=>{f.args.link.sourceKey='cc'.repeat(32);},
+    f=>{f.args.link.knownRepeater='cc'.repeat(32);}]){
+    const f=await interruptedBeforeFirstStep(),create=f.args.createSession;
+    f.args.createSession=async(...args)=>{const job=await create(...args);job.inspect=async()=>{change(f);return {download:'idle'};};return job;};
+    await assert.rejects(new ChainRunner(f.args).run({resume:true}),error=>{
+      assert.match(error.message,/appeared|changed/);assert.equal(error.otaLocalStateCheck,true);return true;
+    });assert.deepEqual(f.pulls,[]);assert.deepEqual(f.installs,[]);
+  }
+});
+test('initial recovery revalidates live source firmware and full package bytes after proving idle',async()=>{
+  for(const changed of ['firmware','package']){
+    const f=await interruptedBeforeFirstStep(),read=f.args.readLive;
+    f.args.readLive=async context=>{
+      if(context.stage==='recover initial step'){
+        if(changed==='firmware')return {...capability,...f.args.prepared.nodes[1]};
+        f.args.prepared.steps[0].package.blob[0]^=1;
+      }return read(context);
+    };
+    await assert.rejects(new ChainRunner(f.args).run({resume:true}),changed==='firmware'?/no longer matches/:/package changed/);
+    assert.deepEqual(f.pulls,[]);assert.deepEqual(f.installs,[]);assert.equal(f.stepRecord,null);
+  }
+});
+test('cancellation or a step record appearing during fresh initial recovery proof stops before start',async()=>{
+  for(const cancel of [false,true]){
+    const f=await interruptedBeforeFirstStep(),read=f.args.readLive,controller=new AbortController();
+    f.args.readLive=async context=>{
+      const live=await read(context);
+      if(context.stage==='recover initial step'){
+        if(cancel)controller.abort();else f.setStepRecord({phase:'install attempted'});
+      }return live;
+    };
+    await assert.rejects(new ChainRunner(f.args).run({resume:true,signal:controller.signal}),cancel?/Chain stopped/:/record appeared/);
+    assert.deepEqual(f.pulls,[]);assert.deepEqual(f.installs,[]);
+  }
+});
+test('unknown initial staging and a new remote download at start cannot authorize cancellation or replacement',async()=>{
+  for(const race of [false,true]){
+    const f=await interruptedBeforeFirstStep(),create=f.args.createSession,unknown=Error('USB staging read failed');
+    f.args.createSession=async(...args)=>{
+      const job=await create(...args);
+      if(race)job.start=async options=>{assert.deepEqual(options,{resume:false});throw Error('Target already has a download');};
+      else job.inspect=async()=>{throw unknown;};
+      return job;
+    };
+    await assert.rejects(new ChainRunner(f.args).run({resume:true}),race?/already has a download/:error=>error===unknown);
+    assert.deepEqual(f.pulls,[]);assert.deepEqual(f.installs,[]);assert.equal(f.stepRecord,null);
+  }
 });
 test('only the previous verified chain container can be replaced automatically at a step boundary',async()=>{
   for(const foreign of [false,true]){
