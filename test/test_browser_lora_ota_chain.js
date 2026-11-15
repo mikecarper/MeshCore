@@ -78,6 +78,32 @@ test('recovery restarts the exact rejected pull after fresh inspection proves an
   await new ChainRunner(f.args).run({resume:true});
   assert.deepEqual(f.pulls,[0,0,1]);assert.deepEqual(f.installs,[0,1]);
 });
+test('a disconnect between steps resumes after the previous installed journal without reinstalling it',async()=>{
+  const f=await fixture(),create=f.args.createSession;let fail=true;
+  f.args.createSession=async(step,context)=>{
+    if(context.index===1&&fail){fail=false;throw Error('disconnected before next session');}
+    return create(step,context);
+  };
+  await assert.rejects(new ChainRunner(f.args).run(),/disconnected/);
+  assert.equal(f.chain.index,1);assert.equal(f.stepRecord.phase,'installed');
+  await new ChainRunner(f.args).run({resume:true});
+  assert.deepEqual(f.installs,[0,1]);assert.deepEqual(f.pulls,[0,1]);
+});
+test('only the previous verified chain container can be replaced automatically at a step boundary',async()=>{
+  for(const foreign of [false,true]){
+    const f=await fixture(),create=f.args.createSession,replacements=[];
+    f.args.createSession=async(step,context)=>{
+      const job=await create(step,context);if(context.index===1){
+        const previous=f.args.prepared.steps[0];
+        const id=foreign?'00000000':Buffer.from(previous.package.info.merkleRoot).toString('hex');
+        job.inspect=async()=>({download:'replace',existingDownload:{id,state:'ready'}});
+        const start=job.start.bind(job);job.start=async options=>{replacements.push(options.replace);return start(options);};
+      }return job;
+    };
+    if(foreign){await assert.rejects(new ChainRunner(f.args).run(),/outside this update chain/);assert.deepEqual(f.installs,[0]);}
+    else{await new ChainRunner(f.args).run();assert.equal(replacements.length,1);assert.equal(replacements[0].state,'ready');assert.deepEqual(f.installs,[0,1]);}
+  }
+});
 
 test('uncertain pull resumes without a second initial pull',async()=>{
   const f=await fixture();f.failNextPull();

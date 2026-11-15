@@ -112,7 +112,18 @@
           index++; phase='step starting'; recovery=false; this.save(planHash,phase,index); continue;
         }
         const before=await this.live('pre-install',index);
-        const recoveringRecord = recovery ? this.readStep(step) : null;
+        let recoveringRecord=null;
+        if(recovery){
+          try{recoveringRecord=this.readStep(step);}
+          catch(error){
+            // A disconnect can land after advancing the chain journal but
+            // before the next session has written its first step record.
+            // The exact previous installed record plus the live source check
+            // below proves this is a fresh next step, not a replayed install.
+            if(index===0||this.readStep(this.prepared.steps[index-1]).phase!=='installed')throw error;
+            recovery=false;
+          }
+        }
         // When an install was already attempted the live image may already be
         // the destination, so only earlier phases require a source check.
         if (!recoveringRecord || !['install attempted','installed'].includes(recoveringRecord.phase))
@@ -131,6 +142,21 @@
         const stop=()=>{ if (typeof session.stop === 'function') session.stop(); };
         if (signal?.aborted) stop();
         signal?.addEventListener('abort',stop,{once:true});
+        const startFresh=async()=>{
+          let replacement;
+          if(index>0){
+            const inspected=await session.inspect({allowExisting:true,allowReplacement:true});
+            if(inspected.download==='replace'){
+              const previous=this.prepared.steps[index-1],expected=checks.hex(previous.package.info.merkleRoot);
+              if(inspected.existingDownload?.id!==expected)
+                throw Error('The target has a staged download outside this update chain');
+              // Some flash-only applications rediscover the previous inert
+              // container after reboot. It belongs to this verified chain.
+              replacement=inspected.existingDownload;
+            }
+          }
+          await session.start({resume:false,...(replacement?{replace:replacement}:{})});
+        };
         try {
           if (recovery) {
             const record=recoveringRecord;
@@ -147,11 +173,11 @@
               // source image running with no download. Prove that fresh state
               // before restarting this same package; never replay an install.
               const inspected=await session.inspect({allowExisting:true});
-              await session.start({resume:inspected.download!=='idle'});
+              if(inspected.download==='idle')await startFresh();else await session.start({resume:true});
             } else if (record.phase==='prepared') {
-              await session.start({resume:false});
+              await startFresh();
             } else throw Error('The saved step phase is not safe to resume');
-          } else await session.start({resume:false});
+          } else await startFresh();
           this.cancelCheck(signal);
           const record=this.readStep(step);
           if (record.phase==='ready') await session.install();

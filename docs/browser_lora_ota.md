@@ -361,9 +361,9 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_plan.js"></script>
 <script src="../_javascript/lora_ota_candidates.js?v=auto-paths-1"></script>
 <script src="../_javascript/lora_ota_sim.js"></script>
-<script src="../_javascript/lora_ota_chain.js?v=auto-paths-1"></script>
+<script src="../_javascript/lora_ota_chain.js?v=auto-paths-2"></script>
 <script src="../_javascript/lora_ota_chain_ui.js?v=auto-paths-1"></script>
-<script src="../_javascript/lora_ota_auto_chain.js?v=auto-paths-1"></script>
+<script src="../_javascript/lora_ota_auto_chain.js?v=auto-paths-2"></script>
 <script src="../_javascript/lora_ota_region_profiles.js"></script>
 <script src="../_javascript/lora_ota_radio_setup.js"></script>
 <script src="../_javascript/lora_ota_recovery.js"></script>
