@@ -7,6 +7,62 @@
   'use strict';
   const keyPattern = /^[0-9a-f]{64}$/i;
   function hex(bytes) { return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join(''); }
+  function failureIdentityText(value,limit=160) {
+    if(typeof value!=='string')return '';
+    const text=value.replace(/(?:https?:\/\/|file:\/\/)[^\s<>]+/gi,'<address hidden>')
+      .replace(/\b[a-z]:[\\/][^\s<>]+/gi,'<address hidden>')
+      .replace(/\b(?:(?:10|127)\.(?:\d{1,3}\.){2}\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3})\b/g,'<address hidden>')
+      .replace(/(?:\b(?:f[cd][a-f0-9]{2}|fe80):[a-f0-9:]+|::1\b)/gi,'<address hidden>')
+      .replace(/\b[a-f0-9]{16,}\b/gi,'<key hidden>')
+      .replace(/\b[A-Za-z0-9+/_=-]{32,}\b/g,'<value hidden>')
+      .replace(/[!-~]{2}\|(?=[!-~])/g,'<request tag hidden>')
+      .replace(/[^\x20-\x7e]/g,' ').replace(/\s+/g,' ').trim();
+    return text.length>limit?text.slice(0,limit)+'...':text;
+  }
+  function failureIdentityValue(value) {
+    if(typeof value!=='string'||value.length>2048||/[^\x20-\x7e\r\n\t]/.test(value))return '';
+    const text=value.trim().replace(/^>\s*/, '').trim();
+    if(!text||/^(?:err(?:or)?\b|unknown\b|unsupported\b|unrecognized\b|not supported\b|permission denied\b|access denied\b)/i.test(text))return '';
+    return failureIdentityText(text);
+  }
+  // Reuse identity already read from this target in the selected session.
+  // Best-effort diagnostics send one bounded request only for a missing field.
+  // The supplied read owns its timeout and must not authenticate/reset/retry.
+  // Await it directly so no abandoned request can outlive this collector.
+  async function collectFailureIdentity({source={},target={},read,canContinue=()=>true,timeoutMs=5000}={}) {
+    const sourceInfo={version:failureIdentityValue(source?.firmwareVersion),board:failureIdentityValue(source?.firmwareBoardName),origin:'cached USB identity'};
+    const cachedTarget={version:failureIdentityValue(target?.version),board:failureIdentityValue(target?.board)};
+    const result={source:sourceInfo,target:{}};
+    const budget=Number.isFinite(timeoutMs)&&timeoutMs>0?Math.min(5000,Math.max(1,Math.floor(timeoutMs))):5000;
+    const active=()=>{try{return typeof canContinue==='function'&&canContinue()===true;}catch(_){return false;}};
+    let stopped=false;
+    for(const [field,command] of [['version','ver'],['board','board']]){
+      if(cachedTarget[field]){
+        result.target[field]={command,origin:'cached target reply',attempted:false,value:cachedTarget[field]};continue;
+      }
+      if(stopped||!active()){
+        stopped=true;result.target[field]={command,origin:'not available',attempted:false,error:'Connection changed or diagnostic stopped; no identity result retained'};continue;
+      }
+      if(typeof read!=='function'){
+        result.target[field]={command,origin:'not available',attempted:false,error:'No safe read callback is available'};continue;
+      }
+      try{
+        const response=await read(command,{timeoutMs:budget});
+        if(!active()){
+          stopped=true;result.target[field]={command,origin:'not available',attempted:true,error:'Connection changed or diagnostic stopped; reply discarded'};continue;
+        }
+        const value=failureIdentityValue(response);
+        result.target[field]=value?{command,origin:'fresh read',attempted:true,value}
+          :{command,origin:'not available',attempted:true,error:'The '+command+' reply was empty, rejected or not a usable identity value'};
+      }catch(error){
+        if(!active())stopped=true;
+        const reason=stopped?'Connection changed or diagnostic stopped; no identity result retained'
+          :failureIdentityText(typeof error==='string'?error:error?.message,240)||'Diagnostic read failed without a reason';
+        result.target[field]={command,origin:'not available',attempted:true,error:reason};
+      }
+    }
+    return result;
+  }
   // Error context is for display only. Never rewrite the original message or
   // transport flags: timeout/retry and uncertain-install decisions use them.
   function errorDetails(error, {step='', secrets=[]} = {}) {
@@ -20,6 +76,9 @@
     const safeText=(value,limit=160,multiline=false)=>{
       // Remove secrets before truncating; cutting first could expose a prefix.
       let text=redact(value).replace(/(?:https?:\/\/|file:\/\/)[^\s<>]+/gi,'<address hidden>')
+        .replace(/\b[a-z]:[\\/][^\s<>]+/gi,'<address hidden>')
+        .replace(/\b(?:(?:10|127)\.(?:\d{1,3}\.){2}\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3})\b/g,'<address hidden>')
+        .replace(/(?:\b(?:f[cd][a-f0-9]{2}|fe80):[a-f0-9:]+|::1\b)/gi,'<address hidden>')
         .replace(/\b[a-f0-9]{16,}\b/gi,'<key hidden>')
         .replace(/\b[A-Za-z0-9+/_=-]{32,}\b/g,'<value hidden>')
         .replace(/[!-~]{2}\|(?=[!-~])/g,'<request tag hidden>');
@@ -76,6 +135,18 @@
     if(Number.isInteger(detail.otaAttempt)&&detail.otaAttempt>0&&detail.otaAttempt<=1000){
       const maximum=Number.isInteger(detail.otaMaxAttempts)&&detail.otaMaxAttempts>=detail.otaAttempt&&detail.otaMaxAttempts<=1000?detail.otaMaxAttempts:null;
       lines.push('Attempt: '+detail.otaAttempt+(maximum?' of '+maximum:''));
+    }
+    const identity=detail.otaIdentity;
+    if(identity&&typeof identity==='object'){
+      const source=identity.source&&typeof identity.source==='object'?identity.source:{};
+      for(const [field,label] of [['version','Source version'],['board','Source board']])
+        lines.push(label+' (cached USB identity): '+(safeText(source[field])||'not available (not reported by USB identity)'));
+      const target=identity.target&&typeof identity.target==='object'?identity.target:{};
+      for(const [field,label] of [['version','Target version'],['board','Target board']]){
+        const record=target[field]&&typeof target[field]==='object'?target[field]:{},value=safeText(record.value);
+        const origin=record.origin==='fresh read'?'fresh read':record.origin==='cached target reply'?'cached earlier in this session; may predate update':'diagnostic value';
+        lines.push(label+(value?' ('+origin+'): '+value:': not available ('+(safeText(record.error,240)||'not read')+')'));
+      }
     }
     const reason=safeText(typeof error==='string'?error:detail.message,2048,true)||'Unknown failure';
     lines.push('Reason: '+reason);
@@ -339,5 +410,5 @@
         plan.memorySize + Math.ceil(info.blob.length / 4096) * 4096 > ceiling - plan.app)
       throw Error('The current nRF52 staging space no longer fits this differential');
   }
-  return { route, destination, availability, readReceiver, coldRakStatus, prepareColdRakStorage, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, needsHybridRam, confirmHybridRam, readHybridRam, validateInternalPlan, version, hex, failureAdvice, explicitMaxBlock, errorDetails };
+  return { route, destination, availability, readReceiver, coldRakStatus, prepareColdRakStorage, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, needsHybridRam, confirmHybridRam, readHybridRam, validateInternalPlan, version, hex, failureAdvice, explicitMaxBlock, errorDetails, collectFailureIdentity };
 });

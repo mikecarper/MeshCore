@@ -6,7 +6,7 @@ import unittest
 from test_browser_lora_ota_runtime import BROWSER
 from test_browser_lora_ota_nrf_runtime import run_harness
 from test_browser_lora_ota_workflow_runtime import workflow_harness
-from test_browser_lora_ota_companion_runtime import investigation_harness
+from test_browser_lora_ota_companion_runtime import investigation_harness, HARNESS as COMPANION_HARNESS
 
 
 class BrowserLoraOtaFailureRuntime(unittest.TestCase):
@@ -68,6 +68,44 @@ class BrowserLoraOtaFailureRuntime(unittest.TestCase):
         self.assertIn('result is unknown', result['notice'])
         self.assertNotIn('Command:', result['notice'])
         self.assertFalse(any(c.startswith('ota pull ') or c.startswith('ota install') for c in result['cmds']))
+
+    def test_prepare_recovers_a_lost_self_reply_without_repeating_pull_or_install(self):
+        script = COMPANION_HARNESS
+        marker = "window.addEventListener('load',async()=>{try{"
+        script = script.replace(marker, marker + "const Base=LoraOtaCompanion.CompanionTransport;LoraOtaCompanion.CompanionTransport=class extends Base{constructor(port,options){super(port,{...options,investigationTimeout:50,remoteTimeout:500});}};", 1)
+        mailbox = "value=`> ota.reply req=${corr} state=ready bytes=${b.length} off=${at} data=${hex(part)||'-'}`;"
+        self.assertEqual(script.count(mailbox), 1)
+        script = script.replace(mailbox, "if(cmds.at(-1)==='ota self'&&cmds.filter(c=>c==='ota self').length===1)value=`> ota.reply req=${corr} state=pending bytes=0 off=${at} data=-`;else " + mailbox, 1)
+        result = run_harness(script, timeout=75)
+        self.assertNotIn('error', result, result)
+        self.assertTrue(result['installed'], result)
+        self.assertGreaterEqual(result['cmds'].count('ota self'), 2)
+        self.assertEqual(sum(c.startswith('ota pull ') for c in result['cmds']), 1)
+        self.assertEqual(sum(c.startswith('ota installhash ') for c in result['cmds']), 1)
+
+    def test_prepare_failure_reports_existing_board_and_reads_only_missing_version(self):
+        script = COMPANION_HARNESS
+        marker = "window.addEventListener('load',async()=>{try{"
+        script = script.replace(marker, marker + "const Base=LoraOtaCompanion.CompanionTransport;LoraOtaCompanion.CompanionTransport=class extends Base{constructor(port,options){super(port,{...options,investigationTimeout:50,remoteTimeout:500});}};", 1)
+        mailbox = "value=`> ota.reply req=${corr} state=ready bytes=${b.length} off=${at} data=${hex(part)||'-'}`;"
+        script = script.replace(mailbox, "if(cmds.at(-1)==='ota self')value=`> ota.reply req=${corr} state=pending bytes=0 off=${at} data=-`;else " + mailbox, 1)
+        action = "if(el('key').value!==key)throw Error('contact selection failed');el('inspect').click();await wait(()=>!el('transfer').disabled||el('status').textContent.includes('Error:'));"
+        self.assertEqual(script.count(action), 1)
+        script = script.replace(action, r'''if(el('key').value!==key)throw Error('contact selection failed');
+    el('inspect').click();await wait(()=>el('error-details').textContent.includes('Target version'));
+    await report({details:el('error-details').textContent,notice:el('workflow-status').textContent,cmds,installed});return;''', 1)
+        result = run_harness(script, timeout=45)
+        self.assertNotIn('error', result, result)
+        self.assertFalse(result['installed'], result)
+        self.assertEqual(result['cmds'].count('ota self'), 3)
+        self.assertEqual(result['cmds'].count('ver'), 1)
+        self.assertNotIn('board', result['cmds'], 'reported hardware from ota status must not require another LoRa query')
+        self.assertIn('v1.17.1.9', result['details'])
+        self.assertIn('hardware ID board', result['details'])
+        self.assertIn('Command: ota self', result['details'])
+        self.assertIn('Attempt: 3 of 3', result['details'])
+        self.assertIn('result is unknown', result['notice'])
+        self.assertFalse(any(c.startswith('ota pull ') or c.startswith('ota installhash ') for c in result['cmds']))
 
 
 if __name__ == '__main__':

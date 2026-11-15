@@ -378,3 +378,88 @@ test('unconfirmed path reads or writes clear stale route claims without changing
   const port=new FakePort(),link=new RepeaterTransport(port,{knownRepeater:'b'.repeat(64),openSettle:0,commandTimeout:5});await link.open();
   port.drop='ota.peer path';await assert.rejects(link.localCommand('ota.peer path'),/timed out/);assert.equal(link.otaPath,null);await link.close();
 });
+
+const diagnosticTarget='b'.repeat(64),diagnosticSource='a'.repeat(64);
+function admittedDiagnosticLink(options={}){
+  const link=new RepeaterTransport({}, {knownRepeater:diagnosticTarget,...options});
+  Object.assign(link,{running:true,writer:{},sourceKey:diagnosticSource,ownsPeer:true,authenticatedKey:diagnosticTarget,diagnosticPassword:'admin',lastPeerUse:Date.now(),clockChecked:true,otaPath:'direct (0 hops; configured)',otaPathValue:'OFF'});
+  return link;
+}
+function scriptedIdentityJob(link,replies,calls){
+  let active;
+  link.localCommand=async command=>{
+    calls.push(command);
+    const request=/^ota\.peer cmd(?:\.acl)? [a-f0-9]{64} (ver|board|ota status)$/.exec(command);
+    if(request){active=request[1];return 'OTApeer job=01020304 state=pending';}
+    if(command==='ota.peer result'){
+      const bytes=Buffer.from(replies[active]);
+      return `OTApeer job=01020304 state=ok bytes=${bytes.length} off=0 data=${bytes.toString('hex')}`;
+    }
+    throw Error('Unexpected diagnostic command');
+  };
+}
+test('failure identity reads use one admitted command and restore transport timing without login or profile changes',async()=>{
+  const link=admittedDiagnosticLink({commandTimeout:12000,remoteTimeout:40000,pollMs:700}),calls=[];
+  scriptedIdentityJob(link,{ver:'v1.18.0.2',board:'RAK 3401'},calls);
+  assert.equal(await link.diagnosticRead(diagnosticTarget,'admin','ver',{timeoutMs:37}),'v1.18.0.2');
+  assert.equal(await link.diagnosticRead(diagnosticTarget,'admin','board',{timeoutMs:37}),'RAK 3401');
+  assert.deepEqual(calls,['ota.peer cmd '+diagnosticTarget+' ver','ota.peer result','ota.peer cmd '+diagnosticTarget+' board','ota.peer result']);
+  assert.equal(link.commandTimeout,12000);assert.equal(link.remoteTimeout,40000);assert.equal(link.pollMs,700);assert.equal(link.diagnosticDeadline,null);assert.equal(link.diagnosticCanContinue,null);
+  assert.deepEqual(link.cachedFailureIdentity(diagnosticTarget),{sourceKey:diagnosticSource,targetKey:diagnosticTarget,version:'v1.18.0.2',board:'RAK 3401',boardOrigin:'board command',origin:'cached from earlier in this USB session'});
+});
+test('failure diagnostics reject mutations, wrong targets, expired or unsafe sessions without any I/O',async()=>{
+  for(const change of [{running:false},{writer:null},{failure:Error('USB disconnected')},{ownsPeer:false},{authenticatedKey:null},{diagnosticPassword:'other'},{lastPeerUse:Date.now()-240000},{serving:true},{seeder:{}},{folderUnknown:true},{diagnosticReadUncertain:true}]){
+    const link=admittedDiagnosticLink();Object.assign(link,change);let calls=0;link.job=async()=>{calls++;return 'unexpected';};
+    await assert.rejects(link.diagnosticRead(diagnosticTarget,'admin','ver'));assert.equal(calls,0);
+  }
+  const link=admittedDiagnosticLink();let calls=0;link.job=async()=>{calls++;return 'unexpected';};
+  for(const command of ['ota install','ota pull 11223344 flash','set tx 9','ver extra','board\nreboot'])await assert.rejects(link.diagnosticRead(diagnosticTarget,'admin',command),/only ver and board/);
+  await assert.rejects(link.diagnosticRead('c'.repeat(64),'admin','ver'),/Target differs/);assert.equal(calls,0);
+});
+test('diagnostic admission rechecks a disconnect guard after waiting for the admin queue',async()=>{
+  const link=admittedDiagnosticLink();let release,entered,allowed=true,calls=0;
+  const started=new Promise(resolve=>entered=resolve),gate=new Promise(resolve=>release=resolve);
+  const previous=link.withAdmin(async()=>{entered();await gate;});await started;
+  link.job=async()=>{calls++;return 'v1.18.0.2';};
+  const reading=link.diagnosticRead(diagnosticTarget,'admin','ver',{canContinue:()=>allowed});allowed=false;release();await previous;
+  await assert.rejects(reading,/connection or request changed/);assert.equal(calls,0);assert.equal(link.diagnosticDeadline,null);
+});
+test('diagnostic USB timeout is bounded and does not retry or send another diagnostic command',async()=>{
+  const port=new FakePort(),link=new RepeaterTransport(port,{knownRepeater:diagnosticTarget,openSettle:0,commandTimeout:1000,remoteTimeout:5000});
+  await link.open();await link.verifyPeer(diagnosticTarget,'admin');
+  const command='ota.peer cmd '+diagnosticTarget+' ver',before=port.commands.length;port.drop=command;
+  const started=Date.now();await assert.rejects(link.diagnosticRead(diagnosticTarget,'admin','ver',{timeoutMs:15}),error=>error===link.failure&&/timed out/.test(error.message));
+  assert.ok(Date.now()-started<300);assert.deepEqual(port.commands.slice(before),[command]);assert.equal(link.commandTimeout,1000);assert.equal(link.remoteTimeout,5000);assert.equal(link.diagnosticDeadline,null);
+  await assert.rejects(link.diagnosticRead(diagnosticTarget,'admin','board'));assert.deepEqual(port.commands.slice(before),[command]);await link.close();
+});
+test('a timed out native diagnostic job remains uncertain and cannot be replaced by another read',async()=>{
+  const port=new FakePort(),link=new RepeaterTransport(port,{knownRepeater:diagnosticTarget,openSettle:0,commandTimeout:1000,remoteTimeout:5000,pollMs:1000});
+  await link.open();await link.verifyPeer(diagnosticTarget,'admin');port.replies={'ota.peer result':'OTApeer job=01020304 state=pending bytes=0 off=0 data=-'};
+  const before=port.commands.length,started=Date.now();
+  await assert.rejects(link.diagnosticRead(diagnosticTarget,'admin','ver',{timeoutMs:20}),/timed out/);assert.ok(Date.now()-started<300);
+  const count=port.commands.length;await assert.rejects(link.diagnosticRead(diagnosticTarget,'admin','board'),/uncertain/);assert.equal(port.commands.length,count);
+  assert.equal(port.commands.slice(before).filter(command=>command.startsWith('ota.peer cmd ')).length,1);assert.equal(link.diagnosticReadUncertain,true);assert.equal(link.failure,null);await link.close();
+});
+test('known ver and board replies are reused without LoRa, copied safely and bound to the same source and target',async()=>{
+  const link=admittedDiagnosticLink(),calls=[];
+  scriptedIdentityJob(link,{ver:'v1.18.0.2',board:'RAK 3401'},calls);
+  await link.remoteCommand(diagnosticTarget,'admin','ver');await link.job('ota.peer cmd.acl '+diagnosticTarget+' board');
+  const known=link.cachedFailureIdentity(diagnosticTarget);known.board='tampered';assert.equal(link.cachedFailureIdentity(diagnosticTarget).board,'RAK 3401');
+  const before=calls.length;link.failure=Error('USB disconnected');
+  assert.equal(await link.diagnosticRead(diagnosticTarget,'admin','ver'),'v1.18.0.2');assert.equal(await link.diagnosticRead(diagnosticTarget,'admin','board'),'RAK 3401');assert.equal(calls.length,before);
+  assert.equal(link.cachedFailureIdentity('c'.repeat(64)),null);link.sourceKey='d'.repeat(64);assert.equal(link.cachedFailureIdentity(diagnosticTarget),null);
+});
+test('identity cache rejects failed or empty responses and uses reported ota status hardware only as a labelled fallback',async()=>{
+  const link=admittedDiagnosticLink();
+  for(const reply of ['', 'ERR unavailable','Unknown command','unsupported','OK'])link.rememberFailureIdentity(diagnosticTarget,'ver',reply);
+  assert.equal(link.cachedFailureIdentity(diagnosticTarget),null);
+  for(const reply of ['', 'ERR denied','Unknown command','unsupported'])link.rememberFailureIdentity(diagnosticTarget,'board',reply);
+  assert.equal(link.cachedFailureIdentity(diagnosticTarget),null);
+  for(const reply of ['OTA hw=unknown','OTA hw=unset','OTA hw=RAK3401 hw=RAK4631'])link.rememberFailureIdentity(diagnosticTarget,'ota status',reply);
+  assert.equal(link.cachedFailureIdentity(diagnosticTarget),null);
+  link.rememberFailureIdentity(diagnosticTarget,'ota status','OTA hw=RAK3401 | target:12345678');
+  assert.equal(link.cachedFailureIdentity(diagnosticTarget).board,'hardware ID RAK3401 (reported by ota status)');assert.equal(link.cachedFailureIdentity(diagnosticTarget).boardOrigin,'ota status hardware ID');
+  let calls=0;link.job=async()=>{calls++;throw Error('must reuse known data');};
+  assert.match(await link.diagnosticRead(diagnosticTarget,'admin','board'),/reported by ota status/);assert.equal(calls,0);
+  link.rememberFailureIdentity(diagnosticTarget,'board','RAK WisMesh 3401');link.rememberFailureIdentity(diagnosticTarget,'ota status','OTA hw=OTHER');assert.equal(link.cachedFailureIdentity(diagnosticTarget).board,'RAK WisMesh 3401');
+});

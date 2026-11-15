@@ -22,7 +22,7 @@
     }
     return error;
   }
-  const SAFE_READS=new Set(['get public.key','clock','ver','ota status','ota self','ota ram','ota config','ota key list','ota stats','ota ls','ota qspi','ota installhash','ota bootloader status',
+  const SAFE_READS=new Set(['get public.key','clock','ver','board','ota status','ota self','ota ram','ota config','ota key list','ota stats','ota ls','ota qspi','ota installhash','ota bootloader status',
     'get bootloader.ver','get radio','get tempradio','get radio.rxps','get radio2','get tempradio2','get radio2.cross','get radio2.status','get radioat','get tempradioat','get radioat2','get tempradioat2',
     'ota.peer status','ota.peer capabilities','ota.peer path','ota.peer timeout','ota.peer radio','ota folder']);
   function safeCommand(text){
@@ -305,8 +305,11 @@
       this.folderUnknown = false;
       this.ownsPeer = false;
       this.authenticatedKey = null; this.lastPeerUse = 0; this.aclOnly = !!options.aclOnly;
+      this.diagnosticPassword = null; this.diagnosticDeadline = null; this.diagnosticCanContinue = null; this.diagnosticReadUncertain = false;
+      this.failureIdentityCache = null;
       this.knownRepeater = options.knownRepeater ? key(options.knownRepeater) : null;
       this.otaPath = null;
+      this.otaPathValue = null;
       this.knownTargetSupported = false;
       if (this.aclOnly && !this.knownRepeater) throw new Error('ACL access requires a complete known repeater key');
       this.supportsRoutedPath = false; this.clockChecked = false;
@@ -367,6 +370,7 @@
       if(!this.knownTargetSupported || !this.running || this.failure || this.serving || this.ownsPeer || this.authenticatedKey || this.knownRepeater)
         throw new Error('Disconnect before choosing another target.');
       this.knownRepeater=selected;
+      this.failureIdentityCache=null;
     }
     async write(bytes) {
       const operation = this.writeQueue.then(async () => {
@@ -398,22 +402,28 @@
       const pathRequest=/^ota\.peer path(?: |$)/.test(text);
       // The routed wrapper configures this through localCommand directly.
       // Never keep an old direct/routed claim across an unconfirmed request.
-      if(pathRequest)this.otaPath=null;
+      if(pathRequest){this.otaPath=null;this.otaPathValue=null;}
       const localRead=SAFE_READS.has(text)||/^ota\.peer (?:result|peers)(?: |$)/.test(text);
       const radio=/^ota\.peer (?:cmd(?:\.acl)?|login(?:\.repeater)?|acl|discover)(?: |$)/.test(text)?requestRadio(this):localRead?'USB/local command (no LoRa transmission)':'USB/local command (LoRa transmission not confirmed)';
       const operation = this.commandQueue.then(() => new Promise((resolve, reject) => {
         if (!this.running || this.failure) return reject(this.failure || new Error('The repeater is disconnected'));
+        if(this.diagnosticCanContinue&&!this.diagnosticCanContinue())return reject(new Error('Failure diagnostics stopped: connection or request changed'));
+        const timeout=this.diagnosticDeadline===null?this.commandTimeout:Math.min(this.commandTimeout,this.diagnosticDeadline-Date.now());
+        if(timeout<=0)return reject(new Error('Diagnostic identity read timed out before another USB command was sent'));
         let echoed = false, settled = false;
         const timer = setTimeout(() => {
           // CLI replies have no request ID. A late result cannot be allowed
           // to satisfy the next command on this stream.
           this.failure = new Error('Repeater command timed out; reconnect before retrying; its result is unknown');
           finish(this.failure);
-        }, this.commandTimeout);
+        }, timeout);
         const finish = (error, value) => {
           if (settled) return;
           settled = true; clearTimeout(timer); this.waiter = null;
-          if(!error&&pathRequest)this.otaPath=reportedPath(value,text);
+          if(!error&&pathRequest){
+            this.otaPath=reportedPath(value,text);
+            this.otaPathValue=this.otaPath?value.slice('OTApeer path='.length).toUpperCase():null;
+          }
           error ? reject(error) : resolve(value);
         };
         this.waiter = (line, error) => {
@@ -449,19 +459,24 @@
       this.ownsPeer = true;
       const queued = await this.localCommand(command), match = queued.match(/^OTApeer job=([0-9a-f]{8}) state=pending$/i);
       if (!match) throw new Error(queued || 'Could not start OTA request');
-      const job = match[1].toUpperCase(), deadline = Date.now() + this.remoteTimeout;
+      const job = match[1].toUpperCase(), deadline = Math.min(Date.now() + this.remoteTimeout,this.diagnosticDeadline??Infinity);
       let offset = 0, total = null, state = null, result = [];
       while (Date.now() < deadline) {
         const reply = await this.localCommand('ota.peer result' + (offset ? ' ' + offset : ''));
         const p = reply.match(/^OTApeer job=([0-9a-f]{8}) state=(pending|ok|error) bytes=(\d+) off=(\d+) data=([0-9a-f]+|-)$/i);
         if (!p || p[1].toUpperCase() !== job) throw mailboxError(new Error('OTA request changed; its result is unknown'),this.commandTimeout);
-        if (p[2] === 'pending') { await sleep(this.pollMs); continue; }
+        if (p[2] === 'pending') { await sleep(this.diagnosticDeadline===null?this.pollMs:Math.min(this.pollMs,Math.max(0,deadline-Date.now()))); continue; }
         const size = Number(p[3]), start = Number(p[4]), encoded = p[5] === '-' ? '' : p[5];
         if (size > 160 || start !== offset || encoded.length % 2 || (total !== null && (total !== size || state !== p[2]))) throw mailboxError(new Error('Invalid OTA reply pages'),this.commandTimeout);
         const chunk = encoded.match(/../g)?.map(c => parseInt(c, 16)) || [];
         if (chunk.length > 48 || offset + chunk.length > size || (!chunk.length && offset < size)) throw mailboxError(new Error('Invalid OTA reply length'),this.commandTimeout);
         total = size; state = p[2]; result.push(...chunk); offset += chunk.length;
-        if (offset === total) { const text = decoder.decode(Uint8Array.from(result)); if (state === 'error') throw new Error(text); return text; }
+        if (offset === total) {
+          const text = decoder.decode(Uint8Array.from(result)); if (state === 'error') throw new Error(text);
+          const identity=/^ota\.peer cmd(?:\.acl)? ([a-f0-9]{64}) (ver|board|ota status)$/i.exec(command);
+          if(identity)this.rememberFailureIdentity(identity[1],identity[2],text);
+          return text;
+        }
       }
       throw new Error('OTA request timed out; its result is unknown');
       }catch(error){throw remoteError(error,{...peerContext(command,this.remoteTimeout),otaPath:path,otaRadio:radio});}
@@ -532,6 +547,7 @@
         await this.job('ota.peer login ' + k + ' ' + password);
       } else await this.job('ota.peer login.repeater ' + k + ' ' + password);
       this.authenticatedKey = k; this.lastPeerUse = Date.now();
+      this.diagnosticPassword=password;
       }catch(error){throw errorContext(error,{otaStep:'Logging in to target',otaCommand:'login <arguments hidden>',otaEndpoint:'remote target',otaTimeoutMs:this.remoteTimeout,otaPath:path,otaRadio:radio});}
     }
     async verifyPeer(publicKey, password = '') {
@@ -583,11 +599,64 @@
         if (this.aclOnly || password === '') {
           // cmd.acl replaces the source's current peer session.
           this.authenticatedKey = null; this.lastPeerUse = 0;
-          return this.job('ota.peer cmd.acl ' + k + ' ' + text);
+          const reply=await this.job('ota.peer cmd.acl ' + k + ' ' + text);this.rememberFailureIdentity(k,text,reply);return reply;
         }
         if (this.authenticatedKey !== k || Date.now() - this.lastPeerUse > 240000) await this.login(k, password);
-        const reply = await this.job('ota.peer cmd ' + k + ' ' + text); this.lastPeerUse = Date.now(); return reply;
+        const reply = await this.job('ota.peer cmd ' + k + ' ' + text); this.lastPeerUse = Date.now();this.rememberFailureIdentity(k,text,reply);return reply;
       }).catch(error=>{throw remoteError(error,{otaStep:text==='get public.key'?'Verifying target identity':'Waiting for remote command reply',otaCommand:safeCommand(text),otaEndpoint:'remote target',otaTimeoutMs:this.remoteTimeout,otaPath:path,otaRadio:radio});});
+    }
+    rememberFailureIdentity(publicKey,command,reply) {
+      if(!/^[a-f0-9]{64}$/i.test(publicKey||'')||!/^[a-f0-9]{64}$/i.test(this.sourceKey||'')||!['ver','board','ota status'].includes(command)||typeof reply!=='string')return;
+      const value=reply.replace(/^>\s*/,'').trim();
+      if(!value||value.length>160||/[^\x20-\x7e]/.test(value)||/^(?:err(?:or)?\b|unknown\b|unsupported\b)/i.test(value))return;
+      if(command==='ver'&&!/\bv?\d+\.\d+(?:\.\d+)*/i.test(value))return;
+      const targetKey=publicKey.toLowerCase(),previous=this.cachedFailureIdentity(targetKey);
+      let field;
+      if(command==='ota status'){
+        const matches=[...value.matchAll(/\bhw=([A-Za-z0-9][A-Za-z0-9_.-]{0,63})(?=\s|\||$)/g)];
+        if(matches.length!==1||/^(?:unknown|unset|none|na)$/i.test(matches[0][1])||previous?.boardOrigin==='board command')return;
+        field={board:'hardware ID '+matches[0][1]+' (reported by ota status)',boardOrigin:'ota status hardware ID'};
+      }else field=command==='ver'?{version:value}:{board:value,boardOrigin:'board command'};
+      this.failureIdentityCache={sourceKey:this.sourceKey.toLowerCase(),targetKey,version:previous?.version||'',board:previous?.board||'',boardOrigin:previous?.boardOrigin||'',origin:'cached from earlier in this USB session',...field};
+    }
+    cachedFailureIdentity(publicKey) {
+      const cached=this.failureIdentityCache;
+      if(typeof publicKey!=='string'||!cached||cached.targetKey!==publicKey.toLowerCase()||typeof this.sourceKey!=='string'||cached.sourceKey!==this.sourceKey.toLowerCase())return null;
+      return {...cached};
+    }
+    async diagnosticRead(publicKey,password,text,{timeoutMs=5000,canContinue}={}) {
+      const k=this.validatePeer(publicKey,password);
+      if(!['ver','board'].includes(text))throw new Error('Failure diagnostics allow only ver and board');
+      if(!Number.isFinite(timeoutMs)||timeoutMs<=0)throw new Error('Invalid failure diagnostic timeout');
+      if(canContinue!==undefined&&typeof canContinue!=='function')throw new Error('Invalid failure diagnostic guard');
+      const timeout=Math.min(timeoutMs,5000),radio=requestRadio(this),path=this.otaPath||'path unknown';
+      const admitted=()=>{
+        if(canContinue&&canContinue()!==true)throw new Error('Failure diagnostics stopped: connection or request changed');
+        if(!this.running||!this.writer||this.failure)throw this.failure||new Error('Failure diagnostics unavailable: USB source disconnected');
+        if(this.serving||this.seeder||this.folderUnknown||!this.ownsPeer||this.diagnosticReadUncertain)
+          throw new Error('Failure diagnostics unavailable: the source session is busy or its state is uncertain');
+        if(this.authenticatedKey!==k||this.diagnosticPassword!==password||!this.lastPeerUse||Date.now()-this.lastPeerUse<0||Date.now()-this.lastPeerUse>=240000)
+          throw new Error('Failure diagnostics unavailable: no current authenticated target session');
+      };
+      return this.withAdmin(async()=>{
+        if(canContinue&&canContinue()!==true)throw new Error('Failure diagnostics stopped: connection or request changed');
+        const cached=this.cachedFailureIdentity(k),field=text==='ver'?'version':'board';
+        if(cached?.[field])return cached[field];
+        admitted();
+        const previous={commandTimeout:this.commandTimeout,remoteTimeout:this.remoteTimeout,deadline:this.diagnosticDeadline,canContinue:this.diagnosticCanContinue};
+        this.commandTimeout=Math.min(this.commandTimeout,timeout);this.remoteTimeout=Math.min(this.remoteTimeout,timeout);this.diagnosticDeadline=Date.now()+timeout;this.diagnosticCanContinue=canContinue||null;
+        try{
+          // Use only the existing peer session. ACL admission/login or path
+          // selection here would alter the failed operation's context.
+          const reply=await this.job('ota.peer cmd '+k+' '+text);
+          admitted();this.lastPeerUse=Date.now();this.rememberFailureIdentity(k,text,reply);return reply;
+        }catch(error){
+          if(/timed out/i.test(error?.message||''))this.diagnosticReadUncertain=true;
+          throw remoteError(error,{otaStep:'Reading target identity after failure',otaCommand:text,otaEndpoint:'remote target',otaTimeoutMs:timeout,otaPath:path,otaRadio:radio});
+        }finally{
+          this.commandTimeout=previous.commandTimeout;this.remoteTimeout=previous.remoteTimeout;this.diagnosticDeadline=previous.deadline;this.diagnosticCanContinue=previous.canContinue;
+        }
+      });
     }
     async setPath(prefixes) {
       if (!this.supportsRoutedPath) throw new Error('Source firmware has no routed-path support');
@@ -655,7 +724,8 @@
       if (this.writer) { try { await this.writer.close(); } catch (_) {} try { this.writer.releaseLock(); } catch (_) {} }
       this.reader = this.writer = null;
       if (this.portOpened) { try { await this.port.close(); this.portOpened = false; } catch (_) {} }
-      this.seeder = null; this.serving = false; this.sourceKey = null; this.authenticatedKey = null;
+      this.seeder = null; this.serving = false; this.sourceKey = null; this.authenticatedKey = null; this.diagnosticPassword=null;this.failureIdentityCache=null;
+      this.diagnosticDeadline=null;this.diagnosticCanContinue=null;this.diagnosticReadUncertain=false;
       this.ownsPeer = false;
     }
   }

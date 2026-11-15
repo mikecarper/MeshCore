@@ -97,6 +97,32 @@
         return this.link.job('ota.peer cmd.acl ' + k + ' ' + command);
       });
     }
+    async diagnosticRead(publicKey,password,command,options={}) {
+      const k=this.allowed(publicKey,password);
+      if(!['ver','board'].includes(command))throw Error('Failure diagnostics allow only ver and board');
+      if(options.canContinue!==undefined&&typeof options.canContinue!=='function')throw Error('Invalid failure diagnostic guard');
+      if(options.canContinue&&options.canContinue()!==true)throw Error('Failure diagnostics stopped: connection or request changed');
+      const cached=this.cachedFailureIdentity(k),field=command==='ver'?'version':'board';
+      if(cached?.[field])return cached[field];
+      const admitted=()=>{
+        this.assertOpen();
+        const path=this.paths.get(k);
+      // Do not select/prove a route, acquire ACL access, or send a status
+      // query during post-failure collection. Only an already admitted exact
+      // path with a matching source readback may be reused.
+        if(!this.proved.has(k)||path.join(',')!==this.selected.join(',')||
+          this.link.otaPathValue!==this.expected(path).slice('OTApeer path='.length).toUpperCase()||
+          typeof this.link.diagnosticRead!=='function')
+          throw Error('Failure diagnostics unavailable: no confirmed existing route and target session');
+        return options.canContinue?options.canContinue()===true:true;
+      };
+      if(!admitted())throw Error('Failure diagnostics stopped: connection or request changed');
+      return this.link.diagnosticRead(k,password,command,{...options,canContinue:admitted});
+    }
+    cachedFailureIdentity(publicKey) {
+      let k;try{k=this.allowed(publicKey,'');}catch(_){return null;}
+      return typeof this.link.cachedFailureIdentity==='function'?this.link.cachedFailureIdentity(k):null;
+    }
     localCommand(command) { return this.link.localCommand(command); }
     serve(...args) { return this.link.serve(...args); }
     stopServing() { return this.link.stopServing(); }

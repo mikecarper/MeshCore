@@ -76,7 +76,7 @@
     const airtime=(preamble+4.25+8+Math.max(0,Math.ceil((8*186-4*sf+44)/(4*(sf-2*de))))*cr)*symbol;
     return Math.max(1000,Math.ceil((2*airtime+.5)*1000));
   }
-  const READ_ONLY=new Set(['get public.key','ota status','ota self','ota ram','ver','get bootloader.ver','get usb.raw.max',
+  const READ_ONLY=new Set(['get public.key','ota status','ota self','ota ram','ver','board','get bootloader.ver','get usb.raw.max',
     'ota bootloader status','ota config','ota key list','get tempradio','get radio','get radio.rxps','ota installhash','ota qspi','ota stats','ota ls',
     'get radio2','get tempradio2','get radio2.cross','get radio2.status','get radioat','get tempradioat','get radioat2','get tempradioat2']);
   function isReadOnly(text) {
@@ -170,6 +170,7 @@
       this.folderQueue=Promise.resolve();this.stopServingOperation=null;
       this.otaRadioProfile=0;this.otaTargetProfile=0;this.supportsOtaRadio2=false;
       this.sourceUpdateRequired=null;
+      this.failureIdentityCache=null;
       this.firmwareVersion=null;this.firmwareBuildDate=null;this.firmwareBoardName=null;this.firmwareProtocol=null;this.firmwareVersionTruncated=false;
       this.otaUnavailableReason='This Companion needs firmware with guarded zero-hop CLI and radio support';
       // Normal sources use raw packets. Older Full sources can instead read
@@ -304,8 +305,10 @@
     }
     command(payload,code){return this.commandAny(payload,[code]);}
     commandAny(payload,codes,anyResponse=false,timeoutMs=this.options.commandTimeout??15000){
+      if(this.diagnosticDeadline!==undefined)timeoutMs=Math.min(timeoutMs,Math.max(1,this.diagnosticDeadline-Date.now()));
       const operation=usbOperation(payload),radio=requestRadio(this);
       const run=this.queue.then(()=>new Promise((resolve,reject)=>{
+        if(this.diagnosticCanContinue&&!this.diagnosticCanContinue())return reject(Error('Failure diagnostics canceled before the USB request'));
         if(!this.running||this.failure)return reject(this.failure||Error('Companion is disconnected'));
         if(this.usbFolderSource?.blocksAppCommands())return reject(Error('USB folder must return to Binary mode before an app command'));
         if(payload.length>this.usbRawFrameMax)return reject(Error('Companion command exceeds its USB receive limit'));
@@ -331,6 +334,7 @@
       if(this.guard||this.authenticated||this.serving)throw Error('Close the active OTA session before changing target');
       if(this.investigationEnabled||this.investigationAuthenticated)throw Error('Disconnect before changing the investigation target');
       const match=this.contactList.find(c=>c.publicKey===key);
+      if(this.knownRepeater!==key)this.failureIdentityCache=null;
       this.knownRepeater=key;this.peerType=match?.type||2;this.radioProbeAdmission=null;
     }
     localCommand(text){
@@ -635,7 +639,7 @@
         });
         this.assertInvestigationRunning();
         if(result.pullReply)this.checkPendingPullReply();
-        if(result.reply!==undefined){this.investigationProgress('command-result',text);return result.reply;}
+        if(result.reply!==undefined){this.investigationProgress('command-result',text);this.rememberFailureIdentity(text,result.reply);return result.reply;}
         if(result.idle)await sleep(500);
       }
       this.investigationProgress('command-timeout',text);
@@ -736,7 +740,8 @@
       this.timestamp=Math.max(Math.floor(Date.now()/1000),this.timestamp+1);
       if(isReadOnly(text))this.investigationProgress('sending-command',text,this.options.commandTimeout??15000);
       await this.command(join(Uint8Array.of(2,1,0),u32(this.timestamp),unhex(this.knownRepeater).slice(0,6),enc.encode(tag+text)),6);
-      const replyTimeout=this.investigationAttempt?this.investigationReplyTimeout():(this.options.remoteTimeout??75000);
+      let replyTimeout=this.investigationAttempt?this.investigationReplyTimeout():(this.options.remoteTimeout??75000);
+      if(this.diagnosticDeadline!==undefined)replyTimeout=Math.min(replyTimeout,Math.max(0,this.diagnosticDeadline-Date.now()));
       if(isReadOnly(text)){
         this.investigationProgress('command-sent',text);
         this.investigationProgress('waiting-reply',text,replyTimeout);
@@ -748,14 +753,35 @@
         if(this.investigationAttempt)this.assertInvestigationRunning();
         const m=reply.match(/^>?\s*ota\.reply req=([!-~]{2}) state=(idle|pending|ready) bytes=(\d+) off=(\d+) data=([a-f0-9]+|-)\s*$/i);
         if(!m||m[1]!==correlation||+m[3]>160||+m[4]!==result.length||m[2]==='idle')throw Error('Companion command mailbox changed');
-        if(m[2]==='pending'){if(result.length||+m[3]||m[5]!=='-')throw Error('Invalid pending command mailbox');await sleep(100);continue;}
+        if(m[2]==='pending'){if(result.length||+m[3]||m[5]!=='-')throw Error('Invalid pending command mailbox');await sleep(this.diagnosticDeadline!==undefined?Math.min(100,Math.max(0,this.diagnosticDeadline-Date.now())):100);continue;}
         const n=+m[3],data=m[5]==='-'?[]:(m[5].match(/../g)||[]).map(x=>parseInt(x,16));
         if((m[5]!=='-'&&m[5].length%2)||data.length>40||result.length+data.length>n||(!data.length&&result.length!==n)||(total!==null&&n!==total))throw Error('Invalid Companion reply page');
-        total=n;result.push(...data);if(result.length===total){if(isReadOnly(text))this.investigationProgress('command-result',text);return dec.decode(Uint8Array.from(result));}
+        total=n;result.push(...data);if(result.length===total){if(isReadOnly(text))this.investigationProgress('command-result',text);const reply=dec.decode(Uint8Array.from(result));this.rememberFailureIdentity(text,reply);return reply;}
       }if(isReadOnly(text))this.investigationProgress('command-timeout',text);const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;throw error;
       }catch(error){throw remoteError(error,text,{otaTimeoutMs:this.investigationAttempt?this.investigationReplyTimeout():(this.options.remoteTimeout??75000),otaPath:path,otaRadio:radio});}
     }
     validate(key){if(String(key).toLowerCase()!==this.knownRepeater)throw Error('Target differs from the selected repeater');}
+    rememberFailureIdentity(command,reply){
+      if(!['ver','board','ota status'].includes(command)||typeof reply!=='string')return;
+      const value=reply.trim().replace(/^>\s*/,'');
+      if(!value||value.length>160||/^(?:err(?:or)?\b|unknown\b|unsupported\b|permission denied\b|access denied\b)/i.test(value)||/^(?:[-?]|none|unset|null|n\/a)$/i.test(value)||!/^\S[\x20-\x7e]*$/.test(value))return;
+      if(!/^[a-f0-9]{64}$/i.test(this.knownRepeater||'')||!/^[a-f0-9]{64}$/i.test(this.sourceKey||''))return;
+      let cache=this.failureIdentityCache;
+      if(!cache||cache.key!==this.knownRepeater||cache.sourceKey!==this.sourceKey)cache=this.failureIdentityCache={key:this.knownRepeater,sourceKey:this.sourceKey,replies:{}};
+      if(command==='ota status'){
+        const hardware=/\bhw=([a-z0-9][a-z0-9_.-]{0,63})(?=\s|$)/i.exec(value)?.[1];
+        if(!hardware||/^(?:unknown|unset|none|null|0)$/i.test(hardware)||cache.boardOrigin==='earlier board reply')return;
+        cache.board='hardware ID '+hardware+' (reported by ota status)';cache.boardOrigin='earlier OTA status hardware ID';cache.replies.board=cache.board;
+      }else{
+        const field=command==='ver'?'version':'board';cache[field]=value;cache.replies[command]=reply;
+        if(command==='board')cache.boardOrigin='earlier board reply';
+      }
+    }
+    cachedFailureIdentity(key){
+      this.validate(key);const cache=this.failureIdentityCache;
+      if(!cache||cache.key!==this.knownRepeater||cache.sourceKey!==this.sourceKey||(!cache.version&&!cache.board))return null;
+      return {...(cache.version?{version:cache.version}:{}),...(cache.board?{board:cache.board,boardOrigin:cache.boardOrigin}:{}),origin:'earlier target reply in this session'};
+    }
     async verifyPeer(key,password=''){
       this.validate(key);
       if(!this.otaSupported){
@@ -890,7 +916,48 @@
           }
         }));
       }
-      return this.withAdmin(async()=>{if(!this.authenticated)await this.login(password);return this.remoteReply(text);});
+      return this.withAdmin(async()=>{
+        if(!this.authenticated)await this.login(password);
+        if(!isReadOnly(text))return this.remoteReply(text);
+        const options=this.options,maxAttempts=3;
+        const timeout=Math.min(options.remoteTimeout??75000,this.investigationReplyTimeout(),20000);
+        this.options={...options,remoteTimeout:timeout};
+        try{
+          for(let attempt=1;attempt<=maxAttempts;attempt++){
+            this.assertInvestigationRunning();
+            if(this.failure)throw this.failure;
+            if(!this.running)throw Error('Companion is disconnected');
+            try{return await this.remoteReply(text);}
+            catch(error){
+              errorContext(error,{otaAttempt:attempt,otaMaxAttempts:maxAttempts});
+              if(!error?.loraReplyTimeout||this.failure||!this.running||this.investigationCancelled||['USB Companion','USB Repeater'].includes(error.otaEndpoint))throw error;
+              if(attempt===maxAttempts){if(error.attempts===undefined)error.attempts=attempt;throw error;}
+            }
+          }
+        }finally{this.options=options;}
+      });
+    }
+    async diagnosticRead(key,password,command,{timeoutMs=5000,canContinue}={}){
+      if(!['ver','board'].includes(command))throw Error('Failure diagnostics allow only ver or board');
+      if(!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>5000)throw Error('Diagnostic read timeout must be between 1 and 5000 milliseconds');
+      if(canContinue!==undefined&&typeof canContinue!=='function')throw Error('Invalid diagnostic continuation guard');
+      const allowed=()=>{try{return !canContinue||canContinue()===true;}catch(_){return false;}};
+      if(!allowed())throw Error('Failure diagnostics canceled before the USB request');
+      this.validate(key);
+      const port=this.port,sourceKey=this.sourceKey;
+      return this.withAdmin(async()=>{
+        if(!allowed())throw Error('Failure diagnostics canceled before the USB request');
+        this.assertInvestigationRunning();this.validate(key);
+        if(!this.otaSupported||!this.guard||!this.authenticated||this.authenticatedPassword!==password||!this.running||this.failure||!sourceKey||this.sourceKey!==sourceKey||this.port!==port||this.pending||this.investigationAttempt||this.serving||this.seeder||this.radioRunning||this.radioQueue.length||this.usbFolderSource||this.usbFolderAttached)
+          throw Error('Failure diagnostics require the existing healthy authenticated target session');
+        const cached=this.cachedFailureIdentity(key),field=command==='ver'?'version':'board';
+        if(cached?.[field])return this.failureIdentityCache.replies[command];
+        const options=this.options,deadline=this.diagnosticDeadline,continuation=this.diagnosticCanContinue;
+        this.options={...options,remoteTimeout:timeoutMs,investigationTimeout:timeoutMs,commandTimeout:Math.min(options.commandTimeout??15000,timeoutMs)};
+        this.diagnosticDeadline=Date.now()+timeoutMs;this.diagnosticCanContinue=allowed;
+        try{return await this.remoteReply(command);}
+        finally{this.options=options;this.diagnosticDeadline=deadline;this.diagnosticCanContinue=continuation;}
+      });
     }
     async resetRemoteSession(key,password=''){
       this.validate(key);
@@ -1117,7 +1184,7 @@
       this.running=false;if(this.pending){clearTimeout(this.pending.timer);this.pending.reject(Error('Connection closed'));this.pending=null;}
       if(this.reader){try{await this.reader.cancel();}catch(_){}try{await this.readTask;}catch(_){}try{this.reader.releaseLock();}catch(_){}}
       if(this.writer){try{await this.writer.close();}catch(_){}try{this.writer.releaseLock();}catch(_){}}
-      if(this.portOpened){try{await this.port.close();this.portOpened=false;}catch(_){}}this.reader=this.writer=null;this.investigationPassword=null;this.authenticatedPassword=null;this.radioProbeAdmission=null;this.sourceKey=null;
+      if(this.portOpened){try{await this.port.close();this.portOpened=false;}catch(_){}}this.reader=this.writer=null;this.investigationPassword=null;this.authenticatedPassword=null;this.radioProbeAdmission=null;this.sourceKey=null;this.failureIdentityCache=null;
     }
   }
   return {Decoder,CompanionTransport,preservedMessages,preservedSnapshot,clearPreservedMessages};

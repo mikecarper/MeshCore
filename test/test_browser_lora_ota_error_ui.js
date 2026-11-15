@@ -64,3 +64,31 @@ test('verbose checkbox is off by default, opens for a halting error and can hide
   ui.get('verbose-errors').checked=false;ui.get('verbose-errors').emit('change');assert.equal(ui.get('verbose-error-panel').hidden,true);assert.equal(ui.get('diagnostics').open,false);
   ui.api.fail(Error('Another failure'),'Validate firmware');assert.equal(ui.get('verbose-errors').checked,true);assert.equal(ui.get('verbose-error-panel').hidden,false);
 });
+test('halting failures collect target ver and board while retaining cached source identity and original failure',async()=>{
+  const ui=workbench(),key='bb'.repeat(32),calls=[],error=Object.assign(Error('Remote command timed out; result is unknown'),{otaCommand:'ota self',otaRadio:'Radio 2 (selected source OTA profile)',loraReplyTimeout:true});
+  const link={running:true,sourceKey:'aa'.repeat(32),firmwareVersion:'v1.18.0.2-source',firmwareBoardName:'Source board',otaSupported:true,otaRadioProfile:1,diagnosticRead:async(target,password,command,options)=>{assert.equal(target,key);assert.equal(password,'');assert.equal(options.timeoutMs,5000);calls.push(command);link.otaRadioProfile=0;return command==='ver'?'v1.18.0.2-target':'Target board';}};
+  ui.get('key').value=key;ui.api.setLink(link);await ui.api.fail(error,'Prepare update');
+  assert.deepEqual(calls,['ver','board']);const message=ui.get('error-details').textContent;
+  for(const text of ['ota self','result is unknown','v1.18.0.2-source','Source board','v1.18.0.2-target','Target board','Radio 2'])assert.ok(message.includes(text),message);
+  assert.equal(error.message,'Remote command timed out; result is unknown');assert.equal(error.loraReplyTimeout,true);assert.equal(error.otaIdentity,undefined);
+});
+test('post-failure reads keep the action reserved and cannot overlap another operation',async()=>{
+  const ui=workbench(),calls=[];let release;
+  ui.get('key').value='bb'.repeat(32);ui.api.setLink({running:true,sourceKey:'aa'.repeat(32),diagnosticRead:async(_key,_password,command)=>{calls.push(command);return command==='ver'?new Promise(resolve=>{release=resolve;}):'Target board';}});
+  const action=ui.api.run(async()=>{throw Error('Original preparation failure');},'Prepare update');
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(typeof release,'function');let secondRan=false;
+  const second=ui.api.run(async()=>{secondRan=true;},'Other action');assert.equal(second,action);assert.equal(secondRan,false);
+  release('v1.18.0.2-target');await action;assert.deepEqual(calls,['ver','board']);assert.equal(secondRan,false);
+});
+test('a disconnect during failure diagnostics discards late identity and sends no next command',async()=>{
+  const ui=workbench(),calls=[];let release;
+  ui.get('key').value='bb'.repeat(32);ui.api.setLink({running:true,sourceKey:'aa'.repeat(32),diagnosticRead:async(_key,_password,command)=>{calls.push(command);return new Promise(resolve=>{release=resolve;});}});
+  const pending=ui.api.fail(Error('Original failure'),'Prepare update');assert.equal(typeof release,'function');ui.api.setLink(null);release('LATE_PRIVATE_VERSION');await pending;
+  assert.deepEqual(calls,['ver']);assert.doesNotMatch(ui.get('error-details').textContent,/LATE_PRIVATE_VERSION/);
+});
+test('cached target version and board appear on failure without any new LoRa request',async()=>{
+  const ui=workbench(),key='bb'.repeat(32),calls=[];ui.get('key').value=key;
+  ui.api.setLink({running:true,sourceKey:'aa'.repeat(32),cachedFailureIdentity:target=>{assert.equal(target,key);return {version:'v1.18.0.2-known',board:'Known target board'};},diagnosticRead:async(...args)=>{calls.push(args);throw Error('Unexpected LoRa query');}});
+  await ui.api.fail(Object.assign(Error('Original ota self failure'),{otaCommand:'ota self'}),'Prepare update');
+  assert.deepEqual(calls,[]);assert.match(ui.get('error-details').textContent,/v1\.18\.0\.2-known/);assert.match(ui.get('error-details').textContent,/Known target board/);assert.match(ui.get('error-details').textContent,/cached/i);
+});

@@ -43,6 +43,72 @@ class Port{
   async close(){}
 }
 async function run(){
+  // Preparation retries only unanswered read-only radio requests, never the
+  // login, a mutation or a source USB failure; each attempt gets a fresh tag.
+  {
+    const p=new Port(),c=new CompanionTransport(p,{openSettle:0,commandTimeout:1000,remoteTimeout:75000,investigationTimeout:120});
+    await c.open();await c.contacts();c.selectTarget(key);await c.verifyPeer(key,'password');
+    const options=c.options,loginCount=p.frames.filter(frame=>frame[0]===26).length;
+    p.timeoutFirst['ota self']=1;assert.equal(await c.remoteCommand(key,'password','ota self'),'> 9');assert.equal(p.remoteAttempts['ota self'],2);assert.equal(c.options,options);
+    p.timeoutFirst['ota status']=3;await assert.rejects(c.remoteCommand(key,'password','ota status'),error=>{assert.equal(error.message,'Remote command timed out; result is unknown');assert.equal(error.otaAttempt,3);assert.equal(error.otaMaxAttempts,3);assert.equal(error.attempts,3);assert.equal(error.otaTimeoutMs,120);assert.equal(error.loraReplyTimeout,true);return true;});
+    assert.equal(p.remoteAttempts['ota status'],3);assert.equal(p.frames.filter(frame=>frame[0]===26).length,loginCount);assert.equal(c.options,options);
+    const tags=p.frames.filter(frame=>frame[0]===2).map(frame=>dec.decode(frame.slice(13)).slice(0,3));assert.equal(new Set(tags).size,tags.length);await c.close();
+  }
+  for(const [hops,expected] of [[0,7000],[null,20000],[1,20000]]){
+    const c=new CompanionTransport({}, {knownRepeater:key,remoteTimeout:75000});c.otaSupported=true;c.authenticated=true;c.running=true;c.contactList=[{publicKey:key,hops}];
+    const options=c.options,timeouts=[];c.remoteReply=async()=>{timeouts.push(c.options.remoteTimeout);if(timeouts.length===1){const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;throw error;}return '> self';};
+    assert.equal(await c.remoteCommand(key,'','ota self'),'> self');assert.deepEqual(timeouts,[expected,expected]);assert.equal(c.options,options);
+  }
+  for(const command of ['set tx 9','ota pull 01234567 flash','ota install','ota cancel','login','ota self extra']){
+    const c=new CompanionTransport({}, {knownRepeater:key});c.otaSupported=true;c.authenticated=true;c.running=true;let calls=0;
+    const original=Object.assign(Error('Remote command timed out; result is unknown'),{loraReplyTimeout:true});c.remoteReply=async()=>{calls++;throw original;};
+    await assert.rejects(c.remoteCommand(key,'',command),error=>error===original);assert.equal(calls,1,command);
+  }
+  for(const kind of ['USB','failure','disconnect','cancel','other']){
+    const c=new CompanionTransport({}, {knownRepeater:key});c.otaSupported=true;c.authenticated=true;c.running=true;let calls=0;
+    const original=Object.assign(Error(kind==='other'?'Malformed mailbox':'Remote command timed out; result is unknown'),{loraReplyTimeout:kind!=='other'});
+    if(kind==='USB')original.otaEndpoint='USB Companion';
+    c.remoteReply=async()=>{calls++;if(kind==='failure')c.failure=original;if(kind==='disconnect')c.running=false;if(kind==='cancel')c.investigationCancelled=true;throw original;};
+    await assert.rejects(c.remoteCommand(key,'','ota self'),error=>error===original);assert.equal(calls,1,kind);
+  }
+  {
+    const p=new Port();p.suppressLogin=true;const c=new CompanionTransport(p,{openSettle:0,commandTimeout:1000,remoteTimeout:120});
+    await c.open();await c.contacts();c.selectTarget(key);await assert.rejects(c.remoteCommand(key,'password','ota self'),/login timed out/);assert.equal(p.frames.filter(frame=>frame[0]===26).length,1);assert.equal(p.remoteAttempts['ota self'],undefined);await c.close();
+  }
+  {
+    const p=new Port(),c=new CompanionTransport(p,{openSettle:0,commandTimeout:1000,remoteTimeout:75000});
+    await c.open();await c.contacts();c.selectTarget(key);await c.verifyPeer(key,'password');const options=c.options,before=p.frames.length;
+    p.timeoutFirst.ver=1;await assert.rejects(c.diagnosticRead(key,'password','ver',{timeoutMs:120}),error=>error.loraReplyTimeout&&error.otaCommand==='ver');assert.equal(p.remoteAttempts.ver,1);assert.equal(c.options,options);assert.equal(c.diagnosticDeadline,undefined);
+    assert.equal(await c.diagnosticRead(key,'password','board',{timeoutMs:120}),'> 9');assert.equal(p.remoteAttempts.board,1);assert.equal(c.options,options);assert.equal(c.diagnosticDeadline,undefined);
+    let sent=p.frames.length;assert.equal(await c.diagnosticRead(key,'password','board',{timeoutMs:120}),'> 9');assert.equal(p.frames.length,sent,'cached board requires no new radio request');
+    assert.equal(await c.remoteCommand(key,'password','ver'),'> 9');sent=p.frames.length;assert.equal(await c.diagnosticRead(key,'password','ver',{timeoutMs:120}),'> 9');assert.equal(p.frames.length,sent,'normal prior version reply requires no new radio request');
+    const cached=c.cachedFailureIdentity(key);assert.equal(cached.version,'9');assert.equal(cached.board,'9');assert.equal(cached.origin,'earlier target reply in this session');cached.version='changed snapshot';assert.equal(c.cachedFailureIdentity(key).version,'9');
+    const frames=p.frames.slice(before);assert(!frames.some(frame=>frame[0]===26||frame[0]===65||frame[0]===52&&[1,2,3].includes(frame[1])));assert(frames.every(frame=>[2,52,66].includes(frame[0])));await c.close();
+  }
+  {
+    const make=()=>{const c=new CompanionTransport({}, {knownRepeater:key});c.sourceKey=source;c.otaSupported=true;c.guard=true;c.authenticated=true;c.authenticatedPassword='password';c.running=true;return c;};
+    for(const command of ['get public.key','ota self','set tx 9','ver extra','board extra',' ver']){const c=make();let calls=0;c.remoteReply=async()=>{calls++;};await assert.rejects(c.diagnosticRead(key,'password',command),/only ver or board/);assert.equal(calls,0);}
+    for(const patch of [{guard:false},{authenticated:false},{running:false},{otaSupported:false},{failure:Error('USB failed')},{investigationCancelled:true},{pending:{}},{investigationAttempt:1},{serving:true},{seeder:{}},{radioRunning:true},{radioQueue:[1]},{usbFolderSource:{}},{usbFolderAttached:true}]){
+      const c=Object.assign(make(),patch);let calls=0;c.remoteReply=async()=>{calls++;};await assert.rejects(c.diagnosticRead(key,'password','ver'),/existing healthy|cancel/i);assert.equal(calls,0);
+    }
+    const c=make();let calls=0;c.remoteReply=async()=>{calls++;};await assert.rejects(c.diagnosticRead(key,'wrong password','ver'),/existing healthy/);await assert.rejects(c.diagnosticRead('cc'.repeat(32),'password','ver'),/Target differs/);for(const timeoutMs of [0,-1,5001,Infinity,NaN,'5000'])await assert.rejects(c.diagnosticRead(key,'password','ver',{timeoutMs}),/timeout/);assert.equal(calls,0);
+    await assert.rejects(c.diagnosticRead(key,'password','ver',{canContinue:()=>false}),/canceled/);await assert.rejects(c.diagnosticRead(key,'password','ver',{canContinue:'invalid'}),/continuation guard/);assert.equal(calls,0);
+    let release;c.admin=new Promise(resolve=>{release=resolve;});const pending=c.diagnosticRead(key,'password','ver');c.running=false;release();await assert.rejects(pending,/existing healthy/);assert.equal(calls,0);
+    const queued=make();queued.remoteReply=async()=>{calls++;};let allow=true,releaseQueued;queued.admin=new Promise(resolve=>{releaseQueued=resolve;});const waiting=queued.diagnosticRead(key,'password','ver',{canContinue:()=>allow});allow=false;releaseQueued();await assert.rejects(waiting,/canceled/);assert.equal(calls,0);
+  }
+  {
+    const c=new CompanionTransport({}, {knownRepeater:key});c.sourceKey=source;
+    for(const reply of ['','Error: unsupported','Unknown command','permission denied','?','none'])c.rememberFailureIdentity('board',reply);assert.equal(c.cachedFailureIdentity(key),null);
+    c.rememberFailureIdentity('ota status','OTA hw=heltec_v4_2_v4_3 t=1');let cached=c.cachedFailureIdentity(key);assert.equal(cached.board,'hardware ID heltec_v4_2_v4_3 (reported by ota status)');assert.equal(cached.boardOrigin,'earlier OTA status hardware ID');
+    c.rememberFailureIdentity('board','> Heltec V4.3 OLED');c.rememberFailureIdentity('ver','v1.18.0.2 (Build: test)');c.rememberFailureIdentity('ota status','OTA hw=another_target t=1');cached=c.cachedFailureIdentity(key);assert.equal(cached.board,'Heltec V4.3 OLED');assert.equal(cached.version,'v1.18.0.2 (Build: test)');assert.equal(cached.boardOrigin,'earlier board reply');
+    c.sourceKey='cc'.repeat(32);assert.equal(c.cachedFailureIdentity(key),null);c.sourceKey=source;c.selectTarget('dd'.repeat(32));assert.equal(c.cachedFailureIdentity('dd'.repeat(32)),null);c.selectTarget(key);assert.equal(c.cachedFailureIdentity(key),null);
+    for(const hardware of ['unknown','unset','none','-','?','0'])c.rememberFailureIdentity('ota status','OTA hw='+hardware+' t=1');assert.equal(c.cachedFailureIdentity(key),null);
+  }
+  {
+    const p=new Port(),c=new CompanionTransport(p,{openSettle:0,commandTimeout:1000});await c.open();await c.contacts();c.selectTarget(key);await c.verifyPeer(key,'password');
+    let allowed=true;const write=p.write.bind(p);p.write=bytes=>{const result=write(bytes),frame=bytes.slice(3);if(frame[0]===52&&frame[1]===4)allowed=false;return result;};const before=p.frames.length;
+    await assert.rejects(c.diagnosticRead(key,'password','ver',{timeoutMs:120,canContinue:()=>allowed}),/canceled/);assert.deepEqual(p.frames.slice(before).map(frame=>frame[0]),[52]);assert.equal(c.diagnosticCanContinue,undefined);await c.close();assert.equal(c.cachedFailureIdentity(key),null);
+  }
   {
     const c=new CompanionTransport({}, {knownRepeater:key});c.localCliSupported=true;
     c.command=async()=>{throw Error('USB disconnected');};
@@ -77,6 +143,8 @@ async function run(){
       const c=new CompanionTransport({}, {knownRepeater:key,inboxPollDelay:0});c.investigationEnabled=true;c.investigationAuthenticated=true;c.contactList=[{publicKey:key,hops:0}];c.contacts=async()=>c.contactList;c.command=async()=>Uint8Array.of(6);c.reserveInbox=()=> 'reservation';
       const inner=Object.assign(Error('Original inbox timeout'),{otaStep:'Waiting for USB command reply',otaCommand:'reading a queued message',otaEndpoint:'USB Companion',otaTimeoutMs:31,otaRadio:'USB/local command (no LoRa transmission)'});c.commandAny=async()=>{throw inner;};
       await assert.rejects(c.standardReply('ota status'),error=>{assert.equal(error.message,'Original inbox timeout; a queued message may have been removed before it could be saved');assert.equal(error.otaEndpoint,'USB Companion');assert.equal(error.otaTimeoutMs,31);assert.equal(error.otaRequestCommand,'ota status');assert.equal(error.otaRadio,'USB/local command (no LoRa transmission)');return true;});
+      c.sourceKey=source;c.finishInbox=()=>{};c.commandAny=async()=>Uint8Array.of(7,...fromHex(key).slice(0,6),0,1,0,0,0,0,...enc.encode([...c.used].at(-1)+'|Heltec V4.3 OLED'));
+      assert.equal(await c.standardReply('board'),'Heltec V4.3 OLED');assert.equal(c.cachedFailureIdentity(key).board,'Heltec V4.3 OLED');
     }finally{if(descriptor)Object.defineProperty(globalThis,'navigator',descriptor);else delete globalThis.navigator;}
   }
   const d=new Decoder(),frame=wire(Uint8Array.of(29,1,2));assert.deepEqual(d.feed(frame.slice(0,2)),[]);assert.deepEqual(Array.from(d.feed(frame.slice(2))[0]),[29,1,2]);
@@ -147,7 +215,7 @@ async function run(){
   assert(defaultEvents.some(e=>e.stage==='waiting-reply'&&e.command==='get public.key'&&e.timeoutMs===20000));
   defaultEvents.length=0;
   await defaultLink.remoteCommand(key,'','ota status');
-  assert(defaultEvents.some(e=>e.stage==='waiting-reply'&&e.command==='ota status'&&e.timeoutMs===75000));
+  assert(defaultEvents.some(e=>e.stage==='waiting-reply'&&e.command==='ota status'&&e.timeoutMs===20000));
   await defaultLink.close();
   // Route evidence comes from the actual contact decoder, not a default
   // 'direct' assumption. Zero hops is valid with every supported hash width.

@@ -13,6 +13,7 @@
   let preservedCount=0, preservedExportSnapshot=null, preservedExportToken=null, preservedExportInterrupted=false;
   let investigationTimer=null, investigationStage='', investigationStopping=false, investigationActive=false;
   let operationErrorStep='LoRa update', investigationErrorContext=null;
+  let failureSerial=0;
   let sourceOtaUnsupported=false, targetAvailability=null, preparedDownload=null, preparedReplacement=null, uiBusy=false, updatePhase='';
   let sourceBytesRead=0, sourceActivityAt=0, sourceManifestReadLogged=false, lastTransferPercent=null, radioOverride=false, transferStage='';
   let targetRadioHwId=null;
@@ -131,11 +132,14 @@
     if(source.otaRadioProfile===0&&(source.otaSupported===true||source.supportsOtaRadio2))return 'Primary radio (selected source OTA profile; reception not confirmed)';
     return 'Unknown (not confirmed for this request)';
   }
-  function failureMessage(error,step=operationErrorStep) {
+  function failureRecord(error) {
     // Context is display-only. Never rewrite the transport error/message:
     // timeout matching and uncertain-install handling depend on the original.
     const context=investigationActive&&investigationErrorContext?investigationErrorContext:{};
-    const display={otaPath:failurePath(),otaRadio:failureRadio(),...context,...error,message:error?.message||String(error)};
+    return {otaPath:failurePath(),otaRadio:failureRadio(),...context,...error,message:error?.message||String(error)};
+  }
+  function failureMessage(error,step=operationErrorStep) {
+    const display=failureRecord(error);
     const secrets=[$('password').value].filter(Boolean);
     if(typeof LoraOtaChecks.errorDetails==='function')return LoraOtaChecks.errorDetails(display,{step,secrets});
     let message=String(display.message);for(const secret of secrets)message=message.split(secret).join('<hidden>');
@@ -148,8 +152,15 @@
     if(investigationActive||!$('investigation-details').hidden)$('investigation-details').open=visible;
   }
   $('verbose-errors').addEventListener('change',showDetailedErrors);
-  const fail = (error,step=operationErrorStep) => {
-    const message=failureMessage(error,step);
+  const fail = async (error,step=operationErrorStep) => {
+    const failureId=++failureSerial;
+    const record=failureRecord(error),connection=link,generation=disconnectGeneration;
+    const direct=connection?.link||connection,sourceKey=connection?.sourceKey;
+    const target=$('key').value.trim().toLowerCase(),password=$('acl').checked?'':$('password').value;
+    const source={firmwareVersion:direct?.firmwareVersion,firmwareBoardName:direct?.firmwareBoardName};
+    let targetIdentity={};
+    try{targetIdentity=connection?.cachedFailureIdentity?.(target)||{};}catch(_){}
+    const message=failureMessage(record,step);
     const reason=message.includes('\nReason: ')?message.slice(message.indexOf('\nReason: ')+9):message;
     const summary=message.split('\n')[0]+'\n'+reason;
     status(summary, 'error');
@@ -185,6 +196,24 @@
       invalidate();refreshPreservedMessages();
       status(summary+'\nUSB communication stopped. Select Reconnect USB source; your target and firmware choices are kept.', 'error');
       $('reconnect').hidden=false;$('reconnect').scrollIntoView?.({block:'nearest',behavior:'smooth'});
+    }
+    if(typeof LoraOtaChecks.collectFailureIdentity!=='function')return;
+    const sameDevice=()=>failureId===failureSerial&&link===connection&&disconnectGeneration===generation&&connection?.sourceKey===sourceKey&&$('key').value.trim().toLowerCase()===target;
+    const canRead=()=>sameDevice()&&($('acl').checked?'':$('password').value)===password&&!!direct?.running&&!direct.failure&&!connection?.failure&&!direct.investigationCancelled&&!investigationStopping&&!direct.serving&&!direct.seeder&&!direct.folderUnknown&&!direct.usbFolderAttached;
+    try{
+      // Keep the UI action reserved until these bounded reads finish. They use
+      // only an existing session: no login, route/radio change or install retry.
+      const identity=await LoraOtaChecks.collectFailureIdentity({source,target:targetIdentity,canContinue:canRead,
+        read:typeof connection?.diagnosticRead==='function'?(command,options)=>connection.diagnosticRead(target,password,command,{...options,canContinue:canRead}):undefined});
+      if(!sameDevice())return;
+      record.otaIdentity=identity;
+      const details=LoraOtaChecks.errorDetails(record,{step,secrets:[password].filter(Boolean)});
+      $('error-details').textContent=details;
+      log('Failure device information:\n'+details);
+      if(direct?.failure||connection?.failure){status(summary+'\nUSB communication stopped while collecting device information. Reconnect the USB source before retrying.','error');$('reconnect').hidden=false;}
+    }catch(_){
+      // Optional diagnostics must never replace the failure or cause an
+      // uncertain command to be repeated. The original error remains visible.
     }
   };
   const bytes = (file, limit = 64 * 1024 * 1024) => {
@@ -380,7 +409,7 @@
         ? 'Target channel matches the Companion saved settings ('+description+'). This Companion cannot confirm its active temporary settings; check them on the device.'
         : (prepare?'Channel prepared: ':'Channel ready: ')+description+'. Both radios report matching active temporary settings.';
       $('radio-setup-status').textContent=message;log(message);
-    } catch(error) { $('radio-setup-status').textContent=failureMessage(error);fail(error); }
+    } catch(error) { $('radio-setup-status').textContent=failureMessage(error);await fail(error); }
     finally { busy(false);$('inspect').disabled=!link || updatesBlocked(); }
   }
   function busy(active) {
@@ -714,7 +743,7 @@
       log('Connected to source ' + link.sourceKey + '.');
       status(recovery ? 'USB reconnected. Select Prepare update to recheck the radios, or Find matching firmware to check the device.' : 'Connected. Choose the remote device and select Find matching firmware.', 'ready');
     } catch (error) {
-      if(!controller.signal.aborted && error?.name!=='NotFoundError')fail(error);
+      if(!controller.signal.aborted && error?.name!=='NotFoundError')await fail(error);
       if (link) { try { await link.close(); } catch (_) {} }
       link = session = null;activeSourceKind=null; $('connect').disabled = false; $('inspect').disabled = true;
       $('manual-contact-help').hidden=true;
@@ -998,7 +1027,7 @@
           : 'No reply received. Check that the target is awake and reachable, and verify the radio settings, path, admin password and Companion clock before trying again.');
       if(standard && link?.investigationEnabled)add('Disconnect the Companion before choosing another target or retrying the login.');
       for (; next < checks.length; next++) add(checks[next][0] + ': Not checked');
-      fail(error);
+      await fail(error);
     } finally {
       if(restoreRepeaterTimeout) {
         try {
@@ -1053,7 +1082,7 @@
       log('Selected admin route: ' + chosen.hops + ' relay(s), weakest measured SNR ' + chosen.bottleneckSnrDb + ' dB. OTA data still floods.');
       if (observed.truncated) log('The search reached its query limit; other paths may exist.');
       log('Measurements are cached, may be stale, and do not identify the radio profile.');
-    } catch (error) { fail(error); }
+    } catch (error) { await fail(error); }
     finally {
       if(aclLink&&link===aclLink)aclLink.aclOnly=previousAclOnly;
       busy(false); $('inspect').disabled = !link || updatesBlocked();
@@ -1244,7 +1273,7 @@
       if (dest.download === 'ready') log('The matching package is ready to install.');
       if (dest.download === 'installed') log('The previously requested install is verified.');
     } catch (error) {
-      invalidate(); fail(error);
+      invalidate(); await fail(error);
       if(link && sourceKind()==='companion' && link.otaSupported===false)
         $('firmware-catalog-status').textContent=failureMessage(error);
     }
@@ -1256,7 +1285,7 @@
     updatePhase='transfer';transferStage='';sourceBytesRead=0;sourceActivityAt=0;sourceManifestReadLogged=false;lastTransferPercent=null;
     $('transfer').disabled = true; $('resume').disabled = true; $('inspect').disabled = true; busy(true);
     try { await job.start({resume}); if(transferStopJob===job)return;preparedDownload='ready';log('Transfer complete. Check the target and select Install.'); $('install').disabled = false;status('Transfer complete. Select Install and verify update.', 'ready'); }
-    catch (error) { if(transferStopJob!==job||link?.failure||link?.folderUnknown)fail(error); }
+    catch (error) { if(transferStopJob!==job||link?.failure||link?.folderUnknown)await fail(error); }
     finally { updatePhase='';busy(false); $('inspect').disabled = !link || updatesBlocked(); }
   }
   async function updateRemote() {
@@ -1285,7 +1314,7 @@
       $('update-summary').textContent='Installed and verified on '+result.hwId+'. You can disconnect the USB radio.';
     } catch(error) {
       if(transferStopJob===job&&!link?.failure&&!link?.folderUnknown)return;
-      fail(error);
+      await fail(error);
       $('update-summary').textContent=(link?.failure ? 'Update stopped. Select Reconnect USB source, then Prepare update.' :
         'Update stopped. Select Prepare update to read the device state.')+
         ' Keep the same firmware to recover it, or choose different firmware to replace the unfinished update.';
@@ -1311,20 +1340,21 @@
       status('Transfer stopped. Select Prepare update to continue.', 'ready');
     })();
     transferStopTask=stopping;
-    try{await stopping;}catch(error){if(link===connection&&disconnectGeneration===generation)fail(error,'Stop transfer and release the USB source');}
+    try{await stopping;}catch(error){if(link===connection&&disconnectGeneration===generation)await fail(error,'Stop transfer and release the USB source');}
     finally{if(transferStopTask===stopping)transferStopTask=null;refreshTransferStop();}
   }
   function run(operation,step='LoRa update') {
     // Reserve the UI before starting async work; a second action must not
     // replace its session or its cleanup promise while the first is pending.
     if(activeTask)return activeTask;
+    failureSerial++;
     operationErrorStep=step;
     let finish;
     const task=new Promise(resolve=>{finish=resolve;});
     activeTask=task;
     (async()=>{
       try { await operation(); }
-      catch(error) { fail(error);busy(false); }
+      catch(error) { await fail(error);busy(false); }
       finally { if(activeTask===task){activeTask=null;operationErrorStep='LoRa update';}finish(); }
     })();
     return task;
@@ -1338,7 +1368,7 @@
     if(!$('firmware-role').value){$('firmware-catalog-status').textContent='Choose the target type to find matching firmware.';return;}
     busy(true);$('inspect').disabled=true;
     try{await discoverCatalog($('firmware-role').value);}
-    catch(error){$('firmware-catalog-status').textContent=failureMessage(error)+'\nYou can choose a file manually.';fail(error);}
+    catch(error){$('firmware-catalog-status').textContent=failureMessage(error)+'\nYou can choose a file manually.';await fail(error);}
     finally{busy(false);$('inspect').disabled=!link || updatesBlocked();}
   },'Find compatible firmware'));
   $('firmware-choice').addEventListener('change',()=>{
@@ -1351,7 +1381,7 @@
     if(!$('firmware-choice').value || !Number.isInteger(index) || !catalogCandidates[index])return;
     busy(true);$('inspect').disabled=true;
     try{await loadCatalogCandidate(catalogCandidates[index],generation);}
-    catch(error){$('firmware-catalog-status').textContent=failureMessage(error)+'\nChoose another matching image or use a local file.';fail(error);openDetails($('file'));}
+    catch(error){$('firmware-catalog-status').textContent=failureMessage(error)+'\nChoose another matching image or use a local file.';await fail(error);openDetails($('file'));}
     finally{busy(false);$('inspect').disabled=!link || updatesBlocked();}
   },'Download and validate selected firmware'));
   $('connect').addEventListener('click', () => run(()=>connect(),'Connect USB source'));
@@ -1364,11 +1394,11 @@
   });
   $('radio-region').addEventListener('change',()=>run(async()=>{
     invalidate();busy(true);
-    try{await suggestRadioChannel();}catch(error){fail(error);}finally{busy(false);}
+    try{await suggestRadioChannel();}catch(error){await fail(error);}finally{busy(false);}
   },'Select regional update-channel defaults'));
   $('radio-reset').addEventListener('click',()=>run(async()=>{
     radioOverride=false;$('radio-reset').hidden=true;invalidate();busy(true);
-    try{await suggestRadioChannel();}catch(error){fail(error);}finally{busy(false);}
+    try{await suggestRadioChannel();}catch(error){await fail(error);}finally{busy(false);}
   },'Restore automatic update-channel defaults'));
   showRadioCommands();
   $('investigation-stop').addEventListener('click',()=>{
@@ -1392,7 +1422,7 @@
       const state = await LoraOtaRepeat.control(link, key || '', password, relays, action, setting);
       if (action !== 'read') invalidate();
       log(setting + ' is ' + state + ' on ' + key + '. This setting persists until changed.');
-    } catch (error) { fail(error); }
+    } catch (error) { await fail(error); }
     finally { busy(false); $('inspect').disabled = !link || updatesBlocked(); }
   }
   $('repeat-read').addEventListener('click', () => run(()=>forwarding('read'),'Check repeater forwarding'));
@@ -1402,7 +1432,7 @@
     preparedDownload=null;
     $('install').disabled = true; $('inspect').disabled = true; busy(true);
     try { const result = await session.install(); preparedDownload=null;log('Installed and verified: ' + result.hwId + ' ' + result.baseHash.toUpperCase());status('Update complete. The remote device is running the verified firmware.', 'complete'); }
-    catch (error) { fail(error); }
+    catch (error) { await fail(error); }
     finally { busy(false); $('inspect').disabled = !link || updatesBlocked(); }
   }
   async function planChain() {
@@ -1480,7 +1510,7 @@
       for(const warning of new Set([...chainPrepared.warnings,...(route.assumptions||[])]))log(warning);
       if(!chainPrepared.complete)log('Some candidates could not be prepared; the selected path is only the best among those checked.');
       log('Every selected differential passed the bootloader model. The model does not replace testing the intermediate firmware on this hardware.');
-    }catch(error){chainPrepared=chainConfig=null;fail(error);}
+    }catch(error){chainPrepared=chainConfig=null;await fail(error);}
     finally{preparing=null;busy(false);$('inspect').disabled=!link || updatesBlocked();}
   }
   async function runChain(resume=false) {
@@ -1513,7 +1543,7 @@
       });
       const result=await runner.run({resume,signal:signalController.signal});
       log('Update sequence complete; verified '+result.steps+' installation(s).');
-    } catch(error) { fail(error); }
+    } catch(error) { await fail(error); }
     finally { preparing=null;busy(false);$('inspect').disabled=!link || updatesBlocked(); }
   }
   $('install').addEventListener('click', () => run(()=>install(),'Install firmware and verify the remote device after reboot'));

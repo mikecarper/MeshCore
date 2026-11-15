@@ -160,3 +160,22 @@ test('a pre-existing path is never replaced', async () => {
   await assert.rejects(new RoutedRepeaterTransport(raw,target,[first]).open(),/existing OTA path/);
   assert.equal(raw.path,'EEEEEE');
 });
+test('routed failure identity diagnostics reuse only an already selected, proved and confirmed path',async()=>{
+  const raw=new FakeLink(),link=new RoutedRepeaterTransport(raw,target,[first,second]);await link.open();await link.verifyPeer(target,'');raw.otaPathValue=raw.path;
+  raw.diagnosticRead=async(k,password,command,options)=>{assert.equal(k,target);assert.equal(password,'');assert.equal(options.canContinue(),true);raw.trace.push('diagnostic '+command);return 'v1.18.0.2';};
+  raw.trace=[];assert.equal(await link.diagnosticRead(target,'','ver',{timeoutMs:25}),'v1.18.0.2');assert.deepEqual(raw.trace,['diagnostic ver']);
+  raw.otaPathValue='EEFFFF';raw.trace=[];await assert.rejects(link.diagnosticRead(target,'','board'),/confirmed existing route/);assert.deepEqual(raw.trace,[]);
+  raw.otaPathValue=raw.path;link.proved.delete(target);await assert.rejects(link.diagnosticRead(target,'','ver'),/confirmed existing route/);assert.deepEqual(raw.trace,[]);
+});
+test('routed diagnostic guard is rechecked by the underlying queued read without route or login operations',async()=>{
+  const raw=new FakeLink(),link=new RoutedRepeaterTransport(raw,target,[first]);await link.open();await link.verifyPeer(target,'');raw.otaPathValue=raw.path;
+  let allowed=true;raw.diagnosticRead=async(_key,_password,_command,options)=>{link.closing=true;assert.throws(()=>options.canContinue(),/closing/);return 'not read';};
+  raw.trace=[];assert.equal(await link.diagnosticRead(target,'','ver',{canContinue:()=>allowed}),'not read');assert.deepEqual(raw.trace,[]);
+});
+test('routed failure diagnostics can reuse earlier identity even when a route is no longer usable',async()=>{
+  const raw=new FakeLink(),link=new RoutedRepeaterTransport(raw,target,[first]);
+  raw.cachedFailureIdentity=k=>k===target?{sourceKey:source,targetKey:target,version:'v1.18.0.2',board:'RAK 3401',origin:'cached from earlier in this USB session'}:null;
+  assert.equal(await link.diagnosticRead(target,'','ver'),'v1.18.0.2');assert.equal(await link.diagnosticRead(target,'','board'),'RAK 3401');assert.deepEqual(raw.trace,[]);
+  assert.equal(link.cachedFailureIdentity('e'.repeat(64)),null);
+  await assert.rejects(link.diagnosticRead(target,'','ota install'),/only ver and board/);await assert.rejects(link.diagnosticRead(target,'password','ver'),/ACL/);assert.deepEqual(raw.trace,[]);
+});
