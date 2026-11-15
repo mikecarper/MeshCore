@@ -30,6 +30,7 @@ static std::atomic<int> live_tasks{0}, task_deletions{0};
 static std::atomic<int> parked_tasks{0};
 static std::atomic<int> pad_releases{0};
 static std::atomic<bool> fail_create{false}, ack_send{true}, stuck_command{false};
+static std::atomic<bool> stall_dhcp_retry{false};
 static std::atomic<uint8_t> open_status{SnSR::INIT}, listen_status{SnSR::LISTEN}, close_status{SnSR::CLOSED};
 static std::array<std::atomic<int>, 64> pin_modes{}, pin_values{};
 static std::mutex library_mutex;
@@ -182,6 +183,9 @@ void MockEthernet::init(SPIClass& bus, int cs) { worker_only(); assert(cs == 26)
 int MockEthernet::begin(uint8_t* mac, unsigned long timeout, unsigned long response) {
   worker_only(); assert(mac[0] == 2 && mac[3] == 0x12 && mac[4] == 0x34 && mac[5] == 0x56);
   assert(timeout == 10000 && response == 2000);
+  // Scenario 40 makes an unsafe retry remain inside the vendor call, so
+  // shutdown timeout cannot depend on whether this host thread runs cleanup.
+  if (stall_dhcp_retry.load() && begin_count.load() >= 1) begin_blocked.store(true);
   ++begin_count;
   std::unique_lock<std::mutex> lock(library_mutex);
   library_changed.wait(lock, [this] { return !begin_blocked.load(); });
@@ -529,12 +533,19 @@ int main(int argc, char** argv) {
       f.owner.observe_stop = true;
       f.off(); assert(Ethernet.begin_count == 1); break;
     }
+    case 40: // Exercise the same stop ordering with a deterministically blocked retry.
+      stall_dhcp_retry.store(true);
+      [[fallthrough]];
     case 38: { // Terminal shutdown must publish stop before the same base wake.
       Ethernet.begin_result.store(0); assert(f.owner.tryEnable());
       wait_until([&] { return std::strcmp(f.owner.status(), "retrying") == 0; }, [&] { f.tick(); });
       f.owner.observe_stop = true;
-      assert(mesh::nrf52::terminalEthernetShutdown(100));
-      assert(Ethernet.begin_count == 1 && !live_tasks && !spi_active);
+      const bool stopped = mesh::nrf52::terminalEthernetShutdown(100);
+      // Check the stop-order invariant first. The deliberately unsafe driver
+      // can re-enter DHCP and time out before the host worker is scheduled;
+      // that must still fail for the extra DHCP attempt, not assertion timing.
+      assert(Ethernet.begin_count == 1);
+      assert(stopped && !live_tasks && !spi_active);
       break;
     }
     case 39: { // Explicit mode saves precede runtime work; automatic shutdown preserves intent.

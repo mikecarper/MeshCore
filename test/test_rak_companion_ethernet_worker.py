@@ -112,7 +112,8 @@ class RakCompanionEthernetWorkerTests(unittest.TestCase):
                     (35, "unACKed head survives priority insertion and full queue"),
                     (36, "priority queue survives unACKed head reconnect"),
                     (37, "ACKed but unretired head remains pinned"),
-                    (38, "terminal OFF publishes stop before disconnect wake")):
+                    (38, "terminal OFF publishes stop before disconnect wake"),
+                    (40, "terminal OFF cannot enter a blocking DHCP retry")):
                 with self.subTest(scenario=description):
                     result = subprocess.run([str(binary), str(scenario)], text=True, capture_output=True, timeout=10)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -131,8 +132,9 @@ class RakCompanionEthernetWorkerTests(unittest.TestCase):
         unsafe = ("  SerialEthernetInterface::disable();\n  _wanted.store(false);\n"
                   "  _state.store(State::Stopping);")
         for signature, scenario in (("bool RAK13800EthernetInterface::tryDisable(bool persist)", 17),
-                ("bool RAK13800EthernetInterface::shutdownForPowerOff(", 38)):
-            with self.subTest(shutdown=signature), tempfile.TemporaryDirectory(
+                ("bool RAK13800EthernetInterface::shutdownForPowerOff(", 38),
+                ("bool RAK13800EthernetInterface::shutdownForPowerOff(", 40)):
+            with self.subTest(shutdown=signature, scenario=scenario), tempfile.TemporaryDirectory(
                     prefix="meshcore-ethernet-stop-order-") as folder:
                 method = extract_braced(source, signature)
                 self.assertEqual(method.count(ordered), 1)
