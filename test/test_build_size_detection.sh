@@ -105,13 +105,24 @@ apply_nrf52_size_profile ikoka_nano_nrf_22dbm_repeater
 
 for target in Heltec_t096_repeater_lora_ota_no_external_sensors Heltec_t1_repeater_lora_ota_no_external_sensors; do
   PIO_ENV_PLATFORM_BY_NAME[$target]=NRF52_PLATFORM
-  PLATFORMIO_BUILD_FLAGS=''
-  PLATFORMIO_BUILD_UNFLAGS=''
-  apply_repeater_neighbor_capacity "$target"
-  apply_nrf52_size_profile "$target"
-  [[ "$PLATFORMIO_BUILD_FLAGS" == *'-DMAX_NEIGHBOURS=50'* ]] || fail "$target omitted RAM-safe neighbours"
-  [[ "$PLATFORMIO_BUILD_FLAGS" == *'-DFLOOD_PACKET_FILTER_SLOTS=4'* ]] || fail "$target omitted RAM-safe rule table"
-  [[ "$PLATFORMIO_BUILD_FLAGS" != *'MESH_MIN_RUNTIME_HEAP'* ]] || fail "runtime RAM guard was overridden"
+  for sensor_profile in full reduced; do
+    NRF52_OTA_SENSOR_PROFILE=$sensor_profile
+    # Paired builds inherit 50 neighbours from the exact board recipe; the
+    # release helper must not replace that capacity while growing the table.
+    PLATFORMIO_BUILD_FLAGS='-DENABLE_OTA=1 -DOTA_FLASH_STORE=1 -DENV_INCLUDE_GPS=1 -DMAX_NEIGHBOURS=50'
+    PLATFORMIO_BUILD_UNFLAGS=''
+    apply_repeater_neighbor_capacity "$target"
+    apply_nrf52_size_profile "$target"
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *'-DMAX_NEIGHBOURS=50'* ]] || fail "$target omitted RAM-safe neighbours"
+    [[ "$PLATFORMIO_BUILD_FLAGS" == *'-DFLOOD_PACKET_FILTER_SLOTS=32'* ]] || fail "$target omitted its 32-slot rule table ($sensor_profile)"
+    if [[ "$target" == Heltec_t1_* ]]; then
+      [[ "$PLATFORMIO_BUILD_FLAGS" == *'-DST7735_BUFFER_COLOR_DEPTH=8'* ]] || fail "$target omitted its constrained RGB332 override"
+    else
+      [[ "$PLATFORMIO_BUILD_FLAGS" != *'ST7735_BUFFER_COLOR_DEPTH'* ]] || fail "$target overrode its board display configuration"
+    fi
+    [[ "$PLATFORMIO_BUILD_FLAGS" != *'MESH_MIN_RUNTIME_HEAP'* && "$PLATFORMIO_BUILD_FLAGS" != *'MESH_NRF52_LOOP_STACK_WORDS'* ]] || fail "runtime RAM guard or loop stack was overridden"
+    [[ "$PLATFORMIO_BUILD_UNFLAGS" != *'ENV_INCLUDE_'* && "$PLATFORMIO_BUILD_UNFLAGS" != *'ENABLE_OTA'* && "$PLATFORMIO_BUILD_UNFLAGS" != *'OTA_FLASH_STORE'* ]] || fail "$target reduced sensors or OTA"
+  done
 done
 # Unified internal/external RAK3401 staging reserves the 64 KiB internal
 # arena even with QSPI available. Keep the stack, sensors and table engine.
@@ -129,13 +140,14 @@ done
     [[ "$PLATFORMIO_BUILD_UNFLAGS" != *'ENV_INCLUDE_'* && "$PLATFORMIO_BUILD_UNFLAGS" != *'OTA_FLASH_STORE'* && "$PLATFORMIO_BUILD_UNFLAGS" != *'OTA_QSPI_STORE'* ]] || fail "$target removed sensors or storage"
   done
 )
-for target in Heltec_t096_companion_radio_full_femon RAK_4631_repeater RAK_4631_repeater_unified_lora_ota RAK_3401_repeater_rak13302_w25q16_lora_ota; do
+for target in Heltec_t096_companion_radio_full_femon Heltec_t1_repeater Heltec_t1_room_server Heltec_t1_sensor Heltec_t1_companion_radio_ble Heltec_t1_companion_radio_usb Heltec_t1_companion_radio_full RAK_4631_repeater RAK_4631_repeater_unified_lora_ota RAK_3401_repeater_rak13302_w25q16_lora_ota; do
   PIO_ENV_PLATFORM_BY_NAME[$target]=NRF52_PLATFORM
   PLATFORMIO_BUILD_FLAGS=''
   PLATFORMIO_BUILD_UNFLAGS=''
   apply_nrf52_size_profile "$target"
   [[ "$PLATFORMIO_BUILD_FLAGS" != *'FLOOD_PACKET_FILTER_SLOTS'* ]] || fail "$target received unrelated table reductions"
   [[ "$PLATFORMIO_BUILD_FLAGS" != *'MAX_NEIGHBOURS'* ]] || fail "$target received unrelated neighbour reductions"
+  [[ "$PLATFORMIO_BUILD_FLAGS" != *'ST7735_BUFFER_COLOR_DEPTH'* ]] || fail "$target received unrelated RGB332 override"
 done
 PIO_ENV_PLATFORM_BY_NAME[Heltec_v4_repeater]=ESP32_PLATFORM
 PLATFORMIO_BUILD_FLAGS=''

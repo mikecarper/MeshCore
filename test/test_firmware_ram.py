@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import re
+import shlex
 import struct
 import subprocess
 import sys
@@ -17,8 +18,29 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import check_firmware_ram as ram
 from firmware_elf import FirmwareElf
 import firmware_memory_manifest as proof
+from nrf52_flash_trim import flag_defines, source_selected
 from audit_esp32_image_ram import EspImage
 from test_replay_reset_integration import extract_braced
+
+
+def normalized_build_flags(flags):
+    """Preserve a spaced -D/-U definition as one flag for unflag removal."""
+    text = flags if isinstance(flags, str) else " ".join(flags)
+    words = iter(shlex.split(text))
+    return [word + next(words, "") if word in ("-D", "-U") else word for word in words]
+
+
+def effective_build_defines(flags, unflags=()):
+    removed = set(normalized_build_flags(unflags))
+    retained = [word for word in normalized_build_flags(flags) if word not in removed]
+    return {name: value for name, value in flag_defines(shlex.join(retained)).items()
+            if value is not None}
+
+
+def repeater_filter_capacity(flags, unflags=(), *, defaults=(63, 16)):
+    defines = effective_build_defines(flags, unflags)
+    engine = ram.integer(defines, "MESH_ENABLE_FLOOD_RULE_ENGINE", 1)
+    return ram.integer(defines, "FLOOD_PACKET_FILTER_SLOTS", defaults[0 if engine else 1])
 
 
 def elf32(path, symbols, data=b"", address=0x3F400000, *, symbol_sections=None, writable=False,
@@ -497,6 +519,39 @@ int main() {
                 ram.requirements("NRF52_PLATFORM", {
                     **flags, "ST7735_BUFFER_COLOR_DEPTH": depth,
                 }, "other_companion")
+
+    def test_t096_repeater_rgb332_32_rules_preserves_all_other_reserves(self):
+        flags = {"DISPLAY_CLASS": "ST7735Display", "ST7735_BUFFER_COLOR_DEPTH": 8,
+                 "MESH_NRF52_LOOP_STACK_WORDS": 2048, "MESH_CLIENT_REPEATER_ONLY": 1,
+                 "MAX_CLIENTS": 32, "MAX_NEIGHBOURS": 50, "MESH_ENABLE_FLOOD_RULE_ENGINE": 1,
+                 "ENABLE_OTA": 1, "OTA_FLASH_STORE": 1, "OTA_HYBRID_RAM_STORE": 1,
+                 "OTA_INTERNAL_BOOTLOADER_UPDATE": 1, "OTA_BOUNDED_SOURCE_PROOFS": 1,
+                 "OTA_MAX_BLOCK": 2048, "WITH_RS232_BRIDGE": "Serial2"}
+        target = "Heltec_t096_repeater_lora_ota_no_external_sensors"
+        for full in (False, True):
+            with self.subTest(full_sensor_profile=full):
+                selected = {**flags, **({"MESH_ENABLE_HOST_KISS": 1} if full else {})}
+                original = ram.requirements("NRF52_PLATFORM", {
+                    **selected, "FLOOD_PACKET_FILTER_SLOTS": 4,
+                }, target)
+                larger = ram.requirements("NRF52_PLATFORM", {
+                    **selected, "FLOOD_PACKET_FILTER_SLOTS": 32,
+                }, target)
+                self.assertEqual(larger["components"]["flood_filter_table"], 32 * 300 + 16)
+                self.assertEqual(larger["required_heap_bytes"] - original["required_heap_bytes"], 28 * 300)
+                for name, value in original["components"].items():
+                    if name != "flood_filter_table":
+                        self.assertEqual(larger["components"][name], value)
+                self.assertEqual(larger["components"]["display_pixels_and_driver"], 12801 + 1024)
+                self.assertEqual(larger["components"]["loop_and_callback_stacks"], 8192 + 3072)
+                self.assertEqual(larger["components"]["core_usb_filesystems_sensors"], 12288)
+                self.assertEqual(larger["components"]["radio_packet_pool"], 10240)
+                self.assertEqual(larger["components"]["client_table"], 32 * 284 + 16)
+                self.assertEqual(larger["components"]["ota_generic_source_buffers"], 1536 + 2048 + 32)
+                self.assertEqual(larger["components"]["allocation_and_transient_margin"], 4096)
+                self.assertEqual(larger["components"].get("host_kiss_codec", 0), 2048 if full else 0)
+                self.assertEqual(larger["required_heap_bytes"], 78145 if full else 76097)
+                self.assertEqual(larger["required_contiguous_bytes"], 13825)
 
     def test_t096_canvas_configuration_does_not_reduce_companion_capacities(self):
         config = (ROOT / "variants/heltec_t096/platformio.ini").read_text()
@@ -2021,21 +2076,84 @@ printf '%s\\n' "$PLATFORMIO_BUILD_FLAGS"
 
     def test_every_resolved_firmware_environment_has_a_policy_and_hook(self):
         # PlatformIO is single-process. CI invokes this separately from builds.
+        from test_nrf52_size_profile import recipe
+
         result = subprocess.run(["pio", "project", "config", "--json-output"], cwd=ROOT,
                                 text=True, capture_output=True, check=True)
-        checked = 0
+        header = (ROOT / "examples/simple_repeater/MyMesh.h").read_text()
+        defaults = re.search(r"#if MESH_ENABLE_FLOOD_RULE_ENGINE\s+"
+                             r"#define FLOOD_PACKET_FILTER_SLOTS (\d+)\s+"
+                             r"#else\s+#define FLOOD_PACKET_FILTER_SLOTS (\d+)", header)
+        self.assertIsNotNone(defaults)
+        default_slots = tuple(map(int, defaults.groups()))
+        checked, repeaters = 0, 0
+        capacities = set()
         for name, options in json.loads(result.stdout):
             if not name.startswith("env:") or name.startswith("env:native"):
                 continue
             options = dict(options)
-            flags = " ".join(options.get("build_flags", []))
-            platforms = [p for p in ram.SUPPORTED if p in flags]
+            flags = normalized_build_flags(options.get("build_flags", []))
+            removed = set(normalized_build_flags(options.get("build_unflags", [])))
+            flags = [flag for flag in flags if flag not in removed]
+            defines = effective_build_defines(flags)
+            platforms = [p for p in ram.SUPPORTED if p in defines]
             if not platforms:
                 self.fail(f"{name}: no memory policy")
             self.assertEqual(len(platforms), 1, name)
             self.assertIn("post:scripts/check_firmware_ram.py", options.get("extra_scripts", []), name)
             checked += 1
+            sources = options.get("build_src_filter", options.get("src_filter", []))
+            if platforms[0] == "NRF52_PLATFORM" and all(source_selected(sources, path) for path in (
+                    "../examples/simple_repeater/main.cpp", "../examples/simple_repeater/MyMesh.cpp")):
+                repeaters += 1
+                for sensor_profile in ("full", "reduced"):
+                    with self.subTest(target=name, sensor_profile=sensor_profile):
+                        # The helper stubs PIO; only the one configuration read
+                        # above invokes it. Start with this env's real inherited
+                        # definitions rather than a synthetic 63-slot seed.
+                        try:
+                            built = recipe(name[4:], sensor_profile=sensor_profile,
+                                           seed_flags=shlex.join(flags))
+                        except subprocess.CalledProcessError as error:
+                            # A local environment can contain credentials in
+                            # its compiler flags. Do not print those argv data.
+                            raise AssertionError(f"{name} ({sensor_profile}): size-profile helper "
+                                                 f"failed with exit {error.returncode}") from None
+                        final_unflags = shlex.join([
+                            *normalized_build_flags(options.get("build_unflags", [])),
+                            *normalized_build_flags(built["unflags"]),
+                        ])
+                        capacity = repeater_filter_capacity(built["flags"], final_unflags,
+                                                            defaults=default_slots)
+                        self.assertGreaterEqual(capacity, 32,
+                            f"{name} ({sensor_profile}) resolves to {capacity} forward-rule slots")
+                        capacities.add(capacity)
         self.assertGreater(checked, 700)
+        self.assertGreater(repeaters, 25)
+        self.assertEqual(capacities, {32, 47, 63})
+        print(f"Resolved RAM policies: {checked} environments; nRF52 repeater minimum 32: "
+              f"{repeaters} environments, both sensor profiles ({repeaters * 2} checks).")
+
+    def test_resolved_repeater_capacity_uses_variant_definitions_and_compact_default(self):
+        cases = (
+            ("-D FLOOD_PACKET_FILTER_SLOTS=4", "", 4),
+            ("-DFLOOD_PACKET_FILTER_SLOTS=4 -D FLOOD_PACKET_FILTER_SLOTS=32", "", 32),
+            ("-D MESH_ENABLE_FLOOD_RULE_ENGINE=0", "", 16),
+            ("-DMESH_ENABLE_FLOOD_RULE_ENGINE=0 -DFLOOD_PACKET_FILTER_SLOTS=32", "", 32),
+            ("-DMESH_ENABLE_FLOOD_RULE_ENGINE=0 -U MESH_ENABLE_FLOOD_RULE_ENGINE", "", 63),
+            ("-D FLOOD_PACKET_FILTER_SLOTS=4", "-DFLOOD_PACKET_FILTER_SLOTS=4", 63),
+            ("-DFLOOD_PACKET_FILTER_SLOTS=4 -D FLOOD_PACKET_FILTER_SLOTS=32",
+             "-D FLOOD_PACKET_FILTER_SLOTS=32", 4),
+        )
+        for flags, unflags, expected in cases:
+            with self.subTest(flags=flags, unflags=unflags):
+                self.assertEqual(repeater_filter_capacity(flags, unflags), expected)
+        # A future low-capacity variant must not be hidden by the helper's
+        # ordinary inherited default, including split -D spelling.
+        from test_nrf52_size_profile import recipe
+        for definition in ("-D FLOOD_PACKET_FILTER_SLOTS=4", "-D MESH_ENABLE_FLOOD_RULE_ENGINE=0"):
+            built = recipe("RAK_4631_repeater", seed_flags="-DNRF52_PLATFORM " + definition)
+            self.assertLess(repeater_filter_capacity(built["flags"], built["unflags"]), 32)
 
 
 if __name__ == "__main__":

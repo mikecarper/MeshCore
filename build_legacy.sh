@@ -4250,18 +4250,22 @@ apply_nrf52_size_profile() {
   # OTA, the 8 KiB loop stack, and each board's application/storage layout.
   append_platformio_build_unflags "-Ofast"
 
-  # These color-display repeaters reserve a 64 KiB reset-retained OTA arena
-  # plus a 25 KiB framebuffer. With the 8 KiB loop stack, the complete sensor
-  # profile is 1.5-1.9 KiB short of the runtime heap requirement at 16 rules.
-  # Keep their 50 neighbours, sensors, display, OTA and stack; bound the
-  # optional flood-rule table instead of lowering the qualification margin.
+  # Color-display repeaters retain the 64 KiB reset-retained OTA arena,
+  # 8 KiB loop stack, 50 neighbours, sensors and their full runtime margin.
+  # T096 already uses the smaller RGB332 canvas. Select it for T1's
+  # constrained repeater too; keep Companion and other T1 display choices.
+  # All 160x80 pixels and the driver's eight named UI colors are retained.
   case "${env_name,,}" in
     heltec_t096_repeater_lora_ota_no_external_sensors|\
     heltec_t1_repeater_lora_ota_no_external_sensors)
       append_platformio_build_unflags "-DFLOOD_PACKET_FILTER_SLOTS=63"
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DFLOOD_PACKET_FILTER_SLOTS=4"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DFLOOD_PACKET_FILTER_SLOTS=32"
+      if [ "${env_name,,}" = "heltec_t1_repeater_lora_ota_no_external_sensors" ]; then
+        append_platformio_build_unflags "-DST7735_BUFFER_COLOR_DEPTH=16"
+        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DST7735_BUFFER_COLOR_DEPTH=8"
+      fi
       record_build_reduction \
-        "mesh.flood_rules limited to 4 by measured internal RAM; complete rule engine, 8 KiB loop stack, 50 neighbors, color display, GPS, sensors, and OTA retained"
+        "mesh.flood_rules limited to 32 by qualified internal RAM; complete rule engine, 8 KiB loop stack, 50 neighbors, RGB332 color display, GPS, sensors, and OTA retained"
       ;;
     rak_3401_repeater_unified_lora_ota)
       # Internal staging keeps a reset-retained 64 KiB arena even when the

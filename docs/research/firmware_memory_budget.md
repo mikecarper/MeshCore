@@ -952,6 +952,51 @@ The clean V3 package and constrained RAK regressions pass; physical V3 testing
 still awaits USB attachment. See the [V3 qualification report](../test-results/heltec_v3_full_memory_2026-10-19.md)
 for artifact hashes, tests, upgrade behavior and hardware limits.
 
+## T096 and T1 repeater filter expansion, 2026-11-15
+
+The `Heltec_t096_repeater_lora_ota_no_external_sensors` and corresponding T1
+recipes now use 32 forward-filter slots instead of four in both sensor
+options. Three factory rows leave 29 additional rules on a fresh policy.
+The earlier four-slot measurements above remain historical. Other current
+nRF52 repeater recipes have 47 or 63 slots; historical, pinned transition
+bridge images are not normal repeater release profiles.
+
+The T096 already uses the smaller RGB332 canvas. Its old rule cap still
+assumed the larger RGB565 framebuffer. T1 now selects RGB332 only in this
+constrained LoRa-OTA recipe, preserving its other roles' display choices.
+All 160x80 pixels and named UI colors remain; arbitrary intermediate colors
+have lower precision. The expanded table adds 8,400 bytes
+to the conservative runtime allowance without changing the display, GPS,
+sensor policy, 50 neighbours, 8 KiB loop stack, 64 KiB retained mOTA arena,
+4 KiB transient margin, or application/storage layout.
+
+GCC 14.2.1 QA builds at source `54d44e2f` plus the capacity changes qualified
+all four 32-slot images. A frozen local source snapshot matched the worktree
+patch before compilation. The normal ELF/RAM, capability, recipe-stability
+and safe-UF2 package checks passed without lowering any limit:
+
+| Board / sensor option | Available internal heap | Required runtime allowance | Remaining headroom |
+| --- | ---: | ---: | ---: |
+| T096 Full + LoRa OTA | 85,172 bytes | 78,145 bytes | 7,027 bytes |
+| T096 Reduced + LoRa OTA | 86,336 bytes | 76,097 bytes | 10,239 bytes |
+| T1 Full + LoRa OTA | 85,628 bytes | 78,145 bytes | 7,483 bytes |
+| T1 Reduced + LoRa OTA | 86,792 bytes | 76,097 bytes | 10,695 bytes |
+
+Each requires a largest runtime allocation of 13,825 bytes and retains its
+hardware, target and storage identities. The unchanged RAM gate counts
+the full profile's extra host-KISS allocation. These are build checks, not
+physical startup, loaded-heap or soak measurements; no radio was flashed.
+The QA version is `v1.18.0.2-nrf52-filter32-qa-54d44e2f`, not a published
+release. The unchanged ELF/RAM and package gates remain mandatory for both
+Full and reduced options on both boards.
+
+Host persistence tests exercise the production FPF7/FPF8 load/save code under
+AddressSanitizer and UndefinedBehaviorSanitizer. They preserve the original
+four rows and scope/blacklist metadata, add six rules, and reload the result.
+No erase, reseeding or row renumbering is required. Returning a policy with
+more than four active rows to an old four-slot image preserves the file but
+refuses to activate a partial filtering policy.
+
 ## Constrained ESP32 release recipes
 
 The exact T190 Full Repeater target, including its trailing-underscore alias,

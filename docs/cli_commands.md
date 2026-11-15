@@ -5130,10 +5130,19 @@ for remote changes. It does not have the repeater's passive path blacklist, so
 ordered `prefix=` match on a room server. Standard room-server profiles do not
 compile this table.
 
+Capacity depends on the image. Upcoming T096 and T1 repeater LoRa-OTA builds
+provide 32 slots in both Full and reduced sensor profiles (3 factory defaults
+plus 29 additional rows on a fresh table), up from the previous 4-slot limit.
+Other current nRF52 repeater recipes use 47 or 63 slots. The increase preserves
+the saved format and existing row numbers; no erase or filter reset is needed.
+The read-only `get flood.filter.0` intentionally returns the installed image's
+permitted slot range; numbered getters show rows without compact-list truncation.
+
 **Parameters:**
 
-- `n`: Forward-rule slot in the build's compiled table (`1-63` on generalized
-  repeaters and `1-31` on FULL room servers; compact profiles may use fewer).
+- `n`: Forward-rule slot in the build's compiled table (normally `1-63` on
+  generalized repeaters and `1-31` on FULL room servers; memory-constrained
+  profiles may use fewer, including generalized T096/T1 builds).
 - `mode`: Optional; omitted means `radio`. `bridge` filters bridge admission,
   `cross` filters copies to the other radio profile, and `bridge,cross` covers
   both with one row. `cross,bridge` is an alias. See the

@@ -147,6 +147,83 @@ std::map<std::string,std::vector<uint8_t>> snapshot(const MemoryFS& fs) {
   for (const auto& row:fs.files) result[row.first]=*row.second;
   return result;
 }
+void populateFourSlotPolicy(MyMesh& writer, bool extended) {
+  assert(writer.storage.size()==4);
+  // Freeze the three factory configurations independently of seeding. The
+  // complete stored channel key is preserved; this harness's documented SHA
+  // stand-in produces the one-byte channel hash zero.
+  auto& ota=writer.storage[0];
+  ota.active=true;ota.payload_type=PAYLOAD_TYPE_OTA;ota.max_hops=63;
+  ota.suspend_on_temp_radio=true;ota.drop_on_match=true;
+  auto& wardriving=writer.storage[1];
+  wardriving.active=true;wardriving.payload_type=0xff;
+  wardriving.min_hops=3;wardriving.max_hops=63;wardriving.drop_on_match=true;
+  wardriving.channel_key_len=16;
+  for(unsigned i=0;i<16;++i)wardriving.channel_secret[i]=uint8_t(i+1);
+  std::strcpy(wardriving.channel_name,"#wardriving");
+  writer.storage[2]=wardriving;
+  writer.storage[2].min_hops=0;
+  writer.storage[2].transport_modes=FloodFilterPolicy::RULE_MODE_BRIDGE | FloodFilterPolicy::RULE_MODE_CROSS;
+  if(extended)extendedRule(writer.storage[3]);
+  else canonicalRule(writer.storage[3]);
+  std::strcpy(writer.flood_channel_direct_scopes[0],"#Local");
+  writer.flood_channel_scopes[0].target_id=1;
+  writer.flood_channel_scopes[0].selector=FloodFilterPolicy::encodeChannelScopeTargetSelector(0,true);
+  writer.flood_channel_data_rule_max_hops=3;
+  writer.flood_packet_filter_blacklist_count=2;
+  const uint8_t blacklist[2][3]={{0x12,0x34,0x56},{0x78,0x9a,0xbc}};
+  std::memcpy(writer.flood_packet_filter_blacklist,blacklist,sizeof(blacklist));
+}
+void assertFourSlotPolicy(const MyMesh& reader,const MyMesh& writer) {
+  assert(reader.seeded==0 && !reader.flood_policy_capacity_limited);
+  for(unsigned i=0;i<4;++i)
+    assert(FloodFilterPolicy::sameRuleConfiguration(reader.storage[i],writer.storage[i]));
+  assert(reader.flood_policy_has_embedded_sections);
+  assert(reader.flood_channel_data_rule_slot==writer.flood_channel_data_rule_slot);
+  assert(reader.flood_channel_data_rule_max_hops==writer.flood_channel_data_rule_max_hops);
+  assert(!std::memcmp(reader.flood_channel_scopes,writer.flood_channel_scopes,sizeof(writer.flood_channel_scopes)));
+  assert(!std::memcmp(reader.flood_channel_direct_scopes,writer.flood_channel_direct_scopes,sizeof(writer.flood_channel_direct_scopes)));
+  assert(reader.flood_packet_filter_blacklist_count==writer.flood_packet_filter_blacklist_count);
+  assert(!std::memcmp(reader.flood_packet_filter_blacklist,writer.flood_packet_filter_blacklist,sizeof(writer.flood_packet_filter_blacklist)));
+}
+void fourSlotExpansion() {
+  for(uint8_t capacity : {uint8_t(31),uint8_t(32),uint8_t(47),uint8_t(63)})for(bool extended : {false,true}) {
+    MemoryFS fs;MyMesh writer(fs,4);populateFourSlotPolicy(writer,extended);
+    assert(writer.saveFloodPacketFilters());
+    const auto original=fs.get(FLOOD_PACKET_FILTER_FILE);
+    assert(!std::memcmp(original.data(),extended?"FPF8":"FPF7",4) && original[4]==4);
+    const auto files=snapshot(fs);const auto writes=fs.writes;
+    MyMesh larger(fs,capacity);assert(larger.loadFloodPacketFilters());
+    assertFourSlotPolicy(larger,writer);
+    assert(snapshot(fs)==files && fs.writes==writes);
+    for(unsigned i=4;i<capacity;++i)assert(!larger.storage[i].active);
+    // More capacity alone must not pad/rewrite the committed policy or reset
+    // custom/disabled rows. The real serializer retains its four-row extent.
+    assert(larger.saveFloodPacketFilters());assert(fs.get(FLOOD_PACKET_FILTER_FILE)==original);
+    const uint8_t types[]={PAYLOAD_TYPE_REQ,PAYLOAD_TYPE_RESPONSE,PAYLOAD_TYPE_GRP_DATA,
+      PAYLOAD_TYPE_ANON_REQ,PAYLOAD_TYPE_PATH,PAYLOAD_TYPE_CONTROL};
+    for(unsigned i=0;i<6;++i){
+      auto& row=larger.storage[4+i];row={};row.active=true;row.payload_type=types[i];
+      row.min_hops=i==5?1:(i%2?9:3);row.max_hops=63;row.drop_on_match=true;
+    }
+    assert(larger.saveFloodPacketFilters());
+    const auto expanded=fs.get(FLOOD_PACKET_FILTER_FILE);
+    assert(expanded[4]==10);
+    const auto expanded_files=snapshot(fs);const auto expanded_writes=fs.writes;
+    MyMesh reboot(fs,capacity);assert(reboot.loadFloodPacketFilters());
+    assertFourSlotPolicy(reboot,writer);
+    for(unsigned i=4;i<10;++i)
+      assert(FloodFilterPolicy::sameRuleConfiguration(reboot.storage[i],larger.storage[i]));
+    assert(reboot.storage[3].extra.disabled==extended);
+    assert(snapshot(fs)==expanded_files && fs.writes==expanded_writes);
+    // Returning to a four-slot image must preserve the larger policy, not
+    // activate only the old defaults or discard the six newly saved rows.
+    MyMesh downgrade(fs,4);assert(!downgrade.loadFloodPacketFilters());
+    assert(downgrade.flood_policy_capacity_limited && downgrade.seeded==0);
+    assert(!downgrade.saveFloodPacketFilters());assert(!downgrade.saveFloodPacketFilters(true,true));
+    assert(snapshot(fs)==expanded_files && fs.writes==expanded_writes);
+  }
+}
 void extendedStorage() {
     // Disabled high slots remain allocated and durable. They must neither be
     // trimmed from the file nor silently discarded by smaller-capacity builds.
@@ -191,6 +268,7 @@ void extendedStorage() {
     }
 }
 int main() {
+  fourSlotExpansion();
   extendedStorage();
   // Canonical FPF7 bytes remain independent of the compact in-memory layout.
   // Exercise every persisted packed flag plus the addressable retry flag.
@@ -358,6 +436,8 @@ class FloodPolicyCapacityTests(unittest.TestCase):
         room_source=(ROOT/'examples/simple_room_server/FloodRuleEngine.cpp').read_text()
         room_header=(ROOT/'examples/simple_room_server/FloodRuleEngine.h').read_text()
         fs=HARNESS[:HARNESS.index('@STORE@')]
+        fs=fs.replace('bool short_write = false;', 'bool short_write = false;\n  unsigned writes=0;')
+        fs=fs.replace('if (fs->short_write && count) --count;', '++fs->writes;\n  if (fs->short_write && count) --count;')
         fs=fs.replace('bool valid = false;', 'bool valid = false;\n  size_t cursor=0;')
         fs=fs.replace('size_t write(const uint8_t*, size_t);', '''size_t write(const uint8_t*, size_t);
   size_t read(uint8_t* out,size_t count) {

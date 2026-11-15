@@ -166,7 +166,7 @@ get flood.moderation
 ```
 
 `flood.rule` is an alias for `flood.filter`, not another table. Generalized
-repeaters have 63 forward-rule slots plus scope-rewrite and shared-blacklist
+repeaters normally have 63 forward-rule slots plus scope-rewrite and shared-blacklist
 sections in the same atomic policy file. FULL room servers have 31 forward
 slots and empty repeater-only sections. Compact target profiles retain their
 separate FPF6-era controls. `flood.moderation` has 16 slots. A new
@@ -178,6 +178,26 @@ only the OTA row; their generalized engine also accepts transport-mode rules. `f
 temporary radio is not synonymous with OTA and can carry normal packet types
 too. A corrupt or truncated table fails open, so corrupt storage does not
 silently enable blocking.
+
+Forward-rule capacity is build-dependent. Upcoming T096 and T1 repeater LoRa-OTA
+images increase the table from 4 to 32 slots in both Full and reduced sensor
+profiles: a fresh table has 3 factory rows and room for 29 additional rules.
+This capacity increase does not change the saved format, clear filters, or
+renumber existing rows; no erase or filter reset is needed. The published
+October 24, 2026 images still have 4 slots until replaced with the new build.
+Other current nRF52 repeater recipes use 47 or 63 slots. The T1's constrained
+LoRa-OTA recipe uses the smaller RGB332 canvas, retaining all 160x80 pixels and
+the named UI colors; its other display profiles are unchanged.
+
+Once more than 4 rows are active, keep an image with sufficient capacity.
+Returning to the old 4-slot image preserves the policy file but refuses to
+activate a partial table, leaving filtering inactive rather than silently
+dropping the extra rules.
+
+To check the installed image's range without changing anything, send
+`get flood.filter.0`: the intentionally invalid slot returns the permitted
+range, such as `1-4` or `1-32`. Use `get flood.filter.<n>` to inspect individual
+rows; the compact `get flood.filter` list can be truncated.
 
 On a FULL ESP32 room server, use `get flood.rule` (or `get flood.filter`) for
 the available table. Remote rule changes require room-server administrator
@@ -439,7 +459,7 @@ which disables its other filter rows too. New firmware loads older rows as
 The former `flood.channel.block` table is now represented by ordinary FPF7
 rows. On a generalized repeater, an existing FCB2 file is imported once into
 free FPF7 slots and then removed. For example, an old `#wardriving h=4` row
-becomes `type=any channel=#wardriving hops=5+ drop`. The 63-row table can hold
+becomes `type=any channel=#wardriving hops=5+ drop`. The default 63-row table can hold
 all 31 former general filter rows, all 15 legacy channel-block rows, and the
 migrated global `flood.channel.data` gate. Compact STM32WL FPF6 builds cannot
 match authenticated channels and retain the older separate gate.

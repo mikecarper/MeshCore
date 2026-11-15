@@ -23,7 +23,7 @@ SEED_FLAGS = " ".join((
 
 
 def recipe(target, *, platform="NRF52_PLATFORM", ota=True, profile="standard", full=False,
-           embedded="", sensor_profile=""):
+           embedded="", sensor_profile="", seed_flags=SEED_FLAGS):
     # Use the real eligibility predicates as well as the actual mutating helper.
     # A pio guard makes an accidental expansion into a firmware build fail fast.
     script = r'''
@@ -46,9 +46,9 @@ if is_repeater_role_target "$target"; then repeater=1; fi
 if is_nrf52_companion_radio_full_target "$target"; then full=1; fi
 if is_lora_ota_build "$target"; then lora_ota=1; fi
 if is_lora_ota_only_target "$target"; then ota_only=1; fi
-apply_nrf52_size_profile "$target"
 MESHCORE_NRF52_EMBED_BOOTLOADER=$7
 NRF52_OTA_SENSOR_PROFILE=$8
+apply_nrf52_size_profile "$target"
 apply_rak4631_embedded_full_size_profile "$target"
 if [ "$6" = 1 ]; then
   # Supply actual option data to the real query helper without asking PIO to
@@ -65,7 +65,7 @@ printf '%s\0' "$PLATFORMIO_BUILD_FLAGS" "$PLATFORMIO_BUILD_UNFLAGS" \
         environment.pop(name, None)
     completed = subprocess.run(
         ["bash", "-c", script, "size-profile-test", target, platform,
-         str(int(ota)), profile, SEED_FLAGS, str(int(full)), embedded, sensor_profile],
+         str(int(ota)), profile, seed_flags, str(int(full)), embedded, sensor_profile],
         cwd=ROOT, env=environment,
         capture_output=True, check=True,
     )
@@ -196,25 +196,78 @@ class Nrf52SizeProfileTest(unittest.TestCase):
 
     def test_measured_table_reductions_keep_stack_sensors_and_ota(self):
         cases = (
-            ("Heltec_t096_repeater_lora_ota_no_external_sensors", 4),
-            ("Heltec_t1_repeater_lora_ota_no_external_sensors", 4),
+            ("Heltec_t096_repeater_lora_ota_no_external_sensors", 32),
+            ("Heltec_t1_repeater_lora_ota_no_external_sensors", 32),
             ("RAK_3401_repeater_unified_lora_ota", 47),
         )
         for target, slots in cases:
-            with self.subTest(target=target):
-                result = recipe(target)
-                self.assertEqual(result["repeater"], "1")
-                self.assertEqual(result["flags"],
-                                 SEED_FLAGS + " -DFLOOD_PACKET_FILTER_SLOTS=%d" % slots)
-                unflags = shlex.split(result["unflags"])
-                self.assertIn("-Ofast", unflags)
-                self.assertIn("FLOOD_PACKET_FILTER_SLOTS=63", unflags)
-                self.assertIn("8 KiB loop stack", result["reductions"])
-                self.assertIn("sensors", result["reductions"])
-                self.assertIn("OTA retained", result["reductions"])
-                optimizers = [flag for flag in BASE_FLAGS + shlex.split(result["flags"])
-                              if re.fullmatch(r"-O(?:[0-3sgz]|fast)", flag)]
-                self.assertEqual(optimizers[-1], "-Oz")
+            for sensor_profile in ("full", "reduced"):
+                with self.subTest(target=target, sensor_profile=sensor_profile):
+                    result = recipe(target, sensor_profile=sensor_profile)
+                    self.assertEqual(result["repeater"], "1")
+                    flags = shlex.split(result["flags"])
+                    seed = shlex.split(SEED_FLAGS)
+                    self.assertEqual(flags[:len(seed)], seed)
+                    added = ["-DFLOOD_PACKET_FILTER_SLOTS=%d" % slots]
+                    if target.startswith("Heltec_t1_"):
+                        added.append("-DST7735_BUFFER_COLOR_DEPTH=8")
+                    self.assertCountEqual(flags[len(seed):], added)
+                    unflags = shlex.split(result["unflags"])
+                    self.assertIn("-Ofast", unflags)
+                    self.assertIn("FLOOD_PACKET_FILTER_SLOTS=63", unflags)
+                    if target.startswith("Heltec_t1_"):
+                        self.assertIn("ST7735_BUFFER_COLOR_DEPTH=16", unflags)
+                    self.assertIn("8 KiB loop stack", result["reductions"])
+                    self.assertIn("sensors", result["reductions"])
+                    self.assertIn("OTA retained", result["reductions"])
+                    self.assertIn("limited to %d" % slots, result["reductions"])
+                    self.assertNotIn("MESH_MIN_RUNTIME_HEAP", result["flags"])
+                    if target.startswith(("Heltec_t096", "Heltec_t1_")):
+                        self.assertIn("RGB332 color display", result["reductions"])
+                    optimizers = [flag for flag in BASE_FLAGS + shlex.split(result["flags"])
+                                  if re.fullmatch(r"-O(?:[0-3sgz]|fast)", flag)]
+                    self.assertEqual(optimizers[-1], "-Oz")
+
+    def test_t1_rgb332_override_does_not_change_other_roles_or_ordinary_repeater(self):
+        for role in ("repeater", "room_server", "sensor", "companion_radio_usb",
+                     "companion_radio_ble", "companion_radio_full"):
+            with self.subTest(role=role):
+                result = recipe("Heltec_t1_" + role)
+                self.assertEqual(result["flags"], SEED_FLAGS)
+                self.assertNotIn("ST7735_BUFFER_COLOR_DEPTH", result["unflags"])
+                self.assertNotIn("RGB332", result["reductions"])
+        config = (ROOT / "variants/heltec_t1/platformio.ini").read_text()
+        self.assertNotIn("ST7735_BUFFER_COLOR_DEPTH", config)
+
+    def test_current_nrf52_repeater_inventory_has_at_least_32_rules(self):
+        # Use the shared current release allowlist, not historical transition
+        # bridges pinned to older source revisions and compact filter formats.
+        inventory = (ROOT / "tools/mota/nrf52_internal_bootloader_targets.txt").read_text()
+        targets = [line.strip() for line in inventory.splitlines()
+                   if line.strip() and not line.lstrip().startswith("#")
+                   and "_repeater" in line.lower()]
+        self.assertGreaterEqual(len(targets), 20)
+        self.assertIn("RAK_3401_repeater_unified_lora_ota", targets)
+        header = (ROOT / "examples/simple_repeater/MyMesh.h").read_text()
+        default = re.search(r"#if MESH_ENABLE_FLOOD_RULE_ENGINE\s+"
+                            r"#define FLOOD_PACKET_FILTER_SLOTS (\d+)", header)
+        self.assertIsNotNone(default)
+        inherited = int(default.group(1))
+        flags = " ".join(flag for flag in shlex.split(SEED_FLAGS)
+                         if not flag.startswith("-DFLOOD_PACKET_FILTER_SLOTS="))
+        capacities = set()
+        for target in targets:
+            for profile in ("full", "reduced"):
+                with self.subTest(target=target, sensor_profile=profile):
+                    result = recipe(target, sensor_profile=profile, seed_flags=flags)
+                    self.assertEqual(result["repeater"], "1")
+                    overrides = [int(flag.split("=", 1)[1])
+                                 for flag in shlex.split(result["flags"])
+                                 if flag.startswith("-DFLOOD_PACKET_FILTER_SLOTS=")]
+                    capacity = overrides[-1] if overrides else inherited
+                    self.assertGreaterEqual(capacity, 32)
+                    capacities.add(capacity)
+        self.assertEqual(capacities, {32, 47, 63})
 
 
 if __name__ == "__main__":
