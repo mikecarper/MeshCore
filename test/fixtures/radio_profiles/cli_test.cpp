@@ -504,7 +504,99 @@ static void spectrumOverlap() {
   assert(roundtrips == 1000);
 }
 
+static void mediaMeshBootIsolation() {
+  for (float primary : {910.525f, 869.618f, 433.650f, 917.375f})
+      for (bool range : {false, true}) for (const char* prior : {"on", "auto"}) {
+    Fixture f;
+    f.saved_primary_frequency = &primary;
+    assert(f.cli.savePrimaryPreamble(48));
+    f.cli.stagePrimary(48, false);
+    f.cmd(range ? "set radio2 mediamesh-range" : "set radio2 mediamesh"); f.advance(2000);
+    char command[40];
+    snprintf(command, sizeof(command), "set radio2.cross %s", prior); f.cmd(command);
+    const auto saved = f.cli.savedSecondaryConfig();
+    const auto previous_image = f.fs.files["/radio_profiles"];
+    MemoryFS disk = f.fs;
+    Radio reboot; mesh::RadioProfileCLI restored;
+    restored.begin(&disk, &reboot, &f.clock);
+    assert(reboot.p.cross == mesh::RadioCrossMode::Off);
+    assert(reboot.p.secondary.params == saved.params && reboot.p.secondary.mode == saved.mode);
+    assert(restored.manualSecondaryConfigured() && restored.primaryPreamble() == 48);
+    assert(disk.files["/radio_profiles"] != previous_image);
+    const auto isolated_image = disk.files["/radio_profiles"];
+    Radio second_reboot; mesh::RadioProfileCLI second_restored;
+    second_restored.begin(&disk, &second_reboot, &f.clock);
+    assert(second_reboot.p.cross == mesh::RadioCrossMode::Off);
+    assert(disk.files["/radio_profiles"] == isolated_image);
+    disk.fail_write = disk.fail_read_open = true;
+    assert(second_restored.ensureCrossingOff()); // Already isolated: no storage operation needed.
+    assert(disk.files["/radio_profiles"] == isolated_image);
+    for (unsigned failure : {0U, 1U, 2U}) {
+      MemoryFS failed_disk = f.fs;
+      failed_disk.fail_write = failure == 0;
+      failed_disk.fail_rename = failure;
+      Radio failed_reboot; mesh::RadioProfileCLI retrying;
+      retrying.begin(&failed_disk, &failed_reboot, &f.clock);
+      const auto previous_cross = !strcmp(prior, "on")
+          ? mesh::RadioCrossMode::On : mesh::RadioCrossMode::Auto;
+      assert(failed_reboot.p.cross == previous_cross);
+      assert(failed_disk.files["/radio_profiles"] == previous_image);
+      assert(failed_reboot.p.secondary.params == saved.params
+          && failed_reboot.p.secondary.mode == saved.mode);
+      failed_disk.fail_write = false; failed_disk.fail_rename = 0;
+      retrying.loop();
+      assert(failed_reboot.p.cross == previous_cross);
+      g_mock_millis += 999; retrying.loop();
+      assert(failed_reboot.p.cross == previous_cross); // Bounded retry, not a hot flash loop.
+      g_mock_millis += 1; retrying.loop();
+      assert(failed_reboot.p.cross == mesh::RadioCrossMode::Off);
+      assert(failed_reboot.p.secondary.params == saved.params
+          && retrying.manualSecondaryConfigured() && retrying.primaryPreamble() == 48);
+      Radio committed_reboot; mesh::RadioProfileCLI committed;
+      committed.begin(&failed_disk, &committed_reboot, &f.clock);
+      assert(committed_reboot.p.cross == mesh::RadioCrossMode::Off);
+    }
+    for (bool replace_profile : {false, true}) {
+      MemoryFS failed_disk = f.fs;
+      failed_disk.fail_write = true;
+      Radio failed_reboot; mesh::RadioProfileCLI retrying;
+      retrying.begin(&failed_disk, &failed_reboot, &f.clock);
+      const auto previous_cross = !strcmp(prior, "on")
+          ? mesh::RadioCrossMode::On : mesh::RadioCrossMode::Auto;
+      assert(failed_reboot.p.cross == previous_cross);
+      failed_disk.fail_write = false;
+      char reply[160];
+      const char* manual_command = replace_profile
+          ? "set radio2 912.5,500,8,5,rxtx,80" : "set radio2.cross on";
+      assert(retrying.handle(manual_command, reply, sizeof(reply)) && !strncmp(reply, "OK", 2));
+      g_mock_millis += 3000; retrying.loop();
+      // The failed migration belonged to the old configuration. It must not
+      // override a later successful raw tuple or explicit crossing choice.
+      const auto expected_cross = replace_profile ? previous_cross : mesh::RadioCrossMode::On;
+      assert(failed_reboot.p.cross == expected_cross);
+      if (replace_profile) {
+        assert(failed_reboot.p.secondary.params.freq == 912.5f);
+        Radio manual_reboot; mesh::RadioProfileCLI manual;
+        manual.begin(&failed_disk, &manual_reboot, &f.clock);
+        assert(manual_reboot.p.cross == expected_cross && manual_reboot.p.secondary.params.freq == 912.5f);
+      }
+    }
+  }
+  for (const char* prior : {"on", "auto"}) {
+    Fixture f;
+    f.cmd("set radio2 912.5,500,8,5,rxtx,80"); f.advance(2000);
+    char command[40];
+    snprintf(command, sizeof(command), "set radio2.cross %s", prior); f.cmd(command);
+    const auto previous_image = f.fs.files["/radio_profiles"];
+    Radio reboot; mesh::RadioProfileCLI restored;
+    restored.begin(&f.fs, &reboot, &f.clock);
+    assert(reboot.p.cross == (!strcmp(prior, "on") ? mesh::RadioCrossMode::On : mesh::RadioCrossMode::Auto));
+    assert(f.fs.files["/radio_profiles"] == previous_image);
+  }
+}
+
 static void mediaMeshPresets() {
+  mediaMeshBootIsolation();
   const float saved_primary_frequency = 910.525f;
   for (bool infrastructure : {false, true}) {
     for (bool range : {false, true}) {
@@ -529,16 +621,33 @@ static void mediaMeshPresets() {
       assert(reboot.p.secondary.params == config.params);
       assert(reboot.p.secondary.mode == mesh::RadioProfileMode::RxTx);
       assert(reboot.p.cross == mesh::RadioCrossMode::Off);
-      // A preset replaces an old preamble override but retains operator crossover.
-      f.cmd("set radio2.cross on");
-      f.cmd("set radio2 912.5,500,8,5,rxtx,80"); f.advance(2000);
-      f.cmd(command); f.advance(2000);
-      assert(!f.radio.p.secondary.params.preamble && f.radio.p.cross == mesh::RadioCrossMode::On);
-      const auto committed = f.fs.files["/radio_profiles"];
-      f.fs.fail_write = true;
-      f.cmd(range ? "set radio2 mediamesh" : "set radio2 mediamesh-range", false);
-      assert(f.radio.p.secondary.params == config.params
-          && f.fs.files["/radio_profiles"] == committed);
+      for (const char* prior : {"on", "auto"}) {
+        const auto previous_cross = !strcmp(prior, "on")
+            ? mesh::RadioCrossMode::On : mesh::RadioCrossMode::Auto;
+        char cross_command[40];
+        snprintf(cross_command, sizeof(cross_command), "set radio2.cross %s", prior);
+        f.cmd(cross_command);
+        // Explicit tuples preserve the operator's crossing choice.
+        f.cmd("set radio2 912.5,500,8,5,rxtx,80"); f.advance(2000);
+        assert(f.radio.p.cross == previous_cross);
+        f.cmd(command); f.advance(2000);
+        assert(!f.radio.p.secondary.params.preamble && f.radio.p.cross == mesh::RadioCrossMode::Off);
+        Radio preset_reboot; mesh::RadioProfileCLI preset_restored;
+        preset_restored.begin(&f.fs, &preset_reboot, &f.clock, infrastructure);
+        assert(preset_reboot.p.cross == mesh::RadioCrossMode::Off);
+        // Isolation is a preset default, not a permanent prohibition.
+        f.cmd(cross_command);
+        assert(f.radio.p.cross == previous_cross);
+        const auto committed = f.fs.files["/radio_profiles"];
+        f.fs.fail_write = true;
+        f.cmd(range ? "set radio2 mediamesh" : "set radio2 mediamesh-range", false);
+        assert(f.radio.p.secondary.params == config.params && f.radio.p.cross == previous_cross
+            && f.fs.files["/radio_profiles"] == committed);
+        Radio failed_reboot; mesh::RadioProfileCLI failed_restored;
+        failed_restored.begin(&f.fs, &failed_reboot, &f.clock, infrastructure);
+        assert(failed_reboot.p.cross == previous_cross);
+        f.fs.fail_write = false;
+      }
     }
   }
   Fixture invalid;
@@ -554,14 +663,64 @@ static void mediaMeshPresets() {
 }
 
 #if !MESH_CLIENT_REPEATER_ONLY
+static void channelIsolationTransaction() {
+  for (const char* prior : {"on", "auto"}) for (bool manual : {false, true})
+      for (unsigned outcome = 0; outcome < 5; ++outcome) {
+    Fixture f;
+    if (manual) { f.cmd("set radio2 910.5,500,8,5,rx,80"); f.advance(2000); }
+    const auto previous_cross = !strcmp(prior, "on")
+        ? mesh::RadioCrossMode::On : mesh::RadioCrossMode::Auto;
+    char cross_command[40];
+    snprintf(cross_command, sizeof(cross_command), "set radio2.cross %s", prior);
+    f.cmd(cross_command);
+    const auto previous = f.radio.p.secondary;
+    const auto previous_image = f.fs.files["/radio_profiles"];
+    const uint32_t intent = f.cli.secondaryIntentGeneration();
+    f.fs.fail_write = outcome == 4;
+    if (outcome == 4) {
+      assert(!f.cli.stageChannelIsolation() && !f.cli.hasReplyMutation());
+    } else {
+      assert(f.cli.stageChannelIsolation() && f.cli.hasReplyMutation());
+      assert(f.radio.p.cross == previous_cross && f.fs.files["/radio_profiles"] == previous_image);
+      f.advance(100);
+      assert(f.radio.p.secondary.params == previous.params && f.radio.p.cross == previous_cross);
+      if (outcome == 0) assert(f.cli.finishChannelPreset(false));
+      else if (outcome == 1) assert(f.cli.finishChannelPreset(true));
+      else {
+        f.fs.fail_rename = outcome - 1;
+        assert(!f.cli.finishChannelPreset(true) && f.cli.hasReplyMutation());
+        assert(f.radio.p.cross == previous_cross && f.fs.files["/radio_profiles"] == previous_image);
+        assert(f.cli.finishChannelPreset(false));
+      }
+    }
+    const auto expected_cross = outcome == 1 ? mesh::RadioCrossMode::Off : previous_cross;
+    assert(!f.cli.hasReplyMutation() && f.radio.p.cross == expected_cross);
+    assert(f.cli.secondaryIntentGeneration() == intent && f.cli.manualSecondaryConfigured() == manual);
+    assert(f.radio.p.secondary.params == previous.params && f.radio.p.secondary.mode == previous.mode);
+    Radio reboot; mesh::RadioProfileCLI restored;
+    restored.begin(&f.fs, &reboot, &f.clock);
+    assert(reboot.p.cross == expected_cross && restored.manualSecondaryConfigured() == manual);
+    assert(reboot.p.secondary.params == previous.params && reboot.p.secondary.mode == previous.mode);
+    if (outcome == 1) {
+      f.cmd(cross_command);
+      assert(f.radio.p.cross == previous_cross);
+    }
+  }
+}
+
 static void channelPresetTransaction() {
+  channelIsolationTransaction();
   const float saved_primary_frequency = 910.525f;
-  for (bool range : {false, true}) {
+  for (bool range : {false, true}) for (const char* prior : {"on", "auto"}) {
     Fixture f;
     f.saved_primary_frequency = &saved_primary_frequency;
     assert(f.cli.savePrimaryPreamble(48));
     f.cli.stagePrimary(48, false);
-    f.cmd("set radio2.cross on");
+    const auto previous_cross = !strcmp(prior, "on")
+        ? mesh::RadioCrossMode::On : mesh::RadioCrossMode::Auto;
+    char cross_command[40];
+    snprintf(cross_command, sizeof(cross_command), "set radio2.cross %s", prior);
+    f.cmd(cross_command);
     f.cmd("set radio2 910.5,500,8,5,rxtx,80"); f.advance(2000);
     const auto primary = f.radio.p.primary;
     const auto previous = f.radio.p.secondary;
@@ -571,9 +730,9 @@ static void channelPresetTransaction() {
     assert(f.cli.hasReplyMutation() && f.fs.exists("/radio_profiles.reply"));
     assert(f.fs.files["/radio_profiles"] == previous_image);
     assert(f.cli.savedSecondaryConfig().params == previous.params);
-    assert(f.radio.p.secondary.params == previous.params);
+    assert(f.radio.p.secondary.params == previous.params && f.radio.p.cross == previous_cross);
     f.advance(100); // A staged channel save has no permission to publish yet.
-    assert(f.radio.p.secondary.params == previous.params);
+    assert(f.radio.p.secondary.params == previous.params && f.radio.p.cross == previous_cross);
     assert(f.cli.secondaryIntentGeneration() == intent);
     assert(f.cli.finishChannelPreset(true));
     assert(!f.cli.hasReplyMutation() && !f.fs.exists("/radio_profiles.reply"));
@@ -590,18 +749,21 @@ static void channelPresetTransaction() {
     restored.begin(&f.fs, &reboot, &f.clock);
     assert(reboot.p.secondary.params == saved.params);
     assert(reboot.p.secondary.mode == saved.mode);
-    assert(reboot.p.primary == primary && reboot.p.cross == mesh::RadioCrossMode::On);
+    assert(reboot.p.primary == primary && reboot.p.cross == mesh::RadioCrossMode::Off);
     f.advance(1999);
     assert(f.radio.p.secondary.params == previous.params);
     f.advance(1);
     assert(f.radio.p.secondary.params == saved.params && f.radio.p.secondary.mode == saved.mode);
-    assert(f.radio.p.primary == primary && f.radio.p.cross == mesh::RadioCrossMode::On);
+    assert(f.radio.p.primary == primary && f.radio.p.cross == mesh::RadioCrossMode::Off);
+    f.cmd(cross_command);
+    assert(f.radio.p.cross == previous_cross); // A later manual choice remains supported.
     assert(!f.cli.finishChannelPreset(true) && !f.cli.finishChannelPreset(false));
   }
   {
     Fixture f;
     f.saved_primary_frequency = &saved_primary_frequency;
     f.cmd("set radio2 off"); f.advance(2000);
+    f.cmd("set radio2.cross on");
     const auto before = f.fs.files;
     const uint32_t intent = f.cli.secondaryIntentGeneration();
     assert(f.cli.stageChannelPreset("mediamesh", f.saved_primary_frequency));
@@ -612,11 +774,17 @@ static void channelPresetTransaction() {
     assert(!f.radio.p.enabled() && f.cli.savedSecondaryConfig().mode == mesh::RadioProfileMode::Off);
     Radio reboot; mesh::RadioProfileCLI restored;
     restored.begin(&f.fs, &reboot, &f.clock);
-    assert(!reboot.p.enabled());
+    assert(!reboot.p.enabled() && reboot.p.cross == mesh::RadioCrossMode::On);
+    assert(f.radio.p.cross == mesh::RadioCrossMode::On);
   }
-  for (int fail_rename : {1, 2}) {
+  for (int fail_rename : {1, 2}) for (const char* prior : {"on", "auto"}) {
     Fixture f;
     f.saved_primary_frequency = &saved_primary_frequency;
+    const auto previous_cross = !strcmp(prior, "on")
+        ? mesh::RadioCrossMode::On : mesh::RadioCrossMode::Auto;
+    char cross_command[40];
+    snprintf(cross_command, sizeof(cross_command), "set radio2.cross %s", prior);
+    f.cmd(cross_command);
     f.cmd("set radio2 910.5,500,8,5,rx,80"); f.advance(2000);
     const auto before = f.fs.files;
     const auto previous = f.radio.p.secondary;
@@ -625,16 +793,17 @@ static void channelPresetTransaction() {
     f.fs.fail_rename = fail_rename;
     assert(!f.cli.finishChannelPreset(true));
     assert(f.cli.hasReplyMutation());
-    assert(f.radio.p.secondary.params == previous.params);
+    assert(f.radio.p.secondary.params == previous.params && f.radio.p.cross == previous_cross);
     assert(f.cli.savedSecondaryConfig().params == previous.params);
     assert(f.cli.secondaryIntentGeneration() == intent);
     assert(f.cli.finishChannelPreset(false));
     assert(f.fs.files == before && !f.cli.hasReplyMutation());
     f.advance(2000);
-    assert(f.radio.p.secondary.params == previous.params);
+    assert(f.radio.p.secondary.params == previous.params && f.radio.p.cross == previous_cross);
     Radio reboot; mesh::RadioProfileCLI restored;
     restored.begin(&f.fs, &reboot, &f.clock);
-    assert(reboot.p.secondary.params == previous.params && reboot.p.secondary.mode == previous.mode);
+    assert(reboot.p.secondary.params == previous.params && reboot.p.secondary.mode == previous.mode
+        && reboot.p.cross == previous_cross);
   }
   {
     Fixture f;

@@ -140,6 +140,7 @@ public:
   int error=-1;
   MyMesh() { g_mock_millis=0; self_id.pub_key[0]=42; _radio_profiles.begin(&fs,&radio,&clock); }
   bool isAliasRadio2Defined() const;
+  void serviceChannelIsolation(bool reconcile=true);
   bool resolveChannelAlias(ChannelDetails&) const;
   bool getChannel(int,ChannelDetails&);
   bool setChannel(int,const ChannelDetails&);
@@ -504,6 +505,152 @@ static void assertMediaMeshConfig(const mesh::RadioProfileConfig& config,float b
   assert(std::fabs(config.params.freq-911.150f)<0.0001f && config.params.bw==bandwidth);
   assert(config.params.sf==7 && config.params.cr==5 && !config.params.preamble);
   assert(config.params.protocol==mesh::RadioProfileProtocol::MeshCore);
+}
+static void channelIsolation() {
+  for(const char* mode:{"on","auto"}) {
+    for(const char* name:{"#r2-team","r2-team","#r2-mediamesh","r2-mediamesh-range",
+                          "#mt-longfast","mt-longfast"}) {
+      for(int key_size:{16,32}) {
+        if(key_size==32 && parseCompanionChannelAlias(name).kind!=CompanionChannelKind::Meshtext) continue;
+        Preferences::reset(); MyMesh node; node._prefs.freq=910.525f; node.beginMeshtext();
+        char cross[40]; snprintf(cross,sizeof(cross),"set radio2.cross %s",mode); node.cli(cross);
+        const auto primary=node.radio.p.primary;
+        auto requested=channel(name,key_size);
+        applySet(node,0,requested,key_size);
+        assert(node.ok && node.error==-1 && !strcmp(node.cli("get radio2.cross"),"> off"));
+        assert(node.fs.files["/radio_profiles"][18]==uint8_t(mesh::RadioCrossMode::Off));
+        assert(!node._radio_profiles.hasReplyMutation() && !node.fs.files.count("/radio_profiles.reply"));
+        node.advance(2000); assert(node.radio.p.cross==mesh::RadioCrossMode::Off);
+        assert(node.radio.p.primary==primary);
+        MyMesh reboot; reboot._prefs.freq=node._prefs.freq; reboot.fs=node.fs; reboot.stored[0]=node.stored[0];
+        reboot._radio_profiles.begin(&reboot.fs,&reboot.radio,&reboot.clock); reboot.beginMeshtext();
+        assert(!strcmp(reboot.cli("get radio2.cross"),"> off"));
+        // Existing aliases must also turn a manually enabled crossover off.
+        node.cli(cross);
+        requested.channel.secret[0]^=0x80;
+        applySet(node,0,requested,key_size); assert(node.ok);
+        node.advance(1);
+        assert(node.radio.p.cross==mesh::RadioCrossMode::Off);
+        const auto disk=node.fs.files;
+        applySet(node,0,requested,key_size); assert(node.ok && node.fs.files==disk);
+        // A label rename into an alias is a new explicit isolation request.
+        node.cli(cross);
+        strcpy(requested.name,parseCompanionChannelAlias(name).kind==CompanionChannelKind::Meshtext
+            ? "#mt-LongFast" : "#r2-other");
+        applySet(node,0,requested,key_size); assert(node.ok);
+        assert(!strcmp(node.cli("get radio2.cross"),"> off"));
+        assertUntouched(node); assertUntouched(reboot);
+      }
+    }
+    Preferences::reset(); MyMesh ordinary; ordinary.beginMeshtext();
+    char cross[40]; snprintf(cross,sizeof(cross),"set radio2.cross %s",mode); ordinary.cli(cross);
+    const auto disk=ordinary.fs.files;
+    applySet(ordinary,0,channel("ordinary")); assert(ordinary.ok && ordinary.fs.files==disk);
+    assert(ordinary.radio.p.cross==(!strcmp(mode,"on")?mesh::RadioCrossMode::On:mesh::RadioCrossMode::Auto));
+    assertUntouched(ordinary);
+  }
+  for(const char* name:{"#r2-team","#mt-longfast"}) for(int failure:{0,1,2}) {
+    for(int key_size:{16,32}) {
+      if(key_size==32 && parseCompanionChannelAlias(name).kind!=CompanionChannelKind::Meshtext) continue;
+      Preferences::reset(); MyMesh node; node.beginMeshtext(); node.commit(0,channel("ordinary",16));
+      node.cli("set radio2.cross on");
+      const auto previous=node.stored[0]; const auto disk=node.fs.files;
+      if(failure==0) node.fs.fail_write=true;
+      else if(failure==1) node.save_result=false;
+      else node.fs.fail_rename_from={"/radio_profiles.reply"};
+      applySet(node,0,channel(name,key_size),key_size);
+      assert(!node.ok && node.error==(failure==0?ERR_CODE_BAD_STATE:ERR_CODE_FILE_IO_ERROR));
+      assert(!strcmp(node.stored[0].name,previous.name)
+          && !memcmp(node.stored[0].channel.secret,previous.channel.secret,32));
+      auto failed_disk=node.fs.files;
+      if(failure==0) failed_disk.erase("/radio_profiles.reply"); // Uncommitted short-write scratch is never loaded.
+      assert(failed_disk==disk && !node._radio_profiles.hasReplyMutation());
+      assert(!strcmp(node.cli("get radio2.cross"),"> on") && node.radio.p.cross==mesh::RadioCrossMode::On);
+      node.advance(2000); assert(!node._mt_active && !node.radio.p.enabled()); assertUntouched(node);
+    }
+  }
+  for(const char* name:{"#r2-team","#mt-longfast"}) for(bool fail_profile_write:{false,true}) {
+    Preferences::reset(); MyMesh node; node.beginMeshtext(); node.commit(0,channel(name));
+    node.cli("set radio2.cross on"); const auto disk=node.fs.files;
+    node.fs.fail_write=fail_profile_write;
+    applySet(node,1,channel("ordinary")); assert(node.ok && node.error==-1);
+    node.advance(2000);
+    assert(node.radio.p.cross==mesh::RadioCrossMode::On && node.fs.files==disk);
+    assert(!node._radio_profiles.hasReplyMutation()); assertUntouched(node);
+  }
+  for(const char* mode:{"on","auto"}) for(int failure:{-1,0,1,2}) {
+    Preferences::reset(); MyMesh node; node.beginMeshtext(); node.commit(0,channel("ordinary",16));
+    char cross[40]; snprintf(cross,sizeof(cross),"set radio2.cross %s",mode); node.cli(cross);
+    const auto previous=node.stored[0]; const auto disk=node.fs.files;
+    if(failure==0) node.fs.fail_write=true;
+    else if(failure==1) node.save_result=false;
+    else if(failure==2) node.fs.fail_rename_from={"/radio_profiles.reply"};
+    char reply[160]; assert(node.handleMeshtextCommand("set mt.channel 0 #mt-longfast AQ==",reply,sizeof(reply)));
+    if(failure<0) {
+      assert(!strncmp(reply,"OK",2) && node._mt_active);
+      assert(!strcmp(node.cli("get radio2.cross"),"> off"));
+      assert(node.fs.files["/radio_profiles"][18]==uint8_t(mesh::RadioCrossMode::Off));
+    } else {
+      assert(!strncmp(reply,"Error",5) && !strcmp(node.stored[0].name,previous.name));
+      auto failed_disk=node.fs.files;
+      if(failure==0) failed_disk.erase("/radio_profiles.reply");
+      assert(failed_disk==disk && !node._radio_profiles.hasReplyMutation() && !node._mt_active);
+      assert(node.radio.p.cross==(!strcmp(mode,"on")?mesh::RadioCrossMode::On:mesh::RadioCrossMode::Auto));
+    }
+    assertUntouched(node);
+  }
+  puts("PASS channel-isolation");
+}
+static void channelIsolationBoot() {
+  for(const char* mode:{"on","auto"}) {
+    for(const char* name:{"#r2-team","r2-team","#r2-mediamesh","#r2-mediamesh-range",
+                          "#mt-longfast","mt-longfast","#ordinary","ordinary"}) {
+      Preferences::reset(); MyMesh old; old.cli("set radio2 912.5,250,8,5,rx,80"); old.advance(2000);
+      char cross[40]; snprintf(cross,sizeof(cross),"set radio2.cross %s",mode); old.cli(cross);
+      old.stored[0]=channel(name);
+      const auto previous=old._radio_profiles.savedSecondaryConfig();
+      MyMesh reboot; reboot.fs=old.fs; reboot.stored[0]=old.stored[0];
+      reboot._radio_profiles.begin(&reboot.fs,&reboot.radio,&reboot.clock);
+      reboot.serviceChannelIsolation();
+      const auto kind=parseCompanionChannelAlias(name).kind;
+      const auto expected=kind==CompanionChannelKind::Radio2 || kind==CompanionChannelKind::Meshtext
+          ? mesh::RadioCrossMode::Off : !strcmp(mode,"on")?mesh::RadioCrossMode::On:mesh::RadioCrossMode::Auto;
+      assert(reboot.radio.p.cross==expected);
+      assert(reboot._radio_profiles.savedSecondaryConfig().mode==previous.mode
+          && reboot._radio_profiles.savedSecondaryConfig().params==previous.params);
+      const auto disk=reboot.fs.files;
+      reboot.serviceChannelIsolation(); assert(reboot.fs.files==disk);
+      MyMesh second; second.fs=reboot.fs; second.stored[0]=reboot.stored[0];
+      second._radio_profiles.begin(&second.fs,&second.radio,&second.clock); second.serviceChannelIsolation();
+      assert(second.radio.p.cross==expected && second.fs.files==disk);
+      assertUntouched(old); assertUntouched(reboot); assertUntouched(second);
+    }
+  }
+  Preferences::reset(); MyMesh retry; retry.cli("set radio2.cross on"); retry.stored[0]=channel("#r2-team");
+  const auto committed=retry.fs.files["/radio_profiles"];
+  retry.fs.fail_write=true; retry.serviceChannelIsolation();
+  assert(retry.radio.p.cross==mesh::RadioCrossMode::On && retry.fs.files["/radio_profiles"]==committed);
+  retry.fs.fail_write=false; retry.advance(999);
+  assert(retry.radio.p.cross==mesh::RadioCrossMode::On && retry.fs.files["/radio_profiles"]==committed);
+  retry.advance(1); assert(retry.radio.p.cross==mesh::RadioCrossMode::Off);
+  assert(retry.fs.files["/radio_profiles"][18]==uint8_t(mesh::RadioCrossMode::Off));
+  const auto saved=retry.fs.files; retry.advance(10000); assert(retry.fs.files==saved); assertUntouched(retry);
+  for(bool cli_delete:{false,true}) {
+    Preferences::reset(); MyMesh removed; removed.cli("set radio2.cross on");
+    removed.stored[0]=channel(cli_delete?"#mt-longfast":"#r2-team");
+    const auto previous=removed.fs.files["/radio_profiles"];
+    removed.fs.fail_write=true; removed.serviceChannelIsolation();
+    assert(removed.radio.p.cross==mesh::RadioCrossMode::On);
+    removed.fs.fail_write=false;
+    if(cli_delete) {
+      char reply[160]; assert(removed.handleMeshtextCommand("delete mt.channel 0",reply,sizeof(reply)));
+      assert(!strncmp(reply,"OK",2));
+    } else { applySet(removed,0,{}); assert(removed.ok); }
+    removed.advance(2000);
+    assert(!removed.stored[0].name[0] && removed.radio.p.cross==mesh::RadioCrossMode::On);
+    assert(removed.fs.files["/radio_profiles"]==previous); assertUntouched(removed);
+  }
+  puts("PASS channel-isolation-boot");
 }
 static void channelPresets() {
   const float saved_primary_frequency = 910.525f;
@@ -1830,6 +1977,8 @@ int main(int argc,char** argv) {
   else if(!strcmp(argv[1],"transmit"))transmit();
   else if(!strcmp(argv[1],"commands"))commands();
   else if(!strcmp(argv[1],"channel-presets"))channelPresets();
+  else if(!strcmp(argv[1],"channel-isolation"))channelIsolation();
+  else if(!strcmp(argv[1],"channel-isolation-boot"))channelIsolationBoot();
   else if(!strcmp(argv[1],"regional-channel-presets"))regionalChannelPresets();
   else if(!strcmp(argv[1],"cli"))privateCLI();
   else if(!strcmp(argv[1],"hops"))hops();

@@ -55,7 +55,8 @@ class CompanionMeshtextTest(unittest.TestCase):
         source = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text(encoding="utf-8")
         mt = (ROOT / "examples/companion_radio/MeshtextCompanion.cpp").read_text(encoding="utf-8")
         mt = mt[mt.index("namespace {"):].rsplit("#endif", 1)[0]
-        signatures = ("bool MyMesh::isAliasRadio2Defined(", "bool MyMesh::resolveChannelAlias(",
+        signatures = ("bool MyMesh::isAliasRadio2Defined(", "void MyMesh::serviceChannelIsolation(",
+                      "bool MyMesh::resolveChannelAlias(",
                       "bool MyMesh::getChannel(", "bool MyMesh::setChannel(",
                       "static bool isEmergencyNoticeChannelName(",
                       "void MyMesh::seedEmergencyChannelNotice(",
@@ -215,6 +216,16 @@ class CompanionMeshtextTest(unittest.TestCase):
 
     def test_binary_mediamesh_presets_commit_delay_replay_and_failure_rollback(self):
         self.run_case("channel-presets")
+
+    def test_radio2_meshtext_alias_saves_disable_crossing_atomically_without_unneeded_writes(self):
+        self.run_case("channel-isolation")
+
+    def test_existing_radio2_meshtext_aliases_migrate_crossing_off_after_channel_load_and_retry_saves(self):
+        self.run_case("channel-isolation-boot")
+        source = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text(encoding="utf-8")
+        begin = body(source, "void MyMesh::begin(")
+        self.assertLess(begin.index("_store->loadChannels(this);"), begin.index("serviceChannelIsolation();"))
+        self.assertLess(begin.index("serviceChannelIsolation();"), begin.index("configureRadioFromPrefs();"))
 
     def test_binary_regional_mediamesh_presets_and_transactional_rejection(self):
         self.run_case("regional-channel-presets")

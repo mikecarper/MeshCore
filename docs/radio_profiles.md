@@ -8,8 +8,10 @@
 settings. It is useful for listening to two networks, or keeping your usual
 channel available during a LoRa firmware update.
 
-The second profile and `radio2.cross` both default to `off`. Saved settings
-survive firmware updates; selecting a profile does not change the crossing policy.
+The second profile and `radio2.cross` both default to `off`. Raw radio2 tuple
+commands leave the crossing policy unchanged; selecting either MediaMesh
+preset explicitly sets `radio2.cross off`. Companion
+channel aliases and Meshtext activation also select isolation as described below.
 
 There are **at most two active profiles**. `tempradio` temporarily replaces
 `radio`; `tempradio2` temporarily replaces `radio2`. These are time-shared receive
@@ -171,8 +173,10 @@ Zealand. Custom primary frequencies outside the groups above reject the named
 presets; configure an explicit `set radio2 <tuple>` instead.
 
 Changing the primary frequency later does not retune an existing radio2
-profile. Existing saved profiles are not migrated on upgrade or reboot.
-Select the preset again to resolve it against a new saved primary frequency.
+profile. Upgrades and reboots do not retune saved profiles, but do restore
+`radio2.cross off` for saved MediaMesh profiles. Boot recognition uses the RF
+tuple, so a manually entered matching MediaMesh tuple also qualifies. Select
+the preset again to resolve it against a new saved primary frequency.
 An active primary `tempradio` does not change this choice.
 
 On EU868, the normal 125 kHz profile occupies **869.4625–869.5875 MHz**.
@@ -187,13 +191,16 @@ validation rejects them on SX127x radios without changing the saved settings.
 
 On Companions, adding `#r2-mediamesh` in the app also saves the `mediamesh`
 profile; `#r2-mediamesh-range` selects `mediamesh-range`. Renaming another
-channel to either alias does the same. Names without `#` also work. No extra
-CLI command or forwarding-region setup is needed on a Companion.
+channel to either alias does the same. Both actions also set `radio2.cross off`.
+Names without `#` also work. No extra CLI command or forwarding-region setup is
+needed on a Companion.
 
 Re-saving the same preset alias, editing its key, or rebooting preserves any
-later manual radio2 changes, including `set radio2 off`. Removing the channel
-does not switch radio2 off. All `r2-` channels share one secondary profile, so
-the most recently added or renamed MediaMesh preset chooses its RF settings.
+later manual radio2 RF changes, including `set radio2 off`; crossing isolation
+is still restored. Removing the channel does not switch radio2 off. All `r2-`
+channels share one secondary
+profile, so the most recently added or renamed MediaMesh preset chooses its RF
+settings.
 Meshtext channels and an active foreign-protocol radio2 session cannot share
 this setup. The supplied channel name and key retain the normal alias rules
 [below](#companion-channel-name-routing-aliases).
@@ -216,8 +223,11 @@ default scope for outgoing traffic or enable crossing between profiles.
 Default/home regions, the wildcard policy and app-selected scopes stay
 unchanged. Companions need no additional forwarding-region permission.
 
-Both leave the primary profile and `radio2.cross` unchanged. With a USA
-910.525 MHz primary, the center is 625 kHz higher. Automatic preamble remains
+Both leave the primary profile unchanged and set `radio2.cross off`, even if
+crossing was previously enabled. To opt back in, run an explicit
+`set radio2.cross auto` or `set radio2.cross on` after selecting the preset.
+Raw tuple commands do not change crossing. With a USA 910.525 MHz primary,
+the center is 625 kHz higher. Automatic preamble remains
 scan-aware; neither preset fixes it at 32 symbols. See [preamble](#preamble) for the
 switching measurement and recommendations.
 
@@ -583,9 +593,9 @@ adopt the contract. Other channel data types do not acquire an SSH route
 merely because their contents start with `SSH`. Raw packets still require
 a direct path, including zero-hop; this does not enable raw flooding.
 
-For a media-only side channel, use `set radio2 mediamesh` with the default
-`radio2.cross off` and `tx.media auto`. Ordinary text can stay on the primary
-profile without routing every raw application onto radio2. Choose
+For a media-only side channel, use `set radio2 mediamesh`, which sets
+`radio2.cross off`, and keep `tx.media auto`. Ordinary text can stay on the
+primary profile without routing every raw application onto radio2. Choose
 `set tx.media radio2` if media must fail rather than use the primary when
 radio2 is off, RX-only, or owned by another protocol.
 
@@ -697,6 +707,14 @@ Only the app's automatic, name-derived hashtag key is normalized; a supplied
 private key is not replaced. Non-hashtag names such as `r2-Private` also retain
 their supplied key. Empty or nested prefixes (`r2-`, `#r2-mt-emergency`) are
 rejected. MeshCore hashtag names remain case-sensitive.
+
+Saving any valid `r2-` or `mt-` channel also saves `radio2.cross off` with the
+channel change, including key edits and identical app replays when crossing
+was enabled. The optional leading `#` makes no difference. This applies to
+custom aliases as well as named presets. Existing aliases restore isolation
+at startup, including after a firmware update;
+they do not retune saved RF settings. Channel-save failure does not leave a
+partial crossing-policy change.
 
 When radio2 is configured (`rx` or `rxtx`), `r2-` binds the channel to radio2 for
 both send and receive, including emergency retransmissions. It overrides global
@@ -951,6 +969,12 @@ must match their BW/SF/CR and fit the selected region, but do not overwrite
 their frequency. The runtime MT overlay uses its required 16-symbol preamble;
 the saved manual preamble is retained.
 
+Entering actual Meshtext protocol operation on radio2, with either an automatic
+or manual RF profile, also saves `radio2.cross off`. This includes reactivating
+Meshtext after reboot. An unchanged active Meshtext owner does not repeatedly
+write the setting or lock it against later explicit crossing commands. MT frames
+remain isolated from MeshCore regardless of that setting.
+
 With a Meshtext secondary, an automatic primary MeshCore preamble keeps its
 normal SF/BW-derived wire length (32 symbols for the USA SF7/BW62.5 preset),
 so scan recommendations do not silently lengthen normal-network transmissions.
@@ -1099,8 +1123,12 @@ set radio2.cross off
 This table describes MeshCore profiles. A Meshtext secondary profile is
 always isolated, including with `radio2.cross on`.
 
-New configurations default to `off`. An explicitly saved `auto`, `on`, or `off`
-setting is preserved across firmware updates and reboots.
+New configurations default to `off`. Selecting a MediaMesh preset, saving a
+valid Companion `r2-`/`mt-` alias, or entering Meshtext protocol operation saves
+`off`. Existing saved MediaMesh profiles and Companion aliases
+also restore isolation at startup, including after a firmware update. A later
+explicit crossing command remains available, but startup can turn it off again
+for these configurations.
 
 These are the global rules used by Companion targets set to `auto`; an explicit
 contact/channel choice above overrides crossing for its own outbound packets.

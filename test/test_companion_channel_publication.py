@@ -122,6 +122,7 @@ struct StrHelper {
  struct { float freq = 910.525f; } _prefs;
  struct {
    bool stageChannelPreset(const char*, const float*) { assert(false); return false; }
+   bool stageChannelIsolation() { assert(false); return false; }
    bool finishChannelPreset(bool) { assert(false); return false; }
  } _radio_profiles;
  bool handleTxRoutingCommand(const char*,char*,size_t);
@@ -131,6 +132,7 @@ struct StrHelper {
  void writeOKFrame() { binary_ack = true; }
  void seedEmergencyChannelNotice(uint8_t, const ChannelDetails&) {}
  bool resolveChannelAlias(ChannelDetails&) const { return true; }
+ void serviceChannelIsolation(bool = true) {}
  void handleSetChannelFrame(const uint8_t*);
  void applyChannelFrame(const uint8_t*, size_t);
 """, 1)

@@ -415,6 +415,7 @@ struct Serial {
 
 COMMAND_MEMBERS = r'''
   void handleSetChannelFrame(const uint8_t*);
+  void serviceChannelIsolation(bool = true) {}
   Serial serial; Serial* _serial = &serial;
   struct { float freq = 910.525f; } _prefs;
   struct ProfileSetup {
@@ -425,6 +426,11 @@ COMMAND_MEMBERS = r'''
       ++stages;
       if (!stage_ok) return false;
       strcpy(requested, name); pending = true; return true;
+    }
+    bool stageChannelIsolation() {
+      ++stages;
+      if (!stage_ok) return false;
+      strcpy(requested, "isolation"); pending = true; return true;
     }
     bool finishChannelPreset(bool commit) {
       assert(pending);

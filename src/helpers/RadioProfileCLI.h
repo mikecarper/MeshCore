@@ -37,6 +37,8 @@ class RadioProfileCLI {
   bool primary_preamble_dirty_ = false;
   uint32_t primary_preamble_retry_ms_ = 0;
   RadioCrossMode cross_ = RadioCrossMode::Off;
+  bool crossing_isolation_pending_ = false;
+  uint32_t crossing_isolation_retry_ms_ = 0;
   uint8_t reply_setting_ = 0;  // reserved image byte: 0 = role default
   bool infrastructure_replies_ = false;
   // Saved Off can be an explicit veto, rather than an unused secondary slot.
@@ -90,13 +92,14 @@ class RadioProfileCLI {
 #endif
   enum class ImageReadResult : uint8_t { Missing, Valid, Invalid, Unreadable };
   enum class RemoteMutation : uint8_t {
-    None, Saved, Temporary, Off, TempOff, DeleteTemp
+    None, Saved, Temporary, Off, TempOff, DeleteTemp, Crossing
 #if MESH_ENABLE_FLEET_CONTROL
     , DeleteSavedSchedule, AddSavedSchedule, AddTemporarySchedule
 #endif
   };
   RemoteMutation remote_mutation_ = RemoteMutation::None;
   RadioProfileConfig remote_config_;
+  RadioCrossMode remote_cross_ = RadioCrossMode::Off;
   uint32_t remote_duration_ms_ = 0, remote_start_ms_ = 0;
   uint32_t remote_commit_retry_ms_ = 0;
 #if MESH_ENABLE_FLEET_CONTROL
@@ -184,20 +187,29 @@ class RadioProfileCLI {
   bool hasReplyMutation() const { return remote_mutation_ != RemoteMutation::None; }
   uint32_t replyMutationGeneration() const { return remote_generation_; }
   bool finishReplyMutation(bool delivered);
-  // A channel join can stage a named preset before its channel save. Commit
-  // synchronously only after that save succeeds; cancellation leaves saved
-  // RF intent and the running modem unchanged.
+  // Reconcile existing isolated setups on boot. Failed writes keep the old
+  // state intact and retry from loop(); already-Off settings do not write.
+  bool ensureCrossingOff();
+  // A removed last channel alias cancels only its obsolete migration; a saved
+  // MediaMesh RF profile can still require its independent boot migration.
+  void cancelCrossingIsolation();
+  // A channel join can stage a named preset or crossing isolation before its
+  // channel save. Commit synchronously only after that save succeeds;
+  // cancellation leaves saved RF intent and crossing unchanged.
   bool stageChannelPreset(const char* name, const float* primary_frequency = nullptr);
+  bool stageChannelIsolation();
   bool finishChannelPreset(bool commit);
   // Passive RF borrowing is RAM-only and never replaces explicit saved
-  // settings (including Off). Repeated identical requests do not retune.
+  // settings (including Off). Meshtext activation also saves crossing Off;
+  // repeated identical requests neither retune nor reapply that default.
   bool requestAutoSecondary(const RadioProfileConfig& config);
   void clearAutoSecondary();
   bool autoSecondaryActive() const;
   bool canAutoSecondary() const;
   bool secondaryRuntimeAvailable() const { return !secondaryRuntimeBusy(); }
   // Borrow a manually configured RF tuple without persisting its wire protocol
-  // or the foreign network's fixed preamble. Temporary sessions take priority.
+  // or the foreign network's fixed preamble. Meshtext activation saves crossing
+  // Off. Temporary sessions take priority.
   bool useSecondaryProtocol(RadioProfileProtocol protocol);
   void clearSecondaryProtocol();
   bool manualSecondaryConfigured() const { return manual_secondary_ && saved_.mode != RadioProfileMode::Off; }

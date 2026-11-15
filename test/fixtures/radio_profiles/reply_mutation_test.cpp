@@ -25,10 +25,15 @@ static void secondaryReplies() {
                              "set radio2 mediamesh", "set radio2 mediamesh-range",
                              "set radio2 912.5,500,8,5,rxtx", "set radio2 off",
                              "set tempradio2 off", "del tempradioat2 all"}) {
-    for (bool success : {false, true}) {
+    for (bool success : {false, true}) for (const char* prior : {"on", "auto"}) {
       Fixture f(true);
       const float saved_primary = 910.525f;
       f.saved_primary_frequency = &saved_primary;
+      const auto previous_cross = !strcmp(prior, "on")
+          ? mesh::RadioCrossMode::On : mesh::RadioCrossMode::Auto;
+      char cross_command[40];
+      snprintf(cross_command, sizeof(cross_command), "set radio2.cross %s", prior);
+      f.cmd(cross_command);
       f.cmd("set radio2 910.5,500,8,5,rxtx"); f.advance(2000);
       const auto saved = f.fs.files["/radio_profiles"];
       const uint32_t before = f.radio.p.generation[1];
@@ -42,9 +47,10 @@ static void secondaryReplies() {
       assert(strstr(f.cmd("get radio2.status"), "reply transmission"));
       assert(mutation == f.cli.replyMutationGeneration()); // getters cannot steal ownership
       assert(saved == f.fs.files["/radio_profiles"]); // power loss before ACK is safe
+      assert(f.radio.p.cross == previous_cross);
       Radio reboot; mesh::RadioProfileCLI restored;
       restored.begin(&f.fs, &reboot, &f.clock);
-      assert(reboot.p.secondary.params.freq == 910.5f);
+      assert(reboot.p.secondary.params.freq == 910.5f && reboot.p.cross == previous_cross);
       mesh::Packet reply;
       reply.radio_bound = reply.radio_reply = true;
       reply.tx_radio = mesh::RADIO_TX_BOTH;
@@ -53,11 +59,18 @@ static void secondaryReplies() {
       assert(inspector.isPacketRadioCurrent(&reply));
       f.advance(10000);
       assert(before == f.radio.p.generation[1]);
+      assert(f.radio.p.cross == previous_cross); // Preset isolation also waits for its ACK.
       assert(inspector.isPacketRadioCurrent(&reply)); // origin preserved even for primary TX
       assert(f.cli.finishReplyMutation(success));
       assert(before == f.radio.p.generation[1]); // callback doesn't change radio under Dispatcher
       f.advance(1);
       assert(!f.cli.hasReplyMutation());
+      const auto expected_cross = success && strstr(command, "mediamesh")
+          ? mesh::RadioCrossMode::Off : previous_cross;
+      assert(f.radio.p.cross == expected_cross);
+      Radio committed_reboot; mesh::RadioProfileCLI committed_restored;
+      committed_restored.begin(&f.fs, &committed_reboot, &f.clock);
+      assert(committed_reboot.p.cross == expected_cross);
       if (!success) {
         assert(before == f.radio.p.generation[1]);
         assert(saved == f.fs.files["/radio_profiles"]);
@@ -69,20 +82,58 @@ static void secondaryReplies() {
       ++checks;
     }
   }
-  for (unsigned failure = 1; failure <= 2; ++failure) {
+  for (unsigned failure = 1; failure <= 2; ++failure)
+      for (const char* command : {"set radio2 912.5,500,8,5,rxtx",
+                                 "set radio2 mediamesh", "set radio2 mediamesh-range"})
+      for (const char* prior : {"on", "auto"}) {
     Fixture f(true);
+    const float saved_primary = 910.525f;
+    f.saved_primary_frequency = &saved_primary;
+    const auto previous_cross = !strcmp(prior, "on")
+        ? mesh::RadioCrossMode::On : mesh::RadioCrossMode::Auto;
+    char cross_command[40];
+    snprintf(cross_command, sizeof(cross_command), "set radio2.cross %s", prior);
+    f.cmd(cross_command);
     f.cmd("set radio2 910.5,500,8,5,rxtx"); f.advance(2000);
     const auto saved = f.fs.files["/radio_profiles"];
-    f.cli.beginReplyCommand(); f.cmd("set radio2 912.5,500,8,5,rxtx"); f.cli.endReplyCommand();
+    f.cli.beginReplyCommand(); f.cmd(command); f.cli.endReplyCommand();
     f.fs.fail_rename = failure;
     f.cli.finishReplyMutation(true); f.advance(1);
     assert(f.cli.hasReplyMutation());
-    assert(f.radio.p.secondary.params.freq == 910.5f);
+    assert(f.radio.p.secondary.params.freq == 910.5f && f.radio.p.cross == previous_cross);
     assert(saved == f.fs.files["/radio_profiles"]);
+    MemoryFS failed_fs = f.fs;
+    Radio failed_reboot; mesh::RadioProfileCLI failed_restored;
+    failed_restored.begin(&failed_fs, &failed_reboot, &f.clock);
+    assert(failed_reboot.p.secondary.params.freq == 910.5f && failed_reboot.p.cross == previous_cross);
     assert(strstr(f.cmd("get radio2.status"), "storage commit (retrying)"));
     f.advance(999); assert(f.cli.hasReplyMutation());
     f.advance(1); assert(!f.cli.hasReplyMutation());
-    assert(f.radio.p.secondary.params.freq == 912.5f);
+    const bool preset = strstr(command, "mediamesh");
+    assert(fabsf(f.radio.p.secondary.params.freq - (preset ? 911.150f : 912.5f)) < 0.0001f);
+    assert(f.radio.p.cross == (preset ? mesh::RadioCrossMode::Off : previous_cross));
+    Radio retried_reboot; mesh::RadioProfileCLI retried_restored;
+    retried_restored.begin(&f.fs, &retried_reboot, &f.clock);
+    assert(retried_reboot.p.cross == f.radio.p.cross);
+    ++checks;
+  }
+  for (const char* command : {"set radio2 mediamesh", "set radio2 mediamesh-range"})
+      for (const char* prior : {"on", "auto"}) {
+    Fixture f(true);
+    const float saved_primary = 910.525f;
+    f.saved_primary_frequency = &saved_primary;
+    const auto previous_cross = !strcmp(prior, "on")
+        ? mesh::RadioCrossMode::On : mesh::RadioCrossMode::Auto;
+    char cross_command[40];
+    snprintf(cross_command, sizeof(cross_command), "set radio2.cross %s", prior);
+    f.cmd(cross_command);
+    f.cmd("set radio2 910.5,500,8,5,rxtx"); f.advance(2000);
+    const auto saved = f.fs.files["/radio_profiles"];
+    f.fs.fail_write = true;
+    f.cli.beginReplyCommand(); f.cmd(command, false); f.cli.endReplyCommand();
+    f.advance(2000);
+    assert(!f.cli.hasReplyMutation() && saved == f.fs.files["/radio_profiles"]);
+    assert(f.radio.p.secondary.params.freq == 910.5f && f.radio.p.cross == previous_cross);
     ++checks;
   }
   {

@@ -919,6 +919,7 @@ private:
 
   DataStore* _store;
   mesh::RadioProfileCLI _radio_profiles;
+  void serviceChannelIsolation(bool reconcile = true);
 #if MESH_ENABLE_RADIO_PRESETS
   // Hooks are captureless trampolines with this MyMesh as ctx; /presets lives
   // on the primary filesystem.

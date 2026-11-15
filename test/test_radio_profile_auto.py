@@ -318,6 +318,84 @@ static void featureOff() {
   assert(f.radio.p.enabled() && f.fs.files["/radio_profiles"][2] == 1);
 }
 
+static void meshtextIsolation() {
+  for (const char* prior : {"on", "auto"}) {
+    const auto previous_cross = !strcmp(prior, "on")
+        ? mesh::RadioCrossMode::On : mesh::RadioCrossMode::Auto;
+    char cross_command[40];
+    snprintf(cross_command, sizeof(cross_command), "set radio2.cross %s", prior);
+    for (bool overlay_owner : {false, true}) {
+      Fixture f;
+      if (overlay_owner) {
+        f.cmd("set radio2 910.5,500,8,5,rx,80"); f.advance(2000);
+      }
+      f.cmd(cross_command);
+      const auto saved_rf = f.cli.savedSecondaryConfig();
+      const auto enter = [&]() {
+        return overlay_owner ? f.cli.useSecondaryProtocol(mesh::RadioProfileProtocol::Meshtext)
+                             : f.cli.requestAutoSecondary(candidate());
+      };
+      assert(enter());
+      assert(f.radio.p.cross == mesh::RadioCrossMode::Off);
+      assert(f.cli.savedSecondaryConfig().params == saved_rf.params
+          && f.cli.savedSecondaryConfig().mode == saved_rf.mode);
+      assert(f.cli.manualSecondaryConfigured() == overlay_owner);
+      Radio reboot; mesh::RadioProfileCLI restored;
+      restored.begin(&f.fs, &reboot, &f.clock);
+      assert(reboot.p.cross == mesh::RadioCrossMode::Off);
+      assert(restored.manualSecondaryConfigured() == overlay_owner);
+      // A later explicit operator setting is not locked or undone by refresh.
+      f.cmd(cross_command);
+      const auto manual_image = f.fs.files["/radio_profiles"];
+      const auto generation = f.radio.p.generation[1];
+      for (unsigned i = 0; i < 4; ++i) {
+        assert(enter()); f.advance(1, false);
+        assert(f.radio.p.cross == previous_cross && f.fs.files["/radio_profiles"] == manual_image);
+        assert(f.radio.p.generation[1] == generation);
+      }
+      // A #r2 channel join isolates without taking over or changing RF intent.
+      const uint32_t intent = f.cli.secondaryIntentGeneration();
+      assert(f.cli.stageChannelIsolation());
+      assert(f.radio.p.cross == previous_cross);
+      assert(f.cli.finishChannelPreset(true));
+      assert(f.radio.p.cross == mesh::RadioCrossMode::Off);
+      assert(f.cli.secondaryIntentGeneration() == intent
+          && f.cli.manualSecondaryConfigured() == overlay_owner);
+      assert(f.radio.p.generation[1] == generation);
+      if (!overlay_owner) assert(f.cli.autoSecondaryActive());
+      f.cmd(cross_command);
+      if (overlay_owner) f.cli.clearSecondaryProtocol(); else f.cli.clearAutoSecondary();
+      assert(enter()); // A genuine new Meshtext activation restores isolation.
+      assert(f.radio.p.cross == mesh::RadioCrossMode::Off);
+    }
+    for (bool overlay_owner : {false, true}) for (unsigned failure : {0U, 1U, 2U}) {
+      Fixture f;
+      if (overlay_owner) {
+        f.cmd("set radio2 910.5,500,8,5,rx,80"); f.advance(2000);
+      }
+      f.cmd(cross_command);
+      const auto previous = f.radio.p.secondary;
+      const auto saved = f.fs.files["/radio_profiles"];
+      const uint32_t intent = f.cli.secondaryIntentGeneration();
+      f.fs.fail_write = failure == 0;
+      f.fs.fail_rename = failure;
+      const bool activated = overlay_owner
+          ? f.cli.useSecondaryProtocol(mesh::RadioProfileProtocol::Meshtext)
+          : f.cli.requestAutoSecondary(candidate());
+      assert(!activated && !f.cli.autoSecondaryActive());
+      assert(f.radio.p.secondary.params == previous.params && f.radio.p.secondary.mode == previous.mode);
+      assert(f.radio.p.cross == previous_cross && f.fs.files["/radio_profiles"] == saved);
+      assert(f.cli.secondaryIntentGeneration() == intent);
+    }
+    Fixture foreign;
+    foreign.cmd(cross_command);
+    auto config = candidate(); config.params.protocol = mesh::RadioProfileProtocol::Ethernet;
+    const auto saved = foreign.fs.files["/radio_profiles"];
+    assert(foreign.cli.requestAutoSecondary(config));
+    assert(foreign.radio.p.cross == previous_cross && foreign.fs.files["/radio_profiles"] == saved);
+  }
+}
+
 int main(int argc, char** argv) {
   assert(argc == 2);
   if (!strcmp(argv[1], "lifetime")) lifetime();
@@ -331,6 +409,7 @@ int main(int argc, char** argv) {
   else if (!strcmp(argv[1], "remote_barrier")) remoteBarrier();
   else if (!strcmp(argv[1], "storage")) storageGuards();
   else if (!strcmp(argv[1], "feature_off")) featureOff();
+  else if (!strcmp(argv[1], "meshtext_isolation")) meshtextIsolation();
   else return 2;
   puts("PASS auto secondary ownership");
 }
@@ -454,6 +533,11 @@ int main() {
                          "remote_barrier", "storage"):
                 with self.subTest(fleet=fleet, case=case):
                     self.run_case(case, fleet=fleet)
+
+    def test_meshtext_activation_isolation_is_durable_atomic_and_not_a_lock(self):
+        for fleet in (0, 1):
+            with self.subTest(fleet=fleet):
+                self.run_case("meshtext_isolation", fleet=fleet)
 
     def run_case(self, case, enabled=1, fleet=0):
         result = subprocess.run([str(self.binaries[enabled, fleet]), case],

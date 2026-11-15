@@ -840,11 +840,28 @@ bool MyMesh::handleMeshtextCommand(const char* command, char* reply, size_t capa
         mesh::cli::formatError(reply, capacity, "conflicting Meshtext preset, region, manual radio2 or busy owner"); return true;
       }
     }
-    if (!setChannel(index, channel)) mesh::cli::formatError(reply, capacity, "invalid Meshtext channel");
+    const auto* profiles = _radio->profiles();
+    const bool setup_isolation = channel_args && profiles && profiles->cross != mesh::RadioCrossMode::Off;
+    if (setup_isolation && !_radio_profiles.stageChannelIsolation()) {
+      mesh::cli::formatError(reply, capacity, "radio2 isolation could not be staged"); return true;
+    }
+    if (!setChannel(index, channel)) {
+      if (setup_isolation) _radio_profiles.finishChannelPreset(false);
+      mesh::cli::formatError(reply, capacity, "invalid Meshtext channel");
+    }
     else if (!saveChannels()) {
       setChannel(index, previous);
+      if (setup_isolation) _radio_profiles.finishChannelPreset(false);
       mesh::cli::formatError(reply, capacity, "channel not saved; previous channel restored");
     } else {
+      if (setup_isolation && !_radio_profiles.finishChannelPreset(true)) {
+        setChannel(index, previous);
+        saveChannels();
+        _radio_profiles.finishChannelPreset(false);
+        mesh::cli::formatError(reply, capacity, "radio2 isolation not saved; previous channel restored");
+        return true;
+      }
+      serviceChannelIsolation(false);
       _mt_seen.clear(); _mt_profile_dirty = true;
       refreshMeshtextProfile();
       snprintf(reply, capacity, "OK - Meshtext channel %lu %s; %s", (unsigned long)index,

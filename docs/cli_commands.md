@@ -7949,8 +7949,15 @@ the listed AU/NZ/Brazil/Thailand/Vietnam presets 922.500 MHz, and EU433
 EU868 uses 125/62.5 kHz, SF5, CR 4/7. Both use `rxtx` and automatic preamble.
 Unknown custom primary frequencies require an explicit radio2 tuple. Existing
 saved profiles do not retune when the primary changes or on upgrade; primary
-`tempradio` does not affect preset selection. These leave the primary profile
-and crossing policy unchanged. Both radio2 and `radio2.cross` default to `off`.
+`tempradio` does not affect preset selection. Both presets leave the primary
+profile unchanged and explicitly set `radio2.cross off`. Saving any valid
+Companion `r2-`/`mt-` channel alias, with or without `#`, does the same, including
+key edits and identical app replays when crossing was enabled.
+Raw radio2 tuples leave crossing unchanged; you can explicitly select
+`radio2.cross auto|on|off` after applying a preset. Existing saved MediaMesh
+profiles and Companion aliases restore `radio2.cross off` at startup, including
+after firmware updates, without retuning saved RF settings. Both radio2 and
+`radio2.cross` default to `off`.
 On repeaters, room servers and sensors, either preset also saves an allowed
 `#mediamesh` forwarding region. `set radio2 off` or `set radio2 auto` disables
 that permission while retaining the region entry. Default/home regions,
@@ -7959,6 +7966,9 @@ See [MediaMesh presets](radio_profiles.md#mediamesh-presets).
 
 For supported Full Companions, see [Meshtext channel chat](radio_profiles.md#meshtext-channel-chat)
 for `mt-` channels and the explicit `send mt.nodeinfo <channel slot>` command.
+Entering Meshtext protocol operation on an automatic or manual radio2 profile
+saves `radio2.cross off`, including activation after reboot. An unchanged active
+Meshtext owner does not continuously enforce the saved setting.
 Chat remains plain text. A separate GPS-free NodeInfo is sent after the first
 successful chat transmission per used channel/identity per boot; the explicit
 command can also request one. Automatic metadata waits for a 250 ms gap after

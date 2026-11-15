@@ -1858,6 +1858,23 @@ bool MyMesh::isAliasRadio2Defined() const {
   return profiles != nullptr && profiles->enabled();
 }
 
+void MyMesh::serviceChannelIsolation(bool reconcile) {
+  // Boot reconciles loaded aliases. After channel commits, only cancel stale
+  // retries when no aliases remain; target aliases already staged isolation.
+  for (int i = 0; i < MAX_GROUP_CHANNELS; ++i) {
+    ChannelDetails channel;
+    if (!BaseChatMesh::getChannel(i, channel)) continue;
+    const auto kind = parseCompanionChannelAlias(channel.name).kind;
+    if (kind == CompanionChannelKind::Radio2 || kind == CompanionChannelKind::Meshtext) {
+      // Existing aliases must become isolated after a firmware update too.
+      // A failed store write is retried without changing the RF configuration.
+      if (reconcile) _radio_profiles.ensureCrossingOff();
+      return;
+    }
+  }
+  _radio_profiles.cancelCrossingIsolation();
+}
+
 bool MyMesh::resolveChannelAlias(ChannelDetails& channel) const {
   uint8_t original_key[16];
   memcpy(original_key, channel.channel.secret, sizeof(original_key));
@@ -3662,6 +3679,7 @@ void MyMesh::begin(bool has_display, bool radio_available,
   }
   // A saved table takes precedence over compiled defaults on later boots.
   _store->loadChannels(this);
+  serviceChannelIsolation();
   if (is_new_install) {
     // Make the first-boot defaults survive before a companion app changes them.
     _store->saveChannels(this);
@@ -7063,6 +7081,13 @@ void MyMesh::handleSetChannelFrame(const uint8_t* cmd_frame) {
   // replays/key edits must not undo a later manual Off or custom RF setting.
   const bool setup_preset = have_previous && preset
       && (!previous_preset || strcmp(preset, previous_preset));
+  // An explicitly secondary/foreign channel opts out of ordinary crossing,
+  // including an existing alias re-saved after an operator enabled crossing.
+  const auto* profiles = _radio->profiles();
+  const bool setup_isolation = have_previous
+      && (alias.kind == CompanionChannelKind::Radio2 || alias.kind == CompanionChannelKind::Meshtext)
+      && profiles && profiles->cross != mesh::RadioCrossMode::Off;
+  const bool setup_radio2 = setup_preset || setup_isolation;
   if (setup_preset) {
 #if !MESH_ENABLE_MESHTEXT_CHAT
     // Even without the foreign-protocol backend, do not turn old fallback
@@ -7080,13 +7105,16 @@ void MyMesh::handleSetChannelFrame(const uint8_t* cmd_frame) {
       writeErrFrame(ERR_CODE_BAD_STATE);
       return;
     }
+  } else if (setup_isolation && !_radio_profiles.stageChannelIsolation()) {
+    writeErrFrame(ERR_CODE_BAD_STATE);
+    return;
   }
   if (!have_previous
       || !setChannel(channel_idx, channel)) {
-    if (setup_preset) _radio_profiles.finishChannelPreset(false);
+    if (setup_radio2) _radio_profiles.finishChannelPreset(false);
     writeErrFrame(ERR_CODE_NOT_FOUND); // bad channel_idx
   } else if (saveChannels()) {
-    if (setup_preset && !_radio_profiles.finishChannelPreset(true)) {
+    if (setup_radio2 && !_radio_profiles.finishChannelPreset(true)) {
       // Never report a complete setup when the RF image did not commit.
       // Restore the channel when storage permits; report failure even if
       // an indeterminate channels write has quarantined further saves.
@@ -7096,6 +7124,7 @@ void MyMesh::handleSetChannelFrame(const uint8_t* cmd_frame) {
       writeErrFrame(ERR_CODE_FILE_IO_ERROR);
       return;
     }
+    serviceChannelIsolation(false);
 #if MESH_ENABLE_MESHTEXT_CHAT
     _mt_seen.clear();
     _mt_profile_dirty = true;
@@ -7110,7 +7139,7 @@ void MyMesh::handleSetChannelFrame(const uint8_t* cmd_frame) {
     // commit this update, and never acknowledge a change that will disappear
     // after reboot.
     setChannel(channel_idx, previous);
-    if (setup_preset) _radio_profiles.finishChannelPreset(false);
+    if (setup_radio2) _radio_profiles.finishChannelPreset(false);
     writeErrFrame(ERR_CODE_FILE_IO_ERROR);
   }
 }
@@ -8140,12 +8169,29 @@ void MyMesh::handleCmdFrame(size_t len) {
       writeErrFrame(ERR_CODE_BAD_STATE);
       return;
     }
-    if (!getChannelForSave(channel_idx, previous) || !setChannel(channel_idx, channel)) {
+    const bool have_previous = getChannelForSave(channel_idx, previous);
+    const auto* profiles = _radio->profiles();
+    const bool setup_isolation = have_previous && profiles && profiles->cross != mesh::RadioCrossMode::Off;
+    if (setup_isolation && !_radio_profiles.stageChannelIsolation()) {
+      writeErrFrame(ERR_CODE_BAD_STATE);
+      return;
+    }
+    if (!have_previous || !setChannel(channel_idx, channel)) {
+      if (setup_isolation) _radio_profiles.finishChannelPreset(false);
       writeErrFrame(ERR_CODE_NOT_FOUND);
     } else if (!saveChannels()) {
       setChannel(channel_idx, previous);
+      if (setup_isolation) _radio_profiles.finishChannelPreset(false);
       writeErrFrame(ERR_CODE_FILE_IO_ERROR);
     } else {
+      if (setup_isolation && !_radio_profiles.finishChannelPreset(true)) {
+        setChannel(channel_idx, previous);
+        saveChannels();
+        _radio_profiles.finishChannelPreset(false);
+        writeErrFrame(ERR_CODE_FILE_IO_ERROR);
+        return;
+      }
+      serviceChannelIsolation(false);
       _mt_seen.clear();
       _mt_profile_dirty = true;
       refreshMeshtextProfile();

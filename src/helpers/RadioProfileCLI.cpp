@@ -122,13 +122,11 @@ __attribute__((always_inline)) inline bool formatMediaMeshPreset(const char* nam
                               center, bandwidth, eu868 ? 5U : 7U, eu868 ? 7U : 5U);
   return length > 0 && size_t(length) < size;
 }
-#if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
 bool isMediaMeshProfile(const RadioProfileConfig& config) {
   return config.mode != RadioProfileMode::Off
       && cli::isMediaMeshPreset(config.params.freq, config.params.bw,
                                 config.params.sf, config.params.cr);
 }
-#endif
 }
 
 #if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
@@ -550,6 +548,8 @@ void RadioProfileCLI::begin(FILESYSTEM* fs, Radio* radio, RTCClock* rtc, bool in
 #endif
   hold_ = false;
   cross_ = RadioCrossMode::Off;
+  crossing_isolation_pending_ = false;
+  crossing_isolation_retry_ms_ = 0;
   recoverable_corrupt_store_ = false;
   manual_secondary_ = false;
   secondary_intent_generation_ = 0;
@@ -616,7 +616,39 @@ void RadioProfileCLI::begin(FILESYSTEM* fs, Radio* radio, RTCClock* rtc, bool in
     return;
   }
   stagePrimary(primary_preamble_, false);
+  if (isMediaMeshProfile(saved_)) ensureCrossingOff();
   publish();
+}
+
+bool RadioProfileCLI::ensureCrossingOff() {
+  if (!radio_ || !radio_->profiles()) return true;
+  if (cross_ == RadioCrossMode::Off) {
+    crossing_isolation_pending_ = false;
+    crossing_isolation_retry_ms_ = 0;
+    return true;
+  }
+  crossing_isolation_pending_ = true;
+  const uint32_t now = millis();
+  if (crossing_isolation_retry_ms_
+      && (int32_t)(now - crossing_isolation_retry_ms_) < 0) return false;
+  // Automatic migration never discards a held or unreadable saved image,
+  // nor changes the policy while an acknowledged RF mutation is pending.
+  if (hold_ || hasReplyMutation() || !save(saved_, primary_preamble_, RadioCrossMode::Off)) {
+    crossing_isolation_retry_ms_ = now + 1000;
+    if (!crossing_isolation_retry_ms_) crossing_isolation_retry_ms_ = 1;
+    return false;
+  }
+  cross_ = RadioCrossMode::Off;
+  crossing_isolation_pending_ = false;
+  crossing_isolation_retry_ms_ = 0;
+  publish();
+  return true;
+}
+
+void RadioProfileCLI::cancelCrossingIsolation() {
+  if (isMediaMeshProfile(saved_)) return;
+  crossing_isolation_pending_ = false;
+  crossing_isolation_retry_ms_ = 0;
 }
 
 bool RadioProfileCLI::savePrimaryPreamble(uint16_t symbols) {
@@ -720,6 +752,8 @@ bool RadioProfileCLI::secondaryRuntimeBusy() const {
 }
 
 void RadioProfileCLI::noteSecondaryManualChange() {
+  crossing_isolation_pending_ = false;
+  crossing_isolation_retry_ms_ = 0;
   ++secondary_intent_generation_;
 #if MESH_ENABLE_MESHTEXT_CHAT || MESH_ENABLE_ETHERNET_TUNNEL || MESH_ENABLE_HOST_KISS
   auto_secondary_requested_ = secondary_protocol_overlay_ = false;
@@ -752,6 +786,11 @@ bool RadioProfileCLI::requestAutoSecondary(const RadioProfileConfig& config) {
   auto preview = *radio_->profiles();
   preview.setSecondary(config, false);
   if (!preview.automaticPreambleFits()) return false;
+  if (config.params.protocol == RadioProfileProtocol::Meshtext
+      && !auto_secondary_requested_ && cross_ != RadioCrossMode::Off) {
+    if (!save(saved_, primary_preamble_, RadioCrossMode::Off)) return false;
+    cross_ = RadioCrossMode::Off;
+  }
   auto_secondary_ = config;
   auto_secondary_requested_ = true;
   publish();
@@ -814,6 +853,11 @@ bool RadioProfileCLI::useSecondaryProtocol(RadioProfileProtocol protocol) {
   if (protocol == RadioProfileProtocol::Meshtext) config.params.preamble = 16;
   preview.setSecondary(config, false);
   if (!radio_->validateProfile(config.params) || !preview.automaticPreambleFits()) return false;
+  if (protocol == RadioProfileProtocol::Meshtext
+      && !secondary_protocol_overlay_ && cross_ != RadioCrossMode::Off) {
+    if (!save(saved_, primary_preamble_, RadioCrossMode::Off)) return false;
+    cross_ = RadioCrossMode::Off;
+  }
   secondary_protocol_ = protocol;
   secondary_protocol_overlay_ = true;
   publish();
@@ -840,6 +884,7 @@ bool RadioProfileCLI::stageRemoteMutation(RemoteMutation kind, const RadioProfil
   remote_mutation_ = kind;
   ++remote_generation_;
   remote_config_ = config;
+  remote_cross_ = cross_;
   remote_duration_ms_ = duration_ms;
   remote_start_ms_ = millis() + 2000;
   remote_delete_mask_ = delete_mask;
@@ -855,7 +900,8 @@ bool RadioProfileCLI::finishReplyMutation(bool delivered) {
   remote_delivered_ = false;
   // This file was never committed, so cancellation needs no risky rollback of
   // the only saved image. Failure to remove scratch cannot activate it at boot.
-  return (kind != RemoteMutation::Saved && kind != RemoteMutation::Off)
+  return (kind != RemoteMutation::Saved && kind != RemoteMutation::Off
+          && kind != RemoteMutation::Crossing)
       || !fs_ || !fs_->exists(ReplyPath) || fs_->remove(ReplyPath);
 }
 
@@ -877,10 +923,21 @@ bool RadioProfileCLI::stageChannelPreset(const char* name, const float* primary_
 }
 
 bool RadioProfileCLI::finishChannelPreset(bool commit) {
-  if (remote_command_ || remote_mutation_ != RemoteMutation::Saved) return false;
+  if (remote_command_ || (remote_mutation_ != RemoteMutation::Saved
+                         && remote_mutation_ != RemoteMutation::Crossing)) return false;
   if (!commit) return finishReplyMutation(false);
+  const bool preset = remote_mutation_ == RemoteMutation::Saved;
   if (!applyReplyMutation()) return false;
-  publish_after_ms_ = millis() + 2000;
+  if (preset) publish_after_ms_ = millis() + 2000;
+  else publish();
+  return true;
+}
+
+bool RadioProfileCLI::stageChannelIsolation() {
+  if (remote_command_ || hasReplyMutation() || !radio_ || !radio_->profiles()
+      || !prepareSavedImage(ReplyPath, saved_, primary_preamble_, RadioCrossMode::Off)) return false;
+  if (!stageRemoteMutation(RemoteMutation::Crossing)) return false;
+  remote_cross_ = RadioCrossMode::Off;
   return true;
 }
 #endif
@@ -902,11 +959,16 @@ bool RadioProfileCLI::stageRemoteSchedule(unsigned slot, const Schedule& schedul
 bool RadioProfileCLI::applyReplyMutation() {
   const auto kind = remote_mutation_;
   if (kind == RemoteMutation::Saved && !mediaMeshScopeReady(remote_config_)) return false;
-  if ((kind == RemoteMutation::Saved || kind == RemoteMutation::Off)
+  if ((kind == RemoteMutation::Saved || kind == RemoteMutation::Off
+       || kind == RemoteMutation::Crossing)
       && !commitSavedImage(ReplyPath)) return false;
   remote_mutation_ = RemoteMutation::None;
   remote_delivered_ = false;
   if (kind == RemoteMutation::None) return true;
+  if (kind == RemoteMutation::Crossing) {
+    cross_ = remote_cross_;
+    return true;
+  }
   noteSecondaryManualChange();
   if (kind == RemoteMutation::Temporary) {
     pending_temporary_ = remote_config_;
@@ -915,6 +977,7 @@ bool RadioProfileCLI::applyReplyMutation() {
     temp_pending_ = true;
   } else if (kind == RemoteMutation::Saved) {
     saved_ = remote_config_;
+    cross_ = remote_cross_;
     manual_secondary_ = true;
     publish_pending_ = true; publish_after_ms_ = millis();
 #if MESH_ENABLE_FLEET_CONTROL
@@ -1036,6 +1099,7 @@ void RadioProfileCLI::loop() {
     if (temp_remaining_ms_ > epoch_left) temp_remaining_ms_ = epoch_left;
     temp_active_ = true; s.started = true;
   }
+  if (crossing_isolation_pending_) ensureCrossingOff();
   publish();
 }
 
@@ -1322,7 +1386,13 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
       snprintf(reply, capacity, "> %s", cross_ == RadioCrossMode::Auto ? "auto" : cross_ == RadioCrossMode::On ? "on" : "off");
     } else if (verb == Set && (!strcmp(args, "auto") || !strcmp(args, "on") || !strcmp(args, "off"))) {
       auto mode = !strcmp(args, "auto") ? RadioCrossMode::Auto : !strcmp(args, "on") ? RadioCrossMode::On : RadioCrossMode::Off;
-      if (save(saved_, primary_preamble_, mode)) { cross_ = mode; publish(); snprintf(reply, capacity, "OK"); }
+      if (save(saved_, primary_preamble_, mode)) {
+        crossing_isolation_pending_ = false;
+        crossing_isolation_retry_ms_ = 0;
+        cross_ = mode;
+        publish();
+        snprintf(reply, capacity, "OK");
+      }
       else cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("settings could not be saved", "settings not saved"));
     } else {
 #if defined(STM32_PLATFORM) && MESH_CLI_COMPACT_REPLIES
@@ -1482,7 +1552,9 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     return true;
   }
   char local[140];
-  if (base && cli::isRadio2Preset(args)) {
+  const bool media_preset = base && cli::isRadio2Preset(args);
+  const auto crossing_mode = media_preset ? RadioCrossMode::Off : cross_;
+  if (media_preset) {
     const float primary = primary_frequency
         ? *primary_frequency : radio_->profiles()->primary.freq;
     if (!formatMediaMeshPreset(args, primary, local, sizeof(local))) {
@@ -1587,12 +1659,16 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     snprintf(reply, capacity, "OK - tempradio2 %lud%luh%lum (%lu min); preamble=%u",
         (unsigned long)(minutes/1440), (unsigned long)(minutes/60%24),
         (unsigned long)(minutes%60), (unsigned long)minutes, preview.preamble(1, 32));
-  } else if (remote_command_ ? prepareSavedImage(ReplyPath, config, primary_preamble_, cross_, true)
-                            : save(config, primary_preamble_, cross_, true)) {
-    if (remote_command_) stageRemoteMutation(RemoteMutation::Saved, config);
+  } else if (remote_command_ ? prepareSavedImage(ReplyPath, config, primary_preamble_, crossing_mode, true)
+                            : save(config, primary_preamble_, crossing_mode, true)) {
+    if (remote_command_) {
+      stageRemoteMutation(RemoteMutation::Saved, config);
+      remote_cross_ = crossing_mode;
+    }
     else {
       noteSecondaryManualChange();
       saved_ = config;
+      cross_ = crossing_mode;
       manual_secondary_ = true;
       updateMediaMeshScope();
       publish_pending_ = true; publish_after_ms_ = millis() + 2000;

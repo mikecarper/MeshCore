@@ -421,10 +421,14 @@ overlap in [MediaMesh presets](radio_profiles.md#mediamesh-presets).
 
 Unknown custom primary frequencies reject the preset; use an explicit tuple
 for those receivers. A primary `tempradio` does not change the selection.
-Existing saved radio2 profiles are not migrated or continuously retuned;
-select the preset again after a saved primary change if needed. These presets
-preserve the primary profile and crossing policy; new configurations default
-to radio2 off and `radio2.cross off`.
+Existing saved radio2 profiles are not retuned on upgrade or reboot; select the
+preset again after a saved primary change if needed. Saved MediaMesh profiles
+restore `radio2.cross off` at startup, including after a firmware update.
+Either preset preserves the primary profile and explicitly sets
+`radio2.cross off`, even if crossing was
+enabled. A later explicit `set radio2.cross auto|on|off` still works, and raw
+radio2 tuples leave crossing unchanged. New configurations default to radio2
+off and `radio2.cross off`.
 
 ## Schedule radio changes and set clocks
 
