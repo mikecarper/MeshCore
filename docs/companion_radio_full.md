@@ -78,6 +78,10 @@ storage repair retries automatically; the command reports an unconfirmed save.
 
 ### RAK4631 Full Companion: optional RAK15002 archive and RAK13800 Ethernet
 
+To fit its OTA slot, this image keeps its own target name and displays other
+boards' OTA targets by numeric ID. Package matching, caching, serving and
+installation use those IDs; the browser updater has its own board-name catalog.
+
 `RAK_4631_companion_radio_full` can cache and serve peer mOTA files from an
 optional RAK15002 card. This remains a source-only archive: `ota install` and
 bootloader installation are unavailable on the Companion, whether or not a

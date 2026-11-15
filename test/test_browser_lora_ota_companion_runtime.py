@@ -301,7 +301,7 @@ class CompanionBrowserRuntimeTest(unittest.TestCase):
         port = "const port=new Port();Object.defineProperty(navigator,'serial',{value:{requestPort:async()=>port},configurable:true});"
         start = "if(el('source').value!=='companion')throw Error('Companion is not default');el('connect').click();await wait(()=>!el('inspect').disabled||el('status').textContent.includes('Error:'));"
         inspect = r'''el('connect').click();await wait(()=>!el('connect').disabled);
-    const failure=el('contact-status').textContent;if(!/cancel|failed|unable|could not/i.test(failure))throw Error('connection result not visible: '+failure);
+    const failure=el('contact-status').textContent;if(!/cancel|failed|unable|could not|Reason: USB is busy/i.test(failure))throw Error('connection result not visible: '+failure);
     el('connect').click();await wait(()=>!el('inspect').disabled);
     await report({failure,progress:el('contact-status').textContent,count:el('contact').querySelectorAll('button').length});return;'''
         self.assertEqual(HARNESS.count(port),1)
@@ -322,6 +322,9 @@ class CompanionBrowserRuntimeTest(unittest.TestCase):
                 self.assertNotIn('error',result,result)
                 self.assertEqual(result['count'],5,result)
                 self.assertRegex(result['progress'],r'(?i)\b5\s+devices?\s+found')
+                if reason == 'failure':
+                    self.assertIn('Step: Connect USB source', result['failure'], result)
+                    self.assertIn('Reason: USB is busy', result['failure'], result)
 
     def test_usb_open_retries_are_bounded_and_release_only_owned_ports(self):
         if not BROWSER:
@@ -366,7 +369,11 @@ class CompanionBrowserRuntimeTest(unittest.TestCase):
                     self.assertEqual(result['closeCalls'],1,result)
                 else:
                     self.assertFalse(result['connected'],result)
-                    self.assertRegex(result['status'],r'(?i)(port|serial|connection)')
+                    if fault == 'handshake':
+                        self.assertIn('Step: Connect USB source', result['status'], result)
+                        self.assertIn('Reason: Handshake failed after opening', result['status'], result)
+                    else:
+                        self.assertRegex(result['status'],r'(?i)(port|serial|connection)')
                     self.assertEqual(result['closeCalls'],1 if fault=='handshake' else 0,result)
                     if fault=='permanent': self.assertRegex(result['status'],r'(?i)(in use|another app|browser tab)')
 

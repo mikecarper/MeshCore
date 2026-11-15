@@ -132,6 +132,22 @@ def is_rak_repeater(mcu, src_filter, values):
                         for source in ROLE_SOURCES[1:] + COMPANION_SOURCES))
 
 
+def local_target_name_defines(env_name, values):
+    if not _enabled(values.get("MESH_OTA_LOCAL_TARGET_NAME_ONLY")):
+        return {}
+    # Full overlays keep their deployed identity even when PIOENV differs.
+    target_id = values.get("MOTA_TARGET_ID")
+    if target_id is None:
+        target_id = "0x%08x" % int.from_bytes(
+            hashlib.sha256(str(env_name).encode()).digest()[:4], "little")
+    return dict(
+        OTA_TARGET_NAME_TABLE=0,
+        OTA_LOCAL_TARGET_ID=target_id,
+        OTA_LOCAL_TARGET_NAME="OTA_VARIANT" if values.get("OTA_VARIANT")
+                              else '"%s"' % env_name,
+    )
+
+
 def trim_policy(platform, mcu, env_name, src_filter, flags=(), cppdefines=(),
                 ota_name_mode="front-coded"):
     """Return defaults for a qualified non-Companion role, otherwise nothing.
@@ -160,20 +176,7 @@ def trim_policy(platform, mcu, env_name, src_filter, flags=(), cppdefines=(),
     definitions = dict(TRIM_DEFINES, OTA_TARGET_NAME_FRONT_CODED=1)
     if is_rak_repeater(mcu, src_filter, values):
         definitions.update(RAK_REPEATER_TRIM_DEFINES)
-    if _enabled(values.get("MESH_OTA_LOCAL_TARGET_NAME_ONLY")):
-        # Release overlays can compile a different PIOENV from their deployed
-        # OTA identity. Keep the logical name/ID in that case; direct builds
-        # use the same PIOENV hash as the ordinary EndF/board identity code.
-        target_id = values.get("MOTA_TARGET_ID")
-        if target_id is None:
-            target_id = "0x%08x" % int.from_bytes(
-                hashlib.sha256(str(env_name).encode()).digest()[:4], "little")
-        definitions.update(
-            OTA_TARGET_NAME_TABLE=0,
-            OTA_LOCAL_TARGET_ID=target_id,
-            OTA_LOCAL_TARGET_NAME="OTA_VARIANT" if values.get("OTA_VARIANT")
-                                  else '"%s"' % env_name,
-        )
+    definitions.update(local_target_name_defines(env_name, values))
     # Explicit board/user flags retain their value. In particular never undo
     # an opt-out or a board-specific USB configuration by re-defining it.
     return {name: value for name, value in definitions.items() if name not in values}
@@ -194,7 +197,7 @@ def supported_program_lifetime(framework_dir):
     return main.is_file() and hashlib.sha256(main.read_bytes()).hexdigest() == NRF52_MAIN_NO_EXIT_SHA256
 
 
-def companion_trim_policy(platform, mcu, src_filter, flags=(), cppdefines=()):
+def companion_trim_policy(platform, mcu, src_filter, flags=(), cppdefines=(), env_name=None):
     """Qualify the actual Companion sources, independent of board/alias name."""
     if platform != "nordicnrf52" or not str(mcu).lower().startswith("nrf52"):
         return {}
@@ -212,6 +215,10 @@ def companion_trim_policy(platform, mcu, src_filter, flags=(), cppdefines=()):
     # that path. Preserve any caller choice instead of enabling both modes.
     if values.get("ED25519_COMPACT_BASE") is not None:
         definitions.pop("ED25519_SMALL_BASE", None)
+    if env_name is not None:
+        definitions.update({name: value for name, value in
+                            local_target_name_defines(env_name, values).items()
+                            if name not in values})
     return definitions
 
 
@@ -310,7 +317,8 @@ def install(build_env):
     infrastructure = bool(definitions)
     if not infrastructure:
         definitions = companion_trim_policy(platform.name, mcu,
-                                            build_env.get("SRC_FILTER", ()), flags, cppdefines)
+                                            build_env.get("SRC_FILTER", ()), flags, cppdefines,
+                                            env_name=build_env["PIOENV"])
     if not definitions:
         return
     local_name = definitions.get("OTA_LOCAL_TARGET_NAME", "")

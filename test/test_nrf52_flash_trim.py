@@ -105,6 +105,27 @@ class Nrf52FlashTrimTest(unittest.TestCase):
         for flags in ("", "-DMESH_OTA_LOCAL_TARGET_NAME_ONLY=0"):
             self.assertNotIn("OTA_TARGET_NAME_TABLE", self.policy(flags=flags))
 
+    def test_companion_local_names_are_opt_in_and_keep_the_deployed_identity(self):
+        options = dict(platform="nordicnrf52", mcu="nrf52840",
+                       src_filter="+<../examples/companion_radio/*.cpp>",
+                       env_name="RAK_4631_companion_radio_full")
+        for flags in ("", "-DMESH_OTA_LOCAL_TARGET_NAME_ONLY=0"):
+            self.assertNotIn("OTA_TARGET_NAME_TABLE",
+                             TRIM.companion_trim_policy(**options, flags=flags))
+        flags = "-DMESH_OTA_LOCAL_TARGET_NAME_ONLY=1"
+        direct = TRIM.companion_trim_policy(**options, flags=flags)
+        self.assertEqual(direct["OTA_TARGET_NAME_TABLE"], 0)
+        self.assertEqual(direct["OTA_LOCAL_TARGET_ID"], "0x5e69738a")
+        self.assertEqual(direct["OTA_LOCAL_TARGET_NAME"], '"RAK_4631_companion_radio_full"')
+        overlay = TRIM.companion_trim_policy(**options, flags=flags +
+            ' -DMOTA_TARGET_ID=0x12345678 -DOTA_VARIANT=\'"deployed_companion"\'')
+        self.assertEqual(overlay["OTA_LOCAL_TARGET_ID"], "0x12345678")
+        self.assertEqual(overlay["OTA_LOCAL_TARGET_NAME"], "OTA_VARIANT")
+        explicit = TRIM.companion_trim_policy(**options, flags=flags +
+            ' -DOTA_TARGET_NAME_TABLE=1 -DOTA_LOCAL_TARGET_ID=7 -DOTA_LOCAL_TARGET_NAME=custom')
+        for name in ("OTA_TARGET_NAME_TABLE", "OTA_LOCAL_TARGET_ID", "OTA_LOCAL_TARGET_NAME"):
+            self.assertNotIn(name, explicit)
+
     def test_cli_reply_copy_flag_is_attached_only_to_exact_cli_object(self):
         class Node:
             def __init__(self, path): self.path = path
