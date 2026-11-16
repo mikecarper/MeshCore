@@ -126,6 +126,31 @@ For private channels or other frequency slots, see the
 Radio1 and radio2 share one physical radio and take turns listening. Messages
 can be missed on either network while the radio is listening to the other.
 
+## Delete a Meshtext channel
+
+Connect the MeshCore app to the device and open **Settings > Command Line**.
+
+Check the channel's name before deleting it. For example, for channel slot 1:
+
+```text
+get mt.channel 1
+```
+
+If the name matches the channel you want to remove, enter:
+
+```text
+delete mt.channel 1
+```
+
+Replace `1` with the channel's slot number. Channel slots start at **0**:
+`0` is the first slot and `1` is the second. Use the app's channel slot here;
+`mt.slot` controls the frequency slot separately.
+
+The command deletes only a Meshtext (`mt-`) channel and saves the change on
+the connected device. Repeat on any other device where you want to remove it.
+See the [channel command reference](radio_profiles.md#meshtext-channel-chat)
+for details.
+
 ## Repeater: scheduled transmit-only beacon
 
 A supported repeater can periodically send a public text beacon to a
