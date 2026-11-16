@@ -4,8 +4,8 @@
 
 # Rotary controls and external notification outputs
 
-Full Companion on ESP32, nRF52 and RP2040 supports a user-wired incremental
-rotary encoder, an optional push switch, a passive buzzer, and separate
+This repository's Full Companion on ESP32, nRF52 and RP2040 supports a
+user-wired incremental rotary encoder, an optional push switch, a passive buzzer, and separate
 notification, GPS and Bluetooth LEDs. All assignments start disabled. Settings
 are saved separately from the node preferences and take effect without reboot.
 The encoder needs a supported display UI; outputs also work without a display.
@@ -13,6 +13,13 @@ Existing board-provided encoders remain the default until a custom encoder is
 enabled.
 
 ## Connect and configure an encoder
+
+Disconnect USB, the battery and any solar/external supply before soldering.
+Use an incremental quadrature encoder, such as an EC11 with A, B and common
+contacts plus a separate normally-open push switch. A three-terminal analog
+potentiometer is not a substitute. Identify the actual terminals from the
+component documentation or a continuity test; shaft shape and photographs do
+not establish its pinout or whether a switch is fitted.
 
 Use 3.3 V signals and a common ground. Connect the encoder's common contact to
 ground, A/CLK and B/DT to two available MCU pins, and the optional normally-open
@@ -67,13 +74,28 @@ The standard native-USB image permits this encoder assignment, subject to
 `get rotary.pins.available` on the actual installed image:
 
 ```text
+get rotary
+set rotary.pullup on
+get rotary.pins.available
 set rotary.pins 6,43,0
 set rotary.steps 4
 set rotary on
+get rotary
 ```
 
 This assignment is checked against the firmware pin policy; test physical
 encoder operation on your hardware before relying on it.
+
+| Encoder terminal | Connection on the native-USB Full Companion |
+| --- | --- |
+| A / CLK | GPIO6 |
+| B / DT | GPIO43 through a 1 kohm series resistor |
+| Common / C | GND |
+| One push-switch contact | GPIO0 |
+| Other push-switch contact | GND |
+
+These are GPIO numbers, not positions in the header. A bare mechanical encoder
+needs no 5 V supply. Use the two actual switch contacts, not mounting tabs.
 
 GPIO0 reuses the existing user button. Release the switch during reset to
 avoid entering the board's download mode. GPIO43 is available here because
@@ -95,11 +117,57 @@ no spare permitted GPIO for the four additional outputs. It cannot safely
 host the encoder and all the lights/buzzer together with that hardware mapping.
 Do not substitute display or GNSS pins because an accessory was not detected.
 
+In particular, the following proposed LED/buzzer assignments are **not valid**
+for this unified image:
+
+| Proposed connection | Why the pin is unavailable |
+| --- | --- |
+| Notification LED on GPIO35 | The board's built-in LED already uses this pin; firmware reserves it. |
+| GPS LED on GPIO34 | This controls the GNSS power supply. It is not an external status-LED output. |
+| Bluetooth LED on GPIO36 | This controls the Vext power rail. Toggling it would change peripheral power. |
+| Passive buzzer on GPIO33 | The unified OLED/TFT image reserves it for TFT display data, including when only an OLED is detected. |
+
+The GPIO34/35/36 board connections are documented in Heltec's
+[V4 pin map](https://heltec.org/project/wifi-lora-32-v4/#DocsResource) and
+[V4.3 schematic](https://resource.heltec.cn/download/WiFi_LoRa_32_V4/Schematic/HTIT-WB32LAF_V4.3.pdf).
+This mapping is for the ESP32-S3R2 board, not the V4 R8 variant.
+
+Check `get peripheral.pins.available` after assigning the encoder. An empty
+GPIO list means there are no permitted output pins left. The commands below
+do not override reservations. For an encoder plus three independent LEDs and
+a buzzer, use hardware with enough available pins or an expansion design with
+matching firmware support. An I2C GPIO expander cannot be assigned through
+these MCU-pin commands; a buzzer also needs a suitable waveform output/driver.
+
 ## Passive buzzer and status LEDs
 
 Use current-limiting resistors for LEDs, and an appropriate driver when a
 buzzer or other load exceeds the GPIO's current rating. LED outputs are
-active high. These commands accept Arduino MCU pins, not I2C-expander numbers:
+active high.
+
+### Check the electrical ratings before choosing outputs
+
+- **Pre-wired LEDs:** verify that each assembly actually contains a series
+  resistor and check its value/current specification. A listing that says
+  "5 V" or "3-5 V" does not establish the resistor value or guarantee useful
+  brightness from a 3.3 V GPIO. Use an assembly specified for 3.3 V, or check
+  the current using its resistor value and the LED's forward voltage. Keep
+  the resistor in circuit; positive goes to an available output and negative
+  to common ground for direct active-high drive.
+- **5 V loads:** a separate 5 V supply requires an appropriate driver and common
+  ground. Do not connect 5 V to an ESP32-S3 GPIO; the chip's pins are
+  [not 5 V tolerant](https://docs.espressif.com/projects/esp-idf/en/v5.0/esp32s3/api-reference/peripherals/usb_device.html#self-powered-device).
+- **Buzzer:** use a passive transducer compatible with the generated tones.
+  A black two-pin case or a polarity mark does not identify its type or current
+  demand. Verify the part specification before connecting it directly. Use a
+  suitable transistor/MOSFET driver for a higher-current or higher-voltage
+  transducer, with a flyback diode for an inductive magnetic load. An active
+  buzzer with its own oscillator is not a substitute for variable-pitch RTTTL
+  playback.
+
+### Configure outputs on a board with available pins
+
+These commands accept Arduino MCU pins, not I2C-expander numbers:
 
 ```text
 get peripherals
