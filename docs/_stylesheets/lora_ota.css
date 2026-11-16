@@ -49,6 +49,8 @@
 
 [data-lora-ota] input[type="checkbox"] { margin-right: 0.4rem; }
 [data-lora-ota] .lora-ota-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+[data-lora-ota] .lora-ota-examples { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+[data-lora-ota] .lora-ota-examples button { min-height: 2.4rem; padding: 0.4rem 0.75rem; }
 [data-lora-ota] button {
   min-height: 3rem;
   padding: 0.65rem 1.1rem;

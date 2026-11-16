@@ -30,6 +30,17 @@ Wi-Fi requires a compatible Companion on the same local network as your phone or
         <p data-role="wifi-os-help" aria-live="polite"></p>
         <p>Use this phone or computer's Wi-Fi IPv4 address to choose the network prefix; it is not the Companion's IP address. The scan covers one /24 network.</p>
         <label>Your Wi-Fi IPv4 address or /24 network <input data-role="wifi-subnet" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="192.168.1.20 or 192.168.1.0/24"></label>
+        <p>Example networks: choose one that matches the first three numbers of your Wi-Fi address.</p>
+        <p class="lora-ota-examples" aria-label="Example network addresses">
+          <button type="button" class="lora-ota-secondary" data-wifi-example="192.168.1.1">192.168.1.1</button>
+          <button type="button" class="lora-ota-secondary" data-wifi-example="192.168.0.1">192.168.0.1</button>
+          <button type="button" class="lora-ota-secondary" data-wifi-example="10.0.0.1">10.0.0.1</button>
+        </p>
+        <p>Hotspot examples (the address can vary by phone):</p>
+        <p class="lora-ota-examples" aria-label="Example hotspot addresses">
+          <button type="button" class="lora-ota-secondary" data-wifi-example="172.20.10.1">iPhone: 172.20.10.1</button>
+          <button type="button" class="lora-ota-secondary" data-wifi-example="192.168.43.1">Android: 192.168.43.1</button>
+        </p>
         <label data-role="wifi-networks-wrap" hidden>Suggested network <select data-role="wifi-networks"><option value="">Select a network</option></select></label>
         <p class="lora-ota-actions"><button type="button" data-role="wifi-scan">Scan network</button> <button type="button" data-role="wifi-scan-stop" hidden>Stop scan</button></p>
         <p data-role="wifi-scan-status" role="status" aria-live="polite"></p>
@@ -554,4 +565,4 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_recovery.js?v=usb-retry-1"></script>
 <script src="../_javascript/lora_ota_lease.js?v=active-lease-retry-1"></script>
 <script src="../_javascript/lora_ota_catalog.js?v=4aeb7bf86"></script>
-<script src="../_javascript/lora_ota_browser.js?v=direct-wifi-1"></script>
+<script src="../_javascript/lora_ota_browser.js?v=wifi-examples-1"></script>

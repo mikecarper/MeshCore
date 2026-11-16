@@ -672,6 +672,7 @@
     $('wifi-url').disabled=active||!!link;
     $('wifi-scan').disabled=active||!!link||!!wifiScanController;
     $('wifi-subnet').disabled=active||!!link||!!wifiScanController;
+    for(const button of ui.querySelectorAll('[data-wifi-example]'))button.disabled=active||!!link||!!wifiScanController;
     $('wifi-results').disabled=active||!!link||!!wifiScanController;
     $('reconnect').hidden=!link?.failure;
     $('reconnect').disabled=active || !link?.failure;
@@ -887,6 +888,12 @@
   $('wifi-networks').addEventListener('change',()=>{
     if($('wifi-networks').value)$('wifi-subnet').value=$('wifi-networks').value+'.0/24';
   });
+  for(const button of ui.querySelectorAll('[data-wifi-example]'))button.addEventListener('click',()=>{
+    if($('wifi-subnet').disabled)return;
+    $('wifi-subnet').value=button.dataset.wifiExample;
+    $('wifi-results-wrap').hidden=true;
+    $('wifi-scan-status').textContent='';
+  });
   $('wifi-results').addEventListener('change',()=>{
     if($('wifi-results').value)$('wifi-url').value=$('wifi-results').value;
   });
@@ -895,6 +902,7 @@
     if(wifiScanController||link||connectController)return;
     const controller=wifiScanController=new AbortController();
     $('wifi-scan').disabled=true;$('wifi-subnet').disabled=true;$('connection').disabled=true;
+    for(const button of ui.querySelectorAll('[data-wifi-example]'))button.disabled=true;
     $('connect').disabled=true;$('wifi-scan-stop').hidden=false;$('wifi-results-wrap').hidden=true;
     $('wifi-networks-wrap').hidden=true;$('wifi-results').replaceChildren(new Option('Select a device',''));
     try{
