@@ -489,6 +489,10 @@ int main(int argc, char** argv) {
     auto replacement = f.connect(A);
     f.drain(replacement);
     assert(!old->connected && revoked == 1 && replacement->sent.empty());
+    // Stop while the callback's context is still alive; Fixture teardown
+    // runs after this block and must not touch the expired local variable.
+    f.transport.end();
+    assert(revoked == 2);
   } else if (scenario == 46) {
 #if defined(ESP32)
     assert(f.transport.reserveLoopbackClient());
