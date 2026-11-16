@@ -61,7 +61,7 @@ Wi-Fi requires a compatible Companion on the same local network as your phone or
     <section data-role="target-controls" hidden>
     <label>Search contacts by name or public-key prefix<input data-role="contact-search" autocomplete="off" spellcheck="false" disabled></label>
     <p><strong>Device to update</strong></p>
-    <p data-role="contact-route-help" hidden>Saved paths can be out of date. Incoming advert paths show how a recent advertisement reached this Companion; they are not verified return routes. The recent-advert cache is limited and clears on restart. Neither path confirms current reachability. Companion updates need a direct (zero-hop) connection; select Find matching firmware to contact the device and check compatibility.</p>
+    <p data-role="contact-route-help" hidden>Saved paths can be out of date. Incoming advert paths show how a recent advertisement reached this Companion; they are not verified return routes. The recent-advert cache is limited and clears on restart. Neither path confirms current reachability. Wi-Fi Companion updates need a direct (zero-hop) connection; select Find matching firmware to contact the device and check compatibility.</p>
     <p data-role="advert-path-progress" role="status" hidden></p>
     <p><button type="button" class="lora-ota-secondary" data-role="advert-path-stop" hidden>Stop checking advert paths</button></p>
     <section data-role="contact" class="lora-ota-contacts" role="group" aria-label="Devices to update" hidden></section>
