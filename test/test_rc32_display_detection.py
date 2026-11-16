@@ -260,7 +260,7 @@ class RC32DisplayDetectionTest(unittest.TestCase):
         binary = work / "test"
         compiled = subprocess.run([
             os.environ.get("CXX", "g++"), "-std=c++17", "-Wall", "-Wextra", "-Werror",
-            "-Wno-unused-parameter", "-Wno-type-limits", *sanitizer, *flags,
+            "-Wno-unused-parameter", "-Wno-type-limits", "-DESP32_PLATFORM=1", *sanitizer, *flags,
             "-I"+str(work), "-I"+str(UI), "-I"+str(ROOT / "src"),
             str(work / "main.cpp"), str(work / "NV3001BDisplay.cpp"), "-o", str(binary)
         ], capture_output=True, text=True, timeout=60)

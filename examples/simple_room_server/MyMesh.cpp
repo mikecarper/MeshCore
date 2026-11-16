@@ -1336,7 +1336,7 @@ mesh::Packet *MyMesh::createSelfAdvert() {
 }
 
 File MyMesh::openAppend(const char *fname) {
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   return _fs->open(fname, FILE_O_WRITE);
 #elif defined(RP2040_PLATFORM)
   return _fs->open(fname, "a");
@@ -3119,7 +3119,7 @@ bool MyMesh::formatFileSystem() {
 #if defined(WITH_WEBCONFIG) || defined(ETHERNET_ENABLED)
   _local_cli_output.cancel();
 #endif
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   return InternalFS.format();
 #elif defined(RP2040_PLATFORM)
   return LittleFS.format();

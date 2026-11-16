@@ -11,7 +11,7 @@
 #endif
 #include "RoomServerFeatures.h"
 
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   #include <InternalFileSystem.h>
 #elif defined(RP2040_PLATFORM)
   #include <LittleFS.h>

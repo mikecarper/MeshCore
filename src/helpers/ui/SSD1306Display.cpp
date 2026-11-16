@@ -44,7 +44,10 @@ bool SSD1306Display::begin() {
                                      , mesh::ui::oledControllerMode()
 #endif
                                      )
-      && i2c_probe(*_wire, DISPLAY_ADDRESS);
+#if !defined(PIN_OLED_CS) || !defined(PIN_OLED_DC)
+      && i2c_probe(*_wire, DISPLAY_ADDRESS)
+#endif
+      ;
   if (started) {
     _panel_ready = true;
     applyRotation();

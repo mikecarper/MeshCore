@@ -8,6 +8,10 @@
 #include "helpers/NRF52CryptoScratch.h"
 #include "nrf_cc310/include/crys_ec_edw_api.h"
 #include "nrf_cc310/include/crys_ec_mont_edw_error.h"
+#include "nrf_cc310/include/ssi_pal_mutex.h"
+extern "C" {
+  extern SaSi_PalMutex sasiAsymCryptoMutex;
+}
 #endif
 
 namespace mesh {
@@ -37,6 +41,11 @@ bool Identity::verify(const uint8_t* sig, const uint8_t* message, int msg_len) c
         const_cast<uint8_t*>(sig), CRYS_ECEDW_SIGNATURE_BYTES,
         const_cast<uint8_t*>(pub_key), CRYS_ECEDW_MOD_SIZE_IN_BYTES,
         const_cast<uint8_t*>(message), static_cast<size_t>(msg_len), cc310_tmp);
+    // CC310 0.9.13 can retain its internal mutex after a failed verify.
+    // Keep our outer session lock held while repairing the SDK lock.
+    if (rc != CRYS_OK && sasiAsymCryptoMutex != 0) {
+      SaSi_PalMutexUnlock(&sasiAsymCryptoMutex);
+    }
     if (rc == CRYS_OK) return true;
     // A normal signature mismatch is a conclusive hardware result. Other
     // CC310 errors fall through to the correctness-preserving software path.

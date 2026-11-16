@@ -81,6 +81,11 @@ std::atomic<unsigned> creates{0}, takes{0}, gives{0}, lock_depth{0};
 std::atomic<unsigned> begins{0}, sdk_calls{0}, software_verifies{0};
 bool begin_ok=true, random_ok=true;
 int verify_rc=CRYS_OK, aes_rc=SASI_OK, hmac_rc=CRYS_OK;
+int sasiAsymCryptoMutex=0;
+unsigned sdk_unlocks=0;
+void SaSi_PalMutexUnlock(int* mutex) {
+  assert(lock_depth==1 && *mutex==1); *mutex=0; ++sdk_unlocks;
+}
 MockCrypto nRFCrypto;
 bool MockCrypto::begin() { ++begins; return begin_ok; }
 bool MockRandom::generate(uint8_t* out, uint16_t size) {
@@ -117,7 +122,9 @@ int CRYS_HMAC(int, uint8_t*, unsigned, uint8_t*, size_t, uint32_t* result) {
 int CRYS_ECEDW_Verify(uint8_t*, unsigned, uint8_t*, unsigned, uint8_t*, size_t,
                       CRYS_ECEDW_TempBuff_t* scratch) {
   assert(lock_depth==1 && zero(*scratch)); ++sdk_calls;
-  memset(scratch,0xc3,sizeof(*scratch)); return verify_rc;
+  memset(scratch,0xc3,sizeof(*scratch));
+  if (verify_rc != CRYS_OK) sasiAsymCryptoMutex=1;
+  return verify_rc;
 }
 struct Ed25519 {
   static bool verify(const uint8_t*, const uint8_t*, const uint8_t*, int) {
@@ -178,8 +185,10 @@ int main(int argc,char**argv) {
     mesh::Identity identity;
     verify_rc=CRYS_ECEDW_SIGN_VERIFY_FAILED_ERROR;
     assert(!identity.verify(signature.data(),message.data(),message.size()) && software_verifies==0);
+    assert(sasiAsymCryptoMutex==0 && sdk_unlocks==1);
     verify_rc=7;
     assert(identity.verify(signature.data(),message.data(),message.size()) && software_verifies==1);
+    assert(sasiAsymCryptoMutex==0 && sdk_unlocks==2);
     std::array<uint8_t,32> key{}, destination{}; destination.fill(0x79);
     aes_rc=7; hmac_rc=7;
     assert(aesHardware(true,key.data(),destination.data(),message.data(),32)==-1);

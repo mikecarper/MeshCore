@@ -38,6 +38,8 @@ public:
   virtual bool startSendRaw(const uint8_t*, uint16_t) { return true; }
   virtual bool isSendComplete() { return true; }
   virtual void onSendFinished() {}
+  virtual void resetAGC() {}
+  virtual bool tryResetAGC() { resetAGC(); return true; }
   virtual int16_t getNoiseFloor() { return -120; }
 };
 
@@ -55,6 +57,7 @@ public:
   virtual float getMCUTemperature() { return 25.0f; }
   virtual const char* getManufacturerName() { return "mock-board"; }
   virtual void reboot() {}
+  virtual bool handleCommand(const char*, uint32_t, char*) { return false; }
 };
 
 }

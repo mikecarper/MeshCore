@@ -53,6 +53,8 @@ class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
         hook = 'post:scripts/stm32_mini_companion_size.py'
         self.assertIn(flag, shlex.split(config[target]['build_flags']))
         self.assertIn('MESH_CLI_SHARE_REPLY_COPIES=1', shlex.split(config[target]['build_flags']))
+        self.assertIn('-fguess-branch-probability', shlex.split(config[target]['build_flags']))
+        self.assertNotIn('-fno-guess-branch-probability', shlex.split(config[target]['build_flags']))
         for policy in ('-fno-tree-pre','-fno-tree-slsr','-fno-code-hoisting'):
             self.assertIn(policy, shlex.split(config[target]['build_flags']))
             self.assertIn(policy, shlex.split(config['env:wio-e5-mini_repeater']['build_flags']))
@@ -70,7 +72,7 @@ class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
             env = Environment(PIOENV=name, LINKFLAGS=['existing'])
             runpy.run_path(str(ROOT / 'scripts/stm32_mini_companion_size.py'), init_globals={
                 'env': env, 'Import': lambda key: self.assertEqual(key, 'env')})
-            self.assertEqual(env['LINKFLAGS'], ['existing'] + ([flag, '-fno-tree-pre', '-fno-tree-slsr', '-fno-code-hoisting'] if name == 'wio-e5-mini_companion_radio_usb' else []))
+            self.assertEqual(env['LINKFLAGS'], ['existing'] + ([flag, '-fno-tree-pre', '-fno-tree-slsr', '-fno-code-hoisting', '-fguess-branch-probability'] if name == 'wio-e5-mini_companion_radio_usb' else []))
 
     def test_every_compact_companion_policy_is_exactly_scoped_and_complete(self):
         profiles=(
@@ -84,11 +86,13 @@ class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
             def Append(self,**values):
                 for key,items in values.items(): self.setdefault(key,[]).extend(items)
         for variant,target,script in profiles:
+            target_policy=policy+(['-fguess-branch-probability']
+                                  if variant=='wio-e5-mini' else [])
             config=configparser.ConfigParser(interpolation=None,inline_comment_prefixes=(';',))
             config.read(ROOT/'variants'/variant/'platformio.ini')
             selected=config['env:'+target]
             flags=shlex.split(selected['build_flags'])
-            for choice in policy: self.assertEqual(flags.count(choice),1)
+            for choice in target_policy: self.assertEqual(flags.count(choice),1)
             self.assertEqual(flags.count('MESH_CLI_SHARE_REPLY_COPIES=1'),1)
             self.assertEqual(selected['extra_scripts'].split(),[
                 '${stm32_base.extra_scripts}','post:scripts/'+script])
@@ -109,7 +113,7 @@ class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
                     env=Environment(PIOENV=candidate,LINKFLAGS=['existing'])
                     runpy.run_path(str(ROOT/'scripts'/script),init_globals={
                         'env':env,'Import':lambda name:self.assertEqual(name,'env')})
-                    self.assertEqual(env['LINKFLAGS'],['existing']+(policy if candidate==target else []))
+                    self.assertEqual(env['LINKFLAGS'],['existing']+(target_policy if candidate==target else []))
 
     def test_common_stm32_lto_preserves_dead_sections_for_every_role(self):
         class Environment(dict):

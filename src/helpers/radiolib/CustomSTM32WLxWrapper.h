@@ -28,6 +28,11 @@ protected:
   }
 
 public:
+  bool lastRxHadCRC() override {
+    bool crc = false;
+    return static_cast<CustomSTM32WLx*>(_radio)->getLoRaRxHeaderInfo(nullptr, &crc) == RADIOLIB_ERR_NONE
+        && crc;
+  }
 #if MESH_COMPACT_STM32_RADIO
   // Enabling RXPS here requires restoring the virtual cached-policy query in
   // the compact ABI. Never silently enable it while that query is fixed false.

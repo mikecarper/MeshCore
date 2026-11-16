@@ -136,7 +136,7 @@ static uint32_t curr_color;
 // the same ST7735 panel and also needs a dedicated HSPI instance. Without it the
 // #else branch references SPI1, which is not instantiated on ESP32, so every
 // heltec_tracker_v1_1 env fails to compile.
-#if defined(HELTEC_LORA_V3) || defined(HELTEC_TRACKER_V2) || defined(HELTEC_TRACKER_V1_1)
+#if defined(HELTEC_LORA_V3) || defined(HELTEC_TRACKER_V2) || defined(HELTEC_TRACKER_V1_1) || defined(DFROBOT_LORAWAN_ESP32S3)
   static SPIClass tft_spi(HSPI);
   #define  _spi   (&tft_spi)
 #else

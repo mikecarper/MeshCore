@@ -264,6 +264,20 @@ static Adafruit_INA260 INA260;
 static INA226 INA226(TELEM_INA226_ADDRESS, TELEM_WIRE);
 #endif
 
+#if ENV_INCLUDE_INA228
+#ifndef TELEM_INA228_ADDRESS
+#define TELEM_INA228_ADDRESS 0x45
+#endif
+#ifndef TELEM_INA228_SHUNT_VALUE
+#define TELEM_INA228_SHUNT_VALUE 0.015
+#endif
+#ifndef TELEM_INA228_MAX_AMP
+#define TELEM_INA228_MAX_AMP 10.0
+#endif
+#include <INA228.h>
+static INA228 INA228(TELEM_INA228_ADDRESS, TELEM_WIRE);
+#endif
+
 #if ENV_INCLUDE_MLX90614
 #ifndef TELEM_MLX90614_ADDRESS
 #define TELEM_MLX90614_ADDRESS 0x5A      // MLX90614 IR temperature sensor I2C address
@@ -693,18 +707,22 @@ static bool query_ina3221_voltage(uint8_t sub_ch, float& voltage) {
 #endif
 
 #if ENV_INCLUDE_INA219
-static uint8_t init_ina219(TwoWire* wire, uint8_t) {
-  // INA219 static instance was constructed with the address; begin() uses it.
-  return INA219.begin(wire) ? 1 : 0;
+static Adafruit_INA219 INA219_ALT((TELEM_INA219_ADDRESS == 0x40) ? 0x41 : 0x40);
+static Adafruit_INA219* active_ina219 = &INA219;
+static uint8_t init_ina219(TwoWire* wire, uint8_t addr) {
+  Adafruit_INA219* candidate = addr == TELEM_INA219_ADDRESS ? &INA219 : &INA219_ALT;
+  if (!candidate->begin(wire)) return 0;
+  active_ina219 = candidate;
+  return 1;
 }
 static void query_ina219(uint8_t ch, uint8_t, CayenneLPP& lpp) {
-  lpp.addVoltage(ch, INA219.getBusVoltage_V());
-  lpp.addCurrent(ch, INA219.getCurrent_mA() / 1000.0f);
-  lpp.addPower(ch, INA219.getPower_mW() / 1000.0f);
+  lpp.addVoltage(ch, active_ina219->getBusVoltage_V());
+  lpp.addCurrent(ch, active_ina219->getCurrent_mA() / 1000.0f);
+  lpp.addPower(ch, active_ina219->getPower_mW() / 1000.0f);
 }
 static bool query_ina219_voltage(uint8_t, float& voltage) {
-  voltage = INA219.getBusVoltage_V();
-  return INA219.success() && isfinite(voltage);
+  voltage = active_ina219->getBusVoltage_V();
+  return active_ina219->success() && isfinite(voltage);
 }
 #endif
 
@@ -887,6 +905,24 @@ struct SensorDef {
 #define TELEM_BOSCH_ALT_ADDR(addr) \
   ((addr) == 0x76 ? 0x77U : ((addr) == 0x77 ? 0x76U : (addr)))
 
+#if ENV_INCLUDE_INA228
+static uint8_t init_ina228(TwoWire*, uint8_t) {
+  if (!INA228.begin() || INA228.getManufacturer() != 0x5449 || INA228.getDieID() != 0x0228) return 0;
+  if (INA228.setMaxCurrentShunt(TELEM_INA228_MAX_AMP, TELEM_INA228_SHUNT_VALUE) != 0) return 0;
+  return INA228.getLastError() == 0 ? 1 : 0;
+}
+static void query_ina228(uint8_t ch, uint8_t, CayenneLPP& lpp) {
+  lpp.addVoltage(ch, INA228.getBusVoltage());
+  lpp.addCurrent(ch, INA228.getAmpere());
+  lpp.addPower(ch, INA228.getWatt());
+  lpp.addEnergy(ch, INA228.getKiloWattHour());
+}
+static bool query_ina228_voltage(uint8_t, float& voltage) {
+  voltage = INA228.getBusVoltage();
+  return INA228.getLastError() == 0 && isfinite(voltage);
+}
+#endif
+
 static const SensorDef SENSOR_TABLE[] = {
 #if ENV_INCLUDE_AHTX0
   { TELEM_AHTX_ADDRESS,    "AHT10/AHT20", init_ahtx0,    query_ahtx0,    NULL },
@@ -929,10 +965,15 @@ static const SensorDef SENSOR_TABLE[] = {
 #if ENV_INCLUDE_INA219
   { TELEM_INA219_ADDRESS,  "INA219",       init_ina219,   query_ina219,
     query_ina219_voltage },
+  { (TELEM_INA219_ADDRESS == 0x40) ? 0x41 : 0x40, "INA219", init_ina219, query_ina219,
+    query_ina219_voltage },
 #endif
 #if ENV_INCLUDE_INA226
   { TELEM_INA226_ADDRESS,  "INA226",       init_ina226,   query_ina226,
     query_ina226_voltage },
+#endif
+#if ENV_INCLUDE_INA228
+  { TELEM_INA228_ADDRESS, "INA228", init_ina228, query_ina228, query_ina228_voltage },
 #endif
 #if ENV_INCLUDE_MLX90614
   { TELEM_MLX90614_ADDRESS,"MLX90614",     init_mlx90614, query_mlx90614, NULL },

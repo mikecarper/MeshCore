@@ -66,6 +66,10 @@ struct Board {
   void loop() { calls.push_back("board.loop"); }
 } board;
 struct Radio {
+  bool boosted = false;
+  bool supportsRxBoostedGainMode() const { return true; }
+  bool setRxBoostedGainMode(bool value) { boosted = value; return true; }
+  bool getRxBoostedGainMode() const { return boosted; }
   void begin() { calls.push_back("radio.begin"); }
   unsigned getRngSeed() const { return 0; }
   void resetAGC() { calls.push_back("radio.agc"); }
@@ -104,6 +108,9 @@ static void onGetStats() {}
 class KissModem {
 public:
   Stream* port;
+  void (*poll_rx)() = nullptr;
+  bool (*set_gain)(bool) = nullptr;
+  bool (*get_gain)() = nullptr;
   KissModem(Stream& stream, int&, Rng&, Radio&, Board&, Sensors&) : port(&stream) {
     calls.push_back("modem.construct");
   }
@@ -111,6 +118,10 @@ public:
   template <typename T> void setTxPowerCallback(T) {}
   template <typename T> void setGetCurrentRssiCallback(T) {}
   template <typename T> void setGetStatsCallback(T) {}
+  void setPollRxCallback(void (*callback)()) { poll_rx = callback; }
+  void setRxBoostedGainCallbacks(bool (*setter)(bool), bool (*getter)()) {
+    set_gain = setter; get_gain = getter;
+  }
   void begin() { calls.push_back("modem.begin"); }
   void loop() { calls.push_back("modem.loop"); }
   void resetHostSession() { calls.push_back("modem.reset"); }
@@ -120,6 +131,7 @@ public:
   void onPacketReceived(int8_t, int8_t, const uint8_t*, int, uint8_t) {}
 };
 static KissModem* modem = nullptr;
+@RADIO_CALLBACKS@
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
 #define KISS_BOOT_STAGE(stage) ((void)0)
 @TRANSPORT_SELECTION@
@@ -130,6 +142,10 @@ static KissModem* modem = nullptr;
 int main() {
   setup();
   assert(modem != nullptr);
+  assert(modem->poll_rx == &pollRadioRx);
+  assert(modem->set_gain == &onSetRxBoostedGain && modem->get_gain == &onGetRxBoostedGain);
+  assert(modem->set_gain(true) && modem->get_gain());
+  assert(modem->set_gain(false) && !modem->get_gain());
 #if EXPECT_HWCDC
   assert(modem->port == &guarded_port);
 #if defined(STATION_G3_ESP32)

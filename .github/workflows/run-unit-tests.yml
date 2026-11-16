@@ -355,6 +355,12 @@ jobs:
           bash build.sh build-firmware Xiao_C3_companion_radio_full
           --firmware-version v1.18.0.1-halo-keymind-cascade-dev
           --radio-preset usa-cascade-fixed --profile cascade --require-ota
+
+      - name: Qualify DFRobot Full Companion within internal RAM and flash budgets
+        run: >-
+          bash build.sh build-firmware DFRobot_LoRaWAN_ESP32S3_companion_radio_full
+          --firmware-version v1.18.0.1-halo-keymind-cascade-dev
+          --radio-preset usa-cascade-fixed --profile cascade --require-ota
       - name: Qualify C6 Full Companion with Meshtext
         run: >-
           bash build.sh build-firmware Xiao_C6_companion_radio_full_
@@ -672,7 +678,14 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p .pio/test-results
-          bash tools/ci/pio_retry.sh test -e native -e native_kiss_modem -e native_ota_channel -vv 2>&1 | tee .pio/test-results/native.log
+          bash tools/ci/pio_retry.sh test -e native -e native_kiss_modem -e native_jwt_helper -e native_ota_channel -vv 2>&1 | tee .pio/test-results/native.log
+
+      - name: Verify incoming network, sensor and observer tool backports
+        run: |
+          python3 -B test/test_companion_mdns.py -v
+          python3 -B test/test_esp32_network_backports.py -v
+          python3 -B test/test_i2c_power_monitor_backports.py -v
+          python3 -B -m unittest discover -s tools/observer_crash_collector/tests -v
 
       - name: Verify sensor reply bounds and duplicate counter saturation
         run: python3 -B test/test_upstream_cli_bounds.py -v
@@ -820,7 +833,7 @@ jobs:
           output = pathlib.Path(os.environ["RUNNER_TEMP"]) / "meshcore-test-results.tar.gz"
           temporary = output.with_suffix(".tmp")
           paths = [results] + [pathlib.Path(".pio/build") / name for name in
-                   ("native", "native_kiss_modem", "native_ota_channel", "native_gps")]
+                   ("native", "native_kiss_modem", "native_jwt_helper", "native_ota_channel", "native_gps")]
           with tarfile.open(temporary, "w:gz", compresslevel=6) as archive:
               for path in paths:
                   if path.exists():
