@@ -51,7 +51,12 @@ struct ContactInfo {
   bool setPath(const uint8_t*,uint8_t length){out_path_len=length;memset(out_path,0,sizeof(out_path));return true;}
 };
 struct BaseSerialInterface {
+  static constexpr size_t MAX_USB_RAW_FRAME_SIZE=188;
+  size_t capacity=176;uint32_t generation=0;bool connected=true;
   BaseSerialInterface* route=this;BaseSerialInterface* captureReplyRoute(){return route;}
+  size_t usbRawPacketReceiveCapacity()const{return capacity;}
+  uint32_t sessionGeneration()const{return generation;}
+  bool isReplyRouteAvailable(BaseSerialInterface* target)const{return target&&target->connected;}
   std::vector<std::vector<uint8_t>> frames;
   bool isConnected()const{return true;}
   void writeFrame(const uint8_t* data,size_t length){frames.emplace_back(data,data+length);}
@@ -87,7 +92,9 @@ struct MyMesh:BaseChatMesh {
   BaseSerialInterface wire;BaseSerialInterface* _serial=&wire;
   BaseSerialInterface* _ota_direct_usb_route=&wire;
   BaseSerialInterface* _ota_direct_wifi_route=nullptr;
+  BaseSerialInterface* _ota_direct_bluetooth_route=nullptr;
   BaseSerialInterface* _ota_direct_owner=nullptr;
+  uint32_t _ota_direct_owner_generation=0;
   uint8_t cmd_frame[64]{};int response=-1;
   mesh::CompanionDirectAdminGuard _ota_direct_admin;
   mesh::Radio* _radio=&profile_radio;
@@ -99,6 +106,7 @@ struct MyMesh:BaseChatMesh {
   void resetUsbHostSessionInput();
   @SET_ROUTE@
   @WIFI_ROUTE@
+  @BLE_ROUTE@
   @CANCEL_ROUTE@
   @ALLOWED_ROUTE@
   void logRxRaw(float,float,const uint8_t*,int);
@@ -122,6 +130,11 @@ struct MyMesh:BaseChatMesh {
   bool handleDirectOtaFrame(size_t len);
   bool handleDirectOtaCommand(const char*,uint32_t,char*,size_t);
   void closeDirectOtaAdmin();
+  void checkOwnerGeneration(){
+#if FULL
+    @OWNER_GENERATION_CLEANUP@
+#endif
+  }
   void mode(int value,const mesh::Identity* peer=nullptr,uint8_t type=ADV_TYPE_REPEATER){
     cmd_frame[0]=52;cmd_frame[1]=value;memcpy(cmd_frame+2,(peer?peer->pub_key:contact.id.pub_key),32);
     cmd_frame[34]=type;dispatch(value==1?35:34);
@@ -426,6 +439,29 @@ int main(){
   wifi.mode(1);assert(wifi.response==ERR_CODE_BAD_STATE);
   assert(!wifi.cancelDirectOtaForRoute(&wifi_transport));
   wifi.wire.route=&wifi.wire;wifi.mode(3);assert(wifi.response==0);
+
+  // A Bluetooth OTA session needs the negotiated extended receive capacity.
+  // A new connection on the same route must not inherit its predecessor's guard.
+  MyMesh ble; BaseSerialInterface bluetooth;
+  ble.setDirectAdminBluetoothRoute(&bluetooth);
+  ble.wire.route=&bluetooth;
+  assert(ble.command("get ota.direct.capabilities",0,reply)&&strstr(reply,"available local OTA transport"));
+  ble.mode(1);assert(ble.response==ERR_CODE_BAD_STATE&&!ble._ota_direct_owner);
+  bluetooth.capacity=188;bluetooth.generation=41;
+  assert(ble.command("get ota.direct.capabilities",0,reply)&&strstr(reply,"guarded_ble=1"));
+  ble.mode(1);assert(ble.response==0&&ble._ota_direct_owner==&bluetooth&&ble.directOtaRadioCurrent());
+  ble.wire.route=&ble.wire;ble.mode(2);assert(ble.response==ERR_CODE_BAD_STATE);
+  ble.wire.route=&bluetooth;
+  ++bluetooth.generation;
+  assert(!ble.directOtaRadioCurrent());
+  ble.mode(2);assert(ble.response==ERR_CODE_BAD_STATE);
+  assert(ble.command("get ota.direct.capabilities",0,reply)&&strstr(reply,"available local OTA transport"));
+  ble.checkOwnerGeneration();
+  assert(!ble._ota_direct_owner&&!ble._ota_direct_admin.active(ble.timer.now));
+  ble.mode(1);assert(ble.response==0&&ble.directOtaRadioCurrent());
+  bluetooth.connected=false;
+  assert(!ble.directOtaRadioCurrent());
+  assert(ble.cancelDirectOtaForRoute(&bluetooth));
 #else
   assert(m.response==-1&&m.calls==0);
   assert(!m.command("get ota.direct",0,reply));
@@ -448,9 +484,11 @@ class CompanionDirectAdminGuardTest(unittest.TestCase):
         closer = extract_braced(source, "void MyMesh::closeDirectOtaAdmin(")
         raw_log = extract_braced(source, "void MyMesh::logRxRaw(")
         host_reset = extract_braced(source, "void MyMesh::resetUsbHostSessionInput(")
+        owner_cleanup = extract_braced(source, "if (_ota_direct_owner && _ota_direct_owner->sessionGeneration() != _ota_direct_owner_generation)")
         header = (ROOT / "examples/companion_radio/MyMesh.h").read_text()
         set_route = extract_braced(header, "void setDirectAdminUsbRoute(")
         wifi_route = extract_braced(header, "void setDirectAdminWifiRoute(")
+        ble_route = extract_braced(header, "void setDirectAdminBluetoothRoute(")
         cancel_route = extract_braced(header, "bool cancelDirectOtaForRoute(")
         allowed_route = extract_braced(header, "bool directOtaRouteAllowed(")
         base = (ROOT / "src/helpers/BaseChatMesh.cpp").read_text()
@@ -504,8 +542,10 @@ class CompanionDirectAdminGuardTest(unittest.TestCase):
                 code = code.replace("@CURRENT@", (eligible + "\n" + current) if full else "")
                 code = code.replace("@RAW_LOG@", raw_log if full else "")
                 code = code.replace("@HOST_RESET@", host_reset if full else "")
+                code = code.replace("@OWNER_GENERATION_CLEANUP@", owner_cleanup)
                 code = code.replace("@SET_ROUTE@", set_route)
                 code = code.replace("@WIFI_ROUTE@", wifi_route)
+                code = code.replace("@BLE_ROUTE@", ble_route)
                 code = code.replace("@CANCEL_ROUTE@", cancel_route)
                 code = code.replace("@ALLOWED_ROUTE@", allowed_route)
                 code = code.replace("@RAW_ROUTE@", raw)
