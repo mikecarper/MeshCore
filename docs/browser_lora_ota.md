@@ -22,8 +22,7 @@ Wi-Fi requires a compatible Companion on the same local network as your phone or
       <select data-role="connection"><option value="usb">USB</option><option value="wifi">Wi-Fi Companion</option></select>
     </label>
     <section data-role="wifi-options" hidden>
-      <p>Enter the Companion's Wi-Fi address, or scan your local network. <a href="#wi-fi-companion-connection">Wi-Fi setup instructions</a>.</p>
-      <label>Companion IP address <input data-role="wifi-url" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="192.168.1.50"></label>
+      <p>Scan your local network, or enter the Companion's Wi-Fi address. <a href="#wi-fi-companion-connection">Wi-Fi setup instructions</a>.</p>
       <details class="lora-ota-advanced"><summary>Find a Wi-Fi Companion</summary>
         <p>The browser will try to suggest your private network. If it cannot, enter your phone's Wi-Fi IPv4 address, such as 192.168.1.20, or its /24 prefix, such as 192.168.1.0/24. Browsers may hide the address for privacy.</p>
         <label>How to find your network address <select data-role="wifi-os"><option value="unknown">Choose your device</option><option value="apple">iPhone or iPad</option><option value="android">Android</option><option value="mac">macOS</option><option value="windows">Windows</option><option value="linux">Linux</option></select></label>
@@ -46,6 +45,7 @@ Wi-Fi requires a compatible Companion on the same local network as your phone or
         <p data-role="wifi-scan-status" role="status" aria-live="polite"></p>
         <label data-role="wifi-results-wrap" hidden>Companion found <select data-role="wifi-results"><option value="">Select a device</option></select></label>
       </details>
+      <label>Companion IP address <input data-role="wifi-url" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="192.168.1.50"></label>
     </section>
     <details data-role="usb-options" class="lora-ota-advanced"><summary>USB connection options</summary>
     <label>USB device
