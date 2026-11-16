@@ -135,3 +135,69 @@ test('a fresh metadata or seed-validation status defers an admitted helper befor
     assert.equal(f.calls.some(c=>String(c[1]).startsWith('get tempradio')),false);
   }
 });
+test('218/234 download keeps serving through a lost radio2 lease read, backs off and finishes',async()=>{
+  const originalNow=Date.now;let clock=originalNow();Date.now=()=>clock;
+  try{
+    const f=fixture();let saved=f.record,polls=0,detaches=0,bursts=0,lost=false,readTimeout;
+    const burst=f.link.withOtaAdminBurst;
+    f.link.withOtaAdminBurst=(key,password,action,limits)=>{
+      bursts++;readTimeout=limits.readTimeoutMs;
+      return burst(key,password,io=>action({...io,remote:async command=>{
+        if(command==='get tempradio2'&&!lost){
+          lost=true;const error=Error('Remote command timed out; result is unknown');
+          error.loraReplyTimeout=true;throw error;
+        }
+        return io.remote(command);
+      }}));
+    };
+    f.link.serve=async()=>{};f.link.stopServing=async()=>{f.link.serving=false;detaches++;};
+    const messages=[],session=new DirectSession(f.link,TARGET,'secret',f.link.seeder.info,
+      {readJournal:()=>saved,journal:r=>{saved=r;},progress:m=>messages.push(m)});
+    session.packageHash=f.record.packageHash;session.bodyHash=f.record.bodyHash;session.verifiedRadio=f.record.radio;
+    session.inspect=async()=>({download:'active'});
+    session.waitForPoll=async()=>{assert.equal(f.link.serving,true);assert.equal(detaches,0);clock+=20000;};
+    session.readDownload=async()=>{
+      if(++polls===2){assert.equal(bursts,1);assert.deepEqual(f.renewed,[false,false]);}
+      if(polls===3)assert.equal(bursts,1,'backoff leaves the source serving between checks');
+      if(polls===4){assert.deepEqual(f.renewed,[true,true]);return {id:MID,state:'ready',status:'ready'};}
+      return {id:MID,state:'active',status:'download: downloading 218/234 (93%) id='+MID+' 5614s'};
+    };
+    await session.start({resume:true});
+    assert.equal(saved.phase,'ready');assert.equal(polls,4);assert.equal(bursts,2);assert.equal(detaches,1);assert.equal(readTimeout,7000);
+    assert.ok(messages.some(message=>/retry/i.test(message)));
+    assert.equal(f.calls.some(c=>/ota (?:pull|cancel|install)/.test(String(c[1]))),false);
+  }finally{Date.now=originalNow;}
+});
+test('a lease read timeout never hides a failed USB source or a changed selected profile',async()=>{
+  for(const failure of ['usb','profile','stopped']){
+    const f=fixture();
+    f.link.withOtaAdminBurst=(_key,_password,action)=>action({local:c=>f.link.localCommand(c),remote:async()=>{
+      const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;
+      if(failure==='usb'){error.otaUsbTimeout=true;f.link.failure=error;}
+      if(failure==='profile')f.link.otaTargetProfile=0;
+      if(failure==='stopped')f.link.serving=false;
+      throw error;
+    }});
+    await assert.rejects(maintain(f.link,TARGET,'secret',f.record,f.options));
+    assert.equal(f.renewed.some(Boolean),false);
+  }
+});
+test('a timed-out readback after a renewal write stops without retrying the uncertain setter',async()=>{
+  const f=fixture(),burst=f.link.withOtaAdminBurst;
+  f.link.withOtaAdminBurst=(key,password,action)=>burst(key,password,io=>action({...io,remote:async command=>{
+    if(command==='get tempradio2'&&f.renewed[1]){
+      const error=Error('Remote command timed out; result is unknown');error.loraReplyTimeout=true;throw error;
+    }
+    return io.remote(command);
+  }}));
+  await assert.rejects(maintain(f.link,TARGET,'secret',f.record,f.options),error=>error.loraReplyTimeout===true);
+  assert.deepEqual(f.renewed,[false,true]);
+  assert.equal(f.calls.filter(c=>String(c[1]).startsWith('set tempradio2 ')).length,1);
+});
+test('lease retries stop at the last verified expiry without cancelling staged blocks',async()=>{
+  const f=fixture();f.record.radio.expiresAt=Date.now()-1;
+  const session=new DirectSession(f.link,TARGET,'secret',null,{readJournal:()=>f.record});
+  session.serving=true;
+  await assert.rejects(session.maintainTemporaryLease({state:'active',status:'download: downloading 218/234 id='+MID}),/window.*expired/i);
+  assert.deepEqual(f.calls,[]);
+});

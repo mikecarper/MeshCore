@@ -234,6 +234,61 @@ def install_capability_before_radio2_harness(*, legacy=False):
         'workflowState,installed,otaData,blockedInstallReplies,inspectStatus,prepared,checked,profiles,defaults,timeline,')
 
 
+def active_download_lease_timeout_harness():
+    """Lose a real mailbox getter near expiry, keeping the partial transfer alive."""
+    harness = install_capability_before_radio2_harness()
+    harness = replace_once(harness, '(()=>{\n  const enc=', '''(()=>{
+  let leaseClockOffset=0,leaseReadLost=false;
+  const leaseRenewals=[false,false],leaseResults=[],leaseNow=Date.now,leaseTimer=window.setTimeout;
+  Date.now=()=>leaseNow()+leaseClockOffset;
+  window.setTimeout=(fn,ms,...args)=>leaseTimer(()=>{
+    if(ms===20000&&leaseClockOffset){leaseClockOffset+=ms;clock=Math.floor(Date.now()/1000);}
+    fn(...args);
+  },ms===20000?20:ms);
+  const enc=''')
+    harness = replace_once(harness, 'const deadline=Date.now()+45000;while(Date.now()<deadline)',
+        'const deadline=leaseNow()+45000;while(leaseNow()<deadline)')
+    harness = replace_once(harness, "else if(text==='get tempradio2')reply=", '''
+        else if(text==='get tempradio2'&&leaseClockOffset&&!leaseReadLost){
+          leaseReadLost=true;mailboxPending=true;reply='';
+        }
+        else if(text==='get tempradio2')reply=''' )
+    old = "'> 909.950,500.000,5,7,rxtx,128; 0d2h0m (120 min) left'"
+    if harness.count(old) != 2:
+        raise AssertionError('Expected one source and one target temporary TTL')
+    harness = harness.replace(old, "'> 909.950,500.000,5,7,rxtx,128; ('+(leaseClockOffset&&!leaseRenewals[1]?17:120)+' min) left'", 1)
+    harness = harness.replace(old, "'> 909.950,500.000,5,7,rxtx,128; ('+(leaseClockOffset&&!leaseRenewals[0]?17:120)+' min) left'", 1)
+    harness = replace_once(harness,
+        "if(ignoredSwitches){ignoredSwitches--;reply='OK - temporary channel applying';}else{targetTemp='active';targetAcknowledgedAt=Date.now();reply='OK - temporary channel applying';}",
+        "if(leaseClockOffset)leaseRenewals[1]=true;"
+        "if(ignoredSwitches){ignoredSwitches--;reply='OK - temporary channel applying';}else{targetTemp='active';targetAcknowledgedAt=Date.now();reply='OK - temporary channel applying';}")
+    harness = replace_once(harness, "sourceTemp='pending';value='OK - temporary channel applying';",
+        "if(leaseClockOffset)leaseRenewals[0]=true;sourceTemp='pending';value='OK - temporary channel applying';")
+    harness = replace_once(harness, 'otaData=true;',
+        # Seven minutes of setup plus the reported 5614-second download put
+        # the original 120-minute window inside its 20-minute renewal margin.
+        'otaData=true;leaseClockOffset=(7*60+5614)*1000;clock=Math.floor(Date.now()/1000);')
+    harness = replace_once(harness, "state='ready';}", "state='fetching';}")
+    harness = replace_once(harness, "else if(text==='ota status')reply=", '''
+        else if(text==='ota status'&&leaseClockOffset){
+          if(leaseRenewals.every(Boolean)&&otaData)state='ready';
+          reply='OTA hw=board | target:12345678 | maxblk:1024 | download: '+
+            (state==='ready'?'ready to install':'downloading 218/234 (93%)')+' id='+mid+' 5614s';
+        }
+        else if(text==='ota status')reply=''' )
+    harness = replace_once(harness, "el('update').click();await wait(()=>['complete','error'].includes(el('workflow-status').dataset.state));", '''
+    const maintain=LoraOtaLease.maintain;
+    LoraOtaLease.maintain=async(...args)=>{
+      const result=await maintain(...args);
+      leaseResults.push({state:result.state,serving:window.testLink.serving,
+        healthy:!window.testLink.failure,timeout:window.testLink.options.remoteTimeout});
+      return result;
+    };
+    el('update').click();await wait(()=>['complete','error'].includes(el('workflow-status').dataset.state));''')
+    return replace_once(harness, 'workflowState,installed,otaData,blockedInstallReplies,inspectStatus,',
+        'leaseReadLost,leaseRenewals,leaseResults,workflowState,installed,otaData,blockedInstallReplies,inspectStatus,')
+
+
 def explicit_region_with_active_window_harness():
     """An explicit profile must replace a matching old window after image checks."""
     harness = radio_setup_harness(secondary_supported=False)
@@ -361,6 +416,19 @@ class BrowserRadioSetupRuntime(unittest.TestCase):
                     self.assertEqual(installers, ['ota install'], result)
                 else:
                     self.assertRegex(installers[0], r'^ota installhash [0-9a-f]{64}$')
+
+    def test_lost_radio2_lease_getter_keeps_partial_download_serving_until_complete(self):
+        result = run_harness(active_download_lease_timeout_harness(), timeout=75)
+        self.assertNotIn('error', result, result)
+        self.assertEqual(result['workflowState'], 'complete', result)
+        self.assertTrue(result['installed'], result)
+        self.assertTrue(result['leaseReadLost'], result)
+        self.assertEqual(result['leaseRenewals'], [True, True], result)
+        self.assertEqual([row['state'] for row in result['leaseResults']], ['deferred', 'renewed'], result)
+        self.assertTrue(all(row['serving'] and row['healthy'] for row in result['leaseResults']), result)
+        self.assertEqual([row['timeout'] for row in result['leaseResults']], [75000, 75000], result)
+        self.assertEqual(sum(command.startswith('ota pull ') for command in result['cmds']), 1, result)
+        self.assertNotIn('ota cancel', result['cmds'], result)
 
     def test_missed_switch_is_rechecked_on_both_radios_then_requested_on_the_original_channel(self):
         result = run_harness(missed_switch_harness(), timeout=60)

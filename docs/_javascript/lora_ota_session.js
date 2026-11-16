@@ -164,6 +164,7 @@
       this.journal = options.journal || (() => {});
       this.cancelled = false; this.serving = false; this.serveTask = null; this.stopServingTask = null; this.startTask = null;
       this.leaseMaintenanceUnavailable = false;
+      this.leaseRetryAt = 0;
       this.pollWake = null;
     }
     recordJournal(state) {
@@ -312,8 +313,12 @@
       if(!this.serving||this.link.relays?.length||this.leaseMaintenanceUnavailable||!record?.radio||record.radio.expiresAt>Date.now()+20*60000)return;
       const leases=typeof module==='object'&&module.exports?require('./lora_ota_lease.js'):globalThis.LoraOtaLease;
       if(!leases||current?.state!=='active'||!leases.dataReady(current.status,record.id))return;
+      if(record.radio.expiresAt<=Date.now())
+        throw Error('The verified temporary update window has expired. The staged download was not cancelled; prepare the same update again to resume it.');
+      if(this.leaseRetryAt>Date.now())return;
       const result=await leases.maintain(this.link,this.key,this.password,record,{progress:this.progress,
         journal:updated=>this.journal(updated)});
+      this.leaseRetryAt=result.state==='deferred'?result.retryAt:0;
       if(result.state==='unavailable')this.leaseMaintenanceUnavailable=true;
       if(result.record?.radio)this.verifiedRadio=cloneRadio(result.record.radio);
       this.requireActive();
@@ -623,7 +628,7 @@
       const replacement = options.replace;
       if (replacement && (options.resume || !/^[0-9a-f]{8}$/.test(replacement.id || '') ||
           !['active','failed','ready'].includes(replacement.state))) throw Error('Invalid download replacement request');
-      this.cancelled = false; this.tempRadio = null; this.leaseMaintenanceUnavailable = false;
+      this.cancelled = false; this.tempRadio = null; this.leaseMaintenanceUnavailable = false; this.leaseRetryAt = 0;
       this.onStage('checking');
       let before = await this.inspect({allowExisting:!!options.resume, allowReplacement:!!replacement});
       this.requireActive();

@@ -368,6 +368,12 @@ recovery record. Existing temporary radio2 sessions, radio2 schedules and
 automatically owned runtime profiles are not replaced. This is a temporary
 frequency override on the same transceiver, not a second physical radio.
 
+During an active download, an unanswered temporary-window getter leaves file
+serving active and retries after a pause while the last verified window remains
+valid. Identity changes, USB failures and uncertain renewal writes still stop
+the session. Stopping does not cancel the target's staged download; prepare the
+same update again to resume its retained blocks.
+
 Installer capability is checked on the working channel before radio setup.
 An explicit earlier result is reused only on the same connection, source,
 authenticated target and installed firmware identity. Changing hardware,
@@ -472,9 +478,9 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_port.js"></script>
 <script src="../_javascript/lora_ota_serial.js?v=ota-quiet-1"></script>
 <script src="../_javascript/lora_ota_companion_source.js"></script>
-<script src="../_javascript/lora_ota_companion.js?v=workflow-first-1"></script>
+<script src="../_javascript/lora_ota_companion.js?v=active-lease-retry-1"></script>
 <script src="../_javascript/lora_ota_contacts.js"></script>
-<script src="../_javascript/lora_ota_session.js?v=workflow-first-1"></script>
+<script src="../_javascript/lora_ota_session.js?v=active-lease-retry-1"></script>
 <script src="../_javascript/lora_ota_route.js"></script>
 <script src="../_javascript/lora_ota_repeat.js"></script>
 <script src="../_javascript/lora_ota_quiet.js?v=workflow-first-1"></script>
@@ -490,6 +496,6 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_region_profiles.js"></script>
 <script src="../_javascript/lora_ota_radio_setup.js?v=ota-quiet-1"></script>
 <script src="../_javascript/lora_ota_recovery.js?v=usb-retry-1"></script>
-<script src="../_javascript/lora_ota_lease.js"></script>
+<script src="../_javascript/lora_ota_lease.js?v=active-lease-retry-1"></script>
 <script src="../_javascript/lora_ota_catalog.js?v=4aeb7bf86"></script>
 <script src="../_javascript/lora_ota_browser.js?v=workflow-first-1"></script>

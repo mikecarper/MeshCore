@@ -50,6 +50,7 @@
     const cryptoApi=globalThis.crypto?.subtle||(typeof require==='function'?require('node:crypto').webcrypto.subtle:null);
     if(!cryptoApi||hex(new Uint8Array(await cryptoApi.digest('SHA-256',blob)))!==radio.packageHash)
       throw Error('The served firmware differs from this browser update record');
+    let renewalStarted=false,readTimeout=null;
     const run=async({local,remote})=>{
       const active=()=>{
         if(!link.serving||link.failure)throw link.failure||Error('Stopped; no further lease commands were sent');
@@ -57,8 +58,17 @@
           link.otaRadioProfile!==radio.sourceProfile||link.otaTargetProfile!==radio.targetProfile)
           throw Error('The update source identity or selected profiles changed; lease renewal stopped');
       };
-      const guarded=read=>async command=>{active();const reply=await read(command);active();return reply;};
-      local=guarded(local);remote=guarded(remote);
+      const guarded=(read,isRemote=false)=>async command=>{
+        active();
+        try{const reply=await read(command);active();return reply;}
+        catch(error){
+          active();
+          if(isRemote&&(command==='ota status'||command.startsWith('get '))&&error.loraReplyTimeout===true&&!error.otaUsbTimeout)
+            readTimeout=error;
+          throw error;
+        }
+      };
+      local=guarded(local);remote=guarded(remote,true);
       active();
       if(bare(await remote('get public.key')).toLowerCase()!==key.toLowerCase())throw Error('Target did not prove its full public key before lease renewal');
       if(!download(await remote('ota status'),radio.id))return {state:'waiting-data',record};
@@ -82,7 +92,7 @@
         const command=setup.commands({frequency:radio.tuple[0],bandwidth:radio.tuple[1],sf:radio.tuple[2],cr:radio.tuple[3],
           preamble:radio.preamble,minutes:120},{sourceProfile:profiles[i],targetProfile:profiles[i]}).source;
         const started=now();let acknowledged=false,error;
-        active();
+        active();renewalStarted=true;
         try{const reply=bare(await readers[i](command));if(!/^OK(?:\s|$)/i.test(reply))throw Error(reply||'Lease renewal was not acknowledged');acknowledged=true;}
         catch(e){error=e;if(link.failure||!/timeout|timed out|result is unknown/i.test(String(e.message)))throw e;}
         let confirmed;
@@ -107,8 +117,21 @@
       if(renewed)options.journal?.(updated);
       return {state:renewed?'renewed':'unchanged',record:updated,renewed};
     };
-    if(typeof link.withOtaAdminBurst==='function')return link.withOtaAdminBurst(key,password,run,{wait:false});
-    return run({local:c=>link.localCommand(c),remote:c=>link.remoteCommand(key,password,c)});
+    try{
+      if(typeof link.withOtaAdminBurst==='function')return await link.withOtaAdminBurst(key,password,run,{wait:false,readTimeoutMs:7000});
+      return await run({local:c=>link.localCommand(c),remote:c=>link.remoteCommand(key,password,c)});
+    }catch(error){
+      // An unanswered getter cannot invalidate the channel already proved for
+      // this download. Release the admin burst so the source can keep serving,
+      // then retry later within that original window. Once a setter has been
+      // attempted, keep the existing stop/readback rules: never replay a write
+      // whose application is uncertain on the next maintenance pass.
+      if(error!==readTimeout||renewalStarted||link.failure||!link.serving||radio.expiresAt<=now()||
+        link.sourceKey?.toLowerCase()!==record.source.toLowerCase()||link.knownRepeater?.toLowerCase()!==key.toLowerCase()||
+        link.otaRadioProfile!==radio.sourceProfile||link.otaTargetProfile!==radio.targetProfile)throw error;
+      options.progress?.('Radio-window check timed out; firmware serving continues. Will retry while the verified window remains active.');
+      return {state:'deferred',record,retryAt:Math.min(now()+30000,radio.expiresAt)};
+    }
   }
   return {maintain,remaining,dataReady};
 });

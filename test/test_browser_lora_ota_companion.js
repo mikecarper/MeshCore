@@ -58,6 +58,23 @@ class Port{
 // its live USB lease are exercised separately against the complete Port above.
 function modelAuthorization(c){c.ensureGuardedSession=async()=>{if(!c.authenticated)await c.login('');};return c;}
 async function run(){
+  {
+    const p=new Port(),c=new CompanionTransport(p,{openSettle:0,commandTimeout:1000,remoteTimeout:75000});
+    await c.open();await c.contacts();c.selectTarget(key);await c.verifyPeer(key,'password');
+    const options=c.options,seen=[],remoteReply=c.remoteReply.bind(c);
+    c.remoteReply=async(text,...args)=>{seen.push([text,c.options.remoteTimeout,c.options.commandTimeout]);return remoteReply(text,...args);};
+    p.timeoutFirst['get tempradio2']=1;
+    await assert.rejects(c.withOtaAdminBurst(key,'password',io=>io.remote('get tempradio2'),{readTimeoutMs:5}),
+      error=>error.loraReplyTimeout===true&&error.otaTimeoutMs===5);
+    assert.equal(c.options,options);assert.equal(c.failure,null);
+    await c.withOtaAdminBurst(key,'password',async io=>{await io.remote('ota status');await io.remote('set repeat off');},{readTimeoutMs:5});
+    assert.deepEqual(seen,[['get tempradio2',5,1000],['ota status',5,1000],['set repeat off',75000,1000]]);
+    assert.equal(p.remoteAttempts['get tempradio2'],1);assert.equal(c.options,options);
+    const before=p.frames.length;
+    for(const readTimeoutMs of [0,-1,NaN,Infinity,20001,'5'])
+      await assert.rejects(c.withOtaAdminBurst(key,'password',io=>io.remote('ota status'),{readTimeoutMs}),/Invalid/);
+    assert.equal(p.frames.length,before);await c.close();
+  }
   // Prepare can be followed by an arbitrarily long human pause. The firmware
   // lease expires after five minutes, not when the page clears its JS flags.
   for(const nextAction of ['verify','read','write','burst','mailbox-race']){

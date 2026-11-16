@@ -1198,9 +1198,10 @@
       if(!this.otaSupported){this.investigationAuthenticated=false;this.investigationVerified=false;return this.verifyPeer(key,password);}
       return this.withAdmin(async()=>{if(this.guard)await this.guardMode(3);this.guard=false;this.authenticated=false;});
     }
-    async withOtaAdminBurst(key,password,operation,{wait=false}={}){
+    async withOtaAdminBurst(key,password,operation,{wait=false,readTimeoutMs}={}){
       unhex(String(key));this.validate(key);
-      if(typeof operation!=='function'||typeof password!=='string'||enc.encode(password).length>15||/[\r\n\0]/.test(password)||typeof wait!=='boolean')
+      if(typeof operation!=='function'||typeof password!=='string'||enc.encode(password).length>15||/[\r\n\0]/.test(password)||typeof wait!=='boolean'||
+        readTimeoutMs!==undefined&&(!Number.isFinite(readTimeoutMs)||readTimeoutMs<=0||readTimeoutMs>20000))
         throw Error('Invalid authenticated OTA operation');
       const sourceKey=this.sourceKey,serving=this.serving;
       if(!/^[a-f0-9]{64}$/i.test(sourceKey||''))throw Error('Verify the USB source identity before OTA administration');
@@ -1228,7 +1229,15 @@
           requests.add(request);request.finally(()=>requests.delete(request)).catch(()=>{});return request;
         };
         const io=Object.freeze({local:text=>invoke(()=>this.localCommandBinary(text)),
-          remote:text=>invoke(()=>this.otaSupported?this.remoteReply(text):this.standardReply(text,true))});
+          remote:text=>invoke(async()=>{
+            const previous=this.options;
+            // Limit only harmless RF read replies. USB requests retain their
+            // own timeout, and writes retain their normal acknowledgement budget.
+            if(readTimeoutMs!==undefined&&isReadOnly(text))this.options={...previous,
+              remoteTimeout:Math.min(previous.remoteTimeout??75000,readTimeoutMs)};
+            try{return await (this.otaSupported?this.remoteReply(text):this.standardReply(text,true));}
+            finally{this.options=previous;}
+          })});
         try{return await operation(io);}
         finally{active=false;await Promise.allSettled([...requests]);}
       },wait));
