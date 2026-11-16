@@ -6,7 +6,7 @@
   const $ = name => ui.querySelector('[data-role="' + name + '"]');
   let link, session, info, expectedSigner, activeTask, preparing, chainPrepared, chainConfig, connectController;
   let autoChain=null, autoStep='';
-  let contacts=[], targetLocked=false, contactKey='', disconnectGeneration=0, activeSourceKind=null;
+  let contacts=[], targetLocked=false, contactKey='', disconnectGeneration=0, activeSourceKind=null, advertScanGeneration=0;
   let activeConnection=null;
   let wifiScanController=null;
   const connectionKind=()=>activeConnection||$('connection').value;
@@ -658,6 +658,7 @@
     finally { busy(false);$('inspect').disabled=!link || updatesBlocked(); }
   }
   function busy(active) {
+    if(active)stopAdvertScan('Advertisement path checks stopped.');
     if(link && sourceKind()==='companion' && (link.guard || link.authenticated || link.investigationEnabled || link.investigationAuthenticated || link.serving))targetLocked=true;
     uiBusy=active;updateButton();
     refreshTransferStop();
@@ -834,10 +835,52 @@
       button.setAttribute('aria-pressed', String(button.dataset.contactKey===contactKey));
     }
   }
+  function stopAdvertScan(message) {
+    advertScanGeneration++;
+    if(!$('advert-path-stop').hidden){
+      $('advert-path-stop').hidden=true;
+      $('advert-path-progress').textContent=message;
+    }
+  }
+  async function scanAdvertPaths() {
+    const owner=link, generation=++advertScanGeneration, candidates=LoraOtaContacts.choices(contacts);
+    if(sourceKind()!=='companion'||!owner||!candidates.length||typeof owner.advertPath!=='function')return;
+    const progress=$('advert-path-progress'), stop=$('advert-path-stop');
+    progress.hidden=false;stop.hidden=false;
+    for(let i=0;i<candidates.length;i++) {
+      if(generation!==advertScanGeneration||link!==owner||uiBusy)return;
+      progress.textContent='Checking cached incoming advert paths: '+i+' of '+candidates.length+'.';
+      try {
+        const contact=candidates[i], path=await owner.advertPath(contact.publicKey);
+        if(generation!==advertScanGeneration||link!==owner)return;
+        if(path){
+          contact.advertPath=path;
+          for(const button of $('contact').querySelectorAll('button'))
+            if(button.dataset.contactKey===contact.publicKey.toLowerCase())button.textContent=LoraOtaContacts.label(contact);
+        }
+      } catch(error) {
+        if(generation!==advertScanGeneration||link!==owner)return;
+        stop.hidden=true;
+        progress.textContent=error.companionErrorCode===1
+          ? 'Cached advert paths are unavailable on this Companion connection. Wi-Fi may require newer Companion firmware.'
+          : owner.failure ? 'Advert path checks stopped because the Companion connection failed. Reconnect to continue.'
+          : 'Cached advert paths could not be read.';
+        if(owner.failure){$('reconnect').hidden=false;$('reconnect').disabled=false;}
+        return;
+      }
+      // Let user actions enter the serialized command queue before another lookup.
+      await new Promise(resolve=>setTimeout(resolve,0));
+    }
+    if(generation===advertScanGeneration&&link===owner){
+      stop.hidden=true;progress.textContent='Cached incoming advert path check complete.';
+    }
+  }
+  $('advert-path-stop').addEventListener('click',()=>stopAdvertScan('Advertisement path checks stopped.'));
   function renderContacts() {
     const list=$('contact'), current=contactKey, matches=LoraOtaContacts.choices(contacts,$('contact-search').value);
     list.replaceChildren();
     list.hidden=!matches.length;
+    $('contact-route-help').hidden=sourceKind()!=='companion'||!link||!matches.length;
     $('contact-status').textContent=sourceKind()!=='companion'
       ? (link ? 'Repeater connected. Select Find matching firmware to check the remote device.' : 'Enter the remote device key, then connect the USB Repeater.')
       : !link ? 'Connect a Companion to load contacts.' :
@@ -955,6 +998,8 @@
     try { new CompressionStream('deflate-raw'); return compressor; } catch (_) { return null; }
   }
   async function close() {
+    stopAdvertScan('Advertisement path checks stopped.');
+    $('advert-path-progress').hidden=true;
     if(disconnecting)return;
     disconnecting=true;
     try{
@@ -1091,6 +1136,7 @@
       $('find-route').disabled = !repeaterAclIntent() || !link.supportsRoutedPath || !!link.relays;
       log('Connected to source ' + link.sourceKey + '.');
       status(recovery ? (wifi?'Wi-Fi reconnected. ':'USB reconnected. ')+'Select Prepare update to recheck the radios, or Find matching firmware to check the device.' : 'Connected. Choose the remote device and select Find matching firmware.', 'ready');
+      void scanAdvertPaths();
     } catch (error) {
       if(!recovery?.automatic&&!controller.signal.aborted && error?.name!=='NotFoundError')await fail(error);
       if (link) { try { await link.close(); } catch (_) {} }

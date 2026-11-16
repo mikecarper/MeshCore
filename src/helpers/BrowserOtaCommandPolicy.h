@@ -107,6 +107,7 @@ inline bool allowed(const uint8_t* frame, size_t len, bool guarded, const uint8_
     case 4: return len == 1 || len == 5;   // contacts
     case 5: return len == 1;               // device clock
     case 22: return len == 2;              // device query
+    case 42: return len == 34 && frame[1] == 0; // cached inbound advert path
     case 52: // guarded direct session modes
       if (len < 34 || frame[1] < 1 || frame[1] > 4) return false;
       if (frame[1] == 1) return len == 35 && frame[34] >= 2 && frame[34] <= 4;

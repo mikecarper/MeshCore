@@ -17,8 +17,9 @@
   }
   function label(contact) {
     const type={2:'Repeater',3:'Room',4:'Sensor'}[contact.type]||'Node';
-    const distance=Number.isInteger(contact.hops) ? contact.hops===0?'direct':contact.hops+' hop'+(contact.hops===1?'':'s') : 'path unknown';
-    return (contact.favorite?'★ ':'')+(contact.name||contact.publicKey.slice(0,12))+' — '+type+', '+distance+' ('+contact.publicKey.slice(0,12).toUpperCase()+')';
+    const distance=Number.isInteger(contact.hops) ? contact.hops===0?'saved direct path':'saved path: '+contact.hops+' hop'+(contact.hops===1?'':'s') : 'no saved path';
+    const advert=contact.advertPath ? ', incoming advert: '+(contact.advertPath.hops===0?'direct (0 hops)':contact.advertPath.path.join(' → ')+' ('+contact.advertPath.hops+' hop'+(contact.advertPath.hops===1?'':'s')+')') : '';
+    return (contact.favorite?'★ ':'')+(contact.name||contact.publicKey.slice(0,12))+' — '+type+', '+distance+advert+' ('+contact.publicKey.slice(0,12).toUpperCase()+')';
   }
   return {choices,label};
 });

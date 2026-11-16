@@ -312,6 +312,18 @@
       this.failure=Error(message+'; reconnect the USB source');p.reject(this.failure);
     }
     command(payload,code){return this.commandAny(payload,[code]);}
+    async advertPath(publicKey){
+      if(!/^[a-f0-9]{64}$/i.test(publicKey||''))throw Error('Invalid contact public key');
+      let frame;
+      try{frame=await this.commandAny(join(Uint8Array.of(42,0),unhex(publicKey)),[22]);}
+      catch(error){if(error.companionErrorCode===2)return null;throw error;}
+      if(frame.length<6)throw Error('Invalid advertisement path response');
+      const encoded=frame[5],hops=encoded&63,width=(encoded>>6)+1;
+      if(width>3||hops*width>64||frame.length!==6+hops*width)throw Error('Invalid advertisement path response');
+      const timestamp=new DataView(frame.buffer,frame.byteOffset,frame.byteLength).getUint32(1,true);
+      const path=[];for(let i=0;i<hops;i++)path.push(hex(frame.slice(6+i*width,6+(i+1)*width)).toUpperCase());
+      return {timestamp,hops,path};
+    }
     commandAny(payload,codes,anyResponse=false,timeoutMs=this.options.commandTimeout??15000){
       if(this.diagnosticDeadline!==undefined)timeoutMs=Math.min(timeoutMs,Math.max(1,this.diagnosticDeadline-Date.now()));
       const operation=usbOperation(payload),radio=requestRadio(this);

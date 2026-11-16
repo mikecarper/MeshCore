@@ -22,6 +22,7 @@ class Port{
       queueMicrotask(()=>{this.push(wire(Uint8Array.of(2,4,0,0,0)));this.push(wire(contact('11'.repeat(32),2,false,2,'Repeater')));this.push(wire(contact(key,this.targetType,true,this.targetPath,'Room')));this.push(wire(contact('33'.repeat(32),4,false,1,'Sensor')));this.push(wire(contact('44'.repeat(32),1,false,0,'Chat')));this.push(wire(Uint8Array.of(4,0,0,0,0)));});return;
     }
     else if(f[0]===5){out=Uint8Array.of(9,...new Uint8Array(new Uint32Array([this.clock]).buffer));}
+    else if(f[0]===42){assert.equal(f.length,34);assert.equal(f[1],0);out=this.advertFrame||Uint8Array.of(1,2);}
     else if(f[0]===6){this.clock=new DataView(f.buffer,f.byteOffset,f.byteLength).getUint32(1,true);out=Uint8Array.of(0);}
     else if(f[0]===52){
       assert.equal(Buffer.from(f.slice(2,34)).toString('hex'),key);
@@ -58,6 +59,20 @@ class Port{
 // its live USB lease are exercised separately against the complete Port above.
 function modelAuthorization(c){c.ensureGuardedSession=async()=>{if(!c.authenticated)await c.login('');};return c;}
 async function run(){
+  {
+    const p=new Port(),c=new CompanionTransport(p,{openSettle:0,commandTimeout:1000});
+    await c.open();
+    assert.equal(await c.advertPath(key),null);
+    p.advertFrame=Uint8Array.of(22,4,3,2,1,0x42,0xaa,0xbb,0xcc,0xdd);
+    assert.deepEqual(await c.advertPath(key),{timestamp:0x01020304,hops:2,path:['AABB','CCDD']});
+    p.advertFrame=Uint8Array.of(22,0,0,0,0,0);
+    assert.deepEqual(await c.advertPath(key),{timestamp:0,hops:0,path:[]});
+    p.advertFrame=Uint8Array.of(22,0,0,0,0,0xc1,0xaa,0xbb,0xcc,0xdd);
+    await assert.rejects(c.advertPath(key),/Invalid advertisement path/);
+    p.advertFrame=Uint8Array.of(1,1);
+    await assert.rejects(c.advertPath(key),error=>error.companionErrorCode===1);
+    await c.close();
+  }
   {
     const c=new CompanionTransport({},{}),originalNow=Date.now,clock=originalNow();
     Object.assign(c,{serving:true,otaSupported:true,usbRawFrameMax:188,otaRadioProfile:1,preamble:368,

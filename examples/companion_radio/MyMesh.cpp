@@ -41,6 +41,7 @@
 #include <helpers/ui/StartupScreen.h>
 #include "NotificationSettingsFile.h"
 #include "MyMesh.h"
+#include "RecentAdvertPaths.h"
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN && defined(ESP32) && defined(WIFI_SSID)
 #include <helpers/BrowserOtaCommandPolicy.h>
 #endif
@@ -1053,7 +1054,7 @@ void MyMesh::onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path
   if (path && mesh::Packet::isValidPathLen(path_len)) {  // check path is valid
     AdvertPath* p = advert_paths;
     uint32_t oldest = 0xFFFFFFFF;
-    for (int i = 0; i < ADVERT_PATH_TABLE_SIZE; i++) {   // check if already in table, otherwise evict oldest
+    for (int i = 0; i < advert_path_capacity; i++) {   // check if already in table, otherwise evict oldest
       if (memcmp(advert_paths[i].pubkey_prefix, contact.id.pub_key, sizeof(AdvertPath::pubkey_prefix)) == 0) {
         p = &advert_paths[i];   // found
         break;
@@ -1075,18 +1076,8 @@ void MyMesh::onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path
   updateGpsTelemetryPolicy();
 }
 
-static int sort_by_recent(const void *a, const void *b) {
-  return ((AdvertPath *) b)->recv_timestamp - ((AdvertPath *) a)->recv_timestamp;
-}
-
 int MyMesh::getRecentlyHeard(AdvertPath dest[], int max_num) {
-  if (max_num > ADVERT_PATH_TABLE_SIZE) max_num = ADVERT_PATH_TABLE_SIZE;
-  mesh::sortSmallTable(advert_paths, ADVERT_PATH_TABLE_SIZE, sizeof(advert_paths[0]), sort_by_recent);
-
-  for (int i = 0; i < max_num; i++) {
-    dest[i] = advert_paths[i];
-  }
-  return max_num;
+  return mesh::companion::copyRecentAdvertPaths(advert_paths, advert_path_capacity, dest, max_num);
 }
 
 #if defined(DISPLAY_CLASS) && !(defined(UI_NO_DISCOVER_SCREEN) && (UI_NO_DISCOVER_SCREEN + 0 != 0))
@@ -3194,7 +3185,11 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   sign_data_deadline = 0;
   dirty_contacts_expiry = 0;
   dirty_contacts_failures = 0;
-  memset(advert_paths, 0, sizeof(advert_paths));
+#if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
+  advert_paths = advert_paths_fallback;
+  advert_path_capacity = ADVERT_PATH_FALLBACK_SIZE;
+#endif
+  memset(advert_paths, 0, sizeof(AdvertPath) * advert_path_capacity);
   memset(send_scope.key, 0, sizeof(send_scope.key));
   send_unscoped = false;
 
@@ -3289,6 +3284,20 @@ void MyMesh::begin(bool has_display, bool radio_available,
   setRadioAvailable(radio_available);
   initializeContactStorage();
   initializeOfflineQueue();
+#if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
+  // Match the contact capacity when PSRAM is present, without consuming the
+  // limited internal RAM needed by networking. Keep the small cache on failure.
+  const int requested_advert_capacity = MAX_CONTACTS > ADVERT_PATH_FALLBACK_SIZE ? MAX_CONTACTS : ADVERT_PATH_FALLBACK_SIZE;
+  if (advert_path_capacity < requested_advert_capacity) {
+    AdvertPath* expanded = static_cast<AdvertPath*>(heap_caps_calloc(
+        requested_advert_capacity, sizeof(AdvertPath), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (expanded) {
+      memcpy(expanded, advert_paths, sizeof(AdvertPath) * advert_path_capacity);
+      advert_paths = expanded;
+      advert_path_capacity = requested_advert_capacity;
+    }
+  }
+#endif
   BaseChatMesh::begin();
   _radio_profiles.begin(_store->getPrimaryFS(), _radio, getRTCClock());
   mesh::loadMorseSettings(_store->getPrimaryFS());
@@ -8583,7 +8592,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     // FUTURE use:  uint8_t reserved = cmd_frame[1];
     uint8_t *pub_key = &cmd_frame[2];
     AdvertPath* found = NULL;
-    for (int i = 0; i < ADVERT_PATH_TABLE_SIZE; i++) {
+    for (int i = 0; i < advert_path_capacity; i++) {
       auto p = &advert_paths[i];
       if (memcmp(p->pubkey_prefix, pub_key, sizeof(p->pubkey_prefix)) == 0) {
         found = p;

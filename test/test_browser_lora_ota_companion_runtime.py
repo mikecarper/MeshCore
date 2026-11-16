@@ -28,6 +28,7 @@ HARNESS = r'''<script>
         const rows=[contact('11'.repeat(32),2,0,3,'Far'),contact('22'.repeat(32),3,0,1,'Room'),contact('33'.repeat(32),4,0,0,'Sensor'),contact('44'.repeat(32),1,1,0,'Other companion'),contact(key,2,1,0,'Test repeater'),contact('55'.repeat(32),2,0,1,'Near')];
         queueMicrotask(()=>{this.push(wire(Uint8Array.of(2,rows.length,0,0,0)));for(const c of rows)this.push(wire(c));this.push(wire(Uint8Array.of(4,0,0,0,0)));});return;}
       else if(f[0]===5){out=new Uint8Array(5);out[0]=9;new DataView(out.buffer).setUint32(1,clock,true);}
+      else if(f[0]===42){out=Uint8Array.of(1,2);}
       else if(f[0]===52){if(hex(f.slice(2,34))!==key)throw Error('wrong guard target');if(f[1]===1)guard=true;if(f[1]===3)guard=false;if(f[1]===4)corr=dec.decode(f.slice(34,36));out=Uint8Array.of(0);}
       else if(f[0]===26){if(!guard||!['','password'].includes(dec.decode(f.slice(33))))throw Error('bad login');out=Uint8Array.of(6,0,0,0,0,0,0,0,0,0);
         queueMicrotask(()=>this.push(wire(Uint8Array.of(0x85,1,...unhex(key).slice(0,6),0,0,0,0,3,1))));}

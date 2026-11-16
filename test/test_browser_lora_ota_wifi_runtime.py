@@ -98,6 +98,49 @@ def wifi_scan_harness():
     return harness
 
 
+def contact_path_help_harness():
+    harness = one_replace(wifi_harness(),
+        "else if(f[0]===42){out=Uint8Array.of(1,2);}",
+        "else if(f[0]===42){out=hex(f.slice(2))===key?Uint8Array.of(22,1,0,0,0,2,0xaa,0xbb):Uint8Array.of(1,2);}")
+    return one_replace(harness,
+        "if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);\n    const buttons=",
+        """if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);
+    await wait(()=>el('advert-path-progress').textContent.includes('complete'));
+    const help=el('contact-route-help');
+    const helpVisible=!help.hidden, text=help.textContent;
+    const labels=[...el('contact').querySelectorAll('button')].map(button=>button.textContent);
+    el('contact-search').value='not-a-contact';el('contact-search').dispatchEvent(new Event('input'));
+    const hiddenAfterSearch=help.hidden;
+    el('contact-search').value='';el('contact-search').dispatchEvent(new Event('input'));
+    await report({visible:helpVisible,text,labels,hiddenAfterSearch,visibleAfterClear:!help.hidden});return;
+    const buttons=""")
+
+
+def unsupported_advert_path_harness():
+    harness = one_replace(wifi_harness(),
+        "else if(f[0]===42){out=Uint8Array.of(1,2);}",
+        "else if(f[0]===42){out=Uint8Array.of(1,1);}")
+    return one_replace(harness,
+        "if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);\n    const buttons=",
+        """await wait(()=>el('advert-path-progress').textContent.includes('unavailable'));
+    await report({progress:el('advert-path-progress').textContent,stopHidden:el('advert-path-stop').hidden,
+      queries:port.frames.filter(frame=>frame[0]===42).length,connectionReady:!el('inspect').disabled});return;
+    const buttons=""")
+
+
+def stop_advert_path_harness():
+    harness = one_replace(wifi_harness(),
+        "else if(f[0]===42){out=Uint8Array.of(1,2);}",
+        "else if(f[0]===42){setTimeout(()=>this.push(wire(Uint8Array.of(1,2))),100);return;}")
+    return one_replace(harness,
+        "if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);\n    const buttons=",
+        """await wait(()=>!el('advert-path-stop').hidden);
+    el('advert-path-stop').click();await new Promise(resolve=>setTimeout(resolve,250));
+    await report({progress:el('advert-path-progress').textContent,queries:port.frames.filter(frame=>frame[0]===42).length,
+      stopHidden:el('advert-path-stop').hidden});return;
+    const buttons=""")
+
+
 class WifiCompanionBrowserTest(unittest.TestCase):
     def setUp(self):
         if not BROWSER:
@@ -139,6 +182,31 @@ class WifiCompanionBrowserTest(unittest.TestCase):
         self.assertEqual(result['ip'],'192.168.1.96')
         self.assertEqual(result['network'],'192.168.1.0/24')
         self.assertIn('Windows',result['help'])
+
+    def test_saved_path_explanation_follows_contact_visibility(self):
+        result = run_harness(contact_path_help_harness(), timeout=60)
+        self.assertNotIn('error', result, result)
+        self.assertTrue(result['visible'])
+        self.assertTrue(result['hiddenAfterSearch'])
+        self.assertTrue(result['visibleAfterClear'])
+        self.assertIn('Neither path confirms', result['text'])
+        self.assertIn('zero-hop', result['text'])
+        self.assertTrue(any('incoming advert: AA → BB (2 hops)' in label for label in result['labels']))
+
+    def test_old_wifi_companion_stops_after_one_unsupported_lookup(self):
+        result = run_harness(unsupported_advert_path_harness(), timeout=60)
+        self.assertNotIn('error', result, result)
+        self.assertEqual(result['queries'], 1)
+        self.assertTrue(result['stopHidden'])
+        self.assertTrue(result['connectionReady'])
+        self.assertIn('newer Companion firmware', result['progress'])
+
+    def test_stopping_advert_path_checks_does_not_start_more_queries(self):
+        result = run_harness(stop_advert_path_harness(), timeout=60)
+        self.assertNotIn('error', result, result)
+        self.assertEqual(result['queries'], 1)
+        self.assertTrue(result['stopHidden'])
+        self.assertIn('stopped', result['progress'])
 
     def test_setup_progress_identifies_wifi_source(self):
         result = run_harness(wifi_setup_harness(), timeout=90)

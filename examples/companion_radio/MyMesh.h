@@ -1297,8 +1297,16 @@ private:
                            AckTableEntry* replacement_entry);
 #endif
 
-  #define ADVERT_PATH_TABLE_SIZE   16
-  AdvertPath advert_paths[ADVERT_PATH_TABLE_SIZE]; // circular table
+  // Keep the original small cache if external RAM is unavailable.
+  #define ADVERT_PATH_FALLBACK_SIZE 16
+#if defined(ESP32_PLATFORM) && defined(BOARD_HAS_PSRAM)
+  AdvertPath advert_paths_fallback[ADVERT_PATH_FALLBACK_SIZE];
+  AdvertPath* advert_paths;
+  int advert_path_capacity;
+#else
+  AdvertPath advert_paths[ADVERT_PATH_FALLBACK_SIZE];
+  static constexpr int advert_path_capacity = ADVERT_PATH_FALLBACK_SIZE;
+#endif
 
 #if defined(DISPLAY_CLASS) && !(defined(UI_NO_DISCOVER_SCREEN) && (UI_NO_DISCOVER_SCREEN + 0 != 0))
   #ifdef UI_RECENT_LIST_SIZE

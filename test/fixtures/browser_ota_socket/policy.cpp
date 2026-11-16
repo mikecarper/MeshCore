@@ -53,6 +53,14 @@ int main() {
   for (auto pair : {std::pair<const uint8_t*, size_t>{start, sizeof(start)},
                     {contacts, sizeof(contacts)}, {clock, sizeof(clock)}, {query, sizeof(query)}})
     assert(allowed(pair.first, pair.second, false, nullptr));
+  uint8_t advert_path[35] = {42, 0};
+  memcpy(advert_path + 2, target, 32);
+  assert(allowed(advert_path, 34, false, nullptr));
+  assert(allowed(advert_path, 34, true, target));
+  assert(!allowed(advert_path, 33, false, nullptr));
+  assert(!allowed(advert_path, 35, false, nullptr));
+  advert_path[1] = 1;
+  assert(!allowed(advert_path, 34, false, nullptr));
   uint8_t guard[37] = {52,1}; memcpy(guard + 2, target, 32); guard[34] = 2;
   assert(allowed(guard, 35, false, nullptr));
   guard[1] = 4; guard[34] = 'a'; guard[35] = 'b'; guard[36] = '|';
