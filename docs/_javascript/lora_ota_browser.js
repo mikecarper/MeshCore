@@ -8,6 +8,7 @@
   let autoChain=null, autoStep='';
   let contacts=[], targetLocked=false, contactKey='', disconnectGeneration=0, activeSourceKind=null;
   let activeConnection=null;
+  let wifiScanController=null;
   const connectionKind=()=>activeConnection||$('connection').value;
   const wifiConnection=()=>connectionKind()==='wifi';
   // Transport modules retain their USB endpoint identifiers for safety
@@ -669,6 +670,9 @@
     $('disconnect').disabled=!link && !connectController;
     $('connection').disabled=active||!!link;
     $('wifi-url').disabled=active||!!link;
+    $('wifi-scan').disabled=active||!!link||!!wifiScanController;
+    $('wifi-subnet').disabled=active||!!link||!!wifiScanController;
+    $('wifi-results').disabled=active||!!link||!!wifiScanController;
     $('reconnect').hidden=!link?.failure;
     $('reconnect').disabled=active || !link?.failure;
     for (const name of editable) $(name).disabled = active || (updatesBlocked() && ['file','base','image','signer','chain-files','chain-attest','chain-objective','chain-preamble','chain-minutes'].includes(name)) || (!!link && (name === 'source' || name === 'acl' || name === 'relays' || (name === 'key' && (targetLocked || !!link.knownRepeater))));
@@ -872,7 +876,58 @@
     if(link||connectController)return;
     activeConnection=null;activeSourceKind=null;
     updateConnectionControls();
-    $('contact-status').textContent=wifiConnection()?'Start the local Wi-Fi bridge, then connect.':'Connect your USB radio to choose the remote device.';
+    $('contact-status').textContent=wifiConnection()?'Enter or find the Companion IP address, then connect.':'Connect your USB radio to choose the remote device.';
+  });
+  $('wifi-os').value=LoraOtaWifiScan.detectPlatform(navigator);
+  function updateWifiHelp(){
+    $('wifi-os-help').textContent=LoraOtaWifiScan.platformHelp[$('wifi-os').value]||LoraOtaWifiScan.platformHelp.unknown;
+  }
+  $('wifi-os').addEventListener('change',updateWifiHelp);
+  updateWifiHelp();
+  $('wifi-networks').addEventListener('change',()=>{
+    if($('wifi-networks').value)$('wifi-subnet').value=$('wifi-networks').value+'.0/24';
+  });
+  $('wifi-results').addEventListener('change',()=>{
+    if($('wifi-results').value)$('wifi-url').value=$('wifi-results').value;
+  });
+  $('wifi-scan-stop').addEventListener('click',()=>wifiScanController?.abort());
+  $('wifi-scan').addEventListener('click',async()=>{
+    if(wifiScanController||link||connectController)return;
+    const controller=wifiScanController=new AbortController();
+    $('wifi-scan').disabled=true;$('wifi-subnet').disabled=true;$('connection').disabled=true;
+    $('connect').disabled=true;$('wifi-scan-stop').hidden=false;$('wifi-results-wrap').hidden=true;
+    $('wifi-networks-wrap').hidden=true;$('wifi-results').replaceChildren(new Option('Select a device',''));
+    try{
+      let network=$('wifi-subnet').value.trim();
+      if(!network){
+        $('wifi-scan-status').textContent='Checking for a local network suggestion…';
+        const networks=await LoraOtaWifiScan.localPrefixes();
+        if(controller.signal.aborted)throw new DOMException('Scan canceled','AbortError');
+        if(networks.length===1){network=networks[0]+'.0/24';$('wifi-subnet').value=network;}
+        else if(networks.length>1){
+          $('wifi-networks').replaceChildren(new Option('Select a network',''));
+          for(const item of networks)$('wifi-networks').add(new Option(item+'.0/24',item));
+          $('wifi-networks-wrap').hidden=false;
+          $('wifi-scan-status').textContent='Select a suggested network and scan again, or enter a prefix.';return;
+        }else{
+          $('wifi-scan-status').textContent='Your browser hid its network address. Enter a private network prefix above and scan again.';return;
+        }
+      }
+      const found=await LoraOtaWifiScan.scan(network,{signal:controller.signal,
+        onProgress:(done,total)=>{$('wifi-scan-status').textContent='Scanning '+done+' of '+total+' addresses…';},
+        onFound:address=>{$('wifi-results').add(new Option(address,address));$('wifi-results-wrap').hidden=false;}
+      });
+      $('wifi-scan-status').textContent=found.length
+        ? 'Found '+found.length+' compatible '+(found.length===1?'Companion.':'Companions.')+' Select one to connect.'
+        : 'No devices found. Check the network prefix, local-network permission, and that both devices use the same Wi-Fi. Your browser may block local access; try current Chrome on Android.';
+      if(found.length===1){$('wifi-results').value=found[0];$('wifi-url').value=found[0];}
+    }catch(error){
+      $('wifi-scan-status').textContent=error?.name==='AbortError'?'Scan stopped.':String(error?.message||error);
+    }finally{
+      if(wifiScanController===controller)wifiScanController=null;
+      $('wifi-scan-stop').hidden=true;$('connection').disabled=!!link||!!connectController;
+      $('connect').disabled=!!link||!!connectController;busy(uiBusy);
+    }
   });
   $('acl').checked=false;
   function selectTarget() {
@@ -941,7 +996,7 @@
     $('connect').disabled = true; $('connect').textContent = 'Connecting...'; busy(true);
     const connection=recovery?.connection||$('connection').value;
     const wifi=connection==='wifi';
-    $('contact-status').textContent = wifi?'Connecting through the local Wi-Fi bridge...':'Choose a USB device...';
+    $('contact-status').textContent = wifi?'Connecting to the Wi-Fi Companion...':'Choose a USB device...';
     try {
       if (!wifi && !navigator.serial) throw Error('USB access is unavailable. Open this page in Chrome or Edge on a computer; Firefox does not support this USB connection.');
       const selected=wifi?'companion':recovery?.kind || $('source').value, key = $('key').value.trim();
@@ -958,7 +1013,7 @@
       activeConnection=connection;
       $('contact-status').textContent = 'Connecting to radio...';
       const openOptions = {openSignal:controller.signal, onOpenAttempt:(attempt,maxAttempts)=>{
-        if(!controller.signal.aborted) $('contact-status').textContent=wifi?'Opening local Wi-Fi bridge...':'Opening USB port (attempt '+attempt+' of '+maxAttempts+')...';
+        if(!controller.signal.aborted) $('contact-status').textContent=wifi?'Opening Wi-Fi connection...':'Opening USB port (attempt '+attempt+' of '+maxAttempts+')...';
       }, onOpenSuccess:()=>{
         if(!controller.signal.aborted) $('contact-status').textContent='Connecting to radio...';
       }};
@@ -1039,7 +1094,7 @@
       $('contact-status').textContent = controller.signal.aborted || error?.name === 'NotFoundError'
         ? (wifi?'Wi-Fi connection canceled.':'USB connection canceled. Choose a USB device to try again.')
         : error?.usbOpenFailed
-          ? (wifi?'Could not open the local Wi-Fi bridge. Confirm it is running and the Companion is reachable.':'Could not open the USB port. It may be in use by another app or browser tab. Disconnect the radio there and try again. If it still fails, reconnect its USB data cable.')
+          ? (wifi?'Could not connect. Check the IP address, local-network permission, Wi-Fi connection, and Companion firmware.':'Could not open the USB port. It may be in use by another app or browser tab. Disconnect the radio there and try again. If it still fails, reconnect its USB data cable.')
           : failureMessage(error)+'\nTry again.';
       if(recovery?.automatic)throw error;
     } finally {

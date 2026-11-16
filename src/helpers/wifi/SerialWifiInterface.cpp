@@ -59,6 +59,7 @@ void SerialWifiInterface::disconnectClient(bool cancel_session,
   if (cancel_session && was_connected && session_changed != nullptr) {
     session_changed(session_context);
   }
+  browser_ota_session = false;
 }
 
 void SerialWifiInterface::selectClient(const IPAddress& ip, uint32_t now) {
@@ -176,6 +177,7 @@ bool SerialWifiInterface::begin(int port) {
 
 void SerialWifiInterface::stopListener(DisconnectReason reason) {
   _isEnabled = false;
+  loopback_reserved = false;
   listener_requested = false;
   server.end();
   listener_was_healthy = false;
@@ -184,6 +186,16 @@ void SerialWifiInterface::stopListener(DisconnectReason reason) {
   consecutive_start_failures = 0;
   disconnectClient(true, reason);
   clearBuffers();
+}
+
+bool SerialWifiInterface::reserveLoopbackClient() {
+#if defined(ESP32)
+  if (loopback_reserved || !isEnabled() || deviceConnected || server.hasClient()) return false;
+  loopback_reserved = true;
+  return true;
+#else
+  return false;
+#endif
 }
 
 void SerialWifiInterface::end() {
@@ -350,6 +362,11 @@ size_t SerialWifiInterface::checkRecvFrame(uint8_t dest[], size_t capacity) {
   if (newClient) {
     const IPAddress new_ip = newClient.remoteIP();
 
+    if (loopback_reserved && new_ip != IPAddress(127, 0, 0, 1)) {
+      newClient.stop();
+      return 0;
+    }
+
     // disconnect existing client
     disconnectClient(!queue_has_ip || queue_ip != new_ip,
                      DisconnectReason::Replaced);
@@ -360,6 +377,7 @@ size_t SerialWifiInterface::checkRecvFrame(uint8_t dest[], size_t capacity) {
 
     // switch active connection to new client
     client = newClient;
+    browser_ota_session = loopback_reserved && new_ip == IPAddress(127, 0, 0, 1);
     ++accepted_clients;
 
     // forget received frame header

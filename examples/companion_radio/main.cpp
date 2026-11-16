@@ -164,6 +164,10 @@ bool companionIsBluetoothRoute(BaseSerialInterface* route) {
       #include <helpers/esp32/WiFiOtaSeeder.h>
     #endif
     SerialWifiInterface wifi_interface;
+#if COMPANION_FEATURE_DIRECT_OTA_ADMIN
+    #include <helpers/wifi/BrowserOtaSocket.h>
+    static BrowserOtaSocket browser_ota_socket(wifi_interface);
+#endif
     static bool companion_wifi_interface_registered = false;
     #ifndef WIFI_PWD
       #define WIFI_PWD ""
@@ -2811,6 +2815,9 @@ static bool saveCompanionWiFiPreference(bool enabled) {
 
   static void stopCompanionWiFiServices() {
     if (companion_wifi_services_stopped) return;
+#if COMPANION_FEATURE_DIRECT_OTA_ADMIN
+    browser_ota_socket.stop();
+#endif
     wifi_interface.end();
 #ifdef ENABLE_OTA
     ota_console_stop();
@@ -4805,6 +4812,9 @@ void loop() {
   serviceCompanionWiFiCredentialReload();
   serviceCompanionWiFiState();
   if (companion_wifi_requested && companion_wifi_active) {
+  #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
+    browser_ota_socket.loop();
+  #endif
   #ifdef ENABLE_OTA
     ota_console_loop();  // service the local text console (port 5002)
   #endif

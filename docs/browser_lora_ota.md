@@ -7,7 +7,7 @@
 Connect a source radio by USB or Wi-Fi, choose the remote device, then prepare and start its update.
 Keep the browser open until the new firmware is verified. This updater is experimental.
 USB requires Chrome or Edge on a computer with a Companion or compatible Repeater.
-Wi-Fi requires a compatible Companion and the local Wi-Fi bridge described below.
+Wi-Fi requires a compatible Companion on the same local network as your phone or computer.
 
 <div data-lora-ota>
   <p data-role="workflow-status" class="lora-ota-notice" role="status" aria-live="polite">Connect your source radio to get started.</p>
@@ -15,15 +15,26 @@ Wi-Fi requires a compatible Companion and the local Wi-Fi bridge described below
   <aside data-role="verbose-error-panel" hidden role="region" aria-label="Detailed error diagnostics">
     <pre id="lora-ota-error-details" data-role="error-details">Detailed errors will appear here. Passwords and secret command arguments are hidden.</pre>
   </aside>
-  <p data-role="browser-support" class="lora-ota-notice" role="alert" hidden>USB access is unavailable in this browser. Use Chrome or Edge for USB, or choose Wi-Fi and start the local bridge.</p>
+  <p data-role="browser-support" class="lora-ota-notice" role="alert" hidden>USB access is unavailable in this browser. Use Chrome or Edge for USB, or choose Wi-Fi.</p>
   <section class="lora-ota-step">
     <h2>1. Connect and choose the remote device</h2>
     <label>Connection
       <select data-role="connection"><option value="usb">USB</option><option value="wifi">Wi-Fi Companion</option></select>
     </label>
     <section data-role="wifi-options" hidden>
-      <p>Start the local Wi-Fi bridge on this computer with the Companion's network address. Paste the connection URL it prints below. <a href="#wi-fi-companion-connection">Wi-Fi setup instructions</a>.</p>
-      <label>Local bridge URL <input data-role="wifi-url" type="password" autocomplete="off" spellcheck="false" placeholder="ws://127.0.0.1:8765/…"></label>
+      <p>Enter the Companion's Wi-Fi address, or scan your local network. <a href="#wi-fi-companion-connection">Wi-Fi setup instructions</a>.</p>
+      <label>Companion IP address <input data-role="wifi-url" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="192.168.1.50"></label>
+      <details class="lora-ota-advanced"><summary>Find a Wi-Fi Companion</summary>
+        <p>The browser will try to suggest your private network. If it cannot, enter your phone's Wi-Fi IPv4 address, such as 192.168.1.20, or its /24 prefix, such as 192.168.1.0/24. Browsers may hide the address for privacy.</p>
+        <label>How to find your network address <select data-role="wifi-os"><option value="unknown">Choose your device</option><option value="apple">iPhone or iPad</option><option value="android">Android</option><option value="mac">macOS</option><option value="windows">Windows</option><option value="linux">Linux</option></select></label>
+        <p data-role="wifi-os-help" aria-live="polite"></p>
+        <p>Use this phone or computer's Wi-Fi IPv4 address to choose the network prefix; it is not the Companion's IP address. The scan covers one /24 network.</p>
+        <label>Your Wi-Fi IPv4 address or /24 network <input data-role="wifi-subnet" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="192.168.1.20 or 192.168.1.0/24"></label>
+        <label data-role="wifi-networks-wrap" hidden>Suggested network <select data-role="wifi-networks"><option value="">Select a network</option></select></label>
+        <p class="lora-ota-actions"><button type="button" data-role="wifi-scan">Scan network</button> <button type="button" data-role="wifi-scan-stop" hidden>Stop scan</button></p>
+        <p data-role="wifi-scan-status" role="status" aria-live="polite"></p>
+        <label data-role="wifi-results-wrap" hidden>Companion found <select data-role="wifi-results"><option value="">Select a device</option></select></label>
+      </details>
     </section>
     <details data-role="usb-options" class="lora-ota-advanced"><summary>USB connection options</summary>
     <label>USB device
@@ -182,26 +193,23 @@ Wi-Fi requires a compatible Companion and the local Wi-Fi bridge described below
 
 ## Wi-Fi Companion connection
 
-The browser cannot connect directly to the Companion's TCP port. Run the
-local bridge on the same computer as the browser, and connect that computer
-and the Companion to a network that allows them to reach each other. Wi-Fi
-mode requires a Companion built with Wi-Fi guarded LoRa OTA support. Older
-builds may support guarded OTA over USB but still require a firmware update
-for Wi-Fi. Repeater sources use USB. To enable Wi-Fi and find the Companion's
-address, see [Wi-Fi Companion setup](wifi.md#wifi-companion-setup).
-The Companion's TCP connection has no encryption or login; use a trusted
-network.
+Connect your phone and the Companion to the same trusted Wi-Fi network.
+Select **Wi-Fi Companion** above, enter the Companion's private IPv4 address,
+and connect. No computer or local bridge is required. You can also scan one
+private /24 network using **Find a Wi-Fi Companion**. Your browser may ask
+for local-network access; allow it to connect or scan. If the prompt appears
+during a scan, scan again after allowing access. A scan sends a read-only
+discovery request and does not change device settings. Disconnect other apps
+from the Companion for the duration of the update.
 
-From a checkout of this repository, install the bridge dependency and start
-the bridge, replacing the address with the Companion's IPv4 address:
-
-    python -m pip install "websockets>=13,<18"
-    python tools/lora_ota/browser_wifi_bridge.py 192.168.1.50
-
-Keep the bridge running. It prints a local connection URL; select **Wi-Fi
-Companion** above, paste the complete URL, and connect. The URL grants access
-to the bridge while it is running, so treat it as a password. Disconnect other
-apps from the Companion for the duration of the update.
+Direct Wi-Fi requires a Companion built with the browser Wi-Fi OTA endpoint;
+older USB-only or bridge-only builds need a firmware update first. Repeater
+sources use USB. To enable Wi-Fi and find the Companion's address, see
+[Wi-Fi Companion setup](WiFi.md#wifi-companion-setup). The local connection is
+not encrypted; use a trusted network. Browser support for local network access
+varies; on Android, try current Chrome if your browser blocks local access.
+iPhone browser support has not yet been verified. A failed scan can also mean that the network prefix
+or device address is wrong, or the browser blocked local network access.
 
 If the connection drops, reconnect the same source and check its state before
 continuing. The update is not automatically restarted or installed again.
@@ -522,7 +530,8 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_zip.js"></script>
 <script src="../_javascript/lora_ota_delta.js?v=auto-paths-3"></script>
 <script src="../_javascript/lora_ota_port.js"></script>
-<script src="../_javascript/lora_ota_wifi_port.js"></script>
+<script src="../_javascript/lora_ota_wifi_port.js?v=direct-wifi-1"></script>
+<script src="../_javascript/lora_ota_wifi_scan.js?v=direct-wifi-1"></script>
 <script src="../_javascript/lora_ota_serial.js?v=ota-quiet-1"></script>
 <script src="../_javascript/lora_ota_companion_source.js"></script>
 <script src="../_javascript/lora_ota_companion.js?v=wifi-guard-1"></script>
@@ -545,4 +554,4 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_recovery.js?v=usb-retry-1"></script>
 <script src="../_javascript/lora_ota_lease.js?v=active-lease-retry-1"></script>
 <script src="../_javascript/lora_ota_catalog.js?v=4aeb7bf86"></script>
-<script src="../_javascript/lora_ota_browser.js?v=wifi-source-1"></script>
+<script src="../_javascript/lora_ota_browser.js?v=direct-wifi-1"></script>

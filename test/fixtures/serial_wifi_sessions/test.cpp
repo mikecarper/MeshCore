@@ -489,6 +489,23 @@ int main(int argc, char** argv) {
     auto replacement = f.connect(A);
     f.drain(replacement);
     assert(!old->connected && revoked == 1 && replacement->sent.empty());
+  } else if (scenario == 46) {
+#if defined(ESP32)
+    assert(f.transport.reserveLoopbackClient());
+    assert(f.transport.browserOtaRestricted());
+    auto local = f.connect(IPAddress(127, 0, 0, 1));
+    assert(f.transport.browserOtaRestricted());
+    f.transport.releaseLoopbackClient();
+    // Bytes already queued at close must never regain trusted TCP privileges.
+    assert(f.transport.browserOtaRestricted());
+    local->received = {'<', 1, 0, 23};
+    assert(f.tick() == 1 && f.transport.browserOtaRestricted());
+    local->connected = false;
+    f.transport.loop();
+    assert(!f.transport.browserOtaRestricted());
+#else
+    assert(!f.transport.reserveLoopbackClient());
+#endif
   } else {
     assert(false && "unknown scenario");
   }

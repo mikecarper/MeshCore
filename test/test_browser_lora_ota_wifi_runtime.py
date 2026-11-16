@@ -15,8 +15,8 @@ def wifi_harness(*, guarded=True, wifi_capability=True):
         HARNESS,
         "el('source').value='companion';el('source').dispatchEvent(new Event('change'));",
         """el('connection').value='wifi';el('connection').dispatchEvent(new Event('change'));
-    el('wifi-url').value='ws://127.0.0.1:8765/1234567890abcdef';
-    window.LoraOtaWifiPort.create=url=>{if(url!==el('wifi-url').value)throw Error('Wrong bridge URL');return port;};""")
+    el('wifi-url').value='192.168.1.96';
+    window.LoraOtaWifiPort.create=url=>{if(url!==el('wifi-url').value)throw Error('Wrong IP');port.url='ws://192.168.1.96:5005/ota';return port;};""")
     harness = one_replace(
         harness,
         "if(el('source').value!=='companion')throw Error('Companion is not default');",
@@ -43,9 +43,9 @@ def reconnect_harness():
     harness = wifi_harness()
     harness = one_replace(harness, 'const port=new Port();', 'let port=new Port(),firstPort=port,opens=0;')
     harness = one_replace(harness,
-        "window.LoraOtaWifiPort.create=url=>{if(url!==el('wifi-url').value)throw Error('Wrong bridge URL');return port;};",
-        """window.LoraOtaWifiPort.create=url=>{if(url!==el('wifi-url').value)throw Error('Wrong bridge URL');
-          if(opens++)port=new Port();port.url=url;return port;};""")
+        "window.LoraOtaWifiPort.create=url=>{if(url!==el('wifi-url').value)throw Error('Wrong IP');port.url='ws://192.168.1.96:5005/ota';return port;};",
+        """window.LoraOtaWifiPort.create=url=>{if(url!==el('wifi-url').value&&url!=='ws://192.168.1.96:5005/ota')throw Error('Wrong IP');
+          if(opens++)port=new Port();port.url='ws://192.168.1.96:5005/ota';return port;};""")
     harness = one_replace(harness,
         "if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);\n    const buttons=",
         """if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);
@@ -63,7 +63,7 @@ def wifi_setup_harness():
                           "guarded_cli=1 guarded_radio=1 guarded_wifi=1';")
     harness = one_replace(harness, "el('password').value='password';el('connect').click();", """
     el('connection').value='wifi';el('connection').dispatchEvent(new Event('change'));
-    el('wifi-url').value='ws://127.0.0.1:8765/1234567890abcdef';
+    el('wifi-url').value='192.168.1.96';
     LoraOtaWifiPort.create=()=>port;
     el('password').value='password';el('connect').click();""")
     return harness
@@ -77,6 +77,24 @@ def wifi_error_harness():
     harness = one_replace(harness,
         "if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);\n    const buttons=",
         "await report({status:el('status').textContent,details:el('error-details').textContent});return;\n    const buttons=")
+    return harness
+
+
+def wifi_scan_harness():
+    harness=wifi_harness()
+    harness=one_replace(harness,"el('wifi-url').value='192.168.1.96';", """
+    el('wifi-os').value='windows';el('wifi-os').dispatchEvent(new Event('change'));
+    LoraOtaWifiScan.localPrefixes=async()=>['192.168.1'];
+    LoraOtaWifiScan.scan=async(network,options)=>{
+      if(network!=='192.168.1.0/24')throw Error('wrong network');
+      options.onFound('192.168.1.96');options.onProgress(254,254);return ['192.168.1.96'];
+    };
+    el('wifi-scan').click();await wait(()=>!el('wifi-scan').disabled);
+    if(el('wifi-url').value!=='192.168.1.96')throw Error('scan did not select IP');
+    if(!el('wifi-os-help').textContent.includes('Windows'))throw Error('wrong IP help');""")
+    harness=one_replace(harness,
+        "if(el('status').textContent.includes('Error:'))throw Error(el('status').textContent);\n    const buttons=",
+        "await report({ip:el('wifi-url').value,network:el('wifi-subnet').value,help:el('wifi-os-help').textContent});return;\n    const buttons=")
     return harness
 
 
@@ -115,6 +133,13 @@ class WifiCompanionBrowserTest(unittest.TestCase):
         self.assertEqual(result['opens'], 2)
         self.assertIn('Wi-Fi reconnected', result['status'])
 
+    def test_scan_suggests_network_and_selects_matching_device(self):
+        result=run_harness(wifi_scan_harness(),timeout=60)
+        self.assertNotIn('error',result,result)
+        self.assertEqual(result['ip'],'192.168.1.96')
+        self.assertEqual(result['network'],'192.168.1.0/24')
+        self.assertIn('Windows',result['help'])
+
     def test_setup_progress_identifies_wifi_source(self):
         result = run_harness(wifi_setup_harness(), timeout=90)
         self.assertNotIn('error', result, result)
@@ -122,13 +147,13 @@ class WifiCompanionBrowserTest(unittest.TestCase):
         self.assertIn('Wi-Fi source ota.hops=0 verified', result['inspectStatus'])
         self.assertNotIn('USB source', result['inspectStatus'])
 
-    def test_error_details_identify_wifi_without_disclosing_bridge_url(self):
+    def test_error_details_identify_wifi_without_disclosing_address(self):
         result = run_harness(wifi_error_harness(), timeout=60)
         self.assertNotIn('error', result, result)
         self.assertIn('Wi-Fi Companion', result['details'])
         self.assertIn('Wi-Fi source', result['details'])
         self.assertNotIn('USB source', result['details'])
-        self.assertNotIn('1234567890abcdef', result['details'])
+        self.assertNotIn('192.168.1.96', result['details'])
 
 
 if __name__ == '__main__':

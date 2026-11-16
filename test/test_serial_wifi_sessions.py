@@ -66,6 +66,7 @@ SCENARIOS = (
     "extended receive is opt-in",
     "same-IP guarded owner replacement discards stale replies",
     "guarded disconnect discards stale replies before same-IP reconnect",
+    "browser restriction remains latched until loopback disconnect",
 )
 
 

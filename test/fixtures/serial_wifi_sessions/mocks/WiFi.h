@@ -94,6 +94,12 @@ public:
   void stop() { if (_socket) _socket->connected = false; }
   IPAddress remoteIP() const { return _socket ? _socket->address : IPAddress(); }
   int available() { return connected() ? int(_socket->received.size()) : 0; }
+  int read() { uint8_t b = 0; return read(&b, 1) == 1 ? b : -1; }
+  int connect(IPAddress address, uint16_t, int) {
+    _socket = std::make_shared<MockSocket>(address);
+    MockTcp::sockets[_socket->descriptor] = _socket;
+    return 1;
+  }
   size_t read(uint8_t* dest, size_t size) {
     if (_socket) size = std::min(size, _socket->read_limit);
     size_t read = 0;
@@ -119,6 +125,7 @@ class WiFiServer {
   bool _listening = false;
   bool _owns_socket = false;
 public:
+  explicit WiFiServer(int = 0) {}
   enum class BeginFault { None, Socket, Bind, Listen };
   static std::deque<WiFiClient> incoming;
   inline static BeginFault begin_fault = BeginFault::None;
@@ -152,6 +159,7 @@ public:
     listener_lost = false;
     errno = 0;
   }
+  void begin() { begin(5005); }
   void end() {
     ++end_calls;
     if (_owns_socket) --open_sockets;
@@ -162,6 +170,7 @@ public:
     errno = 0;
   }
   operator bool() { return _listening && !listener_lost; }
+  bool hasClient() { return !incoming.empty(); }
   WiFiClient available() {
     if (!static_cast<bool>(*this) || incoming.empty()) return WiFiClient();
     WiFiClient client = incoming.front();

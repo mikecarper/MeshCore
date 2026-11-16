@@ -18,12 +18,18 @@ class FakeSocket {
 
 async function main() {
   assert.equal(validateUrl(URL), URL);
+  assert.equal(validateUrl('192.168.1.96'), 'ws://192.168.1.96:5005/ota');
+  assert.equal(validateUrl('10.2.3.4'), 'ws://10.2.3.4:5005/ota');
+  assert.equal(validateUrl('172.31.2.5'), 'ws://172.31.2.5:5005/ota');
+  assert.equal(validateUrl('ws://192.168.1.96:5005/ota'), 'ws://192.168.1.96:5005/ota');
   for (const bad of ['http://127.0.0.1:8765/abcdefghijklmnopqrstuvwx',
     'ws://localhost:8765/abcdefghijklmnopqrstuvwx',
     'ws://192.168.1.2:8765/abcdefghijklmnopqrstuvwx',
     'ws://127.0.0.1:8766/abcdefghijklmnopqrstuvwx',
-    'ws://127.0.0.1:8765/short', URL + '?token=x', URL + '#x'])
-    assert.throws(() => create(bad, {WebSocket:FakeSocket}), /bridge address/);
+    'ws://127.0.0.1:8765/short', URL + '?token=x', URL + '#x',
+    '8.8.8.8','172.32.0.1','192.168.001.2','https://192.168.1.2',
+    'ws://192.168.1.2:5005/ota?x=1','ws://192.168.1.2:5005/other'])
+    assert.throws(() => create(bad, {WebSocket:FakeSocket}), /private IPv4/);
 
   const port = create(URL, {WebSocket:FakeSocket, openTimeout:100, drainTimeout:100});
   const opening = port.open({baudRate:115200, bufferSize:4096});

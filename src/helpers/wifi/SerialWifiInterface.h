@@ -98,6 +98,8 @@ private:
   bool (*session_boundary)(void*) = nullptr;
   void* boundary_context = nullptr;
   bool ota_raw_receive = false;
+  bool loopback_reserved = false;
+  bool browser_ota_session = false;
 
   void clearBuffers();
   void expireHeldQueue(uint32_t now);
@@ -143,6 +145,11 @@ public:
     boundary_context = context;
   }
   void enableOtaRawReceive(bool enabled) { ota_raw_receive = enabled; }
+  // A local browser gateway must never replace another Companion client.
+  // While reserved, only its loopback connection may enter this listener.
+  bool reserveLoopbackClient();
+  void releaseLoopbackClient() { loopback_reserved = false; }
+  bool browserOtaRestricted() const override { return loopback_reserved || browser_ota_session; }
   size_t usbRawPacketReceiveCapacity() const override {
     return ota_raw_receive ? MAX_USB_RAW_FRAME_SIZE : MAX_FRAME_SIZE;
   }

@@ -41,6 +41,9 @@
 #include <helpers/ui/StartupScreen.h>
 #include "NotificationSettingsFile.h"
 #include "MyMesh.h"
+#if COMPANION_FEATURE_DIRECT_OTA_ADMIN && defined(ESP32) && defined(WIFI_SSID)
+#include <helpers/BrowserOtaCommandPolicy.h>
+#endif
 #if defined(MESH_RADIO_AUTO_SX1268) && MESH_RADIO_AUTO_SX1268
 #include <helpers/LoRaRadioFamily.h>
 #endif
@@ -7167,6 +7170,22 @@ void MyMesh::handleCmdFrame(size_t len) {
       return;
     }
   }
+
+  #if COMPANION_FEATURE_DIRECT_OTA_ADMIN && defined(ESP32) && defined(WIFI_SSID)
+  // An Origin check cannot authorize all Companion commands on a shared
+  // hosting domain. Restrict the native browser route before any dispatch;
+  // the transport has already assembled and bounded this complete frame.
+  BaseSerialInterface* browser_route = _serial->captureReplyRoute();
+  if (browser_route && browser_route->browserOtaRestricted()) {
+    const bool guarded = browser_route == _ota_direct_owner && _ota_direct_radio_owned
+        && _ota_direct_admin.active(_ms->getMillis()) && directOtaRadioCurrent();
+    const uint8_t* target = guarded ? _ota_direct_contact.id.pub_key : nullptr;
+    if (!mesh::browser_ota::allowed(cmd_frame, len, guarded, target)) {
+      writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
+      return;
+    }
+  }
+  #endif
 
 #if defined(MESH_HIL_BLE_BENCH) && MESH_HIL_BLE_BENCH
   if (cmd_frame[0] == mesh::companion::kBleBenchCommand) {

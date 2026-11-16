@@ -1,4 +1,4 @@
-/* Serial-like byte streams over the locally authorized Wi-Fi bridge. */
+/* Serial-like byte streams over the Companion's local Wi-Fi WebSocket. */
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -11,15 +11,26 @@
   const OPEN_TIMEOUT = 10000;
   const DRAIN_TIMEOUT = 15000;
 
-  // Only the local bridge is trusted to receive privileged Companion traffic.
-  // The unguessable path is a capability; do not log or include it in errors.
+  // Restrict direct connections to literal private IPv4 addresses: a public
+  // endpoint or a hostname that resolves elsewhere must not receive commands.
+  function privateAddress(value) {
+    const parts=String(value).split('.');
+    if(parts.length!==4||parts.some(p=>!/^(?:0|[1-9]\d{0,2})$/.test(p)||Number(p)>255))return false;
+    const [a,b,c,d]=parts.map(Number);
+    return d>0&&d<255&&(a===10 || (a===172&&b>=16&&b<=31) || (a===192&&b===168));
+  }
+
+  // Existing localhost capability URLs remain supported for older installs.
+  // The direct endpoint is fixed by the firmware; users enter only its IP.
   function validateUrl(value) {
+    value=String(value||'').trim();
+    if(privateAddress(value))return `ws://${value}:5005/ota`;
     let url;
-    try { url = new URL(value); } catch (_) { throw new Error('Enter the complete local Wi-Fi bridge address.'); }
-    if (url.protocol !== 'ws:' || url.hostname !== '127.0.0.1' || url.port !== '8765' ||
-        url.username || url.password || url.search || url.hash ||
-        !/^\/[A-Za-z0-9_-]{16,256}$/.test(url.pathname))
-      throw new Error('Enter the complete local Wi-Fi bridge address.');
+    try { url = new URL(value); } catch (_) { throw new Error('Enter the Companion’s private IPv4 address.'); }
+    const noExtras=!url.username&&!url.password&&!url.search&&!url.hash;
+    const direct=url.protocol==='ws:'&&privateAddress(url.hostname)&&url.port==='5005'&&url.pathname==='/ota';
+    const legacy=url.protocol==='ws:'&&url.hostname==='127.0.0.1'&&url.port==='8765'&&/^\/[A-Za-z0-9_-]{16,256}$/.test(url.pathname);
+    if(!noExtras||(!direct&&!legacy))throw new Error('Enter the Companion’s private IPv4 address.');
     return url.href;
   }
 
@@ -46,7 +57,7 @@
       this.opening = true;
       let socket;
       try { socket = new this.Socket(this.url); }
-      catch (_) { this.opening = false; throw new Error('Wi-Fi bridge connection failed.'); }
+      catch (_) { this.opening = false; throw new Error('Wi-Fi connection failed.'); }
       this.socket = socket;
       socket.binaryType = 'arraybuffer';
       let readController, writeController, expectedClose = false, terminated = false;
@@ -63,7 +74,7 @@
         }
         try { socket.close(); } catch (_) {}
       };
-      const closeSocket = () => { expectedClose = true; fail('Wi-Fi bridge closed.'); };
+      const closeSocket = () => { expectedClose = true; fail('Wi-Fi connection closed.'); };
       this.closeSocket = closeSocket;
       this.readable = new ReadableStream({
         start(controller) { readController = controller; },
@@ -72,16 +83,16 @@
       this.writable = new WritableStream({
         start(controller) { writeController = controller; },
         async write(chunk) {
-          if (!(chunk instanceof Uint8Array)) throw new TypeError('Wi-Fi bridge accepts byte arrays only.');
-          if (chunk.byteLength > MAX_MESSAGE) throw new RangeError('Wi-Fi bridge write is too large.');
+          if (!(chunk instanceof Uint8Array)) throw new TypeError('Wi-Fi connection accepts byte arrays only.');
+          if (chunk.byteLength > MAX_MESSAGE) throw new RangeError('Wi-Fi write is too large.');
           const deadline = Date.now() + thisDrainTimeout;
           while (socket.bufferedAmount + chunk.byteLength > MAX_BUFFER) {
-            if (terminated || socket.readyState !== 1) throw new Error('Wi-Fi bridge disconnected.');
-            if (Date.now() >= deadline) { fail('Wi-Fi bridge write timed out.'); throw new Error('Wi-Fi bridge write timed out.'); }
+            if (terminated || socket.readyState !== 1) throw new Error('Wi-Fi disconnected.');
+            if (Date.now() >= deadline) { fail('Wi-Fi write timed out.'); throw new Error('Wi-Fi write timed out.'); }
             await new Promise(resolve => setTimeout(resolve, 20));
           }
-          if (terminated || socket.readyState !== 1) throw new Error('Wi-Fi bridge disconnected.');
-          try { socket.send(chunk); } catch (_) { fail('Wi-Fi bridge write failed.'); throw new Error('Wi-Fi bridge write failed.'); }
+          if (terminated || socket.readyState !== 1) throw new Error('Wi-Fi disconnected.');
+          try { socket.send(chunk); } catch (_) { fail('Wi-Fi write failed.'); throw new Error('Wi-Fi write failed.'); }
         },
         close() { closeSocket(); },
         abort() { closeSocket(); }
@@ -91,12 +102,12 @@
         if (terminated) return;
         const data = event.data instanceof ArrayBuffer ? new Uint8Array(event.data) : null;
         if (!data || data.byteLength > MAX_BUFFER || readController.desiredSize < data.byteLength) {
-          fail('Wi-Fi bridge sent invalid or excessive data.'); return;
+          fail('Wi-Fi source sent invalid or excessive data.'); return;
         }
-        try { readController.enqueue(data); } catch (_) { fail('Wi-Fi bridge receive failed.'); }
+        try { readController.enqueue(data); } catch (_) { fail('Wi-Fi receive failed.'); }
       };
-      socket.onclose = () => fail('Wi-Fi bridge disconnected.');
-      socket.onerror = () => fail('Wi-Fi bridge connection failed.');
+      socket.onclose = () => fail('Wi-Fi disconnected.');
+      socket.onerror = () => fail('Wi-Fi connection failed.');
       try {
         await new Promise((resolve, reject) => {
           let done = false;
@@ -105,16 +116,16 @@
             done = true; clearTimeout(timer);
             if (error) reject(error); else resolve();
           };
-          const timer = setTimeout(() => { finish(new Error('Wi-Fi bridge connection timed out.')); fail('Wi-Fi bridge connection timed out.'); }, this.openTimeout);
-          socket.onopen = () => { if (terminated) finish(new Error('Wi-Fi bridge disconnected.')); else finish(); };
-          socket.onerror = () => { finish(new Error('Wi-Fi bridge connection failed.')); fail('Wi-Fi bridge connection failed.'); };
-          socket.onclose = () => { fail('Wi-Fi bridge disconnected.'); finish(new Error('Wi-Fi bridge disconnected.')); };
+          const timer = setTimeout(() => { finish(new Error('Wi-Fi connection timed out.')); fail('Wi-Fi connection timed out.'); }, this.openTimeout);
+          socket.onopen = () => { if (terminated) finish(new Error('Wi-Fi disconnected.')); else finish(); };
+          socket.onerror = () => { finish(new Error('Wi-Fi connection failed.')); fail('Wi-Fi connection failed.'); };
+          socket.onclose = () => { fail('Wi-Fi disconnected.'); finish(new Error('Wi-Fi disconnected.')); };
         });
-        if (terminated) throw new Error('Wi-Fi bridge disconnected.');
+        if (terminated) throw new Error('Wi-Fi disconnected.');
         this.connected = true;
       } catch (error) {
         // Opening failure is a fresh socket, not a persistent USB owner.
-        expectedClose = true; fail('Wi-Fi bridge disconnected.');
+        expectedClose = true; fail('Wi-Fi disconnected.');
         this.socket = this.closeSocket = this.readable = this.writable = null;
         throw error;
       } finally {
@@ -133,5 +144,5 @@
     }
   }
 
-  return {create: (url, options) => new WifiPort(url, options), validateUrl};
+  return {create: (url, options) => new WifiPort(url, options), validateUrl, privateAddress};
 });
