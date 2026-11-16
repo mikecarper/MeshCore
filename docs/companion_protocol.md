@@ -80,6 +80,53 @@ ESP32 and nRF52 Companion UART characteristics require the same PIN-protected,
 MITM-authenticated link. ESP32 advertises DisplayOnly capability so a central
 must enter the PIN shown by the Companion; a Just Works bond is insufficient.
 
+### Opt-in framed Bluetooth OTA transport
+
+ESP32 Full Companions with the guarded browser-OTA feature can negotiate an
+alternative framing mode on the normal UART characteristics. This is separate
+from the nRF52 mOTA source service described below. Existing clients retain the
+ordinary protocol unless they explicitly request this mode; older firmware and
+other platforms do not implement it.
+
+After subscribing to TX notifications, write the five bytes
+`7F 4F 54 41 01` to RX, and wait for that exact, unframed echo. Unsolicited
+ordinary notifications can arrive before the echo. An error or timeout means
+the framing mode is unavailable; do not start an OTA transfer. Reconnect to
+return to ordinary framing. The mode and any partial frames are discarded on
+disconnect.
+
+After the echo, each complete Companion command or notification is split into
+one or more GATT values:
+
+```text
+7E total offset data...
+```
+
+`total` is the complete binary Companion frame length, from 1 to 188 bytes;
+`offset` is the zero-based byte offset of this fragment. Fragments must start
+at offset zero, use the same total, and contain consecutive, non-empty data
+without overlap. Do not insert USB-style serial length headers. The host sends
+at most 17 data bytes per write, using write-with-response; after **each** host
+fragment it waits for the notification `7E 00 next_offset` before writing
+the next one. That acknowledgement confirms fragment receipt, not execution
+of the command. Once the last fragment is acknowledged, wait for the usual
+Companion command response.
+
+Firmware-to-host fragments use the same nonzero-total format and may be as
+large as the negotiated ATT notification payload. Reassemble them in order;
+they do not need host acknowledgements. Fragment acknowledgements can arrive
+between fragments of a device notification. Invalid fragments or a lost
+connection require reconnecting and restarting the session; do not replay a
+partially sent command without checking its outcome.
+
+The echo only establishes the framing mode. Before starting an update, also
+query the local `get ota.direct.capabilities` command and require
+`guarded_cli=1`, `guarded_radio=1`, and `guarded_ble=1`. Guarded OTA owns its
+source connection and selected radio, uses a direct zero-hop target, and is
+invalidated on disconnect or a replacement connection. The larger 188-byte
+raw command is restricted to guarded direct OTA packets. Normal Companion
+commands and notifications keep their existing formats inside the envelope.
+
 ### Connection Steps
 
 1. **Scan for Devices**

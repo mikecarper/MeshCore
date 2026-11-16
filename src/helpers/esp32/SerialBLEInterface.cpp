@@ -1112,6 +1112,7 @@ void SerialBLEInterface::onConnect(BLEServer* pServer, NimBLEConnInfo& info) {
     return;
   }
   last_conn_id = info.getConnHandle();
+  _sessionGeneration.fetch_add(1, std::memory_order_acq_rel);
   deviceConnected = false;
   oldDeviceConnected = false;
   notifySucceeded = false;
@@ -1139,6 +1140,7 @@ void SerialBLEInterface::onConnect(BLEServer* pServer, ble_gap_conn_desc* desc) 
   BLE_DEBUG_PRINTLN("onConnect(), conn_id=%d, mtu=%d", desc->conn_handle,
                     pServer->getPeerMTU(desc->conn_handle));
   last_conn_id = desc->conn_handle;
+  _sessionGeneration.fetch_add(1, std::memory_order_acq_rel);
   deviceConnected = false;  // becomes usable only after authentication completes
   oldDeviceConnected = false;
   notifySucceeded = false;
@@ -1195,6 +1197,7 @@ void SerialBLEInterface::onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t 
 #endif
   BLE_DEBUG_PRINTLN("onConnect(), conn_id=%d, mtu=%d", param->connect.conn_id, pServer->getPeerMTU(param->connect.conn_id));
   last_conn_id = param->connect.conn_id;
+  _sessionGeneration.fetch_add(1, std::memory_order_acq_rel);
   deviceConnected = false;  // becomes usable only after authentication completes
   oldDeviceConnected = false;
   notifySucceeded = false;
@@ -1242,6 +1245,7 @@ void SerialBLEInterface::onDisconnect(BLEServer* pServer) {
 #endif
   if (!_callbacksEnabled.load(std::memory_order_acquire)) return;
   BLE_DEBUG_PRINTLN("onDisconnect()");
+  _sessionGeneration.fetch_add(1, std::memory_order_acq_rel);
   deviceConnected = false;
   notifySucceeded = false;
   notificationsEnabled.store(false, std::memory_order_release);
@@ -1399,6 +1403,10 @@ void SerialBLEInterface::clearBuffers() {
   _tx_stall_watchdog.reset();
   _tx_disconnect_recovery.complete();
   _tx_reset_pending.store(false, std::memory_order_release);
+  _otaFramingActive = false;
+  _otaControlLen = _otaTxOffset = 0;
+  _otaTxPinned = false;
+  _otaReceiver.reset();
 }
 
 void SerialBLEInterface::servicePendingTxReset() {
@@ -1407,6 +1415,10 @@ void SerialBLEInterface::servicePendingTxReset() {
   notifySucceeded = false;
   _tx_stall_watchdog.reset();
   _tx_disconnect_recovery.complete();
+  _otaFramingActive = false;
+  _otaControlLen = _otaTxOffset = 0;
+  _otaTxPinned = false;
+  _otaReceiver.reset();
 }
 
 void SerialBLEInterface::scheduleAdvertisingRestart(uint32_t now) {
@@ -1599,8 +1611,9 @@ size_t SerialBLEInterface::writeFrame(const uint8_t src[], size_t len) {
   }
 
   if (isConnected() && len > 0) {
-    if (!mesh::enqueueCompanionFrame(send_queue, send_queue_len, FRAME_QUEUE_SIZE,
-                                     src, len)) {
+    // A partially delivered framed notification must remain at the head.
+    if (!mesh::ble_ota::enqueue(send_queue, send_queue_len, FRAME_QUEUE_SIZE,
+                                _otaFramingActive && _otaTxPinned, src, len)) {
       BLE_DEBUG_PRINTLN("writeFrame(), send_queue is full!");
       return 0;
     }
@@ -1634,7 +1647,7 @@ bool SerialBLEInterface::hasRequiredReplyCapacity() const {
   if (send_queue_len < FRAME_QUEUE_SIZE) return true;
   // Match enqueueCompanionFrame's admission rule: a required response can
   // displace best-effort traffic, but must never displace another required one.
-  for (int i = 0; i < send_queue_len; ++i) {
+  for (int i = _otaFramingActive && _otaTxPinned ? 1 : 0; i < send_queue_len; ++i) {
     if (!mesh::companionFrameRequiresDelivery(send_queue[i].buf, send_queue[i].len))
       return true;
   }
@@ -1648,6 +1661,10 @@ bool SerialBLEInterface::isWriteBusy() const {
 }
 
 size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
+  return checkRecvFrame(dest, MAX_FRAME_SIZE);
+}
+
+size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[], size_t capacity) {
   const uint32_t now = (uint32_t)millis();
 #if defined(MESH_BLUEDROID_BOND_PROTECTION) && MESH_BLUEDROID_BOND_PROTECTION
   if (mesh_bl_narrow_pending()) return 0;
@@ -1659,7 +1676,70 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
     return 0;
   }
 
-  if (send_queue_len > 0   // first, check send queue
+  if (_otaFramingActive && (_otaControlLen || send_queue_len > 0)
+      && mesh::bleElapsedAtLeast(now, _last_write, BLE_WRITE_MIN_INTERVAL)) {
+    const uint16_t mtu = pServer->getPeerMTU(last_conn_id);
+#if MESH_BLE_USES_NIMBLE
+    const bool ready = notificationsEnabled.load(std::memory_order_acquire);
+#else
+    const bool ready = pTxDescriptor != NULL && pTxDescriptor->getNotifications();
+#endif
+    const bool control = _otaControlLen != 0;
+    const bool marker = !control && mesh::companionRadioLogMarkerPending(send_queue[0].buf, send_queue[0].len);
+    uint8_t wire[MAX_FRAME_SIZE + mesh::ble_ota::HEADER];
+    size_t wire_len = 0;
+    size_t original_len = 0;
+    if (control) {
+      memcpy(wire, _otaControl, _otaControlLen); wire_len = _otaControlLen;
+    } else if (mtu > 6) {
+      uint8_t marker_bytes[] = {mesh::COMPANION_RADIO2_LOG, 0xA1};
+      uint8_t data[MAX_FRAME_SIZE];
+      const uint8_t* source = send_queue[0].buf;
+      original_len = send_queue[0].len;
+      if (marker) { source = marker_bytes; original_len = sizeof(marker_bytes); }
+      else if (mesh::companionRadioLogDataPending(source, original_len)) {
+        memcpy(data, source, original_len); data[0] = mesh::COMPANION_LEGACY_RX_LOG; source = data;
+      }
+      const size_t limit = (size_t)(mtu - 3) < sizeof(wire) ? (size_t)(mtu - 3) : sizeof(wire);
+      wire_len = mesh::ble_ota::fragment(source, original_len, _otaTxOffset, wire, limit);
+    }
+    if (ready && wire_len && mtu > 3 && wire_len <= mtu - 3) {
+      _last_write = now;
+      notifySucceeded = false;
+      if (!control) _otaTxPinned = true;
+      pTxCharacteristic->setValue(wire, wire_len);
+      const uint16_t connection = last_conn_id;
+#if defined(MESH_USE_NIMBLE_ARDUINO)
+      notifySucceeded = pTxCharacteristic->notify(last_conn_id);
+#else
+      pTxCharacteristic->notify();
+#endif
+      if (_tx_reset_pending.load(std::memory_order_acquire) || !isConnected() || last_conn_id != connection) {
+        servicePendingTxReset();
+        return 0;
+      }
+      if (notifySucceeded) {
+        if (control) _otaControlLen = 0;
+        else {
+          _otaTxOffset += wire_len - mesh::ble_ota::HEADER;
+          if (_otaTxOffset == original_len) {
+            _otaTxOffset = 0;
+            _otaTxPinned = false;
+            if (marker) send_queue[0].buf[0] = mesh::COMPANION_RADIO2_LOG_PENDING;
+            else {
+              --send_queue_len;
+              for (int i = 0; i < send_queue_len; ++i) send_queue[i] = send_queue[i + 1];
+            }
+          }
+        }
+        _tx_stall_watchdog.reset();
+      } else if (_tx_stall_watchdog.noteBlocked(now)) {
+        recoverStalledTx("Bluetooth OTA notification blocked"); return 0;
+      }
+    } else if (_tx_stall_watchdog.noteBlocked(now)) {
+      recoverStalledTx("Bluetooth OTA notification waiting for MTU"); return 0;
+    }
+  } else if (!_otaFramingActive && send_queue_len > 0   // first, check send queue
     && mesh::bleElapsedAtLeast(now, _last_write,
                                BLE_WRITE_MIN_INTERVAL)    // space the writes apart
   ) {
@@ -1756,8 +1836,33 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
   // Service TX above even when full, then retain a command until its required
   // reply can be admitted. Dequeuing while all TX slots are required causes
   // one-shot replies (including CMD66) to be silently lost by writeFrame().
-  if (deviceConnected && hasRequiredReplyCapacity()
+  // The handshake has its own control slot. Permit it even if old unframed
+  // notifications fill the queue and cannot fit a newly connected peer's MTU.
+  const bool hello_pending = _otaFramingAllowed && !_otaFramingActive
+      && xQueuePeek(recv_queue, &frame, 0) == pdTRUE
+      && mesh::ble_ota::isHello(frame.buf, frame.len);
+  if (deviceConnected && !_otaControlLen && (hasRequiredReplyCapacity() || hello_pending)
       && xQueueReceive(recv_queue, &frame, 0) == pdTRUE) {
+    if (_otaFramingAllowed && !_otaFramingActive && mesh::ble_ota::isHello(frame.buf, frame.len)) {
+      _otaFramingActive = true;
+      memcpy(_otaControl, mesh::ble_ota::MAGIC, sizeof(mesh::ble_ota::MAGIC));
+      _otaControlLen = sizeof(mesh::ble_ota::MAGIC);
+      return 0;
+    }
+    if (_otaFramingActive) {
+      const auto result = _otaReceiver.accept(frame.buf, frame.len);
+      if (result == mesh::ble_ota::Receiver::Result::Invalid) {
+        recoverStalledTx("invalid Bluetooth OTA command fragments"); return 0;
+      }
+      _otaControl[0] = mesh::ble_ota::FRAGMENT;
+      _otaControl[1] = 0;
+      _otaControl[2] = _otaReceiver.received();
+      _otaControlLen = 3;
+      if (result == mesh::ble_ota::Receiver::Result::Complete)
+        return _otaReceiver.copyTo(dest, capacity);
+      return 0;
+    }
+    if (frame.len > capacity) return 0;
     memcpy(dest, frame.buf, frame.len);
     BLE_DEBUG_PRINTLN("readBytes: sz=%d, hdr=%d", (uint32_t) frame.len, (uint32_t) dest[0]);
     return frame.len;

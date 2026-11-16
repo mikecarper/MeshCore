@@ -43,7 +43,7 @@ class Port{
       if(cmd==='get ota.direct')reply=`> ota.direct v=2 active=${this.guard?1:0} busy=0`;
       else if(cmd==='ver')reply='v1.18.0.2-dev-12345678 (Build: 06-Nov-2026)';
       else if(cmd==='get usb.raw.max')reply='> 188';
-      else if(cmd==='get ota.direct.capabilities')reply=this.legacy?'Unknown command':'> ota.direct.cap guarded_cli=1 guarded_radio=1';
+      else if(cmd==='get ota.direct.capabilities')reply=this.legacy?'Unknown command':this.capabilities||'> ota.direct.cap guarded_cli=1 guarded_radio=1';
       else if(cmd==='get radio.rxps')reply=this.rxps;
       else if(cmd==='get radio')reply='> 910.525,62.5,7,5';
       else if(cmd.startsWith('get ota.direct.reply ')){const at=Number(cmd.split(' ').pop()),bytes=enc.encode(this.reply),part=bytes.slice(at,at+40);reply=this.pendingReply?`> ota.reply req=${this.correlation} state=pending bytes=0 off=0 data=-`:`> ota.reply req=${this.correlation} state=ready bytes=${bytes.length} off=${at} data=${Buffer.from(part).toString('hex')||'-'}`;}
@@ -59,6 +59,15 @@ class Port{
 // its live USB lease are exercised separately against the complete Port above.
 function modelAuthorization(c){c.ensureGuardedSession=async()=>{if(!c.authenticated)await c.login('');};return c;}
 async function run(){
+  {
+    const p=new Port();p.capabilities='> ota.direct.cap guarded_cli=1 guarded_radio=1 guarded_wifi=0 guarded_ble=1';
+    const c=new CompanionTransport(p,{openSettle:0,commandTimeout:1000});
+    await c.open();assert.equal(c.otaSupported,true);assert.equal(c.wifiGuardSupported,false);assert.equal(c.bleGuardSupported,true);await c.close();
+  }
+  {
+    const p=new Port(),c=new CompanionTransport(p,{openSettle:0,commandTimeout:1000});
+    await c.open();assert.equal(c.bleGuardSupported,false);await c.close();
+  }
   {
     const p=new Port(),c=new CompanionTransport(p,{openSettle:0,commandTimeout:1000});
     await c.open();

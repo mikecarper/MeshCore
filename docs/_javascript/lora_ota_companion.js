@@ -167,7 +167,7 @@
       this.failure=null;this.decoder=new Decoder();this.pending=null;this.loginWaiter=null;this.queue=Promise.resolve();this.admin=Promise.resolve();
       this.authenticated=false;this.authenticatedPassword=null;this.guard=false;this.investigationEnabled=false;this.investigationCancelled=false;this.investigationAuthenticated=false;this.investigationVerified=false;this.investigationProofPending=false;this.investigationPassword=null;this.investigationPermission='unknown';this.used=new Set();this.timestamp=0;this.serving=false;this.seeder=null;this.radioQueue=[];this.radioRunning=false;this.nextTx=0;this.txQueue=Promise.resolve();this.contactList=[];this.peerType=2;
       this.radioProbeAdmission=null;
-      this.otaSupported=false;this.wifiGuardSupported=false;this.localCliSupported=false;this.otaMode='legacy';this.rawPacketSupport='unverified';
+      this.otaSupported=false;this.wifiGuardSupported=false;this.bleGuardSupported=false;this.localCliSupported=false;this.otaMode='legacy';this.rawPacketSupport='unverified';
       this.usbRawFrameMax=176;this.radioProbeNextRequestAt=0;
       this.usbFolderSupported=false;this.usbFolderProbePending=false;this.usbFolderSource=null;this.usbFolderAttached=false;
       this.folderAdmission=null;
@@ -221,9 +221,10 @@
           let status=this.localCliSupported?dec.decode(frame.slice(1)).trim():'';
           if (/^>?\s*ota\.direct v=2 active=[01] busy=[01]\s*$/i.test(status)) {
             const cap=await this.localCommand('get ota.direct.capabilities');
-            const capabilities=/^>?\s*ota\.direct\.cap guarded_cli=1 guarded_radio=1(?: guarded_wifi=([01]))?\s*$/i.exec(cap);
+            const capabilities=/^>?\s*ota\.direct\.cap guarded_cli=1 guarded_radio=1(?: guarded_wifi=([01]))?(?: guarded_ble=([01]))?\s*$/i.exec(cap);
             this.otaSupported=!!capabilities;
             this.wifiGuardSupported=capabilities?.[1]==='1';
+            this.bleGuardSupported=capabilities?.[2]==='1';
             if(this.otaSupported)status=await this.recoverOwnedDirectGuard(status);
             if(this.otaSupported&&!/^>?\s*ota\.direct v=2 active=0 busy=0\s*$/i.test(status))
               this.otaUnavailableReason='The Companion OTA mailbox is already in use';

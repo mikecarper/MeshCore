@@ -6883,7 +6883,10 @@ bool MyMesh::directOtaRadioEligible(uint8_t profile) const {
 
 bool MyMesh::directOtaRadioCurrent() const {
   const auto* profiles = _radio ? _radio->profiles() : nullptr;
-  return _ota_direct_radio_owned && directOtaRadioEligible(_ota_direct_radio_profile)
+  return _ota_direct_radio_owned && _ota_direct_owner
+      && _ota_direct_owner->sessionGeneration() == _ota_direct_owner_generation
+      && _serial && _serial->isReplyRouteAvailable(_ota_direct_owner)
+      && directOtaRadioEligible(_ota_direct_radio_profile)
       && profiles->generation[_ota_direct_radio_profile] == _ota_direct_radio_generation;
 }
 
@@ -6897,6 +6900,7 @@ void MyMesh::closeDirectOtaAdmin() {
   resetContactValue(_ota_direct_contact);
   _ota_direct_admin.clear();
   _ota_direct_owner = nullptr;
+  _ota_direct_owner_generation = 0;
   _ota_direct_radio_owned = false;
   _ota_direct_radio_generation = 0;
 }
@@ -6967,6 +6971,7 @@ __attribute__((noinline, cold)) bool MyMesh::handleDirectOtaFrame(size_t len) {
           ? mesh::RADIO_TX_SECONDARY : mesh::RADIO_TX_PRIMARY;
     }
     _ota_direct_owner = route;
+    _ota_direct_owner_generation = route->sessionGeneration();
     if (!_ota_direct_radio_owned) {
       _ota_direct_radio_generation = profiles->generation[_ota_direct_radio_profile];
       _ota_direct_radio_owned = true;
@@ -7019,6 +7024,8 @@ bool MyMesh::handleDirectOtaCommand(const char* command, uint32_t timestamp,
   if (capabilities) {
     if (route == _ota_direct_wifi_route)
       snprintf(reply, capacity, "> ota.direct.cap guarded_cli=1 guarded_radio=1 guarded_wifi=1");
+    else if (route == _ota_direct_bluetooth_route)
+      snprintf(reply, capacity, "> ota.direct.cap guarded_cli=1 guarded_radio=1 guarded_wifi=0 guarded_ble=1");
     else
       snprintf(reply, capacity, "> ota.direct.cap guarded_cli=1 guarded_radio=1");
     return true;
@@ -7036,6 +7043,7 @@ bool MyMesh::handleDirectOtaCommand(const char* command, uint32_t timestamp,
     else if (!directOtaRadioEligible(profile)) snprintf(reply, capacity, "ERR ota.direct.radio requires a temporary MeshCore RXTX profile");
     else {
       _ota_direct_owner = route;
+      _ota_direct_owner_generation = route->sessionGeneration();
       _ota_direct_radio_profile = profile;
       snprintf(reply, capacity, "OK - ota.direct.radio %s", value);
     }
@@ -8773,9 +8781,10 @@ void MyMesh::handleCmdFrame(size_t len) {
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
         // Larger Wi-Fi frames are reserved for an active direct OTA owner.
         // Physical USB retains its existing raw-packet capacity and behavior.
-        if (len > MAX_FRAME_SIZE && _serial->captureReplyRoute() == _ota_direct_wifi_route
+        if (len > MAX_FRAME_SIZE && (_serial->captureReplyRoute() == _ota_direct_wifi_route
+                                    || _serial->captureReplyRoute() == _ota_direct_bluetooth_route)
             && (pkt->getPayloadType() != PAYLOAD_TYPE_OTA
-                || _ota_direct_owner != _ota_direct_wifi_route
+                || _ota_direct_owner != _serial->captureReplyRoute()
                 || !_ota_direct_admin.active(_ms->getMillis()) || !directOtaRadioCurrent()
                 || !pkt->isRouteDirect() || pkt->getPathHashCount() != 0)) {
           releasePacket(pkt);
@@ -11886,8 +11895,8 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
       snprintf(reply, reply_capacity, MESH_CLI_REPLY_TEXT("ERR usb.raw.max requires a local transport", "ERR local transport only"));
     } else {
       BaseSerialInterface* route = _serial ? _serial->captureReplyRoute() : nullptr;
-      // Only the physical USB backend opts in to extended raw receive. BLE,
-      // WiFi and auxiliary UARTs report the unchanged ordinary frame limit.
+      // Report the capacity of the active transport. Bluetooth only exposes
+      // the extended size after its OTA framing handshake has completed.
       snprintf(reply, reply_capacity, "> %u", (unsigned)(route
           ? route->usbRawPacketReceiveCapacity() : MAX_FRAME_SIZE));
     }
@@ -12558,6 +12567,12 @@ complete_line:
 
 void MyMesh::checkSerialInterface() {
   size_t len = _serial->checkRecvFrame(cmd_frame, sizeof(cmd_frame));
+#if COMPANION_FEATURE_DIRECT_OTA_ADMIN
+  if (_ota_direct_owner && _ota_direct_owner->sessionGeneration() != _ota_direct_owner_generation) {
+    closeDirectOtaAdmin();
+    _ota_direct_radio_profile = 0;
+  }
+#endif
   if (_iter_started && !_serial->isReplyRouteAvailable(_iter_reply_route)) {
     stopContactsIterator();
   }

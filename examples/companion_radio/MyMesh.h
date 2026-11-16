@@ -268,6 +268,11 @@ public:
     }
     _ota_direct_wifi_route = route;
   }
+  void setDirectAdminBluetoothRoute(BaseSerialInterface* route) {
+    if (_ota_direct_bluetooth_route != route && _ota_direct_owner == _ota_direct_bluetooth_route)
+      closeDirectOtaAdmin();
+    _ota_direct_bluetooth_route = route;
+  }
   bool cancelDirectOtaForRoute(BaseSerialInterface* route) {
     if (!route || _ota_direct_owner != route) return false;
     closeDirectOtaAdmin();
@@ -739,10 +744,15 @@ private:
   ContactInfo* _ota_direct_transient = nullptr;
   BaseSerialInterface* _ota_direct_usb_route = nullptr;
   BaseSerialInterface* _ota_direct_wifi_route = nullptr;
+  BaseSerialInterface* _ota_direct_bluetooth_route = nullptr;
   BaseSerialInterface* _ota_direct_owner = nullptr;
+  uint32_t _ota_direct_owner_generation = 0;
   bool directOtaRouteAllowed(BaseSerialInterface* route) const {
-    return route && (route == _ota_direct_usb_route || route == _ota_direct_wifi_route)
-        && (!_ota_direct_owner || route == _ota_direct_owner);
+    return route && (route == _ota_direct_usb_route || route == _ota_direct_wifi_route
+                     || (route == _ota_direct_bluetooth_route
+                         && route->usbRawPacketReceiveCapacity() >= BaseSerialInterface::MAX_USB_RAW_FRAME_SIZE))
+        && (!_ota_direct_owner || (route == _ota_direct_owner
+            && route->sessionGeneration() == _ota_direct_owner_generation));
   }
   bool _ota_direct_radio_owned = false;
   uint8_t _ota_direct_radio_profile = 0;

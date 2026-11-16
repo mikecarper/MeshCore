@@ -4,6 +4,7 @@
 #include "../BluetoothMac.h"
 #include "../BleTxStallWatchdog.h"
 #include "../UsbLogging.h"
+#include "../BleOtaFraming.h"
 #if defined(MESH_USE_NIMBLE_ARDUINO)
   #include <NimBLEDevice.h>
 #else
@@ -129,6 +130,14 @@ class SerialBLEInterface : public BaseSerialInterface,
   bool _bonded_only;
   std::atomic<bool> _advertisingSuppressed{false};
   std::atomic<bool> _bondedOnlyRecoveryPending{false};
+  std::atomic<uint32_t> _sessionGeneration{0};
+  bool _otaFramingAllowed = false;
+  bool _otaFramingActive = false;
+  uint8_t _otaControl[5] = {};
+  uint8_t _otaControlLen = 0;
+  uint8_t _otaTxOffset = 0;
+  bool _otaTxPinned = false;
+  mesh::ble_ota::Receiver _otaReceiver;
 
   struct Frame {
     uint8_t len;
@@ -291,6 +300,12 @@ public:
   }
   size_t writeFrame(const uint8_t src[], size_t len) override;
   size_t checkRecvFrame(uint8_t dest[]) override;
+  size_t checkRecvFrame(uint8_t dest[], size_t capacity) override;
+  void enableOtaFraming() { _otaFramingAllowed = true; }
+  uint32_t sessionGeneration() const override { return _sessionGeneration.load(std::memory_order_acquire); }
+  size_t usbRawPacketReceiveCapacity() const override {
+    return _otaFramingActive ? MAX_USB_RAW_FRAME_SIZE : MAX_FRAME_SIZE;
+  }
 };
 
 #if BLE_DEBUG_LOGGING && ARDUINO

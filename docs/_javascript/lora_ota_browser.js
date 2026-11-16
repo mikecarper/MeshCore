@@ -11,20 +11,23 @@
   let wifiScanController=null;
   const connectionKind=()=>activeConnection||$('connection').value;
   const wifiConnection=()=>connectionKind()==='wifi';
+  const bluetoothConnection=()=>connectionKind()==='bluetooth';
+  const connectionLabel=()=>wifiConnection()?'Wi-Fi':bluetoothConnection()?'Bluetooth':'USB';
   // Transport modules retain their USB endpoint identifiers for safety
   // decisions. Translate only user-visible text; never alter error metadata.
   function displayTransport(value){
     const text=String(value);
-    if(!wifiConnection())return text;
-    return text.replace(/USB Companion/g,'Wi-Fi Companion')
-      .replace(/USB source/g,'Wi-Fi source')
-      .replace(/USB radio/g,'Wi-Fi radio')
-      .replace(/USB command/g,'Wi-Fi command')
-      .replace(/USB identity/g,'Wi-Fi identity')
-      .replace(/USB connection/g,'Wi-Fi connection')
-      .replace(/USB OTA/g,'Wi-Fi OTA')
-      .replace(/USB\/local/g,'Wi-Fi/local')
-      .replace(/over USB/g,'over Wi-Fi');
+    if(connectionKind()==='usb')return text;
+    const label=connectionLabel();
+    return text.replace(/USB Companion/g,label+' Companion')
+      .replace(/USB source/g,label+' source')
+      .replace(/USB radio/g,label+' radio')
+      .replace(/USB command/g,label+' command')
+      .replace(/USB identity/g,label+' identity')
+      .replace(/USB connection/g,label+' connection')
+      .replace(/USB OTA/g,label+' OTA')
+      .replace(/USB\/local/g,label+'/local')
+      .replace(/over USB/g,'over '+label);
   }
   const sourceKind=()=>activeSourceKind||($('source').value==='auto'?'companion':$('source').value);
   const aclIntent=()=>$('acl').checked||$('password').value.length===0;
@@ -69,12 +72,16 @@
       preparedDownload==='ready' ? 'Install and verify update' : 'Update remote firmware';
   }
   function updateConnectionControls(){
-    const wifi=$('connection').value==='wifi';
+    const wifi=$('connection').value==='wifi', bluetooth=$('connection').value==='bluetooth';
+    const appleMobile=LoraOtaWifiScan.detectPlatform(navigator)==='apple';
     $('wifi-options').hidden=!wifi;
-    $('usb-options').hidden=wifi;
-    $('browser-support').hidden=wifi||!!navigator.serial;
-    $('connect').textContent=wifi?'Connect Wi-Fi Companion':'Connect USB source';
-    $('reconnect').textContent=wifi?'Reconnect Wi-Fi Companion':'Reconnect USB source';
+    $('bluetooth-options').hidden=!bluetooth;
+    $('bluefy-help').hidden=!appleMobile;
+    $('usb-options').hidden=wifi||bluetooth;
+    $('browser-support').hidden=wifi||(bluetooth?!!navigator.bluetooth:!!navigator.serial);
+    $('browser-support').textContent=bluetooth?(appleMobile?'Bluetooth access is unavailable in this browser. Install Bluefy and open this page there.':'Bluetooth access is unavailable in this browser. On Android, use Chrome.'):'USB access is unavailable in this browser. Use Chrome or Edge for USB, or choose Wi-Fi or Bluetooth.';
+    $('connect').textContent=wifi?'Connect Wi-Fi Companion':bluetooth?'Connect Bluetooth Companion':'Connect USB source';
+    $('reconnect').textContent=wifi?'Reconnect Wi-Fi Companion':bluetooth?'Reconnect Bluetooth Companion':'Reconnect USB source';
   }
   updateConnectionControls();
   const updatesBlocked = () => !!link?.failure || sourceOtaUnsupported || !!targetAvailability && targetAvailability.state !== 'supported';
@@ -372,7 +379,7 @@
     // Binary USB replies have no transaction ID. Reopen and re-identify the
     // same port once instead of replaying an unanswered frame into that stream.
     // The interrupted update remains stopped; only recovery reads/cleanup run.
-    if(!wifiConnection()&&(error?.otaUsbTimeout||direct?.failure?.otaUsbTimeout)&&connection===link&&
+    if(connectionKind()==='usb'&&(error?.otaUsbTimeout||direct?.failure?.otaUsbTimeout)&&connection===link&&
         generation===disconnectGeneration&&!connectController&&!usbRetryActive&&!disconnecting&&
         sourceKind()==='companion'&&connection?.port&&/^[a-f0-9]{64}$/i.test(sourceKey||'')&&
         !usbRetryAttempted.has(connection)){
@@ -920,7 +927,7 @@
     if(link||connectController)return;
     activeConnection=null;activeSourceKind=null;
     updateConnectionControls();
-    $('contact-status').textContent=wifiConnection()?'Enter or find the Companion IP address, then connect.':'Connect your USB radio to choose the remote device.';
+    $('contact-status').textContent=wifiConnection()?'Enter or find the Companion IP address, then connect.':bluetoothConnection()?'Connect your Bluetooth Companion to choose the remote device.':'Connect your USB radio to choose the remote device.';
   });
   $('wifi-os').value=LoraOtaWifiScan.detectPlatform(navigator);
   function updateWifiHelp(){
@@ -1037,7 +1044,7 @@
     if(generation!==disconnectGeneration||link!==previous)return false;
     // A new TCP session is a new firmware owner. Do not reuse the old port
     // object as authority to recover a guarded session or USB folder lease.
-    const port=connection==='wifi'?globalThis.LoraOtaWifiPort.create(previousPort.url):previousPort;
+    const port=connection==='wifi'?globalThis.LoraOtaWifiPort.create(previousPort.url):connection==='bluetooth'?globalThis.LoraOtaBlePort.create(previousPort.device):previousPort;
     link=null;targetLocked=false;
     await connect({port,sourceKey,kind,connection,target,profile,profileRequired,automatic});
     return generation===disconnectGeneration&&link?.port===port&&link.sourceKey===sourceKey&&!link.failure;
@@ -1048,11 +1055,12 @@
     $('source-update-help').hidden=true;
     $('connect').disabled = true; $('connect').textContent = 'Connecting...'; busy(true);
     const connection=recovery?.connection||$('connection').value;
-    const wifi=connection==='wifi';
-    $('contact-status').textContent = wifi?'Connecting to the Wi-Fi Companion...':'Choose a USB device...';
+    const wifi=connection==='wifi', bluetooth=connection==='bluetooth';
+    $('contact-status').textContent = wifi?'Connecting to the Wi-Fi Companion...':bluetooth?'Choose a Bluetooth Companion...':'Choose a USB device...';
     try {
-      if (!wifi && !navigator.serial) throw Error('USB access is unavailable. Open this page in Chrome or Edge on a computer; Firefox does not support this USB connection.');
-      const selected=wifi?'companion':recovery?.kind || $('source').value, key = $('key').value.trim();
+      if (!wifi && !bluetooth && !navigator.serial) throw Error('USB access is unavailable. Open this page in Chrome or Edge on a computer; Firefox does not support this USB connection.');
+      if (bluetooth && !navigator.bluetooth) throw Error('Bluetooth access is unavailable. Use Chrome on Android or Bluefy on iPhone or iPad.');
+      const selected=wifi||bluetooth?'companion':recovery?.kind || $('source').value, key = $('key').value.trim();
       if (key && !/^[0-9a-f]{64}$/i.test(key)) throw Error('Enter the target\'s complete public key.');
       if (selected==='repeater' && !key && !recovery) throw Error('Enter the target\'s complete public key.');
       const relays = $('relays').value.trim() ? $('relays').value.trim().split(/[\s,]+/) : [];
@@ -1061,12 +1069,14 @@
       if (relays.length && !key) throw Error('Enter the target\'s complete public key for a routed update.');
       const port = recovery?.port || (wifi
         ? globalThis.LoraOtaWifiPort.create($('wifi-url').value.trim())
+        : bluetooth ? globalThis.LoraOtaBlePort.create(await globalThis.LoraOtaBlePort.requestDevice(navigator.bluetooth),{signal:controller.signal})
         : await LoraOtaPort.requestSerialPort(navigator.serial, {signal:controller.signal}));
       if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
+      if(bluetooth)port.setOpenSignal?.(controller.signal);
       activeConnection=connection;
       $('contact-status').textContent = 'Connecting to radio...';
-      const openOptions = {openSignal:controller.signal, onOpenAttempt:(attempt,maxAttempts)=>{
-        if(!controller.signal.aborted) $('contact-status').textContent=wifi?'Opening Wi-Fi connection...':'Opening USB port (attempt '+attempt+' of '+maxAttempts+')...';
+      const openOptions = {openSignal:controller.signal, ...(bluetooth?{contactsTimeout:600000}:{}), onOpenAttempt:(attempt,maxAttempts)=>{
+        if(!controller.signal.aborted) $('contact-status').textContent=wifi?'Opening Wi-Fi connection...':bluetooth?'Opening Bluetooth connection...':'Opening USB port (attempt '+attempt+' of '+maxAttempts+')...';
       }, onOpenSuccess:()=>{
         if(!controller.signal.aborted) $('contact-status').textContent='Connecting to radio...';
       }};
@@ -1085,6 +1095,8 @@
       await link.open();
       if(wifi && (link.otaSupported!==true || link.wifiGuardSupported!==true || link.usesUsbFolderFallback))
         throw Error('This Wi-Fi Companion does not support the guarded OTA connection required by the updater. Update its firmware first.');
+      if(bluetooth && (link.port.bleOtaCapable!==true || link.otaSupported!==true || link.bleGuardSupported!==true || link.usesUsbFolderFallback))
+        throw Error('This Bluetooth Companion needs firmware with guarded Bluetooth OTA support. Update its firmware first.');
       if(recovery && link.sourceKey!==recovery.sourceKey)throw Error('The reconnected source radio has a different identity. Disconnect and choose the intended source.');
       if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
       showSourceUpdate(link.sourceUpdateRequired);
@@ -1101,7 +1113,7 @@
           link.otaMode==='guarded' ? 'guarded OTA selected automatically' : 'raw-packet OTA compatibility selected automatically';
         $('source-info').textContent='Companion firmware: '+sourceVersion+'  /  '+sourceMode+'.';
         $('source-info').hidden=false;
-        $('contact-status').textContent = 'Loading contacts...';
+        $('contact-status').textContent = bluetooth ? 'Loading contacts over Bluetooth; this can take a few minutes for a large list...' : 'Loading contacts...';
         contacts=await link.contacts();
         if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
         renderContacts();
@@ -1135,7 +1147,7 @@
       $('chain-plan').disabled = updatesBlocked();
       $('find-route').disabled = !repeaterAclIntent() || !link.supportsRoutedPath || !!link.relays;
       log('Connected to source ' + link.sourceKey + '.');
-      status(recovery ? (wifi?'Wi-Fi reconnected. ':'USB reconnected. ')+'Select Prepare update to recheck the radios, or Find matching firmware to check the device.' : 'Connected. Choose the remote device and select Find matching firmware.', 'ready');
+      status(recovery ? (wifi?'Wi-Fi reconnected. ':bluetooth?'Bluetooth reconnected. ':'USB reconnected. ')+'Select Prepare update to recheck the radios, or Find matching firmware to check the device.' : 'Connected. Choose the remote device and select Find matching firmware.', 'ready');
       void scanAdvertPaths();
     } catch (error) {
       if(!recovery?.automatic&&!controller.signal.aborted && error?.name!=='NotFoundError')await fail(error);
@@ -1146,9 +1158,9 @@
       $('legacy-warning').hidden=true;
       $('source-info').hidden=true; $('source-info').textContent='';
       $('contact-status').textContent = controller.signal.aborted || error?.name === 'NotFoundError'
-        ? (wifi?'Wi-Fi connection canceled.':'USB connection canceled. Choose a USB device to try again.')
+        ? (wifi?'Wi-Fi connection canceled.':bluetooth?'Bluetooth connection canceled. Choose a Bluetooth Companion to try again.':'USB connection canceled. Choose a USB device to try again.')
         : error?.usbOpenFailed
-          ? (wifi?'Could not connect. Check the IP address, local-network permission, Wi-Fi connection, and Companion firmware.':'Could not open the USB port. It may be in use by another app or browser tab. Disconnect the radio there and try again. If it still fails, reconnect its USB data cable.')
+          ? (wifi?'Could not connect. Check the IP address, local-network permission, Wi-Fi connection, and Companion firmware.':bluetooth?'Could not connect to the Bluetooth Companion. '+failureMessage(error)+' Disconnect other apps and check its Bluetooth OTA firmware.':'Could not open the USB port. It may be in use by another app or browser tab. Disconnect the radio there and try again. If it still fails, reconnect its USB data cable.')
           : failureMessage(error)+'\nTry again.';
       if(recovery?.automatic)throw error;
     } finally {

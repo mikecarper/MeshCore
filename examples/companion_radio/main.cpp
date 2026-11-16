@@ -4391,6 +4391,10 @@ void setup() {
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN && defined(ENABLE_USB_INTERFACE)
   the_mesh.setDirectAdminUsbRoute(&usb_serial_interface);
 #endif
+#if COMPANION_FEATURE_DIRECT_OTA_ADMIN && defined(ESP32_PLATFORM) && defined(BLE_PIN_CODE)
+  bluetooth_interface.enableOtaFraming();
+  the_mesh.setDirectAdminBluetoothRoute(&bluetooth_interface);
+#endif
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN && defined(ESP32) && defined(WIFI_SSID)
   the_mesh.setDirectAdminWifiRoute(&wifi_interface);
   wifi_interface.enableOtaRawReceive(true);

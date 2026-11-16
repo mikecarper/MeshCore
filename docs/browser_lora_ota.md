@@ -4,10 +4,11 @@
 
 # Update remote firmware over LoRa
 
-Connect a source radio by USB or Wi-Fi, choose the remote device, then prepare and start its update.
+Connect a source radio by USB, Wi-Fi, or Bluetooth, choose the remote device, then prepare and start its update.
 Keep the browser open until the new firmware is verified. This updater is experimental.
 USB requires Chrome or Edge on a computer with a Companion or compatible Repeater.
 Wi-Fi requires a compatible Companion on the same local network as your phone or computer.
+Bluetooth requires a compatible Companion with Bluetooth OTA support. On Android, use Chrome.
 
 <div data-lora-ota>
   <p data-role="workflow-status" class="lora-ota-notice" role="status" aria-live="polite">Connect your source radio to get started.</p>
@@ -15,12 +16,16 @@ Wi-Fi requires a compatible Companion on the same local network as your phone or
   <aside data-role="verbose-error-panel" hidden role="region" aria-label="Detailed error diagnostics">
     <pre id="lora-ota-error-details" data-role="error-details">Detailed errors will appear here. Passwords and secret command arguments are hidden.</pre>
   </aside>
-  <p data-role="browser-support" class="lora-ota-notice" role="alert" hidden>USB access is unavailable in this browser. Use Chrome or Edge for USB, or choose Wi-Fi.</p>
+  <p data-role="browser-support" class="lora-ota-notice" role="alert" hidden></p>
   <section class="lora-ota-step">
     <h2>1. Connect and choose the remote device</h2>
     <label>Connection
-      <select data-role="connection"><option value="usb">USB</option><option value="wifi">Wi-Fi Companion</option></select>
+      <select data-role="connection"><option value="usb">USB</option><option value="wifi">Wi-Fi Companion</option><option value="bluetooth">Bluetooth Companion</option></select>
     </label>
+    <section data-role="bluetooth-options" hidden>
+      <p>Turn on Bluetooth, disconnect other apps from the Companion, and select <strong>Connect Bluetooth Companion</strong> to choose your device. The Companion needs firmware with Bluetooth OTA support.</p>
+      <p data-role="bluefy-help" hidden>On iPhone or iPad, <a href="https://apps.apple.com/us/app/bluefy-web-ble-browser/id1492822055">install Bluefy</a>, then <a href="bluefy://open?url=https%3A%2F%2Fmikecarper.github.io%2FMeshCore%2Fbrowser_lora_ota%2F">open this updater in Bluefy</a>. If the link does not open it, copy <code>https://mikecarper.github.io/MeshCore/browser_lora_ota/</code> into Bluefy's address bar.</p>
+    </section>
     <section data-role="wifi-options" hidden>
       <p>Scan your local network, or enter the Companion's Wi-Fi address. <a href="#wi-fi-companion-connection">Wi-Fi setup instructions</a>.</p>
       <details class="lora-ota-advanced"><summary>Find a Wi-Fi Companion</summary>
@@ -61,7 +66,7 @@ Wi-Fi requires a compatible Companion on the same local network as your phone or
     <section data-role="target-controls" hidden>
     <label>Search contacts by name or public-key prefix<input data-role="contact-search" autocomplete="off" spellcheck="false" disabled></label>
     <p><strong>Device to update</strong></p>
-    <p data-role="contact-route-help" hidden>Saved paths can be out of date. Incoming advert paths show how a recent advertisement reached this Companion; they are not verified return routes. The recent-advert cache is limited and clears on restart. Neither path confirms current reachability. Wi-Fi Companion updates need a direct (zero-hop) connection; select Find matching firmware to contact the device and check compatibility.</p>
+    <p data-role="contact-route-help" hidden>Saved paths can be out of date. Incoming advert paths show how a recent advertisement reached this Companion; they are not verified return routes. The recent-advert cache is limited and clears on restart. Neither path confirms current reachability. Wi-Fi and Bluetooth Companion updates need a direct (zero-hop) connection; select Find matching firmware to contact the device and check compatibility.</p>
     <p data-role="advert-path-progress" role="status" hidden></p>
     <p><button type="button" class="lora-ota-secondary" data-role="advert-path-stop" hidden>Stop checking advert paths</button></p>
     <section data-role="contact" class="lora-ota-contacts" role="group" aria-label="Devices to update" hidden></section>
@@ -204,6 +209,12 @@ Wi-Fi requires a compatible Companion on the same local network as your phone or
   </details>
   </details>
 </div>
+
+## Bluetooth Companion connection
+
+Turn on Bluetooth and disconnect the Companion from other apps. Select **Bluetooth Companion**, then **Connect Bluetooth Companion** and choose the radio. On Android, open this page in Chrome. Allow Bluetooth access if prompted.
+
+The Companion must have firmware that supports Bluetooth OTA. Bluetooth updates require a direct, zero-hop LoRa connection between the Companion and the remote device. Keep the phone near the Companion and leave the browser open during the update.
 
 ## Wi-Fi Companion connection
 
@@ -545,10 +556,11 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_delta.js?v=auto-paths-3"></script>
 <script src="../_javascript/lora_ota_port.js"></script>
 <script src="../_javascript/lora_ota_wifi_port.js?v=direct-wifi-1"></script>
+<script src="../_javascript/lora_ota_ble_port.js?v=bluetooth-1"></script>
 <script src="../_javascript/lora_ota_wifi_scan.js?v=direct-wifi-1"></script>
 <script src="../_javascript/lora_ota_serial.js?v=ota-quiet-1"></script>
 <script src="../_javascript/lora_ota_companion_source.js"></script>
-<script src="../_javascript/lora_ota_companion.js?v=advert-path-1"></script>
+<script src="../_javascript/lora_ota_companion.js?v=bluetooth-1"></script>
 <script src="../_javascript/lora_ota_contacts.js?v=advert-path-1"></script>
 <script src="../_javascript/lora_ota_session.js?v=active-lease-retry-1"></script>
 <script src="../_javascript/lora_ota_route.js"></script>
@@ -568,4 +580,4 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_recovery.js?v=usb-retry-1"></script>
 <script src="../_javascript/lora_ota_lease.js?v=active-lease-retry-1"></script>
 <script src="../_javascript/lora_ota_catalog.js?v=4aeb7bf86"></script>
-<script src="../_javascript/lora_ota_browser.js?v=advert-path-1"></script>
+<script src="../_javascript/lora_ota_browser.js?v=bluetooth-1"></script>

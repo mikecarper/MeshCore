@@ -13,6 +13,8 @@ public:
   static constexpr size_t MAX_USB_RAW_FRAME_SIZE = 188;
   virtual void setUsbRawPacketReceive(bool) {}
   virtual size_t usbRawPacketReceiveCapacity() const { return MAX_FRAME_SIZE; }
+  // Changes whenever a transport's connected client is replaced.
+  virtual uint32_t sessionGeneration() const { return 0; }
   // Native browser OTA sessions are more restricted than trusted USB/TCP.
   virtual bool browserOtaRestricted() const { return false; }
   virtual void enable() = 0;
