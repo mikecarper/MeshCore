@@ -180,7 +180,12 @@ profile_start = build.index("\napply_companion_radio_full_profile() {")
 profile_end = build.index("\napply_radio_overrides()", profile_start)
 profile = build[profile_start:profile_end]
 flag = "-DCOMPANION_EXCLUSIVE_WIFI_BLE=1"
-assert profile.count(flag) == 2
+assert profile.count(flag) == 3
+dfrobot_start = profile.index("    dfrobot_lorawan_esp32s3_companion_radio_full)")
+dfrobot_case = profile[dfrobot_start:profile.index(";;", dfrobot_start)]
+assert flag in dfrobot_case
+assert "-DOTA_SHARED_COMPANION_QUEUE=1" in dfrobot_case
+assert "-DOTA_PRESERVE_UNREAD_ON_BORROW=1" in dfrobot_case
 cardputer_start = profile.index("    m5stack_cardputer_adv_companion_radio_full)")
 cardputer_case = profile[cardputer_start:profile.index(";;", cardputer_start)]
 assert flag in cardputer_case
