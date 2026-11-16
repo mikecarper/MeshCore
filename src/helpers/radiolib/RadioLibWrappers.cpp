@@ -3396,7 +3396,11 @@ int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
         // started. Both operations may replace the radio's packet metadata.
         _last_snr = _radio->getSNR();
         _last_rssi = _radio->getRSSI();
+        const bool had_crc = lastRxHadCRC();
         int err = _radio->readData(bytes, len);
+        if (err == RADIOLIB_ERR_NONE && !had_crc) {
+          err = RADIOLIB_ERR_LORA_HEADER_DAMAGED;
+        }
         if (err != RADIOLIB_ERR_NONE) {
           MESH_DEBUG_PRINTLN("RadioLibWrapper: error: readData(%d)", err);
           len = 0;

@@ -412,7 +412,8 @@ void BaseChatMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender
         if (path) sendFloodScoped(from, path);
       }
     } else if (flags == TXT_TYPE_CLI_COMMAND) {
-      uint8_t temp[166];
+      // Header, reflected CLI prefix, 160-byte reply text and terminator.
+      uint8_t temp[169];
       char *command = (char *)&data[5];
       char *reply = (char *)&temp[5];
       *reply = 0;

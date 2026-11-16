@@ -25,7 +25,10 @@
 #endif
 
 class NV3001BDisplay : public DisplayDriver {
-  SPIClass spi;
+#if defined(ESP_PLATFORM) || defined(ESP32_PLATFORM)
+  SPIClass owned_spi;
+#endif
+  SPIClass& spi;
   RefCountedDigitalPin* periph_power;
   bool is_on = false;
 #if defined(HELTEC_RC32) && defined(RC32_DISPLAY_AUTODETECT) && RC32_DISPLAY_AUTODETECT
@@ -47,8 +50,15 @@ class NV3001BDisplay : public DisplayDriver {
   void drawChar(int x, int y, char ch);
 
 public:
+#if defined(ESP_PLATFORM) || defined(ESP32_PLATFORM)
   NV3001BDisplay(RefCountedDigitalPin* power = nullptr) :
-      DisplayDriver(NV3001B_SCREEN_WIDTH, NV3001B_SCREEN_HEIGHT), spi(NV3001B_SPI_HOST), periph_power(power) { }
+      DisplayDriver(NV3001B_SCREEN_WIDTH, NV3001B_SCREEN_HEIGHT),
+      owned_spi(NV3001B_SPI_HOST), spi(owned_spi), periph_power(power) { }
+#else
+  NV3001BDisplay(SPIClass* display_spi = &SPI, RefCountedDigitalPin* power = nullptr) :
+      DisplayDriver(NV3001B_SCREEN_WIDTH, NV3001B_SCREEN_HEIGHT),
+      spi(display_spi ? *display_spi : SPI), periph_power(power) { }
+#endif
 
   bool begin();
   static const char* driverName() { return "NV3001B"; }

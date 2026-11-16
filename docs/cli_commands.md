@@ -6928,6 +6928,15 @@ still overrides the first-boot default after an update.
 
 ### Sensors (When sensor support is compiled in)
 
+INA219 detection supports both 0x40 and 0x41, including RAK16000 modules.
+INA228 support is optional: add `${ina228_sensor.build_flags}` and
+`${ina228_sensor.lib_deps}` to a recipe that includes
+`EnvironmentSensorManager.cpp`. It defaults to address 0x45, a 0.015-ohm shunt
+and a 10 A calibration range; override `TELEM_INA228_ADDRESS`,
+`TELEM_INA228_SHUNT_VALUE` and `TELEM_INA228_MAX_AMP` for the fitted hardware.
+Telemetry reports voltage, current, power and accumulated energy in kWh.
+Device-identification or calibration failures leave the sensor inactive.
+
 #### View or change telemetry access mode
 **Usage:**
 - `get telemetry.access`

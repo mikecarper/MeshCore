@@ -404,8 +404,10 @@ bool NV3001BDisplay::begin() {
     if (periph_power) periph_power->release();
     return false;
   }
-#else
+#elif defined(ESP_PLATFORM) || defined(ESP32_PLATFORM)
   spi.begin(PIN_TFT_SCL, PIN_TFT_MISO, PIN_TFT_SDA, PIN_TFT_CS);
+#else
+  spi.begin();
 #endif
   if (PIN_TFT_RST >= 0) {
     pinMode(PIN_TFT_RST, OUTPUT);

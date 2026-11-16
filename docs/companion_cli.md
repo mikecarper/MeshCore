@@ -44,6 +44,13 @@ Wi-Fi builds expose `get wifi.status`, `get wifi.ip`, and
 `set wifi.pwd <password>`. Credential access follows the normal local/admin
 restrictions. Reboot after saving Wi-Fi settings to apply them.
 
+Heltec V4 Wi-Fi builds also advertise `_meshcore._tcp` through mDNS once their
+TCP listener is enabled and Wi-Fi connects. The hostname follows the existing
+`meshcore-<node-name>` DHCP naming policy; TXT fields identify the node, firmware
+and Companion protocol. Discovery follows node renames and stops when the
+listener or Wi-Fi is disabled. Other ESP32 Wi-Fi recipes can opt in with
+`ENABLE_ESP_MDNS` at build time.
+
 ## Display and notifications
 
 This fork uses the saved `display.*` controls described in

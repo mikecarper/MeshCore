@@ -27,7 +27,6 @@
 #endif
 
 #define NOISE_FLOOR_CALIB_INTERVAL_MS 2000
-#define AGC_RESET_INTERVAL_MS 30000
 
 // Lab-only boot diagnostics must never contaminate a native-USB or dedicated
 // UART KISS stream. Ordinary builds compile all stage calls away.
@@ -51,7 +50,6 @@ StdRNG rng;
 mesh::LocalIdentity identity;
 KissModem* modem;
 static uint32_t next_noise_floor_calib_ms = 0;
-static uint32_t next_agc_reset_ms = 0;
 #if KISS_HWCDC_TRANSPORT
 static bool usb_host_reset_pending = false;
 #endif
@@ -159,6 +157,26 @@ void onGetStats(uint32_t* rx, uint32_t* tx, uint32_t* errors) {
   *rx = radio_driver.getPacketsRecv();
   *tx = radio_driver.getPacketsSent();
   *errors = radio_driver.getPacketsRecvErrors();
+}
+
+void pollRadioRx() {
+  uint8_t rx_buf[256];
+  int rx_len = radio_driver.recvRaw(rx_buf, sizeof(rx_buf));
+  if (rx_len > 0) {
+    int8_t snr = (int8_t)(radio_driver.getLastSNR() * 4);
+    int8_t rssi = (int8_t)radio_driver.getLastRSSI();
+    const uint8_t profile = radio_driver.receiveProfile();
+    modem->onPacketReceived(snr, rssi, rx_buf, rx_len, profile);
+    radio_driver.onReceiveProcessed();
+  }
+}
+
+bool onSetRxBoostedGain(bool enable) {
+  return radio_driver.setRxBoostedGainMode(enable);
+}
+
+bool onGetRxBoostedGain() {
+  return radio_driver.getRxBoostedGainMode();
 }
 
 void setup() {
@@ -272,6 +290,10 @@ void setup() {
   modem->setTxPowerCallback(onSetTxPower);
   modem->setGetCurrentRssiCallback(onGetCurrentRssi);
   modem->setGetStatsCallback(onGetStats);
+  modem->setPollRxCallback(pollRadioRx);
+  if (radio_driver.supportsRxBoostedGainMode()) {
+    modem->setRxBoostedGainCallbacks(onSetRxBoostedGain, onGetRxBoostedGain);
+  }
   KISS_BOOT_STAGE("modem.before");
   modem->begin();
   KISS_BOOT_STAGE("modem.after");
@@ -306,24 +328,7 @@ void loop() {
 #endif
 
   if (!modem->isActuallyTransmitting() && !modem->isHostOutputBackedUp()) {
-    if (!modem->isTxBusy()) {
-      if ((uint32_t)(millis() - next_agc_reset_ms) >= AGC_RESET_INTERVAL_MS) {
-        radio_driver.resetAGC();
-        next_agc_reset_ms = millis();
-      }
-    }
-
-    uint8_t rx_buf[256];
-    int rx_len = radio_driver.recvRaw(rx_buf, sizeof(rx_buf));
-    if (rx_len > 0) {
-      // Snapshot before the receive-complete hook or fast profile scanner can
-      // retune the one physical radio.  KISS port 0/1 reports this origin.
-      const uint8_t profile = radio_driver.receiveProfile();
-      int8_t snr = (int8_t)(radio_driver.getLastSNR() * 4);
-      int8_t rssi = (int8_t)radio_driver.getLastRSSI();
-      modem->onPacketReceived(snr, rssi, rx_buf, rx_len, profile);
-      radio_driver.onReceiveProcessed();
-    }
+    pollRadioRx();
   }
 
   board.loop();

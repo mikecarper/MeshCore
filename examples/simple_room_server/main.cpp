@@ -153,6 +153,10 @@ void setup() {
     volatile_primary_fs = true;
   }
   IdentityStore store(*fs, "");
+#elif defined(STM32_PLATFORM)
+  InternalFS.begin();
+  fs = &InternalFS;
+  IdentityStore store(InternalFS, "");
 #elif defined(RP2040_PLATFORM)
   LittleFS.begin();
   fs = &LittleFS;

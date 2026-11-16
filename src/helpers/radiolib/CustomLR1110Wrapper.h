@@ -15,6 +15,11 @@ class CustomLR1110Wrapper : public LRxxxxPulseWrapper<CustomLR1110> {
   DeepInitCallback _deep_init;
 
 public:
+  bool lastRxHadCRC() override {
+    bool crc = false;
+    return static_cast<CustomLR1110*>(_radio)->getLoRaRxHeaderInfo(nullptr, &crc) == RADIOLIB_ERR_NONE
+        && crc;
+  }
   static constexpr bool SupportsRxPowerSaving = true;
   uint32_t rxPowerSavingTransitionUs() const override {
     return static_cast<CustomLR1110*>(_radio)->getTcxoDelay() + 1000UL;

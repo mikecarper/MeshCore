@@ -238,6 +238,33 @@ MeshCore-specific functionality uses the standard KISS SetHardware command. The 
 | GetRadioSlot    | `0x22` | - (Station G3 only)                      |
 | SetRadioSlot    | `0x23` | Mode (1): 0=auto, 1=slot 1, 2=slot 2 (Station G3 only) |
 
+### AGC, FEM and boosted-gain extension
+
+These controls adapt upstream KISS protocol v2 to this fork. Its existing
+`0x1B`–`0x23` assignments stay in place; clients must use this table rather than
+upstream's overlapping command IDs. `GetVersion` remains `2.0`; an older image
+returns `UnknownCmd` for `GetCapabilities` at `0x24`.
+
+| Request | ID | Payload | Response |
+|---------|----|---------|----------|
+| GetCapabilities | `0x24` | empty | `0xA4`, 32-bit little-endian capability mask |
+| SetAgcResetInterval | `0x25` | seconds, 16-bit little-endian | `0xA6`, effective interval |
+| GetAgcResetInterval | `0x26` | empty | `0xA6`, seconds, 16-bit little-endian |
+| SetFemState | `0x27` | apply mask, value mask | `0xA8`, capability mask, value mask |
+| GetFemState | `0x28` | empty | `0xA8`, capability mask, value mask |
+| SetRxBoostedGain | `0x29` | one byte, zero off / nonzero on | `0xAA`, effective state |
+| GetRxBoostedGain | `0x2A` | empty | `0xAA`, one byte, zero off / one on |
+
+Capability bits 0–3 indicate AGC reset, external FEM RX gain, external FEM TX gain,
+and chip boosted RX gain. FEM masks use bit 0 for RX and bit 1 for TX. Unsupported
+writes return `Unsupported` (`0x09`); failed writes report the state read back.
+
+The AGC interval defaults to 32 seconds. Values up to 1020 seconds are rounded
+down to a multiple of four; zero disables periodic resets. A busy radio retains
+overdue maintenance until it can safely reset. FEM writes wait for TX completion,
+retain reply ordering under host backpressure, and are cancelled on host-session
+reset. These controls are runtime settings.
+
 ### Response Sub-commands (TNC to Host)
 
 Response codes use the high-bit convention: `response = command | 0x80`. Generic and unsolicited responses use the `0xF0`+ range.
@@ -287,6 +314,7 @@ Response codes use the high-bit convention: `response = command | 0x80`. Generic
 | EncryptFailed | `0x06` | Encryption failed       |
 | TxBusy        | `0x07` | Radio TX busy, or host output queue full |
 | SaveFailed    | `0x08` | Setting could not be saved; running slot unchanged |
+| Unsupported   | `0x09` | Requested gain control is unavailable |
 
 ### Station G3 physical radio slot
 
@@ -432,7 +460,7 @@ All values little-endian.
 |-------------|---------|-----------------------|
 | Noise floor | 2 bytes | int16_t, dBm (signed) |
 
-The modem recalibrates the noise floor every 2 seconds with an AGC reset every 30 seconds.
+The modem requests noise-floor recalibration every 2 seconds. Periodic AGC resets default to 32 seconds and can be changed or disabled with the extension above.
 
 ### Stats (Stats response)
 

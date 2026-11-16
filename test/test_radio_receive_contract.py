@@ -59,6 +59,7 @@ namespace mesh { enum class RadioParamApplyResult : uint8_t { APPLIED, BUSY, FAI
 #define STATE_RX 1
 #define STATE_TX_WAIT 3
 #define RADIOLIB_ERR_NONE 0
+#define RADIOLIB_ERR_LORA_HEADER_DAMAGED -24
 #define RADIOLIB_CHANNEL_FREE -15
 #define RADIOLIB_ERR_UNKNOWN -16
 #define RADIOLIB_ERR_RX_TIMEOUT -6
@@ -143,6 +144,7 @@ struct RadioLibWrapper {
   uint16_t profilePreamble(uint8_t profile) const { return _profiles.preamble(profile, 32); }
   RadioLibWrapper() { state = STATE_RX; now_ms = 100; }
   bool isChipBusy() { return busy; }
+  bool lastRxHadCRC() { return true; }
   bool isReceivingPacket() { return packet; }
   float getCurrentRSSI() { ++reads; return rssi; }
   int8_t readReceiveMode() {

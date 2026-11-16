@@ -21,6 +21,11 @@ protected:
   }
 
 public:
+  bool lastRxHadCRC() override {
+    bool crc = false;
+    return static_cast<CustomSX1268*>(_radio)->getLoRaRxHeaderInfo(nullptr, &crc) == RADIOLIB_ERR_NONE
+        && crc;
+  }
   ~CustomSX1268Wrapper() { unregisterInterruptAction(); }
   CustomSX1268Wrapper(CustomSX1268& radio, mesh::MainBoard& board) : SX126xPulseWrapper<CustomSX1268>(radio, board) { }
   bool supportsMorseTx() const override { return true; }

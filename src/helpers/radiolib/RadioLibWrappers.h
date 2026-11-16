@@ -505,6 +505,7 @@ protected:
   bool restoreAfterDeepInit();
   float packetScoreInt(float snr, int sf, int packet_len);
   virtual bool isReceivingPacket() =0;
+  virtual bool lastRxHadCRC() { return true; }
   virtual int8_t readReceiveMode() { return -1; }
   void checkReceiveMode(uint32_t now);
   virtual void doResetAGC();

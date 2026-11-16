@@ -46,7 +46,11 @@ private:
   void applyRotation();
 public:
   SSD1306Display(RefCountedDigitalPin* peripher_power=NULL, TwoWire* wire=&Wire) : DisplayDriver(PANEL_WIDTH, PANEL_HEIGHT),
+#if defined(PIN_OLED_CS) && defined(PIN_OLED_DC)
+      display(PANEL_WIDTH, PANEL_HEIGHT, &SPI, PIN_OLED_DC, PIN_OLED_RESET, PIN_OLED_CS),
+#else
       display(PANEL_WIDTH, PANEL_HEIGHT, wire, PIN_OLED_RESET),
+#endif
       _peripher_power(peripher_power), _wire(wire)
   {
     _isOn = false; 

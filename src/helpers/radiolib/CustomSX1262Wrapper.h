@@ -60,6 +60,11 @@ protected:
   }
 
 public:
+  bool lastRxHadCRC() override {
+    bool crc = false;
+    return static_cast<CustomSX1262*>(_radio)->getLoRaRxHeaderInfo(nullptr, &crc) == RADIOLIB_ERR_NONE
+        && crc;
+  }
 #if MESH_WARM_RX_REFRESH
   bool supportsWarmRxRefresh() const override { return true; }
 #endif

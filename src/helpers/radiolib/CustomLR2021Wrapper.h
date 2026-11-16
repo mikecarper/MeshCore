@@ -158,6 +158,11 @@ class CustomLR2021Wrapper : public LRxxxxPulseWrapper<CustomLR2021> {
   }
 
 public:
+  bool lastRxHadCRC() override {
+    bool crc = false;
+    return static_cast<CustomLR2021*>(_radio)->getLoRaRxHeaderInfo(nullptr, &crc) == RADIOLIB_ERR_NONE
+        && crc;
+  }
 #if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
   bool w12MultiSfEnabled() const override { return _multi_sf_enabled; }
   bool validateProfile(const mesh::RadioProfileParams& profile) const override {

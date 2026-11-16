@@ -1,17 +1,21 @@
 # Host unit tests
 
 Fast, hardware-free unit tests for pure and host-simulated logic, run with
-GoogleTest through PlatformIO. The `native` environment runs every suite except
-the KISS modem; `native_kiss_modem` builds that suite with its separate source
-filter. Hardware, real radio, AsyncTCP, Wi-Fi/MQTT, and SoftAP behavior still
+GoogleTest through PlatformIO. The `native` environment runs the general suites;
+the KISS modem, JWT helper, OTA-channel and GPS suites use isolated
+environments with their own source filters. Hardware, real radio, AsyncTCP, Wi-Fi/MQTT, and SoftAP behavior still
 require integration or target testing; see "Local testing without hardware" in
 `MQTT_IMPLEMENTATION.md`.
 
 ## Running
 
 ```sh
-pio test -e native                      # all suites except KISS modem
-pio test -e native_kiss_modem           # KISS modem suite
+pio test -e native                      # general host suites
+pio test -e native_kiss_modem           # KISS modem suite, including AGC/FEM/gain controls
+pio test -e native_jwt_helper           # JWT byte parity, real signatures and buffer limits
+python3 -B test/test_companion_mdns.py -v # deferred network startup, retry and rename
+python3 -B test/test_esp32_network_backports.py -v # lwIP DNS dispatch and HTTP listener reuse
+python3 -B test/test_i2c_power_monitor_backports.py -v # INA219 alternate address and INA228 units
 pio test -e native -f test_webconfig_keys   # a single suite
 python3 test/test_radio_receive_contract.py # real CAD/re-arm/calibration/mode-watchdog methods
 python3 test/test_sx126x_agc_retention.py # AGC protection/gain sleep retention and SPI failure checks

@@ -24,6 +24,10 @@
 #include <Mesh.h>
 #include <helpers/BluetoothMac.h>
 #include "MyMesh.h"
+#if defined(ESP32_PLATFORM) && defined(ENABLE_WIFI_INTERFACE) && defined(ENABLE_ESP_MDNS)
+#include <helpers/esp32/CompanionMdns.h>
+static CompanionMdns companion_mdns;
+#endif
 #include <helpers/CompanionRtcTerminalInput.h>
 #include <helpers/HostKiss.h>
 #include <helpers/CompanionReader.h>
@@ -4559,6 +4563,11 @@ void loop() {
   mesh::serviceUsbTerminalPort();
 #endif
   interface_manager.loop();
+#if defined(ESP32_PLATFORM) && defined(ENABLE_WIFI_INTERFACE) && defined(ENABLE_ESP_MDNS)
+  companion_mdns.loop(wifi_interface.isEnabled() && WiFi.status() == WL_CONNECTED,
+                      the_mesh.getNodeName(), the_mesh.self_id.pub_key,
+                      FIRMWARE_VERSION, FIRMWARE_VER_CODE, TCP_PORT);
+#endif
 #if COMPANION_FEATURE_BLE_MOTA_SOURCE
   ble_mota_source_control.loop();
 #endif

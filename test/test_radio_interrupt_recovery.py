@@ -36,6 +36,7 @@ PRELUDE = r'''
 #define STATE_RX 1
 #define STATE_TX_WAIT 3
 #define RADIOLIB_ERR_NONE 0
+#define RADIOLIB_ERR_LORA_HEADER_DAMAGED -24
 #define RADIOLIB_ERR_INVALID_FREQUENCY -2
 #define RADIOLIB_ERR_UNKNOWN -16
 #define RADIOLIB_ERR_UNSUPPORTED -2
@@ -160,6 +161,7 @@ struct Board {
 };
 struct RadioLibWrapper {
  uint8_t state=STATE_RX, _interrupt_slot=0xff, _irq_probe_failures=0;
+ bool rx_had_crc=true;
  bool _loop_event_pending=false, _cw_active=false, _profile_repair_required=false, _profile_refresh_required=false;
  bool _rx_ps_armed=false, _rx_hold_continuous=false, _rx_ps_enabled=false;
  bool _rx_ps_continuous_fallback=false, _nf_calib_active=false;
@@ -191,6 +193,7 @@ public:
  void idle(){state=STATE_IDLE;}
  bool isChipBusy(){return false;}
  bool isReceivingPacket(){return false;}
+ bool lastRxHadCRC(){return rx_had_crc;}
  bool isPacketPendingOrReceiving(){return hasPendingRadioInterrupt();}
  bool recoverRadio(bool){return !hasPendingRadioInterrupt();}
  void stopReceiveDutyCycle(){_rx_ps_armed=false;chip.standby();}
@@ -251,6 +254,7 @@ class RadioInterruptRecoveryTests(unittest.TestCase):
 #pragma once
 #include <cstdint>
 #define RADIOLIB_ERR_NONE 0
+#define RADIOLIB_ERR_LORA_HEADER_DAMAGED -24
 #define RADIOLIB_ERR_INVALID_FREQUENCY -2
 #define RADIOLIB_ERR_UNKNOWN -16
 #define RADIOLIB_ERR_UNSUPPORTED -2
@@ -365,6 +369,20 @@ int main(){
                 "virtual int16_t startReceive(){++arms;stopped=false;return 0;}",
                 "virtual int16_t startReceive(){++arms;irq=0;rx_status=0;stopped=false;return 0;}")
         return result
+
+    def test_crc_less_packets_are_drained_but_never_delivered(self):
+        compile_run(self.source() + r'''
+int main(){
+ CustomSX1262Wrapper w; uint8_t packet[8]{};
+ assert(w.registerInterruptAction());
+ w.rx_had_crc=false; w.chip.callback();
+ assert(w.recvRaw(packet,sizeof(packet))==0);
+ assert(w.chip.reads==1 && w.n_recv==0 && w.n_recv_errors==1);
+ w.chip.rx_status=1; w.chip.fifo=4; w.rx_had_crc=true; w.chip.callback();
+ assert(w.recvRaw(packet,sizeof(packet))==4);
+ assert(w.chip.reads==2 && w.n_recv==1 && w.n_recv_errors==1);
+}
+''')
 
     def test_mode_changes_lifecycle_late_callbacks_and_tx_status_retry(self):
         compile_run(self.source() + r'''
