@@ -108,7 +108,7 @@ def changed_internal_harness(kind):
     return harness
 
 
-def run_harness(harness, timeout=45):
+def run_harness(harness, timeout=45, *, radio2_preamble=128):
     markdown = (ROOT / 'docs/browser_lora_ota.md').read_text(encoding='utf-8')
     div = re.search(r'<div data-lora-ota>.*?</div>', markdown, re.S).group()
     scripts = re.findall(r'<script src="[^"]+"></script>', markdown)
@@ -118,7 +118,13 @@ def run_harness(harness, timeout=45):
     forwarding_opt_out = ('<script>(()=>{const checkbox=document.querySelector('
         "'[data-lora-ota] [data-role=\"quiet-forwarding\"]');"
         'if(checkbox)checkbox.checked=false;})();</script>')
-    page = '<!doctype html><meta charset="utf-8">' + div + forwarding_opt_out + harness + ''.join(scripts)
+    # Existing USB protocol models have explicit 128-symbol radio readbacks.
+    # Select that custom radio2 value for those fixtures; default-policy tests
+    # pass None and exercise the production 368-symbol default unchanged.
+    preamble_choice = '' if radio2_preamble is None else (
+        '<script>document.querySelector(\'[data-role="radio2-preamble"]\').value='
+        + str(int(radio2_preamble)) + ';</script>')
+    page = '<!doctype html><meta charset="utf-8">' + div + forwarding_opt_out + preamble_choice + harness + ''.join(scripts)
     done = threading.Event()
     results, missing_scripts = [], []
 

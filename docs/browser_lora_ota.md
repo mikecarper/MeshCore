@@ -113,7 +113,8 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
       <label>Bandwidth (kHz)<select data-role="radio-bandwidth"><option value="7.8">7.8</option><option value="10.4">10.4</option><option value="15.6">15.6</option><option value="20.8">20.8</option><option value="31.25">31.25</option><option value="41.7">41.7</option><option value="62.5">62.5</option><option value="125">125</option><option value="250" selected>250</option><option value="500">500</option></select></label>
       <label>Spreading factor<select data-role="radio-sf"><option value="5">SF5</option><option value="6">SF6</option><option value="7" selected>SF7</option><option value="8">SF8</option><option value="9">SF9</option><option value="10">SF10</option><option value="11">SF11</option><option value="12">SF12</option></select></label>
       <label>Coding rate<select data-role="radio-cr"><option value="4">4/4</option><option value="5" selected>4/5</option><option value="6">4/6</option><option value="7">4/7</option><option value="8">4/8</option></select></label>
-      <label>Preamble<input data-role="radio-preamble" type="number" min="1" max="65535" value="128"></label>
+      <label>Primary-only preamble<input data-role="radio-preamble" type="number" min="1" max="65535" value="128"></label>
+      <label>Radio2 OTA preamble<input data-role="radio2-preamble" type="number" min="1" max="65535" value="368"></label>
       <label>Temporary window (minutes)<input data-role="radio-minutes" type="number" min="1" max="10080" value="120"></label>
       <p class="lora-ota-actions"><button type="button" data-role="radio-prepare" disabled>Prepare now</button> <button type="button" class="lora-ota-secondary" data-role="radio-check" disabled>Check channel</button></p>
     </details>
@@ -357,6 +358,9 @@ switch, setup can send another switch request, with a pause and a bounded number
 of attempts. It continues only after verifying the target on the new channel.
 Other setup paths wait up to 35 seconds for matching temporary-radio readbacks;
 errors show the requested and reported settings, including preamble.
+New windows use a 368-symbol preamble at both ends when either endpoint uses
+radio2. Primary-only setup uses its separate preamble setting. Recovery keeps
+the verified preamble of an existing window until that window is replaced.
 
 When the target already has a saved radio2 profile, setup can temporarily use
 that profile for the update instead of changing the saved tuple or disabling it
@@ -373,6 +377,10 @@ serving active and retries after a pause while the last verified window remains
 valid. Identity changes, USB failures and uncertain renewal writes still stop
 the session. Stopping does not cancel the target's staged download; prepare the
 same update again to resume its retained blocks.
+If the window has expired, setup can prepare a new one after matching both
+devices, the saved package's full hash and the target's staged download ID.
+Automatic update steps keep their own recovery records, which are also used
+after refreshing the page or reconnecting USB.
 
 Installer capability is checked on the working channel before radio setup.
 An explicit earlier result is reused only on the same connection, source,
@@ -494,8 +502,8 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_chain_ui.js?v=auto-paths-3"></script>
 <script src="../_javascript/lora_ota_auto_chain.js?v=auto-paths-2"></script>
 <script src="../_javascript/lora_ota_region_profiles.js"></script>
-<script src="../_javascript/lora_ota_radio_setup.js?v=ota-quiet-1"></script>
+<script src="../_javascript/lora_ota_radio_setup.js?v=radio2-preamble-368-1"></script>
 <script src="../_javascript/lora_ota_recovery.js?v=usb-retry-1"></script>
 <script src="../_javascript/lora_ota_lease.js?v=active-lease-retry-1"></script>
 <script src="../_javascript/lora_ota_catalog.js?v=4aeb7bf86"></script>
-<script src="../_javascript/lora_ota_browser.js?v=workflow-first-1"></script>
+<script src="../_javascript/lora_ota_browser.js?v=radio2-preamble-368-1"></script>

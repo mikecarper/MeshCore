@@ -126,7 +126,7 @@ function fixture(options = {}) {
     if (/^(?:tempradio |set tempradio2 )/.test(command)) {
       const profile = command.startsWith('set ') ? 1 : 0;
       const minutes = Number(command.split(',').at(-2));
-      assert.equal(command, setup.commands({...requested, minutes}, {sourceProfile: profile, targetProfile: profile})[label]);
+      assert.equal(command, setup.commands({...requested, minutes,preamble:options.commandPreamble??requested.preamble}, {sourceProfile: profile, targetProfile: profile})[label]);
       assert.ok(minutes === (profile ? 120 : 2) || (!profile && minutes === 120 &&
         events.some(row => row[0] === 'select' || row[0] === 'peer-probe-result' && row[1] === 1 && row[3] === 'active')),
         'full primary window before link proof');
@@ -880,6 +880,54 @@ test('existing download adopts only both exact active secondary leases with unch
     {adopt: true, targetDownload: true, autoPolicies: true}, {adopt: true, targetDownload: true, sourceBusy: true}]) {
     const failed = fixture(options); await assert.rejects(setup.prepare(failed.link, key, '', selected, failed.options));
     assert.equal(failed.events.filter(row => /^(?:set |tempradio |ota config \w+ )/.test(row[1] || '')).length, 0);
+  }
+});
+
+test('new radio2 windows use 368 at both endpoints, including a primary/radio2 pair', async () => {
+  for(const sourceSupports of [true,false]){
+    const f=fixture({sourceSupports,sourcePreamble:368,targetPreamble:368,commandPreamble:368});
+    const result=await setup.prepare(f.link,key,'',selected,{...f.options,secondaryPreamble:368});
+    assert.equal(result.sourceProfile,sourceSupports?1:0);assert.equal(result.targetProfile,1);
+    assert.equal(result.preamble,368);assert.equal(f.link.otaLeaseProof.preamble,368);
+    assert.ok(f.writes().every(row=>row[1].endsWith(',368')));
+  }
+});
+test('radio2 preamble preference leaves primary-only and adopted recovery windows unchanged', async () => {
+  for(const options of [{sourceSecondary:false,targetSecondary:false},{adopt:true,targetDownload:true}]){
+    const f=fixture(options),result=await setup.prepare(f.link,key,'',selected,{...f.options,secondaryPreamble:368});
+    assert.equal(result.preamble,128);
+    assert.ok(f.writes().every(row=>row[1].endsWith(',128')));
+  }
+  const f=fixture();
+  await assert.rejects(setup.prepare(f.link,key,'',selected,{...f.options,secondaryPreamble:0}),/ranges/);
+  assert.deepEqual(f.events,[]);
+});
+function expiredDownloadProof(){
+  const blob=Uint8Array.of(1,2,3),packageHash=require('node:crypto').createHash('sha256').update(blob).digest('hex');
+  return {record:{phase:'pull attempted',source:sourceKey,target:key,id:'12345678',packageHash,
+    bodyHash:'ab'.repeat(8),radio:{expiresAt:9000}},info:{blob,merkleRoot:Uint8Array.of(0x12,0x34,0x56,0x78)}};
+}
+test('an expired channel is prepared for the exact owned staged package without another pull or cancellation',async()=>{
+  const f=fixture({targetDownload:true,sourcePreamble:368,targetPreamble:368,commandPreamble:368});
+  const result=await setup.prepare(f.link,key,'',selected,{...f.options,secondaryPreamble:368,resumeDownload:expiredDownloadProof()});
+  assert.equal(result.preamble,368);assert.equal(result.sourceProfile,1);assert.equal(result.targetProfile,1);
+  assert.ok(f.writes().every(row=>row[1].endsWith(',368')));
+  assert.equal(f.events.some(row=>/^ota (?:pull|cancel|install)/.test(row[1]||'')),false);
+});
+test('expired staging recovery rejects changed packages, peers, live windows and changed remote download IDs',async()=>{
+  for(const kind of ['source','target','package','merkle','remote','unexpired','phase','changed']){
+    const f=fixture({targetDownload:true}),resumeDownload=expiredDownloadProof();
+    if(['source','target'].includes(kind))resumeDownload.record[kind]='ee'.repeat(32);
+    if(kind==='package')resumeDownload.info.blob=Uint8Array.of(4,5,6);
+    if(kind==='merkle')resumeDownload.info.merkleRoot=Uint8Array.of(0,1,2,3);
+    if(kind==='unexpired')resumeDownload.record.radio.expiresAt=100000;
+    if(kind==='phase')resumeDownload.record.phase='install attempted';
+    if(kind==='remote')f.overrides.set('target:ota status','download: id=deadbeef active');
+    if(kind==='changed'){
+      let reads=0;f.overrides.set('target:ota status',()=>++reads===1?'download: id=12345678 active':'download: id=deadbeef active');
+    }
+    await assert.rejects(setup.prepare(f.link,key,'',selected,{...f.options,resumeDownload}));
+    assert.equal(f.writes().length,0,kind);
   }
 });
 

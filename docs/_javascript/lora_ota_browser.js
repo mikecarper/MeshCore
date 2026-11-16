@@ -423,7 +423,7 @@
   const readChainMeta = () => { try { return JSON.parse(localStorage.getItem('meshcore-browser-lora-ota-chain-meta')); } catch (_) { return null; } };
   const editable = ['source', 'key', 'acl', 'relays', 'candidates', 'snr', 'age', 'password', 'file', 'base', 'full-rebuild', 'image', 'signer',
     'chain-files', 'chain-attest', 'chain-objective', 'chain-preamble', 'chain-minutes','auto-search','auto-objective','auto-depth'];
-  const radioFields=['radio-frequency','radio-bandwidth','radio-sf','radio-cr','radio-preamble','radio-minutes'];
+  const radioFields=['radio-frequency','radio-bandwidth','radio-sf','radio-cr','radio-preamble','radio2-preamble','radio-minutes'];
   const radioDefaults=Object.fromEntries([...radioFields,'radio-region'].map(name=>[name,$(name).value]));
   for(const profile of LoraOtaRadioSetup.regions||[]){
     const option=document.createElement('option');option.value=profile.id;option.textContent=profile.label;$('radio-region').appendChild(option);
@@ -437,6 +437,8 @@
   const explicitRadioChoice=()=>radioOverride||$('radio-region').value!=='auto';
   function chosenRadioMatches(probe) {
     const options=radioOptions();
+    if(probe.verifiedRadio?.sourceProfile===1||probe.verifiedRadio?.targetProfile===1)
+      options.preamble=Number($('radio2-preamble').value);
     return Array.isArray(probe.tempRadio)&&LoraOtaRadioSetup.same(probe.tempRadio,[options.frequency,options.bandwidth,options.sf,options.cr])&&
       probe.verifiedRadio?.preamble===options.preamble;
   }
@@ -458,7 +460,21 @@
   }
   async function recoverUpdateChannel(target) {
     if(!globalThis.LoraOtaRecovery || link.relays?.length)return null;
-    const result=await LoraOtaRecovery.restoreSource(link,target,readJournal(),{override:explicitRadioChoice(),progress:message=>{status(message);log(message);}});
+    let record=readJournal();
+    if(!LoraOtaRecovery.channel(record,link.sourceKey,target)){
+      // Automatic chains keep each step under their own key. A refreshed tab
+      // must recover that channel before its first target login, not just the
+      // single-package journal. Ambiguous saved channels are never guessed.
+      const prefix='meshcore-browser-lora-ota-auto-step:'+link.sourceKey.toLowerCase()+':'+target.toLowerCase()+':',matches=[];
+      for(let index=0;index<localStorage.length;index++){
+        const name=localStorage.key(index);
+        if(!name?.startsWith(prefix))continue;
+        const candidate=readStepRecord(name);
+        if(LoraOtaRecovery.channel(candidate,link.sourceKey,target))matches.push(candidate);
+      }
+      if(matches.length===1)record=matches[0];
+    }
+    const result=await LoraOtaRecovery.restoreSource(link,target,record,{override:explicitRadioChoice(),progress:message=>{status(message);log(message);}});
     if(!result.requiresVerification)return null;
     [$('radio-frequency').value,$('radio-bandwidth').value,$('radio-sf').value,$('radio-cr').value]=
       [result.tuple[0].toFixed(3),...result.tuple.slice(1).map(String)];
@@ -551,12 +567,19 @@
       }
     };
     try{
-      const result=await LoraOtaRadioSetup.prepare(link,target,password,radioOptions(),{...options,progress:message=>{
+      const record=session?.readJournal?.();
+      const resumeDownload=session?.key?.toLowerCase()===target.toLowerCase()&&
+        record?.source?.toLowerCase()===link.sourceKey?.toLowerCase()&&record?.target?.toLowerCase()===target.toLowerCase()&&
+        record?.packageHash===session.packageHash&&record?.bodyHash===session.bodyHash
+        ?{record,info:session.info}:undefined;
+      const result=await LoraOtaRadioSetup.prepare(link,target,password,radioOptions(),{...options,
+        secondaryPreamble:Number($('radio2-preamble').value),resumeDownload,progress:message=>{
         $('radio-setup-status').textContent=message;status(message);log(message);
       }});
       $('radio-frequency').value=result.source[0].toFixed(3);
       $('radio-bandwidth').value=String(result.source[1]);$('radio-sf').value=String(result.source[2]);$('radio-cr').value=String(result.source[3]);
-      $('radio-preamble').value=String(result.preamble);showRadioCommands();
+      if(result.sourceProfile!==1&&result.targetProfile!==1)$('radio-preamble').value=String(result.preamble);
+      showRadioCommands();
       $('radio-region-status').textContent='Verified update channel: '+result.source[0].toFixed(3)+' MHz, BW'+result.source[1]+', SF'+result.source[2]+', CR'+result.source[3]+'.';
       showChanges(result.changedSettings);link.otaRecoveryProfilePending=false;
       await pauseQuietForwarding(target,password,result);

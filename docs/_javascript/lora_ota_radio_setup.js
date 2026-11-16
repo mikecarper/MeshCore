@@ -165,8 +165,10 @@
     return result;
   }
   async function prepare(link, key, password, value, {progress = () => {}, useActivePrimary = false,
+      secondaryPreamble, resumeDownload,
       wait = ms => new Promise(r => setTimeout(r, ms)), now = () => Date.now()} = {}) {
     let v = settings(value), expected = [v.frequency, v.bandwidth, v.sf, v.cr];
+    if(secondaryPreamble!==undefined)settings({...v,preamble:secondaryPreamble});
     const companion = link?.browserRawSource === true, legacy = companion && link.otaSupported === false && link.usesUsbFolderFallback !== true;
     const unprobedLegacy = legacy && link.usesUsbFolderFallback !== true;
     need(link && !link.serving && !link.failure && (!link.relays || (Array.isArray(link.relays) && link.relays.length === 0)) &&
@@ -178,6 +180,10 @@
       ...(companion ? ['applyTemporaryRadio'] : [])]) need(typeof link[method] === 'function', 'This connection cannot safely prepare a temporary channel.');
     key = key.toLowerCase();
     const remote = (command, options) => link.remoteCommand(key, password, command, options), local = command => link.localCommand(command);
+    const stagedId=status=>{
+      const section=/\bdownload:\s*([^|\r\n]+)/i.exec(status)?.[1]||'',ids=[...section.matchAll(/\bid=([a-f0-9]{8})\b/gi)];
+      return ids.length===1?ids[0][1].toLowerCase():null;
+    };
     let targetAttempted = false, sourceAttempted = false, targetSwitchWrites = 0, pausedTargetSecondary = null;
     const changedSettings = [];
     async function baseline(label, read) {
@@ -188,7 +194,7 @@
       need(['off', 'active'].includes(temporaryPrimary.state), label + ' has a pending or unverified primary temporary radio.');
       const config = await read('ota config');
       const otaPolicy = unprobedLegacy && label === 'source' && unsupported(config) ? null : policy(config);
-      let existingDownload = false, idleSourceVerified = false;
+      let existingDownload = false, idleSourceVerified = false, downloadId = null;
       if (label === 'source') {
         const stats = bare(await read('ota stats')), fetch = [...stats.matchAll(/\bfetch\s+([a-z]+)\b/gi)];
         need(unprobedLegacy && unsupported(stats) || fetch.length === 1 && fetch[0][1].toLowerCase() === 'idle', 'Source has an active or unverified OTA download.');
@@ -200,6 +206,7 @@
         const idle = /\bno download\b/i.test(status) && !/\bdownload:/i.test(status);
         existingDownload = !idle && /\bdownload:\s*[^|\r\n]+/i.test(status) && !/\bno download\b/i.test(status);
         need(idle || existingDownload, 'Target OTA download state cannot be verified.');
+        downloadId=stagedId(status);
       }
       const savedSecondary = secondary(await read('get radio2'));
       const temporarySecondary = secondary(await read('get tempradio2'), 'get tempradio2');
@@ -240,11 +247,25 @@
       const adoptPrimary = temporaryPrimary.state === 'active' && same(temporaryPrimary.tuple, expected) && temporaryPrimary.preamble === v.preamble;
       const overlapsPrimary = Math.abs(saved[0] - v.frequency) <= (saved[1] + v.bandwidth) / 2000 + 0.001;
       return {saved, temporaryPrimary, savedSecondary, temporarySecondary, cross, schedules, secondaryFree, secondaryBorrowable, secondaryRestorable, matchingSecondary, overlappingSecondary,
-        overlapsPrimary, adoptPrimary, adoptSecondary, otaPolicy, existingDownload, idleSourceVerified};
+        overlapsPrimary, adoptPrimary, adoptSecondary, otaPolicy, existingDownload, idleSourceVerified, downloadId};
     }
     function sameSaved(a, b) {
       return same(a.saved, b.saved) && secondarySignature(a.savedSecondary) === secondarySignature(b.savedSecondary) && a.cross === b.cross &&
         JSON.stringify(a.schedules) === JSON.stringify(b.schedules);
+    }
+    async function expiredOwnedDownload(source,target) {
+      const record=resumeDownload?.record,info=resumeDownload?.info;
+      if(!record||!['pull attempted','ready'].includes(record.phase)||
+        record.source?.toLowerCase()!==link.sourceKey.toLowerCase()||record.target?.toLowerCase()!==key||
+        !/^[a-f0-9]{8}$/.test(record.id||'')||record.id!==target.downloadId||
+        !/^[a-f0-9]{64}$/.test(record.packageHash||'')||!(info?.blob instanceof Uint8Array)||
+        !(info.merkleRoot instanceof Uint8Array)||Array.from(info.merkleRoot,b=>b.toString(16).padStart(2,'0')).join('')!==record.id||
+        !source.idleSourceVerified||!Number.isSafeInteger(record.radio?.expiresAt)||record.radio.expiresAt>now()||
+        [source,target].some(state=>state.temporaryPrimary.state!=='off'||state.temporarySecondary.state!=='off'||!required(state)))return false;
+      const cryptoApi=globalThis.crypto?.subtle||(typeof require==='function'?require('node:crypto').webcrypto.subtle:null);
+      if(!cryptoApi)return false;
+      const digest=new Uint8Array(await cryptoApi.digest('SHA-256',info.blob));
+      return Array.from(digest,b=>b.toString(16).padStart(2,'0')).join('')===record.packageHash;
     }
     function required(state) {
       return state.otaPolicy === null || state.otaPolicy.hops === '0' &&
@@ -367,8 +388,16 @@
       // the leases and download survive. Adopt those exact live leases without
       // changing a setting; package/journal matching remains Session.inspect's
       // separate allowExisting check before any data is sent.
-      need(!target.existingDownload || (adoptSource && adoptTarget && required(source) && required(target)),
-        'Target has an existing OTA download; only unchanged matching active temporary channels can be adopted.');
+      const resumingExpired=target.existingDownload&&await expiredOwnedDownload(source,target);
+      need(!target.existingDownload || (adoptSource && adoptTarget && required(source) && required(target)) || resumingExpired,
+        'Target has an existing OTA download. Reuse its verified active channel, or select the same saved package to recover its expired window.');
+      if(resumingExpired)progress('Restoring the channel for this browser\'s exact staged package after window expiry; downloaded blocks are retained.');
+      // Use a common preamble at both ends of a new radio2 window, including
+      // mixed primary/radio2 pairs. Retain proved live windows for recovery.
+      if(secondaryPreamble!==undefined&&(sourceProfile||targetProfile)&&!adoptSource&&!adoptTarget)
+        v={...v,preamble:secondaryPreamble};
+      else if(secondaryPreamble!==undefined&&(sourceProfile||targetProfile)&&v.preamble!==secondaryPreamble)
+        progress('Keeping the verified active window at preamble '+v.preamble+' for recovery; the radio2 preference applies to the next new window.');
       const write = commands(v, {sourceProfile, targetProfile});
       // A failed primary-channel trial must return the remote to its normal
       // channel promptly. Radio2 retains the normal channel throughout.
@@ -383,6 +412,8 @@
       await prerequisites('source', local, source);
       await link.verifyPeer(key, password); keyProof(await remote('get public.key'), key);
       need(required({otaPolicy: policy(await remote('ota config'))}), 'Target prerequisite settings changed before radio setup.');
+      if(resumingExpired)need(stagedId(await remote('ota status'))===target.downloadId,
+        'The staged download changed before channel recovery; no temporary radio was changed.');
       const dualProbe = companion && !legacy && sourceProfile === 1 && typeof link.probePeerRadio === 'function';
       if (dualProbe) {
         // Keep the admitted primary session intact until the target's first

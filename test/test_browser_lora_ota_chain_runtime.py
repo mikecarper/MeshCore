@@ -216,6 +216,28 @@ def automatic_harness(*, equal_version=False, bad_resource=False, interrupt=Fals
     return script
 
 
+def automatic_channel_recovery_harness():
+    """Reconnect with only an automatic-step journal and real window readbacks."""
+    script = automatic_harness(interrupt=True, three_steps=True)
+    active = "'TempRadio active: '+radio.split(',').slice(0,4).join(',')+' 7200s left,preamble='+radio.split(',').at(-1)"
+    script = one_replace(script, "'get tempradio':radio,", "'get tempradio':"+active+",")
+    script = one_replace(script, "if(cmd==='get tempradio')return targetTemp?radio:'off';",
+        "if(cmd==='get tempradio')return targetTemp?"+active+":'off';")
+    script = one_replace(script, 'const prepared=el(\'update-summary\').textContent;', '''
+      const recoveredChannels=[],restore=LoraOtaRecovery.restoreSource;
+      LoraOtaRecovery.restoreSource=async(...args)=>{
+        if(args[2]?.id)recoveredChannels.push({id:args[2].id,phase:args[2].phase,source:args[2].source,target:args[2].target});
+        return restore(...args);
+      };
+      const prepared=el('update-summary').textContent;''')
+    script = one_replace(script, "el('base').value='';el('inspect').click();", '''
+        if(localStorage.getItem('meshcore-browser-lora-ota'))throw Error('Unexpected single-package recovery journal');
+        el('disconnect').click();await wait(()=>!el('connect').disabled);
+        el('key').value=target;el('connect').click();await wait(()=>!el('inspect').disabled);
+        el('base').value='';el('inspect').click();''')
+    return one_replace(script, 'prepared,recovered,cmds,stageIndex,', 'recoveredChannels,prepared,recovered,cmds,stageIndex,')
+
+
 class BrowserLoraOtaChainRuntimeTest(unittest.TestCase):
     def setUp(self):
         if not BROWSER:
@@ -338,6 +360,16 @@ class BrowserLoraOtaChainRuntimeTest(unittest.TestCase):
         self.assertIn('Update complete', result['notice'])
         self.assertEqual(result['actualApplications'], 3)
         self.assertEqual(result['bridgeReads'], 2)
+
+    def test_automatic_step_channel_is_recovered_after_reconnecting_usb(self):
+        result = run_harness(automatic_channel_recovery_harness(), timeout=120)
+        self.assertNotIn('error', result, result)
+        self.assertEqual(result['recovered'], 'Continue firmware update', result)
+        self.assertIn('Update complete', result['notice'], result)
+        self.assertEqual(result['actualApplications'], 3, result)
+        self.assertTrue(result['recoveredChannels'], result)
+        self.assertTrue(all(row['phase']=='pull attempted' for row in result['recoveredChannels']), result)
+        self.assertEqual(len([c for c in result['cmds'] if c.startswith('remote ota installhash ')]), 3, result)
         self.assertFalse(result['folder'])
 
 

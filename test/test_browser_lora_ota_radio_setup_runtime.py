@@ -289,6 +289,48 @@ def active_download_lease_timeout_harness():
         'leaseReadLost,leaseRenewals,leaseResults,workflowState,installed,otaData,blockedInstallReplies,inspectStatus,')
 
 
+def expired_download_resume_harness():
+    """Expire the window after partial data, reconnect, and serve only the remainder."""
+    harness = active_download_lease_timeout_harness()
+    harness = replace_once(harness, 'let leaseClockOffset=0,leaseReadLost=false;',
+        'let leaseClockOffset=0,leaseReadLost=false,resumedData=false,resumedRequest=false;')
+    harness = replace_once(harness, 'async open(){this.readable=', 'async open(){selectedProfile=0;this.readable=')
+    harness = replace_once(harness, "if(!true||guard||sourceTemp!=='active')throw Error('Unsafe profile selection');",
+        "if(!true||guard||text.endsWith('radio2')&&sourceTemp!=='active')throw Error('Unsafe profile selection');")
+    harness = replace_once(harness, "leaseReadLost=true;mailboxPending=true;reply='';", """
+          leaseReadLost=true;leaseClockOffset+=30*60000;clock=Math.floor(Date.now()/1000);
+          sourceTemp=targetTemp='off';mailboxPending=true;reply='';""")
+    harness = replace_once(harness, 'otaData=true;leaseClockOffset=(7*60+5614)*1000;',
+        'if(resumedRequest)resumedData=true;otaData=true;if(!leaseClockOffset)leaseClockOffset=(7*60+5614)*1000;')
+    harness = replace_once(harness, "state='fetching';}", "state=resumedData?'ready':'fetching';}")
+    harness = replace_once(harness, 'if(leaseRenewals.every(Boolean)&&otaData)',
+        'if(leaseRenewals.every(Boolean)&&otaData&&resumedData)')
+    harness = replace_once(harness, 'if(rf[2]===1)advertSeen=true;', """
+        if(rf[2]===1){
+          advertSeen=true;
+          if(leaseRenewals.every(Boolean)&&!resumedRequest){
+            resumedRequest=true;
+            setTimeout(()=>this.push(wire(Uint8Array.of(0x88,0,0,0x32,0,6,...unhex(mid),0,0,1,0))),10);
+          }
+        }""")
+    harness = replace_once(harness,
+        "const workflowState=el('workflow-status').dataset.state;if(workflowState!=='complete')throw Error(el('workflow-status').textContent);", """
+    if(el('workflow-status').dataset.state!=='error')throw Error('Expired window did not stop the initial transfer');
+    const retained=JSON.parse(localStorage.getItem('meshcore-browser-lora-ota'));
+    if(retained?.phase!=='pull attempted'||retained.id!==mid)throw Error('Partial package record was lost');
+    el('disconnect').click();await wait(()=>!el('connect').disabled);
+    el('connect').click();await wait(()=>!el('inspect').disabled);
+    document.querySelector('button[data-contact-key="'+key+'"]').click();
+    el('inspect').click();await wait(()=>!el('update').disabled||el('workflow-status').dataset.state==='error'&&!el('inspect').disabled);
+    if(el('update').disabled)throw Error('Resume preparation failed: '+el('status').textContent);
+    el('update').click();await wait(()=>['complete','error'].includes(el('workflow-status').dataset.state));
+    const workflowState=el('workflow-status').dataset.state;
+    if(workflowState!=='complete')throw Error('Resume failed: '+el('workflow-status').textContent);""")
+    harness = replace_once(harness, 'leaseReadLost,leaseRenewals,leaseResults,workflowState,',
+        'retained,resumedData,resumedRequest,leaseReadLost,leaseRenewals,leaseResults,workflowState,')
+    return harness.replace(',128', ',368').replace('preamble=128', 'preamble=368')
+
+
 def explicit_region_with_active_window_harness():
     """An explicit profile must replace a matching old window after image checks."""
     harness = radio_setup_harness(secondary_supported=False)
@@ -418,7 +460,10 @@ class BrowserRadioSetupRuntime(unittest.TestCase):
                     self.assertRegex(installers[0], r'^ota installhash [0-9a-f]{64}$')
 
     def test_lost_radio2_lease_getter_keeps_partial_download_serving_until_complete(self):
-        result = run_harness(active_download_lease_timeout_harness(), timeout=75)
+        # Model 368-symbol readbacks from the actual setters, retaining the
+        # real page's radio2 default rather than the old fixtures' 128 override.
+        harness = active_download_lease_timeout_harness().replace(',128', ',368').replace('preamble=128', 'preamble=368')
+        result = run_harness(harness, timeout=75, radio2_preamble=None)
         self.assertNotIn('error', result, result)
         self.assertEqual(result['workflowState'], 'complete', result)
         self.assertTrue(result['installed'], result)
@@ -429,6 +474,26 @@ class BrowserRadioSetupRuntime(unittest.TestCase):
         self.assertEqual([row['timeout'] for row in result['leaseResults']], [75000, 75000], result)
         self.assertEqual(sum(command.startswith('ota pull ') for command in result['cmds']), 1, result)
         self.assertNotIn('ota cancel', result['cmds'], result)
+        writes = [row for row in result['timeline'] if row[0] in ('local','remote') and row[1].startswith('set tempradio2 ')]
+        self.assertEqual(len(writes), 4, result)  # Setup plus one renewal at each endpoint.
+        self.assertTrue(all(row[1].endswith(',368') for row in writes), result)
+
+    def test_radio2_default_does_not_change_primary_only_setup(self):
+        result = run_harness(radio_setup_harness(secondary_supported=False), timeout=60, radio2_preamble=None)
+        self.assert_automatic_setup(result, 0)
+        writes = [row[1] for row in result['timeline'] if row[0] in ('local','remote') and row[1].startswith('tempradio ')]
+        self.assertTrue(writes, result)
+        self.assertTrue(all(command.endswith(',128') for command in writes), result)
+
+    def test_partial_download_resumes_after_window_expiry_and_usb_reconnect(self):
+        result = run_harness(expired_download_resume_harness(), timeout=90, radio2_preamble=None)
+        self.assertNotIn('error', result, result)
+        self.assertEqual(result['workflowState'], 'complete', result)
+        self.assertTrue(result['resumedData'], result)
+        self.assertEqual(result['retained']['phase'], 'pull attempted', result)
+        self.assertEqual(sum(command.startswith('ota pull ') for command in result['cmds']), 1, result)
+        self.assertNotIn('ota cancel', result['cmds'], result)
+        self.assertEqual(sum(command.startswith('ota installhash ') for command in result['cmds']), 1, result)
 
     def test_missed_switch_is_rechecked_on_both_radios_then_requested_on_the_original_channel(self):
         result = run_harness(missed_switch_harness(), timeout=60)

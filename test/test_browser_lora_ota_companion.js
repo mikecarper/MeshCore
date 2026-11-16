@@ -59,6 +59,23 @@ class Port{
 function modelAuthorization(c){c.ensureGuardedSession=async()=>{if(!c.authenticated)await c.login('');};return c;}
 async function run(){
   {
+    const c=new CompanionTransport({},{}),originalNow=Date.now,clock=originalNow();
+    Object.assign(c,{serving:true,otaSupported:true,usbRawFrameMax:188,otaRadioProfile:1,preamble:368,
+      radio:[910.525,62.5,7,5],sourceTempRadio:{radio:[909.95,500,5,7],preamble:368}});
+    const raw=new Uint8Array(186);raw.set([0x32,0,7]);let sent=0;c.command=async()=>{sent++;};
+    Date.now=()=>clock;
+    try{
+      await c.sendRadioOrdered(raw);
+      assert.equal(c.nextTx-clock,250,'SF5/BW500 with preamble 368 retains the fast sender interval');
+      c.sourceTempRadio.radio=[909.95,125,10,7];c.nextTx=0;
+      await c.sendRadioOrdered(raw);const longPreambleDelay=c.nextTx-clock;
+      assert.ok(longPreambleDelay>10000,'slow radio2 uses its own airtime rather than the saved primary');
+      c.preamble=128;c.nextTx=0;await c.sendRadioOrdered(raw);
+      assert.ok(c.nextTx-clock<longPreambleDelay,'preamble changes are included in the actual packet budget');
+      assert.equal(sent,3);
+    }finally{Date.now=originalNow;}
+  }
+  {
     const p=new Port(),c=new CompanionTransport(p,{openSettle:0,commandTimeout:1000,remoteTimeout:75000});
     await c.open();await c.contacts();c.selectTarget(key);await c.verifyPeer(key,'password');
     const options=c.options,seen=[],remoteReply=c.remoteReply.bind(c);
