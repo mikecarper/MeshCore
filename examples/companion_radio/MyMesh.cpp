@@ -6649,7 +6649,7 @@ bool MyMesh::trySendBinaryLogin(const uint8_t* pub_key, const char* password,
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
   if (_ota_direct_radio_owned
       && !memcmp(_ota_direct_contact.id.pub_key, pub_key, PUB_KEY_SIZE)) {
-    if (route != _ota_direct_usb_route
+    if (route != _ota_direct_owner
         || !_ota_direct_admin.active(_ms->getMillis()) || !directOtaRadioCurrent()) {
       writeErrFrame(ERR_CODE_BAD_STATE, route);
       return true;
@@ -6822,6 +6822,9 @@ void MyMesh::cancelSerialResponseStream(BaseSerialInterface* route) {
 
 void MyMesh::cancelSerialOperationsForRoute(BaseSerialInterface* route) {
   if (route == NULL) return;
+#if COMPANION_FEATURE_DIRECT_OTA_ADMIN
+  cancelDirectOtaForRoute(route);
+#endif
   _delayed_replies.forgetLoginRoute(route);
   if (private_key_backup_route == route) {
     private_key_backup_route = NULL;
@@ -6845,8 +6848,7 @@ void MyMesh::cancelSerialOperationsForRoute(BaseSerialInterface* route) {
 
 void MyMesh::resetUsbHostSessionInput() {
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
-  closeDirectOtaAdmin();
-  _ota_direct_radio_profile = 0;
+  cancelDirectOtaForRoute(_ota_direct_usb_route);
 #endif
   // CLI rescue deliberately remains active across reconnects, but no bytes
   // typed by the old host may complete a command for the new one. This is
@@ -6882,6 +6884,7 @@ void MyMesh::closeDirectOtaAdmin() {
   _ota_direct_transient = nullptr;
   resetContactValue(_ota_direct_contact);
   _ota_direct_admin.clear();
+  _ota_direct_owner = nullptr;
   _ota_direct_radio_owned = false;
   _ota_direct_radio_generation = 0;
 }
@@ -6890,7 +6893,8 @@ void MyMesh::closeDirectOtaAdmin() {
 __attribute__((noinline, cold)) bool MyMesh::handleDirectOtaFrame(size_t len) {
   if (cmd_frame[0] != CMD_SEND_PATH_DISCOVERY_REQ || len < 2 + PUB_KEY_SIZE
       || cmd_frame[1] < 1 || cmd_frame[1] > 4) return false;
-  if (!_ota_direct_usb_route || _serial->captureReplyRoute() != _ota_direct_usb_route) {
+  BaseSerialInterface* route = _serial->captureReplyRoute();
+  if (!directOtaRouteAllowed(route)) {
     writeErrFrame(ERR_CODE_BAD_STATE);
     return true;
   }
@@ -6950,6 +6954,7 @@ __attribute__((noinline, cold)) bool MyMesh::handleDirectOtaFrame(size_t len) {
       _ota_direct_contact.tx_radio = _ota_direct_radio_profile
           ? mesh::RADIO_TX_SECONDARY : mesh::RADIO_TX_PRIMARY;
     }
+    _ota_direct_owner = route;
     if (!_ota_direct_radio_owned) {
       _ota_direct_radio_generation = profiles->generation[_ota_direct_radio_profile];
       _ota_direct_radio_owned = true;
@@ -6988,8 +6993,9 @@ bool MyMesh::handleDirectOtaCommand(const char* command, uint32_t timestamp,
   const bool result = !strncmp(command, prefix, prefix_len)
       && (command[prefix_len] == 0 || command[prefix_len] == ' ');
   if ((!status && !capabilities && !radio && !select_radio && !result) || timestamp != 0) return false;
-  if (!_ota_direct_usb_route || _serial->captureReplyRoute() != _ota_direct_usb_route) {
-    snprintf(reply, capacity, "ERR ota.direct requires physical USB");
+  BaseSerialInterface* route = _serial->captureReplyRoute();
+  if (!directOtaRouteAllowed(route)) {
+    snprintf(reply, capacity, "ERR ota.direct requires an available local OTA transport");
     return true;
   }
   if (status) {
@@ -6999,7 +7005,10 @@ bool MyMesh::handleDirectOtaCommand(const char* command, uint32_t timestamp,
     return true;
   }
   if (capabilities) {
-    snprintf(reply, capacity, "> ota.direct.cap guarded_cli=1 guarded_radio=1");
+    if (route == _ota_direct_wifi_route)
+      snprintf(reply, capacity, "> ota.direct.cap guarded_cli=1 guarded_radio=1 guarded_wifi=1");
+    else
+      snprintf(reply, capacity, "> ota.direct.cap guarded_cli=1 guarded_radio=1");
     return true;
   }
   if (radio) {
@@ -7014,6 +7023,7 @@ bool MyMesh::handleDirectOtaCommand(const char* command, uint32_t timestamp,
     else if (_ota_direct_radio_owned || hasPendingRadioWork()) snprintf(reply, capacity, "ERR ota.direct.radio requires an idle session");
     else if (!directOtaRadioEligible(profile)) snprintf(reply, capacity, "ERR ota.direct.radio requires a temporary MeshCore RXTX profile");
     else {
+      _ota_direct_owner = route;
       _ota_direct_radio_profile = profile;
       snprintf(reply, capacity, "OK - ota.direct.radio %s", value);
     }
@@ -7310,7 +7320,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     if ((txt_type == TXT_TYPE_CLI_DATA || txt_type == TXT_TYPE_CLI_COMMAND)
         && _ota_direct_radio_owned
         && !memcmp(_ota_direct_contact.id.pub_key, pub_key_prefix, 6)) {
-      if (_serial->captureReplyRoute() != _ota_direct_usb_route
+      if (_serial->captureReplyRoute() != _ota_direct_owner
           || !_ota_direct_admin.active(_ms->getMillis()) || !directOtaRadioCurrent()) {
         writeErrFrame(ERR_CODE_BAD_STATE);
         return;
@@ -8733,9 +8743,20 @@ void MyMesh::handleCmdFrame(size_t len) {
       uint8_t priority = cmd_frame[1];
       if (tryParsePacket(pkt, &cmd_frame[2], len - 2)) {
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
+        // Larger Wi-Fi frames are reserved for an active direct OTA owner.
+        // Physical USB retains its existing raw-packet capacity and behavior.
+        if (len > MAX_FRAME_SIZE && _serial->captureReplyRoute() == _ota_direct_wifi_route
+            && (pkt->getPayloadType() != PAYLOAD_TYPE_OTA
+                || _ota_direct_owner != _ota_direct_wifi_route
+                || !_ota_direct_admin.active(_ms->getMillis()) || !directOtaRadioCurrent()
+                || !pkt->isRouteDirect() || pkt->getPathHashCount() != 0)) {
+          releasePacket(pkt);
+          writeErrFrame(ERR_CODE_BAD_STATE);
+          return;
+        }
         if (pkt->getPayloadType() == PAYLOAD_TYPE_OTA
             && (_ota_direct_radio_owned || _ota_direct_radio_profile != 0)) {
-          if (_serial->captureReplyRoute() != _ota_direct_usb_route
+          if (_serial->captureReplyRoute() != _ota_direct_owner
               || !_ota_direct_admin.active(_ms->getMillis()) || !directOtaRadioCurrent()
               || !pkt->isRouteDirect() || pkt->getPathHashCount() != 0) {
             releasePacket(pkt);

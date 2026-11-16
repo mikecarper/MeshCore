@@ -54,6 +54,7 @@ void SerialWifiInterface::disconnectClient(bool cancel_session,
   if (was_connected) {
     ++disconnect_count;
     last_disconnect_reason = reason;
+    if (session_boundary && session_boundary(boundary_context)) clearBuffers();
   }
   if (cancel_session && was_connected && session_changed != nullptr) {
     session_changed(session_context);
@@ -336,6 +337,10 @@ void SerialWifiInterface::resetReceivedFrameHeader() {
 }
 
 size_t SerialWifiInterface::checkRecvFrame(uint8_t dest[]) {
+  return checkRecvFrame(dest, MAX_FRAME_SIZE);
+}
+
+size_t SerialWifiInterface::checkRecvFrame(uint8_t dest[], size_t capacity) {
   loop();
   if (!isEnabled()) return 0;
   // check if new client connected
@@ -453,7 +458,8 @@ size_t SerialWifiInterface::checkRecvFrame(uint8_t dest[]) {
       // Validate before waiting for any payload. Closing an invalid stream
       // avoids unbounded discard loops and interpreting its tail as commands.
       if (received_frame_header.type != '<' || received_frame_header.length == 0
-          || received_frame_header.length > MAX_FRAME_SIZE) {
+          || received_frame_header.length > usbRawPacketReceiveCapacity()
+          || received_frame_header.length > capacity) {
         disconnectClient(true, DisconnectReason::InvalidHeader);
         return 0;
       }
@@ -463,6 +469,11 @@ size_t SerialWifiInterface::checkRecvFrame(uint8_t dest[]) {
     if (dest == nullptr || client.readBytes(dest, frame_length) != frame_length) {
       disconnectClient(true, DisconnectReason::ShortPayload);
       return 0; // Never dispatch a truncated command, even after a short read.
+    }
+    // Only the raw-packet command may use the larger OTA receive buffer.
+    if (frame_length > MAX_FRAME_SIZE && dest[0] != 65) {
+      disconnectClient(true, DisconnectReason::InvalidHeader);
+      return 0;
     }
     resetReceivedFrameHeader();
     ++valid_frames;

@@ -4,30 +4,38 @@
 
 # Update remote firmware over LoRa
 
-Connect a USB radio, choose the remote device, then prepare and start its update.
+Connect a source radio by USB or Wi-Fi, choose the remote device, then prepare and start its update.
 Keep the browser open until the new firmware is verified. This updater is experimental.
-Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
+USB requires Chrome or Edge on a computer with a Companion or compatible Repeater.
+Wi-Fi requires a compatible Companion and the local Wi-Fi bridge described below.
 
 <div data-lora-ota>
-  <p data-role="workflow-status" class="lora-ota-notice" role="status" aria-live="polite">Connect your USB radio to get started.</p>
+  <p data-role="workflow-status" class="lora-ota-notice" role="status" aria-live="polite">Connect your source radio to get started.</p>
   <label class="lora-ota-verbose-toggle"><input type="checkbox" data-role="verbose-errors" aria-controls="lora-ota-error-details"> Show detailed diagnostics</label>
   <aside data-role="verbose-error-panel" hidden role="region" aria-label="Detailed error diagnostics">
     <pre id="lora-ota-error-details" data-role="error-details">Detailed errors will appear here. Passwords and secret command arguments are hidden.</pre>
   </aside>
-  <p data-role="browser-support" class="lora-ota-notice" role="alert" hidden>USB access is unavailable in this browser. Open this page in Chrome or Edge on a computer. Firefox does not provide the Web Serial connection this updater needs.</p>
+  <p data-role="browser-support" class="lora-ota-notice" role="alert" hidden>USB access is unavailable in this browser. Use Chrome or Edge for USB, or choose Wi-Fi and start the local bridge.</p>
   <section class="lora-ota-step">
     <h2>1. Connect and choose the remote device</h2>
-    <details class="lora-ota-advanced"><summary>USB connection options</summary>
+    <label>Connection
+      <select data-role="connection"><option value="usb">USB</option><option value="wifi">Wi-Fi Companion</option></select>
+    </label>
+    <section data-role="wifi-options" hidden>
+      <p>Start the local Wi-Fi bridge on this computer with the Companion's network address. Paste the connection URL it prints below. <a href="#wi-fi-companion-connection">Wi-Fi setup instructions</a>.</p>
+      <label>Local bridge URL <input data-role="wifi-url" type="password" autocomplete="off" spellcheck="false" placeholder="ws://127.0.0.1:8765/…"></label>
+    </section>
+    <details data-role="usb-options" class="lora-ota-advanced"><summary>USB connection options</summary>
     <label>USB device
       <select data-role="source"><option value="auto">Detect automatically</option><option value="companion">Companion</option><option value="repeater">Repeater</option></select>
     </label>
     </details>
-    <p>The USB radio sends the update over LoRa. Choose the remote device and enter its admin password if needed.</p>
+    <p>The source radio sends the update over LoRa. Choose the remote device and enter its admin password if needed.</p>
     <p class="lora-ota-actions"><button type="button" data-role="connect">Connect USB source</button> <button type="button" data-role="reconnect" hidden disabled>Reconnect USB source</button> <button type="button" data-role="disconnect" class="lora-ota-secondary" disabled>Disconnect</button></p>
     <p data-role="source-info" role="status" hidden></p>
     <p data-role="ota-availability" class="lora-ota-availability" role="status" aria-live="polite" hidden></p>
     <p data-role="source-update-help" role="status" hidden>This source needs updated firmware for this OTA workflow. If it is still connected here, disconnect it before opening the flasher. <a data-role="source-update-link" href="https://mikecarper.github.io/meshfirmware/" target="_blank" rel="noopener noreferrer">Update source firmware</a></p>
-    <p data-role="contact-status" role="status">Connect your USB radio to choose the remote device.</p>
+    <p data-role="contact-status" role="status">Connect your source radio to choose the remote device.</p>
     <section data-role="target-controls" hidden>
     <label>Search contacts by name or public-key prefix<input data-role="contact-search" autocomplete="off" spellcheck="false" disabled></label>
     <p><strong>Device to update</strong></p>
@@ -122,8 +130,8 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
     <p data-role="radio-setup-status" role="status" aria-live="polite">Connect and choose the remote device first.</p>
     <details class="lora-ota-advanced">
       <summary>Manual setup and older firmware</summary>
-      <p>No manual channel commands are needed for direct updates with USB radio controls, including older Companions. Firmware without those controls needs a Companion update for automatic setup.</p>
-      <p>For manual setup, apply the command on the target first, then the USB source. Every relay also needs matching settings; automatic route preparation is not supported.</p>
+      <p>No manual channel commands are needed for direct updates with supported source radio controls. Firmware without those controls needs a Companion update for automatic setup.</p>
+      <p>For manual setup, apply the command on the target first, then the source radio. Every relay also needs matching settings; automatic route preparation is not supported.</p>
       <pre data-role="radio-commands">Choose the update frequency to show the temporary command.</pre>
     </details>
   </details>
@@ -142,7 +150,7 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
     <summary>Repeater forwarding</summary>
     <p>Optionally change forwarding on the source or target. The radio flood settings leave direct-route messages enabled; all forwarding controls both. These saved settings need firmware that supports them. A relay used by the selected route must keep forwarding on. To manage a different repeater, connect with that repeater as the target first. Restore the setting afterward if needed.</p>
     <label>Repeater
-      <select data-role="repeat-node"><option value="source">USB source</option><option value="target">Update target</option><option value="other">Selected route relay (check or turn on)</option></select>
+      <select data-role="repeat-node"><option value="source">Source radio</option><option value="target">Update target</option><option value="other">Selected route relay (check or turn on)</option></select>
     </label>
     <label>Route relay's full public key (when selected)<input data-role="repeat-key" autocomplete="off" spellcheck="false"></label>
     <label>Setting
@@ -171,6 +179,32 @@ Use Chrome or Edge on a computer with a USB Companion or compatible Repeater.
   </details>
   </details>
 </div>
+
+## Wi-Fi Companion connection
+
+The browser cannot connect directly to the Companion's TCP port. Run the
+local bridge on the same computer as the browser, and connect that computer
+and the Companion to a network that allows them to reach each other. Wi-Fi
+mode requires a Companion built with Wi-Fi guarded LoRa OTA support. Older
+builds may support guarded OTA over USB but still require a firmware update
+for Wi-Fi. Repeater sources use USB. To enable Wi-Fi and find the Companion's
+address, see [Wi-Fi Companion setup](wifi.md#wifi-companion-setup).
+The Companion's TCP connection has no encryption or login; use a trusted
+network.
+
+From a checkout of this repository, install the bridge dependency and start
+the bridge, replacing the address with the Companion's IPv4 address:
+
+    python -m pip install "websockets>=13,<18"
+    python tools/lora_ota/browser_wifi_bridge.py 192.168.1.50
+
+Keep the bridge running. It prints a local connection URL; select **Wi-Fi
+Companion** above, paste the complete URL, and connect. The URL grants access
+to the bridge while it is running, so treat it as a password. Disconnect other
+apps from the Companion for the duration of the update.
+
+If the connection drops, reconnect the same source and check its state before
+continuing. The update is not automatically restarted or installed again.
 
 <details markdown="1">
 <summary>Compatibility and advanced update details</summary>
@@ -244,8 +278,9 @@ Guarded OTA keeps update replies separate from normal messages and checks the
 source radio during the update. The updater selects it automatically when the
 Companion supports it. Both modes verify the target's public key before updating.
 
-Older Companions use their shared message queue. Unrelated pending messages may
-be saved in this browser and cannot be restored to the Companion. Keep other
+Older USB Companions use their shared message queue. Unrelated pending messages
+may be saved in this browser and cannot be restored to the Companion. Wi-Fi
+requires guarded OTA and cannot use this older shared-queue path. Keep other
 apps disconnected and avoid changing radio settings during the update.
 
 Older Keymind Cascade Full Companions can use their existing USB mOTA
@@ -305,7 +340,7 @@ transfer recovery, automatic window extension, stopping, replacing firmware,
 installation and post-reboot verification passed. See the
 [Mercerwood test results](test-results/browser_lora_ota_mercerwood_2026-11-10.safe.json).
 Repeater-source and multi-hop hardware tests remain unverified. This updater is
-experimental; Wi-Fi support is still under development.
+experimental.
 
 Guarded mode requires a custom Keymind Cascade Full Companion built from commit
 `bede4d85f` or later with both guarded features enabled. The 1.18.0.1 release
@@ -319,8 +354,9 @@ For direct updates, it reads the target's saved channel before installing and
 automatically reconnects there after reboot. Any source retune is temporary;
 saved radio channels are unchanged.
 
-The source needs a compatible USB Companion with raw packet support, or a
-Repeater with `ota.peer` and USB folder support. Older Companions use their
+The source needs a compatible Companion with raw packet support, or a USB
+Repeater with `ota.peer` and USB folder support. Wi-Fi also requires the
+guarded OTA support described above. Older USB Companions use their
 shared message queue: unrelated messages moved into the browser can be
 downloaded, but cannot be restored to the Companion. The page prepares the
 update channel and required OTA preferences automatically on
@@ -436,6 +472,8 @@ the page identifies the missing command and links to a Companion update.
 Some firmware accepts raw OTA packets from USB but
 suppresses their transmission without an active temporary radio.
 After a USB timeout, select **Reconnect USB source**, then **Prepare update**.
+After a Wi-Fi interruption, select **Reconnect Wi-Fi Companion**, then
+**Prepare update**; the page checks the same source identity before continuing.
 The selected target and firmware are kept. A matching interrupted download can
 be resumed or restarted from this browser's saved update record. To abandon it,
 choose different firmware and prepare again. **Replace and install update**
@@ -484,9 +522,10 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_zip.js"></script>
 <script src="../_javascript/lora_ota_delta.js?v=auto-paths-3"></script>
 <script src="../_javascript/lora_ota_port.js"></script>
+<script src="../_javascript/lora_ota_wifi_port.js"></script>
 <script src="../_javascript/lora_ota_serial.js?v=ota-quiet-1"></script>
 <script src="../_javascript/lora_ota_companion_source.js"></script>
-<script src="../_javascript/lora_ota_companion.js?v=active-lease-retry-1"></script>
+<script src="../_javascript/lora_ota_companion.js?v=wifi-guard-1"></script>
 <script src="../_javascript/lora_ota_contacts.js"></script>
 <script src="../_javascript/lora_ota_session.js?v=active-lease-retry-1"></script>
 <script src="../_javascript/lora_ota_route.js"></script>
@@ -506,4 +545,4 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_recovery.js?v=usb-retry-1"></script>
 <script src="../_javascript/lora_ota_lease.js?v=active-lease-retry-1"></script>
 <script src="../_javascript/lora_ota_catalog.js?v=4aeb7bf86"></script>
-<script src="../_javascript/lora_ota_browser.js?v=radio2-preamble-368-1"></script>
+<script src="../_javascript/lora_ota_browser.js?v=wifi-source-1"></script>

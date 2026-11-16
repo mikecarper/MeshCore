@@ -60,6 +60,12 @@ SCENARIOS = (
     "radio2 FIFO attribution and whole-record pressure eviction",
     "same-IP reconnect replays whole radio2 group after marker",
     "parked owner return replays whole radio2 group after marker",
+    "opted-in raw OTA frame uses extended bounded receive",
+    "non-raw frame cannot use extended receive",
+    "extended frame cannot exceed caller capacity",
+    "extended receive is opt-in",
+    "same-IP guarded owner replacement discards stale replies",
+    "guarded disconnect discards stale replies before same-IP reconnect",
 )
 
 

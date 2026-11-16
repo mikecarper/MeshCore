@@ -460,6 +460,35 @@ int main(int argc, char** argv) {
     auto returned = f.connect(A);
     f.drain(returned);
     assert(returned->sent == framed({{0x92, 0xA1}, {0x88, 4, 0xC0, 0x22}}));
+  } else if (scenario >= 40 && scenario <= 43) {
+    auto socket = f.connect(A);
+    f.transport.enableOtaRawReceive(scenario != 43);
+    uint8_t extended[BaseSerialInterface::MAX_USB_RAW_FRAME_SIZE] = {};
+    socket->received = {'<', uint8_t(sizeof(extended)), 0};
+    socket->received.push_back(scenario == 41 ? 66 : 65);
+    for (size_t i = 1; i < sizeof(extended); ++i) socket->received.push_back(uint8_t(i));
+    const size_t capacity = scenario == 42 ? MAX_FRAME_SIZE : sizeof(extended);
+    const size_t n = f.transport.checkRecvFrame(extended, capacity);
+    if (scenario == 40) {
+      assert(n == sizeof(extended) && extended[0] == 65 && socket->connected);
+    } else {
+      assert(n == 0 && !socket->connected && f.callbacks == 1);
+    }
+  } else if (scenario == 44 || scenario == 45) {
+    auto old = f.connect(A);
+    f.enqueue(reply_a);
+    int revoked = 0;
+    f.transport.setSessionBoundaryCallback([](void* p) -> bool {
+      ++*static_cast<int*>(p); return true;
+    }, &revoked);
+    if (scenario == 45) {
+      old->connected = false;
+      f.tick();
+      assert(revoked == 1 && f.callbacks == 1);
+    }
+    auto replacement = f.connect(A);
+    f.drain(replacement);
+    assert(!old->connected && revoked == 1 && replacement->sent.empty());
   } else {
     assert(false && "unknown scenario");
   }

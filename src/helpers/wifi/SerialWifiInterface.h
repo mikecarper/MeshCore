@@ -95,6 +95,9 @@ private:
   uint32_t receive_capacity_paused_at = 0;
   void (*session_changed)(void*) = nullptr;
   void* session_context = nullptr;
+  bool (*session_boundary)(void*) = nullptr;
+  void* boundary_context = nullptr;
+  bool ota_raw_receive = false;
 
   void clearBuffers();
   void expireHeldQueue(uint32_t now);
@@ -133,6 +136,16 @@ public:
     session_changed = callback;
     session_context = context;
   }
+  // Guarded OTA must not survive any TCP session boundary, including a
+  // same-IP replacement. Returning true discards the old owner's replies.
+  void setSessionBoundaryCallback(bool (*callback)(void*), void* context) {
+    session_boundary = callback;
+    boundary_context = context;
+  }
+  void enableOtaRawReceive(bool enabled) { ota_raw_receive = enabled; }
+  size_t usbRawPacketReceiveCapacity() const override {
+    return ota_raw_receive ? MAX_USB_RAW_FRAME_SIZE : MAX_FRAME_SIZE;
+  }
 
   // BaseSerialInterface methods
   void enable() override;
@@ -153,6 +166,7 @@ public:
 
   size_t writeFrame(const uint8_t src[], size_t len) override;
   size_t checkRecvFrame(uint8_t dest[]) override;
+  size_t checkRecvFrame(uint8_t dest[], size_t capacity) override;
 
   bool hasReceivedFrameHeader();
   void resetReceivedFrameHeader();

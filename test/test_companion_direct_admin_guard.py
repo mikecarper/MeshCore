@@ -86,6 +86,8 @@ struct MyMesh:BaseChatMesh {
   Timer timer;Timer* _ms=&timer;
   BaseSerialInterface wire;BaseSerialInterface* _serial=&wire;
   BaseSerialInterface* _ota_direct_usb_route=&wire;
+  BaseSerialInterface* _ota_direct_wifi_route=nullptr;
+  BaseSerialInterface* _ota_direct_owner=nullptr;
   uint8_t cmd_frame[64]{};int response=-1;
   mesh::CompanionDirectAdminGuard _ota_direct_admin;
   mesh::Radio* _radio=&profile_radio;
@@ -96,6 +98,9 @@ struct MyMesh:BaseChatMesh {
   uint8_t out_frame[MAX_FRAME_SIZE]{};
   void resetUsbHostSessionInput();
   @SET_ROUTE@
+  @WIFI_ROUTE@
+  @CANCEL_ROUTE@
+  @ALLOWED_ROUTE@
   void logRxRaw(float,float,const uint8_t*,int);
   MyMesh(){profile_radio.expose_profiles=true;}
   void releasePacket(mesh::Packet*){}
@@ -225,7 +230,7 @@ int main(){
   // currently selected route of another host.
   m.response=-1;m.routed=nullptr;m.loginRoute(m.contact.id.pub_key,&m.wire);
   assert(m.response==-1&&m.routed==&m._ota_direct_contact);
-  assert(m.command("get ota.direct.reply 0",0,reply)&&strstr(reply,"physical USB"));
+  assert(m.command("get ota.direct.reply 0",0,reply)&&strstr(reply,"available local OTA transport"));
   m.wire.route=&m.wire;
 
   uint8_t data[184]{};mesh::Packet packet;packet.radio_generation=m.profile_radio.config.generation[0];packet.direct=false;
@@ -327,7 +332,7 @@ int main(){
   assert(!strcmp(reply,"> ota.direct.radio v=1 profile=radio"));
   assert(!secondary.command("set ota.direct.radio radio2",1,reply));
   secondary.wire.route=&foreign;
-  assert(secondary.command("set ota.direct.radio radio2",0,reply)&&strstr(reply,"physical USB"));
+  assert(secondary.command("set ota.direct.radio radio2",0,reply)&&strstr(reply,"available local OTA transport"));
   assert(secondary._ota_direct_radio_profile==0);secondary.wire.route=&secondary.wire;
   assert(secondary.command("set ota.direct.radio radio3",0,reply)&&strstr(reply,"ERR use"));
   auto& profiles=secondary.profile_radio.config;
@@ -401,6 +406,26 @@ int main(){
   assert(!secondary._ota_direct_radio_owned&&secondary._ota_direct_radio_profile==0);
   assert(secondary.command("set ota.direct.radio radio2",0,reply)&&strstr(reply,"OK"));
   secondary.setDirectAdminUsbRoute(nullptr);assert(secondary._ota_direct_radio_profile==0&&!secondary._ota_direct_usb_route);
+
+  // A Wi-Fi OTA session is bound to the exact route. USB activity must not
+  // steal it, and disconnect must revoke the selected session and mailbox.
+  MyMesh wifi; BaseSerialInterface wifi_transport;
+  wifi.setDirectAdminWifiRoute(&wifi_transport);
+  wifi.wire.route=&wifi_transport;
+  assert(wifi.command("get ota.direct.capabilities",0,reply)&&strstr(reply,"guarded_wifi=1"));
+  wifi.mode(1);assert(wifi.response==0&&wifi._ota_direct_owner==&wifi_transport);
+  wifi.wire.route=&wifi.wire;
+  wifi.mode(3);assert(wifi.response==ERR_CODE_BAD_STATE);
+  wifi.resetUsbHostSessionInput();
+  assert(wifi._ota_direct_owner==&wifi_transport&&wifi._ota_direct_admin.active(wifi.timer.now));
+  assert(wifi.cancelDirectOtaForRoute(&wifi_transport));
+  assert(!wifi._ota_direct_owner&&!wifi._ota_direct_admin.active(wifi.timer.now));
+  assert(!wifi.cancelDirectOtaForRoute(&wifi_transport));
+  wifi.mode(1);assert(wifi.response==0&&wifi._ota_direct_owner==&wifi.wire);
+  wifi.wire.route=&wifi_transport;
+  wifi.mode(1);assert(wifi.response==ERR_CODE_BAD_STATE);
+  assert(!wifi.cancelDirectOtaForRoute(&wifi_transport));
+  wifi.wire.route=&wifi.wire;wifi.mode(3);assert(wifi.response==0);
 #else
   assert(m.response==-1&&m.calls==0);
   assert(!m.command("get ota.direct",0,reply));
@@ -423,7 +448,11 @@ class CompanionDirectAdminGuardTest(unittest.TestCase):
         closer = extract_braced(source, "void MyMesh::closeDirectOtaAdmin(")
         raw_log = extract_braced(source, "void MyMesh::logRxRaw(")
         host_reset = extract_braced(source, "void MyMesh::resetUsbHostSessionInput(")
-        set_route = extract_braced((ROOT / "examples/companion_radio/MyMesh.h").read_text(), "void setDirectAdminUsbRoute(")
+        header = (ROOT / "examples/companion_radio/MyMesh.h").read_text()
+        set_route = extract_braced(header, "void setDirectAdminUsbRoute(")
+        wifi_route = extract_braced(header, "void setDirectAdminWifiRoute(")
+        cancel_route = extract_braced(header, "bool cancelDirectOtaForRoute(")
+        allowed_route = extract_braced(header, "bool directOtaRouteAllowed(")
         base = (ROOT / "src/helpers/BaseChatMesh.cpp").read_text()
         send_login = extract_braced(base, "int BaseChatMesh::sendLogin(")
         callbacks = "\n".join(extract_braced(source, signature) for signature in (
@@ -432,12 +461,12 @@ class CompanionDirectAdminGuardTest(unittest.TestCase):
         cli_route = extract_braced(source, 'if ((txt_type == TXT_TYPE_CLI_DATA || txt_type == TXT_TYPE_CLI_COMMAND)')
         login = extract_braced(source, 'bool MyMesh::trySendBinaryLogin(')
         login_route = extract_braced(login, 'if (_ota_direct_radio_owned\n      && !memcmp(_ota_direct_contact.id.pub_key, pub_key, PUB_KEY_SIZE))')
-        self.assertIn('route != _ota_direct_usb_route', login_route)
+        self.assertIn('route != _ota_direct_owner', login_route)
         self.assertIn('writeErrFrame(ERR_CODE_BAD_STATE, route)', login_route)
         self.assertIn('!trySendBinaryLogin(pub_key, password, route)', source)
         self.assertIn("_ota_direct_admin.beginLogin(recipient->id", source)
         self.assertIn("if (handleDirectOtaCommand(command, sender_timestamp, reply, reply_capacity))", source)
-        self.assertIn("closeDirectOtaAdmin();", extract_braced(source, "void MyMesh::resetUsbHostSessionInput("))
+        self.assertIn("cancelDirectOtaForRoute(_ota_direct_usb_route);", host_reset)
         self.assertIn("setDirectAdminUsbRoute(&usb_serial_interface)", (ROOT / "examples/companion_radio/main.cpp").read_text())
         self.assertIn("recipient = &_ota_direct_contact", source)
         self.assertIn("(txt_type == TXT_TYPE_CLI_DATA || txt_type == TXT_TYPE_CLI_COMMAND)",source)
@@ -476,6 +505,9 @@ class CompanionDirectAdminGuardTest(unittest.TestCase):
                 code = code.replace("@RAW_LOG@", raw_log if full else "")
                 code = code.replace("@HOST_RESET@", host_reset if full else "")
                 code = code.replace("@SET_ROUTE@", set_route)
+                code = code.replace("@WIFI_ROUTE@", wifi_route)
+                code = code.replace("@CANCEL_ROUTE@", cancel_route)
+                code = code.replace("@ALLOWED_ROUTE@", allowed_route)
                 code = code.replace("@RAW_ROUTE@", raw)
                 code = code.replace("@CLI_ROUTE@", cli_route)
                 code = code.replace("@LOGIN_ROUTE@", login_route)

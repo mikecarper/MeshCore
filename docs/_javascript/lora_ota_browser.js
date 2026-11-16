@@ -7,6 +7,24 @@
   let link, session, info, expectedSigner, activeTask, preparing, chainPrepared, chainConfig, connectController;
   let autoChain=null, autoStep='';
   let contacts=[], targetLocked=false, contactKey='', disconnectGeneration=0, activeSourceKind=null;
+  let activeConnection=null;
+  const connectionKind=()=>activeConnection||$('connection').value;
+  const wifiConnection=()=>connectionKind()==='wifi';
+  // Transport modules retain their USB endpoint identifiers for safety
+  // decisions. Translate only user-visible text; never alter error metadata.
+  function displayTransport(value){
+    const text=String(value);
+    if(!wifiConnection())return text;
+    return text.replace(/USB Companion/g,'Wi-Fi Companion')
+      .replace(/USB source/g,'Wi-Fi source')
+      .replace(/USB radio/g,'Wi-Fi radio')
+      .replace(/USB command/g,'Wi-Fi command')
+      .replace(/USB identity/g,'Wi-Fi identity')
+      .replace(/USB connection/g,'Wi-Fi connection')
+      .replace(/USB OTA/g,'Wi-Fi OTA')
+      .replace(/USB\/local/g,'Wi-Fi/local')
+      .replace(/over USB/g,'over Wi-Fi');
+  }
   const sourceKind=()=>activeSourceKind||($('source').value==='auto'?'companion':$('source').value);
   const aclIntent=()=>$('acl').checked||$('password').value.length===0;
   const repeaterAclIntent=()=>sourceKind()==='repeater'&&aclIntent();
@@ -34,6 +52,7 @@
   }
   function status(message, state='working') {
     if(autoStep)message=autoStep+message;
+    message=displayTransport(message);
     $('workflow-status').textContent=message;
     $('workflow-status').dataset.state=state;
     if(updatePhase){$('update-progress').hidden=false;$('update-progress').textContent=message;}
@@ -48,12 +67,20 @@
       preparedDownload==='failed' ? 'Restart and install update' : preparedDownload==='active' ? 'Resume and install update' :
       preparedDownload==='ready' ? 'Install and verify update' : 'Update remote firmware';
   }
-  $('browser-support').hidden=!!navigator.serial;
+  function updateConnectionControls(){
+    const wifi=$('connection').value==='wifi';
+    $('wifi-options').hidden=!wifi;
+    $('usb-options').hidden=wifi;
+    $('browser-support').hidden=wifi||!!navigator.serial;
+    $('connect').textContent=wifi?'Connect Wi-Fi Companion':'Connect USB source';
+    $('reconnect').textContent=wifi?'Reconnect Wi-Fi Companion':'Reconnect USB source';
+  }
+  updateConnectionControls();
   const updatesBlocked = () => !!link?.failure || sourceOtaUnsupported || !!targetAvailability && targetAvailability.state !== 'supported';
   function showAvailability(result) {
     const notice=$('ota-availability');
     notice.hidden=!result;
-    notice.textContent=result?.message || '';
+    notice.textContent=displayTransport(result?.message || '');
     notice.dataset.state=result?.state || '';
     if(result && result.state!=='supported')notice.scrollIntoView?.({block:'nearest',behavior:'smooth'});
   }
@@ -61,7 +88,7 @@
     if(updatesBlocked())throw Error($('ota-availability').textContent || 'LoRa updates are unavailable. Select Find matching firmware to check the device again.');
   }
   const log = text => {
-    $('status').textContent += String(text) + '\n'; $('status').scrollTop = $('status').scrollHeight;
+    $('status').textContent += displayTransport(text) + '\n'; $('status').scrollTop = $('status').scrollHeight;
     if(updatePhase==='transfer'&&transferStopJob!==session) {
       const percent=/\bdownload:.*?\((\d{1,3})%\)/i.exec(String(text));
       if(percent && Number(percent[1])<=100){
@@ -79,7 +106,7 @@
       if(record)notice.textContent=record.state==='paused'
         ? 'Forwarding for target '+String(record.target||'').slice(0,12)+' is paused. Restoration will be checked separately from firmware completion. Keep this page open.'
         : 'Forwarding restoration is pending for target '+String(record.target||'').slice(0,12)+
-          '. Keep this page open. Reconnect the same USB source and target if necessary, then select Restore forwarding.';
+          '. Keep this page open. Reconnect the same source and target if necessary, then select Restore forwarding.';
       else notice.textContent=quietWarning;
       if(record&&quietWarning)notice.textContent+=' '+quietWarning;
       if(secondaryWarning)notice.textContent+=(notice.textContent?' ':'')+secondaryWarning;
@@ -96,10 +123,9 @@
     return ()=>link===connection&&disconnectGeneration===generation&&!controller?.signal.aborted;
   }
   function quietDetail(error){
-    const secret=$('password').value;
     let detail=error?String(error.message||error):'';
-    if(secret)detail=detail.split(secret).join('<hidden>');
-    return detail;
+    for(const secret of [$('password').value,$('wifi-url').value].filter(Boolean))detail=detail.split(secret).join('<hidden>');
+    return displayTransport(detail);
   }
   function quietWarn(message,error){
     const detail=quietDetail(error);
@@ -158,7 +184,7 @@
         return;
       }
       if(link.otaRecoveryProfilePending&&!(link.authenticated===true&&link.knownRepeater?.toLowerCase()===target))
-        throw Error('USB is connected, but its previous temporary update channel could not be verified. Check the update channel before restoring forwarding; no target command was sent.');
+        throw Error('The source is connected, but its previous temporary update channel could not be verified. Check the update channel before restoring forwarding; no target command was sent.');
       if(!required&&(link.browserRawSource!==true||link.otaSupported!==true))
         throw Error('This source has no bounded automatic cleanup. Select Restore forwarding to check it explicitly.');
       // A fresh connection needs selection; an authenticated same-target
@@ -186,7 +212,7 @@
       if(saved?.secondaryRestorationPending){
         if(!job||job.link!==link||link?.browserRawSource!==true||link.otaSupported!==true||
             link.failure||link.serving||link.folderUnknown||link.relays?.length)
-          throw Error('Use the same healthy guarded USB Companion to check the normal radio2 profile.');
+          throw Error('Use the same healthy guarded Companion to check the normal radio2 profile.');
         await job.verifyRestoredTargetSecondary({maxDurationMs:5000});
         if(job.readJournal()?.secondaryRestorationPending)throw Error('The saved radio2 profile remains unconfirmed.');
         secondaryWarning='';
@@ -201,7 +227,7 @@
     let pending=!!secondaryWarning;
     try{pending=pending||!!quietStore.read();}catch(_){pending=true;}
     return pending?' Firmware is verified. Review the pending settings warning before disconnecting.':
-      ' You can disconnect the USB radio.';
+      ' You can disconnect the source radio.';
   }
   function sessionStage(stage) {
     if(updatePhase!=='transfer' || transferStopJob===session || transferStage===stage)return;
@@ -284,10 +310,10 @@
   }
   function failureMessage(error,step=operationErrorStep) {
     const display=failureRecord(error);
-    const secrets=[$('password').value].filter(Boolean);
-    if(typeof LoraOtaChecks.errorDetails==='function')return LoraOtaChecks.errorDetails(display,{step,secrets});
+    const secrets=[$('password').value,$('wifi-url').value].filter(Boolean);
+    if(typeof LoraOtaChecks.errorDetails==='function')return displayTransport(LoraOtaChecks.errorDetails(display,{step,secrets}));
     let message=String(display.message);for(const secret of secrets)message=message.split(secret).join('<hidden>');
-    return 'Step: '+step+'\nDetails: '+message;
+    return displayTransport('Step: '+step+'\nDetails: '+message);
   }
   function showDetailedErrors() {
     const visible=$('verbose-errors').checked;
@@ -325,12 +351,12 @@
     if(error?.otaAvailability && typeof error.otaAvailability==='object') {
       targetAvailability=error.otaAvailability;
       showAvailability(targetAvailability);invalidate();
-      $('firmware-catalog-status').textContent=targetAvailability.message;
+      $('firmware-catalog-status').textContent=displayTransport(targetAvailability.message);
     }
     if(/temporary radio|temporary settings|update channel|saved primary/i.test(error?.message || '')) {
       $('radio-setup-status').textContent=message;
       openDetails($('radio-setup-panel'));
-      if(error?.manualRadioCommand)$('radio-commands').textContent='On the remote target first, then on the USB source:\n'+error.manualRadioCommand;
+      if(error?.manualRadioCommand)$('radio-commands').textContent=displayTransport('On the remote target first, then on the USB source:\n'+error.manualRadioCommand);
       openDetails($('radio-commands'));
       $('radio-setup-panel').scrollIntoView?.({block:'nearest',behavior:'smooth'});
     }
@@ -339,13 +365,13 @@
     showSourceUpdate(error?.sourceUpdateRequired);
     if(link?.failure){
       invalidate();refreshPreservedMessages();
-      status(summary+'\nUSB communication stopped. Select Reconnect USB source; your target and firmware choices are kept.', 'error');
+      status(summary+(wifiConnection()?'\nWi-Fi communication stopped. Select Reconnect Wi-Fi Companion; your target and firmware choices are kept.':'\nUSB communication stopped. Select Reconnect USB source; your target and firmware choices are kept.'), 'error');
       $('reconnect').hidden=false;$('reconnect').scrollIntoView?.({block:'nearest',behavior:'smooth'});
     }
     // Binary USB replies have no transaction ID. Reopen and re-identify the
     // same port once instead of replaying an unanswered frame into that stream.
     // The interrupted update remains stopped; only recovery reads/cleanup run.
-    if((error?.otaUsbTimeout||direct?.failure?.otaUsbTimeout)&&connection===link&&
+    if(!wifiConnection()&&(error?.otaUsbTimeout||direct?.failure?.otaUsbTimeout)&&connection===link&&
         generation===disconnectGeneration&&!connectController&&!usbRetryActive&&!disconnecting&&
         sourceKind()==='companion'&&connection?.port&&/^[a-f0-9]{64}$/i.test(sourceKey||'')&&
         !usbRetryAttempted.has(connection)){
@@ -383,10 +409,10 @@
         read:typeof connection?.diagnosticRead==='function'?(command,options)=>connection.diagnosticRead(target,password,command,{...options,canContinue:canRead}):undefined});
       if(!sameDevice())return;
       record.otaIdentity=identity;
-      const details=LoraOtaChecks.errorDetails(record,{step,secrets:[password].filter(Boolean)});
+      const details=displayTransport(LoraOtaChecks.errorDetails(record,{step,secrets:[password,$('wifi-url').value].filter(Boolean)}));
       $('error-details').textContent=details;
       log('Failure device information:\n'+details);
-      if(direct?.failure||connection?.failure){status(summary+'\nUSB communication stopped while collecting device information. Reconnect the USB source before retrying.','error');$('reconnect').hidden=false;}
+      if(direct?.failure||connection?.failure){status(summary+(wifiConnection()?'\nWi-Fi communication stopped while collecting device information. Reconnect the Wi-Fi Companion before retrying.':'\nUSB communication stopped while collecting device information. Reconnect the USB source before retrying.'),'error');$('reconnect').hidden=false;}
     }catch(_){
       // Optional diagnostics must never replace the failure or cause an
       // uncertain command to be repeated. The original error remains visible.
@@ -533,9 +559,9 @@
       $('radio-region-status').textContent='Your manually selected radio settings take precedence.';
     }
     showRadioCommands();
-    $('radio-setup-status').textContent=!link?'Connect a USB radio to prepare the update channel.':canPrepareRadioChannel()
+    $('radio-setup-status').textContent=displayTransport(!link?'Connect a USB radio to prepare the update channel.':canPrepareRadioChannel()
       ? 'The update channel is prepared automatically. The target\'s normal radio2 may pause temporarily; its saved settings return after reboot or window expiry.'
-      : 'Update this Companion to enable automatic channel setup: its firmware cannot read and set temporary channels over USB.';
+      : 'Update this Companion to enable automatic channel setup: its firmware cannot read and set temporary channels over USB.');
   }
   async function applyTargetRadioHardware(hwId){
     if(targetRadioHwId===hwId)return;
@@ -574,7 +600,7 @@
         ?{record,info:session.info}:undefined;
       const result=await LoraOtaRadioSetup.prepare(link,target,password,radioOptions(),{...options,
         secondaryPreamble:Number($('radio2-preamble').value),resumeDownload,progress:message=>{
-        $('radio-setup-status').textContent=message;status(message);log(message);
+        $('radio-setup-status').textContent=displayTransport(message);status(message);log(message);
       }});
       $('radio-frequency').value=result.source[0].toFixed(3);
       $('radio-bandwidth').value=String(result.source[1]);$('radio-sf').value=String(result.source[2]);$('radio-cr').value=String(result.source[3]);
@@ -641,6 +667,8 @@
     $('resume').textContent=preparedDownload==='failed' ? 'Restart' : 'Resume';
     $('target-controls').hidden=!link && sourceKind()==='companion';
     $('disconnect').disabled=!link && !connectController;
+    $('connection').disabled=active||!!link;
+    $('wifi-url').disabled=active||!!link;
     $('reconnect').hidden=!link?.failure;
     $('reconnect').disabled=active || !link?.failure;
     for (const name of editable) $(name).disabled = active || (updatesBlocked() && ['file','base','image','signer','chain-files','chain-attest','chain-objective','chain-preamble','chain-minutes'].includes(name)) || (!!link && (name === 'source' || name === 'acl' || name === 'relays' || (name === 'key' && (targetLocked || !!link.knownRepeater))));
@@ -840,6 +868,12 @@
     if(!link){$('target-controls').hidden=sourceKind()==='companion';renderContacts();}
     if(sourceKind()==='repeater')openDetails($('key'));
   });
+  $('connection').addEventListener('change',()=>{
+    if(link||connectController)return;
+    activeConnection=null;activeSourceKind=null;
+    updateConnectionControls();
+    $('contact-status').textContent=wifiConnection()?'Start the local Wi-Fi bridge, then connect.':'Connect your USB radio to choose the remote device.';
+  });
   $('acl').checked=false;
   function selectTarget() {
     const key=$('key').value.trim();
@@ -870,14 +904,14 @@
     await restoreQuietForwarding();
     if (link) await link.close();
     sourceOtaUnsupported=false;
-    link = session = chainPrepared = chainConfig = autoChain = null;autoStep='';contacts=[];targetLocked=false;contactKey='';activeSourceKind=null;radioOverride=false;
+    link = session = chainPrepared = chainConfig = autoChain = null;autoStep='';contacts=[];targetLocked=false;contactKey='';activeSourceKind=null;activeConnection=null;radioOverride=false;
     transferStopJob=transferStopTask=null;
     for(const [name,value] of Object.entries(radioDefaults))$(name).value=value;
     $('radio-reset').hidden=true;
     $('radio-region-status').textContent='Detected from recognized radio settings. Choose a region to override.';showRadioCommands();
     $('source-info').hidden=true; $('source-info').textContent='';
     $('manual-contact-help').hidden=true;
-    preparedDownload=null;status('Disconnected. Connect your USB radio to start another update.', 'ready');
+    preparedDownload=null;status('Disconnected. Connect your source radio to start another update.', 'ready');
     $('key').value='';$('password').value='';$('contact-search').value='';clearInvestigation();renderContacts();busy(false); $('connect').disabled = false; $('inspect').disabled = true; $('find-route').disabled = true;
     $('chain-plan').disabled = true; $('chain-run').disabled = true; $('chain-resume').disabled = true;
     $('transfer').disabled = true; $('resume').disabled = true; $('install').disabled = true;
@@ -885,16 +919,19 @@
   }
   async function reconnect({automatic=false}={}) {
     if(disconnecting||uiBusy&&!automatic || !link?.failure)return false;
-    const previous=link, sourceKey=link.sourceKey, port=link.port, kind=sourceKind();
-    if(!port || !sourceKey)throw Error('Disconnect, then connect the USB source again.');
+    const previous=link, sourceKey=link.sourceKey, previousPort=link.port, kind=sourceKind(), connection=connectionKind();
+    if(!previousPort || !sourceKey)throw Error('Disconnect, then connect the source radio again.');
     const generation=disconnectGeneration,target=$('key').value.trim().toLowerCase();
     const profileRequired=kind==='companion'&&(previous.otaRadioProfile===1||previous.otaRecoveryProfilePending===true);
     const profile=globalThis.LoraOtaRecovery?.captureSourceProfile?.(previous,target);
     busy(true);invalidate();session=null;
     await previous.close();
     if(generation!==disconnectGeneration||link!==previous)return false;
+    // A new TCP session is a new firmware owner. Do not reuse the old port
+    // object as authority to recover a guarded session or USB folder lease.
+    const port=connection==='wifi'?globalThis.LoraOtaWifiPort.create(previousPort.url):previousPort;
     link=null;targetLocked=false;
-    await connect({port,sourceKey,kind,target,profile,profileRequired,automatic});
+    await connect({port,sourceKey,kind,connection,target,profile,profileRequired,automatic});
     return generation===disconnectGeneration&&link?.port===port&&link.sourceKey===sourceKey&&!link.failure;
   }
   async function connect(recovery=null) {
@@ -902,21 +939,26 @@
     let detectedSource=null;
     $('source-update-help').hidden=true;
     $('connect').disabled = true; $('connect').textContent = 'Connecting...'; busy(true);
-    $('contact-status').textContent = 'Choose a USB device...';
+    const connection=recovery?.connection||$('connection').value;
+    const wifi=connection==='wifi';
+    $('contact-status').textContent = wifi?'Connecting through the local Wi-Fi bridge...':'Choose a USB device...';
     try {
-      if (!navigator.serial) throw Error('USB access is unavailable. Open this page in Chrome or Edge on a computer; Firefox does not support this USB connection.');
-      const selected=recovery?.kind || $('source').value, key = $('key').value.trim();
+      if (!wifi && !navigator.serial) throw Error('USB access is unavailable. Open this page in Chrome or Edge on a computer; Firefox does not support this USB connection.');
+      const selected=wifi?'companion':recovery?.kind || $('source').value, key = $('key').value.trim();
       if (key && !/^[0-9a-f]{64}$/i.test(key)) throw Error('Enter the target\'s complete public key.');
       if (selected==='repeater' && !key && !recovery) throw Error('Enter the target\'s complete public key.');
       const relays = $('relays').value.trim() ? $('relays').value.trim().split(/[\s,]+/) : [];
       if (relays.length && !aclIntent()) throw Error('Routed updates require existing ACL access on every relay and the target. Leave the password blank or choose the ACL-only override.');
       if (relays.some(r => !/^[0-9a-f]{64}$/i.test(r)) || relays.length > 8) throw Error('Enter up to eight full relay public keys.');
       if (relays.length && !key) throw Error('Enter the target\'s complete public key for a routed update.');
-      const port = recovery?.port || await LoraOtaPort.requestSerialPort(navigator.serial, {signal:controller.signal});
+      const port = recovery?.port || (wifi
+        ? globalThis.LoraOtaWifiPort.create($('wifi-url').value.trim())
+        : await LoraOtaPort.requestSerialPort(navigator.serial, {signal:controller.signal}));
       if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
+      activeConnection=connection;
       $('contact-status').textContent = 'Connecting to radio...';
       const openOptions = {openSignal:controller.signal, onOpenAttempt:(attempt,maxAttempts)=>{
-        if(!controller.signal.aborted) $('contact-status').textContent='Opening USB port (attempt '+attempt+' of '+maxAttempts+')...';
+        if(!controller.signal.aborted) $('contact-status').textContent=wifi?'Opening local Wi-Fi bridge...':'Opening USB port (attempt '+attempt+' of '+maxAttempts+')...';
       }, onOpenSuccess:()=>{
         if(!controller.signal.aborted) $('contact-status').textContent='Connecting to radio...';
       }};
@@ -933,7 +975,9 @@
         : new LoraOtaSerial.RepeaterTransport(port, {...openOptions, knownRepeater:key||null, deferredTarget, aclOnly:!!relays.length||!deferredTarget&&$('acl').checked, remoteTimeout:75000});
       link = relays.length ? new LoraOtaRoute.RoutedRepeaterTransport(direct, key, relays) : direct;
       await link.open();
-      if(recovery && link.sourceKey!==recovery.sourceKey)throw Error('The reconnected USB radio has a different identity. Disconnect and choose the intended source.');
+      if(wifi && (link.otaSupported!==true || link.wifiGuardSupported!==true || link.usesUsbFolderFallback))
+        throw Error('This Wi-Fi Companion does not support the guarded OTA connection required by the updater. Update its firmware first.');
+      if(recovery && link.sourceKey!==recovery.sourceKey)throw Error('The reconnected source radio has a different identity. Disconnect and choose the intended source.');
       if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
       showSourceUpdate(link.sourceUpdateRequired);
       $('legacy-warning').hidden=!usesSharedCompanionInbox();
@@ -975,33 +1019,33 @@
           ?await LoraOtaRecovery.restoreSourceProfile(link,key,recovery.profile,{progress:log}):null;
         link.otaRecoveryProfilePending=selected?.state!=='selected';
         if(selected?.state==='selected')
-          log('The same USB source still has the verified update channel. Target identity will be checked before any forwarding restoration.');
-        else log('USB is connected, but the previous temporary update channel is unconfirmed. No target command or channel rewrite was sent.');
+          log('The same source still has the verified update channel. Target identity will be checked before any forwarding restoration.');
+        else log('The source is connected, but the previous temporary update channel is unconfirmed. No target command or channel rewrite was sent.');
       }
       await suggestRadioChannel();
       busy(false); $('connect').disabled = true; $('inspect').disabled = updatesBlocked();
       $('chain-plan').disabled = updatesBlocked();
       $('find-route').disabled = !repeaterAclIntent() || !link.supportsRoutedPath || !!link.relays;
       log('Connected to source ' + link.sourceKey + '.');
-      status(recovery ? 'USB reconnected. Select Prepare update to recheck the radios, or Find matching firmware to check the device.' : 'Connected. Choose the remote device and select Find matching firmware.', 'ready');
+      status(recovery ? (wifi?'Wi-Fi reconnected. ':'USB reconnected. ')+'Select Prepare update to recheck the radios, or Find matching firmware to check the device.' : 'Connected. Choose the remote device and select Find matching firmware.', 'ready');
     } catch (error) {
       if(!recovery?.automatic&&!controller.signal.aborted && error?.name!=='NotFoundError')await fail(error);
       if (link) { try { await link.close(); } catch (_) {} }
-      link = session = null;activeSourceKind=null; $('connect').disabled = false; $('inspect').disabled = true;
+      link = session = null;activeSourceKind=null;activeConnection=null; $('connect').disabled = false; $('inspect').disabled = true;
       $('manual-contact-help').hidden=true;
       sourceOtaUnsupported=false;targetAvailability=null;showAvailability(null);
       $('legacy-warning').hidden=true;
       $('source-info').hidden=true; $('source-info').textContent='';
       $('contact-status').textContent = controller.signal.aborted || error?.name === 'NotFoundError'
-        ? 'USB connection canceled. Choose a USB device to try again.'
+        ? (wifi?'Wi-Fi connection canceled.':'USB connection canceled. Choose a USB device to try again.')
         : error?.usbOpenFailed
-          ? 'Could not open the USB port. It may be in use by another app or browser tab. Disconnect the radio there and try again. If it still fails, reconnect its USB data cable.'
+          ? (wifi?'Could not open the local Wi-Fi bridge. Confirm it is running and the Companion is reachable.':'Could not open the USB port. It may be in use by another app or browser tab. Disconnect the radio there and try again. If it still fails, reconnect its USB data cable.')
           : failureMessage(error)+'\nTry again.';
       if(recovery?.automatic)throw error;
     } finally {
       await detectedSource?.close();
       if(connectController===controller)connectController=null;
-      $('connect').textContent = 'Connect USB source'; busy(false);
+      updateConnectionControls(); busy(false);
     }
   }
   async function loadCatalogCandidate(candidate, generation) {
@@ -1298,7 +1342,7 @@
       const finished=()=>ui.dispatchEvent(new CustomEvent('lora-ota-investigated', {detail:{target,replies,complete,verified}}));
       if(activeTask)activeTask.then(finished);else finished();
       if(!failed && !stopped && !updatesBlocked())status(catalogFile ? 'Matching firmware loaded. Select Prepare update.' : $('firmware-catalog-status').textContent, 'ready');
-      if(stopped)status(link?.failure ? 'Device check stopped. Select Reconnect USB source to continue.' : 'Device check stopped.');
+      if(stopped)status(link?.failure ? (wifiConnection()?'Device check stopped. Select Reconnect Wi-Fi Companion to continue.':'Device check stopped. Select Reconnect USB source to continue.') : 'Device check stopped.');
       busy(false); $('inspect').disabled = !link || updatesBlocked();
     }
   }
@@ -1744,7 +1788,7 @@
     } catch(error) {
       if(transferStopJob===job&&!link?.failure&&!link?.folderUnknown)return;
       await fail(error);
-      $('update-summary').textContent=(link?.failure ? 'Update stopped. Select Reconnect USB source, then Prepare update.' :
+      $('update-summary').textContent=(link?.failure ? (wifiConnection()?'Update stopped. Select Reconnect Wi-Fi Companion, then Prepare update.':'Update stopped. Select Reconnect USB source, then Prepare update.') :
         'Update stopped. Select Prepare update to read the device state.')+
         ' Keep the same firmware to recover it, or choose different firmware to replace the unfinished update.';
     } finally {
@@ -1814,8 +1858,8 @@
     catch(error){$('firmware-catalog-status').textContent=failureMessage(error)+'\nChoose another matching image or use a local file.';await fail(error);openDetails($('file'));}
     finally{busy(false);$('inspect').disabled=!link || updatesBlocked();}
   },'Download and validate selected firmware'));
-  $('connect').addEventListener('click', () => run(()=>connect(),'Connect USB source'));
-  $('reconnect').addEventListener('click', () => run(()=>reconnect(),'Reconnect USB source'));
+  $('connect').addEventListener('click', () => run(()=>connect(),wifiConnection()?'Connect Wi-Fi Companion':'Connect USB source'));
+  $('reconnect').addEventListener('click', () => run(()=>reconnect(),wifiConnection()?'Reconnect Wi-Fi Companion':'Reconnect USB source'));
   $('investigate').addEventListener('click', () => run(()=>investigate(),'Find matching firmware: check remote device'));
   $('radio-prepare').addEventListener('click',()=>run(()=>checkRadioChannel(true),'Prepare the temporary update channel'));
   $('radio-check').addEventListener('click',()=>run(()=>checkRadioChannel(false),'Check the update channel'));

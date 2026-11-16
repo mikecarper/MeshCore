@@ -4384,6 +4384,17 @@ void setup() {
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN && defined(ENABLE_USB_INTERFACE)
   the_mesh.setDirectAdminUsbRoute(&usb_serial_interface);
 #endif
+#if COMPANION_FEATURE_DIRECT_OTA_ADMIN && defined(ESP32) && defined(WIFI_SSID)
+  the_mesh.setDirectAdminWifiRoute(&wifi_interface);
+  wifi_interface.enableOtaRawReceive(true);
+  wifi_interface.setSessionBoundaryCallback([](void*) -> bool {
+    if (!the_mesh.cancelDirectOtaForRoute(&wifi_interface)) return false;
+    the_mesh.cancelSerialResponseStream(&wifi_interface);
+    the_mesh.cancelSerialOperationsForRoute(&wifi_interface);
+    interface_manager.forgetReplyRouteForDisconnected(&wifi_interface);
+    return true;
+  }, nullptr);
+#endif
 #if defined(ESP32) && defined(WIFI_SSID)
   if (!companion_wifi_requested) wifi_interface.disable();
 #endif
