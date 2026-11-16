@@ -135,6 +135,10 @@ class HwcdcRoleTransportTest(unittest.TestCase):
         setup = body(main, "void setup()")
         loop = body(main, "void loop()")
         source = SETUP_FIXTURE.read_text().replace("@TRANSPORT_SELECTION@", main[start:end])
+        source = source.replace("@RADIO_CALLBACKS@", "\n".join(
+            body(main, signature) for signature in (
+                "void pollRadioRx()", "bool onSetRxBoostedGain(bool enable)",
+                "bool onGetRxBoostedGain()")))
         source = source.replace("@SETUP@", setup)
         state = "\n".join(re.findall(
             r"^#define (?:NOISE_FLOOR_CALIB_INTERVAL_MS|AGC_RESET_INTERVAL_MS).*|"

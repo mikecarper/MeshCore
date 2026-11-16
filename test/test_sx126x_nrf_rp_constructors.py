@@ -160,7 +160,7 @@ void check() {{
     def test_all_nrf52_spim3_defaults_use_tunable_8mhz_byte_path(self):
         cases=[]
         sources=target_sources({"nrf52_base","rak4631_hw"})
-        self.assertEqual(len(sources),32)
+        self.assertEqual(len(sources),33)
         for source in sources:
             text=source.read_text()
             if source.parent.name == "xiao_nrf52":
@@ -207,7 +207,7 @@ void check() {{
 }}
 }}
 '''))
-        self.assertEqual(len(cases),35)
+        self.assertEqual(len(cases),36)
         fixture=PREFIX+"\n".join(code for _,code in cases)
         fixture+="\nint main() {"+"".join(f"{name}::check();" for name,_ in cases)+"}\n"
         self.compile_run("NRF52_PLATFORM",fixture)

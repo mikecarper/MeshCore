@@ -381,6 +381,8 @@ class CompanionRtcQueueTests(unittest.TestCase):
                 ('Heltec_v3_companion_radio_ble', 0, 0, 350, 256),
                 ('Heltec_v3_companion_radio_wifi', 0, 0, 350, 256),
                 ('Heltec_Wireless_Tracker_companion_radio_full', 32, 32, 150, 256),
+                ('DFRobot_LoRaWAN_ESP32S3_companion_radio_full', 32, 32, 350, 256),
+                ('DFRobot_LoRaWAN_ESP32S3_companion_radio_ble', 0, 0, 350, 256),
                 ('MKE_s3_companion_radio_full', 32, 32, 350, 256),
                 ('ThinkNode_M2_companion_radio_full', 0, 0, 350, 256),
                 ('ThinkNode_M5_companion_radio_full', 0, 0, 350, 256),
@@ -408,8 +410,12 @@ class CompanionRtcQueueTests(unittest.TestCase):
                 if target in ('Xiao_C3_companion_radio_full', 'Heltec_CT62_companion_radio_full'):
                     self.assertEqual(flags.get('OTA_SHARED_COMPANION_QUEUE'), '1')
                     self.assertEqual(flags.get('ONE_KEY_DM_COMPACT_HELD'), '1')
-                elif target == 'Heltec_Wireless_Tracker_companion_radio_full':
+                elif target in ('Heltec_Wireless_Tracker_companion_radio_full',
+                                'DFRobot_LoRaWAN_ESP32S3_companion_radio_full'):
                     self.assertEqual(flags.get('OTA_SHARED_COMPANION_QUEUE'), '1')
+                    self.assertEqual(flags.get('OTA_PRESERVE_UNREAD_ON_BORROW'), '1')
+                    if target.startswith('DFRobot_'):
+                        self.assertEqual(flags.get('COMPANION_EXCLUSIVE_WIFI_BLE'), '1')
                 elif target == 'M5Stack_Cardputer_Adv_companion_radio_full':
                     self.assertEqual(flags.get('OTA_SHARED_COMPANION_QUEUE'), '1')
                     self.assertEqual(flags.get('COMPANION_EXCLUSIVE_WIFI_BLE'), '1')

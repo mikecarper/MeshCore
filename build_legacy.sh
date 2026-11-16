@@ -4797,6 +4797,14 @@ apply_companion_radio_full_profile() {
   # measured-safe tables for FULL OTA without changing ordinary USB/BLE/WiFi
   # companion builds.
   case "${env_name,,}" in
+    dfrobot_lorawan_esp32s3_companion_radio_full)
+      # No PSRAM: retain 350 contacts with USB plus the saved WiFi/BLE choice,
+      # as on Cardputer Full. Existing CPU-only frames use RTC RAM; explicit
+      # mOTA borrows idle queue storage and preserves unread messages.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_EXCLUSIVE_WIFI_BLE=1 -DOTA_SHARED_COMPANION_QUEUE=1 -DOTA_PRESERVE_UNREAD_ON_BORROW=1 -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=32"
+      record_build_reduction \
+        "DFRobot Full: USB plus selected WiFi or Bluetooth; 350 contacts, 256 offline frames normally, 128 while mOTA borrows queue storage; preserve unread on admission"
+      ;;
     m5stack_cardputer_adv_companion_radio_full)
       # Keep the complete keyboard UI and 350/40/256 capacities. USB is
       # independent; the saved WiFi/BLE selection applies on the next boot.

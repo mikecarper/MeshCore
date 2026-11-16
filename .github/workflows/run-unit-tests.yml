@@ -355,6 +355,12 @@ jobs:
           bash build.sh build-firmware Xiao_C3_companion_radio_full
           --firmware-version v1.18.0.1-halo-keymind-cascade-dev
           --radio-preset usa-cascade-fixed --profile cascade --require-ota
+
+      - name: Qualify DFRobot Full Companion within internal RAM and flash budgets
+        run: >-
+          bash build.sh build-firmware DFRobot_LoRaWAN_ESP32S3_companion_radio_full
+          --firmware-version v1.18.0.1-halo-keymind-cascade-dev
+          --radio-preset usa-cascade-fixed --profile cascade --require-ota
       - name: Qualify C6 Full Companion with Meshtext
         run: >-
           bash build.sh build-firmware Xiao_C6_companion_radio_full_

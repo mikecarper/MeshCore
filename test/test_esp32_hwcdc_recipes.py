@@ -69,6 +69,7 @@ USB_PARTITION_BRIDGES = {
 # mixed firmware families have explicit role rules below.
 UNCHANGED_COUNTS = {
     ("ESP32-S3-WROOM-1-N4", "uart"): 21,
+    ("dfrobot_lorawan_esp32s3", "uart"): 2,
     ("ebyte_eora-s3", "hwcdc"): 8,
     # Three shared SX1262/SX1268 Tenstar roles retain external UART.
     ("esp32-c3-devkitm-1", "uart"): 22,
@@ -90,7 +91,7 @@ UNCHANGED_COUNTS = {
     ("meshnology_w12", "hwcdc"): 12,
     ("m5stack-stamps3", "hwcdc"): 5,
     ("seeed_xiao_esp32c3", "hwcdc"): 7,
-    ("seeed_xiao_esp32s3", "hwcdc"): 25,
+    ("seeed_xiao_esp32s3", "hwcdc"): 26,
     ("seeed_xiao_esp32s3_migrator", "hwcdc"): 1,
     ("seeed_xiao_esp32s3_migrator", "uart"): 4,
     ("seeed_wio_tracker_l2", "hwcdc"): 5,
@@ -291,7 +292,7 @@ class Esp32HwcdcRecipeTests(unittest.TestCase):
                 self.assertEqual(self.sdk["hwcdc_primary_enabled"](row["env"]),
                                  row["kind"] == "hwcdc")
                 self.assertFalse(self.sdk["native_primary_enabled"](row["env"]))
-        expected = Counter({"hwcdc": 352, "uart": 126, "classic_uart": 88})
+        expected = Counter({"hwcdc": 353, "uart": 128, "classic_uart": 88})
         expected.update(kind for _, _, kind in USB_PARTITION_BRIDGES.values())
         self.assertEqual(counts, expected)
 

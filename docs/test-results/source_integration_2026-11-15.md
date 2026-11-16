@@ -1,3 +1,7 @@
+<!-- meshcore-hosted-doc-link:start -->
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/test-results/source_integration_2026-11-15/">View this page on MeshCore Docs</a>.</p>
+<!-- meshcore-hosted-doc-link:end -->
+
 # Incoming-source integration — 2026-11-15
 
 This is a selective backport onto `keymindCascade` at `177c46f1e950e34b6fa42ff22065e820c4b462b4`.
@@ -140,3 +144,42 @@ existing runtime admission checks, not a maximum-load TLS/WSS soak result.
 The final firmware pass repeated both STM32 KISS builds and the RC52 USB/BLE,
 with/without-display Companion and headless Repeater paths after the final board
 changes. DFRobot, Pico 2 W and the combined V4 build passed in the earlier pass.
+
+## PR #38 CI follow-up — 2026-11-16
+
+The [first GitHub Actions run](https://github.com/mikecarper/MeshCore/actions/runs/43816268816)
+exposed integration gaps outside the initial native tests and board builds.
+
+- DFRobot now has a canonical Full Companion recipe, with its BLE recipe still
+  directly buildable. Both retain the board's UART console backend. Full keeps
+  **350 contacts, 40 channels and 256 normal offline frames**. On this board
+  without PSRAM it offers USB plus the saved **WiFi or Bluetooth** choice,
+  applied on the next boot. Existing RTC queue banks and shared cold mOTA
+  storage retain 128 frames during an update; unread messages must be synced
+  before borrowing their storage. Its actual Full build is now included in
+  `esp32-constrained-companion-smoke`.
+- RC52 now uses the fork's tunable, byte-transfer nRF52 radio HAL at its normal
+  8 MHz default. The constructor test compiles and executes all 33 board sources
+  and their 36 constructor branches; new-board transport counts are reviewed.
+- KISS fixtures use the shared board-command mock once and compile the real
+  receive-poll and RX-gain callbacks alongside production startup/loop code.
+  This preserves the native-USB startup, quarantine and active-TX assertions.
+- Wio E5 Mini Companion restores GCC 14 branch-probability estimation in both
+  compilation and final LTO code generation. The measured release image shrinks
+  by 356 bytes, resolving the four-byte overflow without changing features,
+  capacities or its existing 32 KiB filesystem. Other targets retain their
+  optimizer policies.
+- The integration report now carries its required hosted-document link.
+
+Release-length builds used `v1.18.0.1-halo-keymind-cascade-dev`, the fixed USA
+Cascade radio preset, Cascade profile and `--require-ota`:
+
+| Firmware environment | Linked application bytes / limit | Internal runtime RAM available / required |
+| --- | --- | --- |
+| `wio-e5-mini_companion_radio_usb` | 229024 / 229376 | 24,096 / 17,408 |
+| `DFRobot_LoRaWAN_ESP32S3_companion_radio_full` | 2293093 / 3145728 | 173,000 / 151,842 |
+
+The two release-profile suites, USB recipe review, KISS slot/startup checks,
+STM32 profile/storage checks, RTC queue ownership/capacity and shared mOTA
+transfer tests passed locally. Hardware qualification remains outside this
+compile/test pass.

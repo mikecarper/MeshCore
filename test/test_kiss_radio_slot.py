@@ -151,9 +151,6 @@ class KissRadioSlotTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="kiss-radio-slot-") as folder:
             work = Path(folder)
             mesh = (ROOT / "test/mocks/Mesh.h").read_text(encoding="utf-8")
-            # Extend this test's isolated mock with the existing production board API.
-            mesh = mesh.replace("virtual void reboot() {}", "virtual void reboot() {}\n"
-                                "  virtual bool handleCommand(const char*, uint32_t, char*) { return false; }")
             (work / "Mesh.h").write_text(mesh, encoding="utf-8")
             (work / "test.cpp").write_text(HARNESS, encoding="utf-8")
             for g3 in (False, True):
