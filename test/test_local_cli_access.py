@@ -194,6 +194,7 @@ struct MyMesh : CompanionFleetFixture {
   uint8_t radio_apply_failures=0;
   int resets=0, saves=0;
   enum class RadioSettingResult { Saved, RadioRejected, SaveFailed, SaveUnconfirmed };
+  static const char* radioSettingReply(RadioSettingResult result);
   RadioSettingResult applyAndSaveTxPower(int8_t);
   RadioSettingResult applyAndSaveRadioParams(float,float,uint8_t,uint8_t,uint8_t,uint16_t,bool=false);
   void queueSavedRadioApply();
@@ -537,6 +538,7 @@ int main() {
         source = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
         implementation = "\n".join(extract_braced(source, signature) for signature in (
             "static bool isCompanionRadioPrefsCommand(",
+            "const char* MyMesh::radioSettingReply(",
             "MyMesh::RadioSettingResult MyMesh::applyAndSaveTxPower(",
             "MyMesh::RadioSettingResult MyMesh::applyAndSaveRadioParams(",
             "void MyMesh::queueSavedRadioApply(",

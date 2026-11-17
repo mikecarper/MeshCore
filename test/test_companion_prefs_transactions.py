@@ -130,6 +130,7 @@ struct MyMesh {
   } radio;
   decltype(radio)* _radio=&radio;
   enum class RadioSettingResult {Saved,RadioRejected,SaveFailed,SaveUnconfirmed};
+  static const char* radioSettingReply(RadioSettingResult result);
   RadioSettingResult applyAndSaveRadioParams(float,float,uint8_t,uint8_t,uint8_t,uint16_t,bool=false);
   bool isValidClientRepeatFreq(uint32_t) const {return true;}
   Apply tryApplyRadioParams(float,float,uint8_t,uint8_t) {return Apply::APPLIED;}
@@ -489,6 +490,7 @@ class CompanionPrefsTransactionTests(unittest.TestCase):
             '@APPLY_GPS_PREFS@': extract_braced(header, 'void applyGpsPrefs('),
             '@GPS_METHOD@': extract_braced(text, 'bool MyMesh::setGpsEnabled('),
             '@METHODS@': '\n'.join(extract_braced(text,sig) for sig in (
+                'const char* MyMesh::radioSettingReply(',
                 'void MyMesh::printTerminalError(',
                 'bool MyMesh::saveAdvertName(', 'bool MyMesh::saveAdvertLocation(',
                 'bool MyMesh::applyAndSaveRxPowerSaving(',
