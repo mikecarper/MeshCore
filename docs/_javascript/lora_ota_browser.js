@@ -84,18 +84,43 @@
     $('connect').textContent=wifi?'Connect Wi-Fi Companion':bluetooth?'Connect Bluetooth Companion':'Connect USB source';
     $('reconnect').textContent=wifi?'Reconnect Wi-Fi Companion':bluetooth?'Reconnect Bluetooth Companion':'Reconnect USB source';
   }
+  let compressionBenchmarkPending=false,compressionBenchmarkManual=false;
   function updateCompressionSummary(){
+    if(compressionBenchmarkPending&&!compressionBenchmarkManual){
+      $('compression-summary').textContent='Testing Zopfli compression for up to 2 seconds. Your choice will be saved in this browser.';return;
+    }
     $('compression-summary').textContent=$('compression').value==='zopfli'
       ? 'Transfer compression: Zopfli (1,000 iterations). Preparing the transfer can take a long time; choose fast compression under Update path options if preferred.'
-      : 'Transfer compression: fast browser compression. Change this under Update path options.';
+      : supportedCompression() ? 'Transfer compression: fast browser compression. Change this under Update path options.'
+      : 'Transfer compression: fast mode; this browser cannot compress blocks, so they will be sent uncompressed.';
   }
   const preferences=globalThis.LoraOtaPreferences?.install(ui,{ignoreSavedConnection:new URLSearchParams(window.location.search).get('connection')==='bluetooth',getTargetKey:()=>contactKey||$('key').value});
+  let savedCompression=null;
+  try{const stored=JSON.parse(localStorage.getItem(LoraOtaPreferences.KEY)||'null');if(['native','zopfli'].includes(stored?.compression))savedCompression=stored.compression;}catch(_){}
+  const compressionBenchmark=globalThis.LoraOtaZopfliBenchmark?.create();
+  let compressionBenchmarkPromise=Promise.resolve();
+  if(compressionBenchmark){
+    if(compressionBenchmark.prior){
+      if(!savedCompression)$('compression').value=compressionBenchmark.prior==='passed'?'zopfli':'native';
+    }else{
+      compressionBenchmarkPending=true;
+      compressionBenchmarkPromise=compressionBenchmark.run().then(result=>{
+        if(!compressionBenchmarkManual){
+          $('compression').value=result==='passed'?(savedCompression||'zopfli'):'native';
+          preferences?.save();
+        }
+      }).finally(()=>{compressionBenchmarkPending=false;updateCompressionSummary();});
+    }
+  }else if(!savedCompression){$('compression').value='native';}
   if(new URLSearchParams(window.location.search).get('connection')==='bluetooth') {
     $('connection').value='bluetooth';
     $('contact-status').textContent='Connect your Bluetooth Companion to choose the remote device.';
   }
   updateConnectionControls();
-  updateCompressionSummary();$('compression').addEventListener('change',updateCompressionSummary);
+  updateCompressionSummary();$('compression').addEventListener('change',()=>{
+    if(compressionBenchmarkPending){compressionBenchmarkManual=true;compressionBenchmark.cancel();}
+    updateCompressionSummary();
+  });
   const updatesBlocked = () => !!link?.failure || sourceOtaUnsupported || !!targetAvailability && targetAvailability.state !== 'supported';
   function showAvailability(result) {
     const notice=$('ota-availability');
@@ -1587,6 +1612,7 @@
     currentSnapshot=null;await refreshSavedUpdate();
   }
   async function resumeSavedUpdate() {
+    await compressionBenchmarkPromise;
     if(!savedUpdate)return;
     if(!link) {
       if(!$('key').value)$('key').value=savedUpdate.target;
@@ -1753,6 +1779,7 @@
     status('Preparing the update: checking firmware, access and the radio channel...');
     invalidate(); busy(true); $('inspect').disabled = true;
     try {
+      await compressionBenchmarkPromise;checkConnected();
       if (!link) throw Error('Connect a source radio first.');
       requireUpdatesAvailable();
       if(resumeInputs && (link.sourceKey?.toLowerCase()!==resumeInputs.source || $('key').value.trim().toLowerCase()!==resumeInputs.target))
@@ -2191,6 +2218,7 @@
   async function planChain() {
     invalidate(); busy(true); $('inspect').disabled = true;
     try {
+      await compressionBenchmarkPromise;
       requireUpdatesAvailable();
       if (!link) throw Error('Connect a source repeater first.');
       const baseFile=$('base').files[0] || catalogBaseFile, goalFile=catalogFile || $('file').files[0], middle=[...$('chain-files').files];

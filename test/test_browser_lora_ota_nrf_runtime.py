@@ -126,7 +126,7 @@ def run_harness(harness, timeout=45, *, radio2_preamble=128, compression_mode='n
         + str(int(radio2_preamble)) + ';</script>')
     compression_choice = '' if compression_mode is None else (
         '<script>document.querySelector(\'[data-role="compression"]\').value='
-        + json.dumps(compression_mode) + ';</script>')
+        + json.dumps(compression_mode) + ';localStorage.setItem("meshcore-browser-lora-ota-zopfli-test-v1",\'{"version":1,"result":"manual"}\');</script>')
     page = '<!doctype html><meta charset="utf-8">' + div + forwarding_opt_out + preamble_choice + compression_choice + harness + ''.join(scripts)
     done = threading.Event()
     results, missing_scripts = [], []

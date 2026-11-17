@@ -72,7 +72,7 @@ class BrowserLoraOtaDeltaRuntimeTest(unittest.TestCase):
         markdown = (ROOT / 'docs/browser_lora_ota.md').read_text(encoding='utf-8')
         div = re.search(r'<div data-lora-ota>.*?</div>', markdown, re.S).group()
         scripts = re.findall(r'<script src="[^"]+"></script>', markdown)
-        fast_compression = '<script>document.querySelector(\'[data-role="compression"]\').value="native";</script>'
+        fast_compression = '<script>document.querySelector(\'[data-role="compression"]\').value="native";localStorage.setItem("meshcore-browser-lora-ota-zopfli-test-v1",\'{"version":1,"result":"manual"}\');</script>'
         page = '<!doctype html><meta charset="utf-8">' + div + fast_compression + delta_harness() + ''.join(scripts)
         done = threading.Event()
         results, requested, missing_scripts = [], [], []

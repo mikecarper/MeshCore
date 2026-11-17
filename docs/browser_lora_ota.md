@@ -123,13 +123,14 @@ Bluetooth requires a compatible Companion with Bluetooth OTA support. On Android
     <p>A staged update is discarded only if you choose Replace and install update.</p>
     </details>
     <p>Prepare update checks the firmware and link, and finds a fitting update path. Intermediate updates, when needed, run automatically.</p>
-    <p data-role="compression-summary">Transfer compression: Zopfli (1,000 iterations). Preparing the transfer can take a long time; choose fast compression under Update path options if preferred.</p>
+    <p data-role="compression-summary">Checking this browser's transfer compression options...</p>
     <label><input type="checkbox" data-role="quiet-forwarding" checked> Pause normal forwarding during the update, then restore it</label>
     <p>After radio2 is verified, radio1 floods pause. Older firmware pauses forwarding on both profiles. Keep this page open until forwarding is restored.</p>
     <p data-role="quiet-forwarding-status" role="status" hidden></p>
     <button type="button" data-role="restore-forwarding" class="lora-ota-secondary" hidden>Restore forwarding</button>
     <details class="lora-ota-advanced"><summary>Update path options</summary>
       <label>Transfer compression<select data-role="compression"><option value="zopfli" selected>Zopfli (1,000 iterations; slower preparation)</option><option value="native">Fast browser compression</option></select></label>
+      <p>On first use, a two-second local test chooses a suitable default and saves it in this browser. You can change the choice at any time.</p>
       <p>Zopfli prepares every block before the transfer and may take a long time for large updates, especially on older phones. It is used when the target supports compressed blocks. Path estimates use fast compression and are approximate.</p>
       <label><input type="checkbox" data-role="auto-search" checked> Compare compatible intermediate updates automatically</label>
       <label>Prefer<select data-role="auto-objective"><option value="steps">Fewest installs, then least data</option><option value="data">Least radio data, then fewest installs</option></select></label>
@@ -603,4 +604,5 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_resume_store.js?v=zopfli-1"></script>
 <script src="../_javascript/lora_ota_zopfli.js?v=1"></script>
 <script src="../_javascript/lora_ota_compression.js?v=1"></script>
-<script src="../_javascript/lora_ota_browser.js?v=zopfli-1"></script>
+<script src="../_javascript/lora_ota_zopfli_benchmark.js?v=1"></script>
+<script src="../_javascript/lora_ota_browser.js?v=zopfli-auto-1"></script>
