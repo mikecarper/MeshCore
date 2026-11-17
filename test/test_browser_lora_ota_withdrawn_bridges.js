@@ -2,11 +2,12 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const catalog=require('../docs/_data/lora_ota_bridges/index.json');
+const archive=require('../docs/_data/lora_ota_bridges/withdrawn.json');
 const checks=require('../docs/_javascript/lora_ota_checks.js');
 const auto=require('../docs/_javascript/lora_ota_auto_chain.js');
 const {ChainRunner}=require('../docs/_javascript/lora_ota_chain.js');
 const {DirectSession}=require('../docs/_javascript/lora_ota_session.js');
-const route=catalog.routes[0], withdrawn=route.images.map(image=>image.sha256);
+const route=archive.routes[0], withdrawn=route.images.map(image=>image.sha256);
 const bytes=hash=>Uint8Array.from(Buffer.from(hash,'hex'));
 const reject=error=>error.code==='OTA_WITHDRAWN_APPLICATION'&&/USB recovery/.test(error.message);
 
@@ -21,10 +22,21 @@ test('withdrawn GAT bridge destinations are rejected through normal package vali
 test('the published path and a cached pre-withdrawal catalog stop before downloading bridges',async()=>{
   const base={imageHash:bytes(route.from),targetId:route.targetId,hwId:route.hwId},goal={imageHash:bytes(route.to)};
   assert.equal(route.disabled,true);
-  assert.throws(()=>auto.routeFor(catalog,base,goal),reject);
-  const stale=structuredClone(catalog);delete stale.routes[0].disabled;delete stale.routes[0].disabledReason;
+  assert.deepEqual(catalog.routes,[]);
+  assert.equal(auto.routeFor(catalog,base,goal),null);
+  assert.throws(()=>auto.routeFor(archive,base,goal),reject);
+  const stale=structuredClone(archive);delete stale.routes[0].disabled;delete stale.routes[0].disabledReason;
   assert.throws(()=>auto.routeFor(stale,base,goal),reject);
   assert.equal(auto.routeFor({schemaVersion:1,routes:[]},base,goal),null);
+});
+
+test('the active catalog withdraws the route for older clients that ignore disabled metadata',()=>{
+  // Pre-withdrawal clients match route identities without checking `disabled`.
+  // Removing the route is necessary even while new clients block cached hashes.
+  const legacyMatch=index=>index.routes.find(entry=>entry.from===route.from&&entry.to===route.to&&
+    entry.targetId===route.targetId&&entry.hwId===route.hwId)||null;
+  assert.equal(legacyMatch(archive),route);
+  assert.equal(legacyMatch(catalog),null);
 });
 
 function runnerFixture(){

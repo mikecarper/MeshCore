@@ -12,6 +12,14 @@ from test_browser_lora_ota_runtime import BROWSER
 
 def usb_timeout_recovery_harness(*, reset_selector=False, automatic_open_fails=False, manual_disconnect=False):
     harness = quiet_forwarding_harness(disconnect_after_prepare=True)
+    # This USB recovery model reports a fixed 909.950/BW500 secondary. Select
+    # it explicitly so the automatic +200 kHz handoff cannot bypass the ACK
+    # failure under test by waiting for a different modeled radio tuple.
+    harness = replace_once(harness, "el('quiet-forwarding').checked=true;",
+        "el('radio-frequency').value='909.950';el('radio-bandwidth').value='500';"
+        "el('radio-sf').value='5';el('radio-cr').value='7';"
+        "el('radio-frequency').dispatchEvent(new Event('input'));"
+        "el('quiet-forwarding').checked=true;")
     harness = replace_once(harness, 'const forwardingWrites=[],forwardingReads=[],quietKey=',
         'let opens=0,appStarts=0,newSessionArms=0,droppedRawAck=null,rejectedOpens=0,chooserCalls=0,recoveryFrameAt=0,'
         'wrongProfileCommands=0,manualRetryAllowed=%s,explicitDisconnect=null;'

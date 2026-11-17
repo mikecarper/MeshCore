@@ -105,8 +105,8 @@ test('reused suffix indexes produce the same controls as independent source sort
   }
 });
 
-test('published bridge resources match their pinned bytes, layouts and receiver identities',async()=>{
-  const root=__dirname+'/../docs/_data/lora_ota_bridges/',index=JSON.parse(fs.readFileSync(root+'index.json','ascii'));
+test('archived bridge resources retain their forensic bytes, layouts and receiver identities',async()=>{
+  const root=__dirname+'/../docs/_data/lora_ota_bridges/',index=JSON.parse(fs.readFileSync(root+'withdrawn.json','ascii'));
   const zlib=require('node:zlib');
   for(const route of index.routes)for(const entry of route.images){
     const file=fs.readFileSync(root+entry.sha256+'.json');assert.ok(file.every(b=>b<128));

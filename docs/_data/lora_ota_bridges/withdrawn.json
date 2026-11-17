@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "routes": [
+    {
+      "from": "c308f6e097045692d3b9ab7f4f542b8a01ce6ed21954e905734ab1f84fe4706e",
+      "to": "9261ac3cdcef3b01167f95fabd3f5b1cb258df770bd698f629eaac7586511eab",
+      "targetId": 403422751,
+      "hwId": "GAT562_30S_Mesh_Kit",
+      "disabled": true,
+      "disabledReason": "GAT562 intermediate firmware withdrawn after a reported boot failure. Do not install or resume this path. Keep recovery records and use USB recovery if the device is unreachable.",
+      "images": [
+        {
+          "sha256": "d06a56d213ff15b3bd03b87ebf36b31d842d0226a450804f5162d575786fe2a9",
+          "size": 606800,
+          "name": "GAT562_30S_Mesh_Kit_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.1-halo-keymind-cascade-bridge-27d9aaf7d-27d9aaf7.bin",
+          "sourceCommit": "27d9aaf7de1beb3ea1afbbe068fc1d49542ce24a"
+        },
+        {
+          "sha256": "fc682e476741e1aee0323e3d242c3d60700df6a620d8bd14c8af9fbede289699",
+          "size": 571380,
+          "name": "GAT562_30S_Mesh_Kit_repeater_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-bridge-27d9aaf7d-27d9aaf7.bin",
+          "sourceCommit": "27d9aaf7de1beb3ea1afbbe068fc1d49542ce24a"
+        },
+        {
+          "sha256": "1bdd9239a8736cda53237b0f692b0832fc995e57279988d60c36bd9b453f8b54",
+          "size": 621040,
+          "name": "GAT562_30S_Mesh_Kit_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.1-halo-keymind-cascade-bridge-f3abf1d05-f3abf1d0.bin",
+          "sourceCommit": "f3abf1d05cabc067e89832e0fcb5f0ab477664f6"
+        },
+        {
+          "sha256": "54d2fd0fd8a7a982fa61e7aad51ab6aa560564613c8ded1107a938e16ed300cc",
+          "size": 585668,
+          "name": "GAT562_30S_Mesh_Kit_repeater_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-bridge-f3abf1d05-f3abf1d0.bin",
+          "sourceCommit": "f3abf1d05cabc067e89832e0fcb5f0ab477664f6"
+        },
+        {
+          "sha256": "4703a3430b53152290f20fc458ec3b9940466e817736f7bac4c818839c282336",
+          "size": 636200,
+          "name": "GAT562_30S_Mesh_Kit_repeater_lora_ota_no_external_sensors-full-ota-v1.18.0.1-halo-keymind-cascade-bridge-b73365831-b7336583.bin",
+          "sourceCommit": "b733658310461838ae0e025f82fe8ec780cfd826"
+        },
+        {
+          "sha256": "8ab642d577a82c9c32a2528b886e104a917bc701f8ab8645d8e643b9d35d1fb5",
+          "size": 600668,
+          "name": "GAT562_30S_Mesh_Kit_repeater_lora_ota_no_external_sensors-reduced-ota-v1.18.0.1-halo-keymind-cascade-bridge-b73365831-b7336583.bin",
+          "sourceCommit": "b733658310461838ae0e025f82fe8ec780cfd826"
+        }
+      ]
+    }
+  ]
+}

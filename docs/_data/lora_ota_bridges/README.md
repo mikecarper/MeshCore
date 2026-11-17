@@ -12,6 +12,11 @@ update candidates. Keep recovery records. An unreachable device requires USB
 recovery. A supported standalone release may still need USB if a direct
 differential package does not fit.
 
+The active `index.json` contains no routes, including for older browser clients
+that do not understand withdrawal metadata. `withdrawn.json` preserves the
+previous route solely for investigation. The immutable image resources remain
+available for forensic byte comparisons; no active catalog references them.
+
 These content-addressed JSON resources contain gzip/base64 encodings of
 unchanged, compiled nRF52 application images. They are not bootloader images.
 `index.json` pins the complete installed and selected image hashes, board and
