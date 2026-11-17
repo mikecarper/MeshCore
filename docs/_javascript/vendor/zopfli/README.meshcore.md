@@ -1,3 +1,7 @@
+<!-- meshcore-hosted-doc-link:start -->
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/_javascript/vendor/zopfli/README.meshcore/">View this page on MeshCore Docs</a>.</p>
+<!-- meshcore-hosted-doc-link:end -->
+
 # Zopfli WebAssembly encoder
 
 The binary and Emscripten runtime come from `@gfx/zopfli` version 1.0.15,

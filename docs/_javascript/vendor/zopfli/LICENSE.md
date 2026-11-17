@@ -1,3 +1,7 @@
+<!-- meshcore-hosted-doc-link:start -->
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/_javascript/vendor/zopfli/LICENSE/">View this page on MeshCore Docs</a>.</p>
+<!-- meshcore-hosted-doc-link:end -->
+
 Apache License
 ==============
 

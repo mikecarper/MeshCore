@@ -189,6 +189,7 @@ struct MyMesh : mesh::Mesh {
   } _morse_reply;
   bool _morse_reply_admission=false;
   @RESULT_ENUM@;
+  static const char* radioSettingReply(RadioSettingResult result);
   MyMesh() {
     serial.current=&original;radio_driver=Driver();radio=Radio();now_ms=100;
     tx_inflight=false;completion_order.clear();
@@ -852,6 +853,7 @@ class CompanionRadioSettingsTransactionTests(unittest.TestCase):
             r'^#define (?:CMD_SET_RADIO_PARAMS|CMD_SET_RADIO_TX_POWER|ERR_CODE_\w+)\s+\d+',
             text, flags=re.MULTILINE))
         methods = '\n'.join(extract_braced(text, signature) for signature in (
+            'const char* MyMesh::radioSettingReply(',
             'bool MyMesh::applySavedRadioParams(',
             'MyMesh::RadioSettingResult MyMesh::applyAndSaveTxPower(',
             'void MyMesh::servicePendingTxPower(',

@@ -88,6 +88,7 @@ struct MyMesh : CompanionFleetFixture {
   bool _primary_radio_blocked=false,_primary_radio_reply_admission=false;
 
   enum class RadioSettingResult {Saved,RadioRejected,SaveFailed,SaveUnconfirmed};
+  static const char* radioSettingReply(RadioSettingResult result);
   bool _radio_available=true,saved_radio_apply_pending=false;
   uint32_t radio_apply_retry_at=0;
   uint8_t radio_apply_failures=0;
@@ -340,6 +341,7 @@ def production_primary_radio_harness():
         '@SAVE_PREFS@': extract_braced(header, 'bool savePrefs()'),
         '@COMMAND_FILTER@': extract_braced(companion, 'static bool isCompanionRadioPrefsCommand('),
         '@DISPATCH@': extract_braced(companion, 'void MyMesh::queueSavedRadioApply(') + '\n'
+            + extract_braced(companion, 'const char* MyMesh::radioSettingReply(') + '\n'
             + extract_braced(companion, 'MyMesh::RadioSettingResult MyMesh::applyAndSaveRadioParams(') + '\n' + dispatch,
         '@COMPANION_SANITIZE@': boot_checks(companion, '_prefs.airtime_factor') + '\n'
             + re.search(r'_prefs\.cr = constrain\([^;]+;',companion).group(),

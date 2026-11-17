@@ -3918,6 +3918,18 @@ void MyMesh::finishPrimaryRadioReply(bool delivered) {
   }
 }
 
+// Share the result selection across CLI entry points on small flash targets.
+__attribute__((noinline, noclone))
+const char* MyMesh::radioSettingReply(RadioSettingResult result) {
+  static const char* const replies[] = {
+    "OK", "Error: radio rejected", "Error: radio not saved",
+    "Error: radio save unconfirmed"
+  };
+  const unsigned index = static_cast<unsigned>(result);
+  return index < sizeof(replies) / sizeof(replies[0])
+      ? replies[index] : "Error: radio rejected";
+}
+
 MyMesh::RadioSettingResult MyMesh::applyAndSaveRadioParams(
     float freq, float bw, uint8_t sf, uint8_t cr, uint8_t repeat, uint16_t preamble, bool remote) {
 #if COMPANION_FEATURE_TEMP_RADIO
@@ -4015,10 +4027,7 @@ bool MyMesh::presetApply(void* ctx, const mesh::RadioPreset& p, char* reply, siz
   const auto result = self->applyAndSaveRadioParams(p.freq, p.bw, p.sf, p.cr,
       self->_prefs.client_repeat, p.preamble, false);
   if (reply && cap) {
-    snprintf(reply, cap, "%s", result == RadioSettingResult::Saved ? "OK"
-        : result == RadioSettingResult::SaveFailed ? "Error: radio not saved"
-        : result == RadioSettingResult::SaveUnconfirmed ? "Error: radio save unconfirmed"
-        : "Error: radio rejected");
+    snprintf(reply, cap, "%s", radioSettingReply(result));
   }
   return result == RadioSettingResult::Saved;
 }
@@ -6310,10 +6319,7 @@ void MyMesh::execCommand(char* cmd, char* reply) {
     } else {
       const auto result = applyAndSaveRadioParams(freq, bw, sf, cr,
           _prefs.client_repeat, _radio_profiles.primaryPreamble());
-      strcpy(reply, result == RadioSettingResult::Saved ? "OK"
-          : result == RadioSettingResult::SaveFailed ? "Error: radio not saved"
-          : result == RadioSettingResult::SaveUnconfirmed ? "Error: radio save unconfirmed"
-          : "Error: radio rejected");
+      strcpy(reply, radioSettingReply(result));
     }
     return;
   }
@@ -12087,10 +12093,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     }
     const auto result = applyAndSaveRadioParams(f, bw, sf, cr, _prefs.client_repeat,
         preamble, sender_timestamp != 0);
-    snprintf(reply, reply_capacity, "%s", result == RadioSettingResult::Saved ? "OK"
-        : result == RadioSettingResult::SaveFailed ? "Error: radio not saved"
-        : result == RadioSettingResult::SaveUnconfirmed ? "Error: radio save unconfirmed"
-        : "Error: radio rejected");
+    snprintf(reply, reply_capacity, "%s", radioSettingReply(result));
     if (result == RadioSettingResult::Saved)
       _radio_profiles.appendPrimaryChirpWarning(reply, reply_capacity, sf, bw, preamble);
     return true;
@@ -12126,10 +12129,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp,
     } else {
       const auto result = applyAndSaveRadioParams(frequency, _prefs.bw, _prefs.sf, _prefs.cr,
           _prefs.client_repeat, _radio_profiles.primaryPreamble(), sender_timestamp != 0);
-      snprintf(reply, reply_capacity, "%s", result == RadioSettingResult::Saved ? "OK"
-          : result == RadioSettingResult::SaveFailed ? "Error: radio not saved"
-          : result == RadioSettingResult::SaveUnconfirmed ? "Error: radio save unconfirmed"
-          : "Error: radio rejected");
+      snprintf(reply, reply_capacity, "%s", radioSettingReply(result));
     }
     return true;
   }

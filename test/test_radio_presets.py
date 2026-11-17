@@ -920,9 +920,11 @@ class CompanionPresetContractTest(unittest.TestCase):
             self.assertIsNotNone(body, signature + ' missing')
             self.assertTrue(re.search(pattern, body), signature + ' does not use ' + pattern)
         apply = _function_body(cpp, 'bool MyMesh::presetApply(') or ''
+        self.assertIn('radioSettingReply(result)', apply)
+        reply = _function_body(cpp, 'const char* MyMesh::radioSettingReply(') or ''
         for err in ('"OK"', '"Error: radio not saved"', '"Error: radio save unconfirmed"',
                     '"Error: radio rejected"'):
-            self.assertIn(err, apply)
+            self.assertIn(err, reply)
 
     def test_preset_file_include_is_not_platform_guarded(self):
         depth_guards = []

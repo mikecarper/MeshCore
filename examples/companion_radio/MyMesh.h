@@ -817,6 +817,7 @@ private:
   bool applyAndSaveFemTxGain(bool enabled);
   bool applyAndSaveRxBoostedGain(bool enabled);
   enum class RadioSettingResult { Saved, RadioRejected, SaveFailed, SaveUnconfirmed };
+  static const char* radioSettingReply(RadioSettingResult result);
   RadioSettingResult applyAndSaveTxPower(int8_t power);
   void servicePendingTxPower();
   bool handleCadCommand(const char* command, char* reply, size_t reply_size);
