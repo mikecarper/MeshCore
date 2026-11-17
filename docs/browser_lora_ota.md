@@ -126,7 +126,6 @@ Bluetooth requires a compatible Companion with Bluetooth OTA support. On Android
     <p data-role="compression-summary">Checking this browser's transfer compression options...</p>
     <label><input type="checkbox" data-role="quiet-forwarding" checked> Pause normal forwarding during the update, then restore it</label>
     <p>After radio2 is verified, radio1 floods pause. Older firmware pauses forwarding on both profiles. Keep this page open until forwarding is restored.</p>
-    <p>On supported firmware, a direct Companion or Repeater connection also pauses primary reception on each device using radio2 during the transfer. Reception resumes before installation, or within five minutes if the updater stops. Older devices or unverified direct Repeater connections keep their existing receive settings.</p>
     <p data-role="quiet-forwarding-status" role="status" hidden></p>
     <button type="button" data-role="restore-forwarding" class="lora-ota-secondary" hidden>Restore forwarding</button>
     <details class="lora-ota-advanced"><summary>Update path options</summary>
@@ -153,7 +152,7 @@ Bluetooth requires a compatible Companion with Bluetooth OTA support. On Android
   <details class="lora-ota-advanced" data-role="radio-setup-panel">
     <summary>Update channel and manual radio setup</summary>
     <p>Prepare update configures both radios and tests the link. The target's normal radio2 may pause during the update; its saved settings return after reboot or temporary-window expiry. Primary-channel fallback starts with a two-minute trial. Saved radio settings stay unchanged.</p>
-    <p>Recognized community radio settings select a regional update profile automatically. An active temporary channel is kept unless you choose a region or edit the radio settings. Unrecognized settings keep the current channel. <a href="#regional-update-defaults">Regional defaults and limits</a>.</p>
+    <p>When both devices support it and their temporary radio settings are free, the default uses a 120-minute radio2 window 200 kHz above the current primary channel. Existing temporary settings can be reused when compatible; mismatched settings may require manual attention. Choose a region or edit the settings to override the automatic choice. <a href="#regional-update-defaults">Regional defaults and limits</a>.</p>
     <details class="lora-ota-advanced">
       <summary>Update channel options</summary>
       <label>Region<select data-role="radio-region"><option value="auto">Auto (recognized radio settings)</option></select></label>
@@ -421,7 +420,7 @@ OTA policy changes remain saved and are listed in the diagnostic log. RX power s
 On older Companions with USB radio controls, the page automatically aligns both
 temporary channels with the Companion's saved settings. It tests primary
 channels with a two-minute window before extending them; temporary radio2
-uses the full window. Supported direct Companion and Repeater setups also pause primary reception while transferring; it resumes before installation or within five minutes if the updater stops. A missing USB
+uses the full window. With compatible devices and no existing temporary primary or radio2 window, the default first prepares temporary radio2 on the current primary channel, then shifts it 200 kHz above that channel before serving blocks. It verifies the target and both radio settings, and leaves primary reception available. A 200 kHz offset may overlap wider channels; the setup log reports this. A missing USB
 reply during setup stops the operation and requires reconnecting. With a Companion that
 can select temporary radio2, the page first sends the target's temporary-channel
 request over the already-proven primary link. Only afterward does it enable
@@ -597,7 +596,7 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_chain_ui.js?v=auto-paths-3"></script>
 <script src="../_javascript/lora_ota_auto_chain.js?v=resume-auto-paths-2"></script>
 <script src="../_javascript/lora_ota_region_profiles.js"></script>
-<script src="../_javascript/lora_ota_radio_setup.js?v=radio2-preamble-368-1"></script>
+<script src="../_javascript/lora_ota_radio_setup.js?v=staged-offset-1"></script>
 <script src="../_javascript/lora_ota_recovery.js?v=usb-retry-1"></script>
 <script src="../_javascript/lora_ota_secondary_only.js?v=1"></script>
 <script src="../_javascript/lora_ota_lease.js?v=radio2-only-1"></script>
@@ -607,4 +606,4 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_zopfli.js?v=1"></script>
 <script src="../_javascript/lora_ota_compression.js?v=1"></script>
 <script src="../_javascript/lora_ota_zopfli_benchmark.js?v=1"></script>
-<script src="../_javascript/lora_ota_browser.js?v=radio2-only-1"></script>
+<script src="../_javascript/lora_ota_browser.js?v=staged-offset-1"></script>

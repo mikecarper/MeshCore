@@ -205,11 +205,6 @@
   async function pauseQuietForwarding(target,password,radio){
     if(!radio||![radio.sourceProfile,radio.targetProfile].includes(1)||link?.relays?.length)return;
     const connection=link,canContinue=quietContinuation();
-    if(radio2Only&&(connection?.browserRawSource===true&&connection?.otaSupported===true||
-      connection?.browserRawSource!==true&&typeof connection?.withRadio2OnlyBurst==='function'&&connection?.otaPathValue==='OFF')){
-      await radio2Only.activate(connection,target,password,radio,{canContinue,progress:quietProgress});
-      refreshQuietRecovery();
-    }else log('This source cannot verify a direct radio2-only administration session; radio1 remains unchanged.');
     if(!quietEnabled())return;
     const plan=await prepareQuietForwarding(target,password);
     if(!canContinue())throw Error('Update preparation stopped before pausing forwarding.');
@@ -621,10 +616,19 @@
       const readable=typeof source?.localCommand==='function'&&(!source.browserRawSource||source.localCliSupported===true);
       if(readable)try{
         if(!Array.isArray(saved))saved=LoraOtaRadioSetup.primary(await source.localCommand('get radio'));
-        active=await LoraOtaRadioSetup.readTemporary(command=>source.localCommand(command),source.otaRadioProfile??0);
+        active=await LoraOtaRadioSetup.readTemporary(command=>source.localCommand(command),0);
       }catch(error){if(source.failure)throw error;}
       if(source!==link||region!==$('radio-region').value)return;
       let profile=LoraOtaRadioSetup.recommendProfile(saved,{region,active,hardware:radioHardware()});
+      // Preview the automatic staged channel from the effective primary, not
+      // the currently selected OTA secondary. Explicit choices still win.
+      if(region==='auto'&&active?.state==='off'&&Array.isArray(saved)&&
+         !(source?.browserRawSource&&source.otaSupported===false)){
+        const shifted=Math.round((saved[0]+0.200)*1000)/1000,known=LoraOtaRegionProfiles.recommend(saved);
+        const valid=LoraOtaRegionProfiles.validTuple([shifted,...saved.slice(1)])&&
+          !!known?.bounds&&LoraOtaRegionProfiles.fitsBand({...known,frequency:shifted,bandwidth:saved[1],sf:saved[2],cr:saved[3]});
+        if(valid)profile={id:'offset',label:'Current primary + 200 kHz',frequency:shifted,bandwidth:saved[1],sf:saved[2],cr:saved[3],selection:'offset',matched:false,ambiguous:!!known?.ambiguous};
+      }
       if(!radioOverride&&source&&!source.browserRawSource&&profile?.sf===5&&['region','community'].includes(profile.selection)&&typeof source.firmwareBoardName!=='string'){
         source.firmwareBoardName=String(await source.localCommand('board')).trim().replace(/^>\s*/,'');
         if(source!==link||region!==$('radio-region').value)return;
@@ -685,7 +689,8 @@
         record?.packageHash===session.packageHash&&record?.bodyHash===session.bodyHash
         ?{record,info:session.info}:undefined;
       const result=await LoraOtaRadioSetup.prepare(link,target,password,radioOptions(),{...options,
-        secondaryPreamble:Number($('radio2-preamble').value),resumeDownload,progress:message=>{
+        secondaryPreamble:Number($('radio2-preamble').value),resumeDownload,stagedOffset:!explicitRadioChoice()&&!resumeDownload,
+        canContinue:quietContinuation(),progress:message=>{
         $('radio-setup-status').textContent=displayTransport(message);status(message);log(message);
       }});
       $('radio-frequency').value=result.source[0].toFixed(3);

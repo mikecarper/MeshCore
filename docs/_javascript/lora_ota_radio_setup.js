@@ -165,7 +165,7 @@
     return result;
   }
   async function prepare(link, key, password, value, {progress = () => {}, useActivePrimary = false,
-      secondaryPreamble, resumeDownload,
+      secondaryPreamble, resumeDownload, stagedOffset = false, canContinue,
       wait = ms => new Promise(r => setTimeout(r, ms)), now = () => Date.now()} = {}) {
     let v = settings(value), expected = [v.frequency, v.bandwidth, v.sf, v.cr];
     if(secondaryPreamble!==undefined)settings({...v,preamble:secondaryPreamble});
@@ -184,7 +184,7 @@
       const section=/\bdownload:\s*([^|\r\n]+)/i.exec(status)?.[1]||'',ids=[...section.matchAll(/\bid=([a-f0-9]{8})\b/gi)];
       return ids.length===1?ids[0][1].toLowerCase():null;
     };
-    let targetAttempted = false, sourceAttempted = false, targetSwitchWrites = 0, pausedTargetSecondary = null;
+    let targetAttempted = false, sourceAttempted = false, targetSwitchWrites = 0, pausedTargetSecondary = null, stagedAttempted = false;
     const changedSettings = [];
     async function baseline(label, read) {
       const saved = primary(await read('get radio'));
@@ -363,6 +363,112 @@
         '; temporary radio2: ' + (target.temporarySecondary.state === 'configured' ?
           formatRadio(target.temporarySecondary.tuple) + ',preamble=' + target.temporarySecondary.preamble : target.temporarySecondary.state) + '.');
       need(!legacy || same(source.saved, expected), 'Companion saved channel changed during setup.');
+      // Default handoff: keep the admitted primary route alive while creating
+      // the two temporary secondaries, then shift them in target/source order.
+      // Never borrow an existing secondary or alter either primary lease.
+      const effective = state => state.temporaryPrimary.state === 'active' ? state.temporaryPrimary.tuple : state.saved;
+      const sourcePrimary=effective(source), targetPrimary=effective(target);
+      const shiftedFrequency=Math.round((sourcePrimary[0]+0.200)*1000)/1000;
+      const knownRegion=profiles?.recommend(sourcePrimary);
+      const fitsKnownBand=!!knownRegion?.bounds&&profiles.fitsBand({...knownRegion,frequency:shiftedFrequency,
+        bandwidth:sourcePrimary[1],sf:sourcePrimary[2],cr:sourcePrimary[3]});
+      if(stagedOffset&&!fitsKnownBand)progress(knownRegion?.bounds
+        ? 'The +200 kHz update channel falls outside this recognized radio band; using compatible channel setup.'
+        : 'The current channel has no recognized band for an automatic offset; using compatible channel setup.');
+      const staged=stagedOffset && fitsKnownBand && shiftedFrequency<=2500 && !legacy && !target.existingDownload && !link.serving &&
+        link.supportsOtaRadio2 === true && (link.otaRadioProfile ?? 0) === 0 &&
+        source.secondaryFree && target.secondaryFree && source.temporaryPrimary.state==='off' &&
+        target.temporaryPrimary.state==='off' && same(sourcePrimary,targetPrimary);
+      if(staged) {
+        stagedAttempted=true;
+        const sourceKey=link.sourceKey;
+        const active=()=>{
+          need(!link.serving&&!link.failure&&!link.peerFailure&&link.sourceKey===sourceKey&&
+            link.knownRepeater?.toLowerCase()===key&&(!canContinue||canContinue()===true),
+            'The connection or update preparation changed; no further radio setting was sent.');
+        };
+        const checked=async action=>{active();const result=await action();active();return result;};
+        const stageLocal=command=>checked(()=>local(command));
+        const stageRemote=command=>checked(()=>remote(command));
+        const originalPrimary={source:source.temporaryPrimary,target:target.temporaryPrimary};
+        const mirror=sourcePrimary.slice(), shifted=mirror.slice();
+        shifted[0]=shiftedFrequency;
+        const preamble=secondaryPreamble===undefined?v.preamble:secondaryPreamble;
+        settings({frequency:shifted[0],bandwidth:shifted[1],sf:shifted[2],cr:shifted[3],minutes:120,preamble});
+        if(Math.abs(shifted[0]-mirror[0]) <= (shifted[1]+mirror[1])/2000+0.006)
+          progress('The requested +200 kHz update channel overlaps the normal channel bandwidth; radio1 remains available and interference may remain.');
+        await checked(()=>prerequisites('target',stageRemote,target));
+        await checked(()=>link.closeRadioSession());await checked(()=>prerequisites('source',stageLocal,source));
+        await checked(()=>link.verifyPeer(key,password));keyProof(await stageRemote('get public.key'),key);
+        async function primaryStillMatches(read,old,saved,label) {
+          const current=await readTemporary(read,0);
+          need(samePrimary(current,old)&&same(primary(await read('get radio')),saved),
+            label+' primary settings changed during handoff.');
+        }
+        let targetSettledAt=0;
+        async function settleTarget() {
+          const t=now();need(Number.isFinite(t),'Invalid temporary-channel clock.');
+          const remaining=targetSettledAt-t;if(remaining>0)await checked(()=>wait(remaining));
+        }
+        async function setSecondary(read,tuple,label,isSource) {
+          need(!link.serving&&!link.failure,'The update source changed while preparing the channel.');
+          const command=commands({frequency:tuple[0],bandwidth:tuple[1],sf:tuple[2],cr:tuple[3],minutes:120,preamble},
+            {sourceProfile:1,targetProfile:1}).source;
+          expected=tuple.slice();v={...v,frequency:tuple[0],bandwidth:tuple[1],sf:tuple[2],cr:tuple[3],minutes:120,preamble};
+          let failure;
+          if(isSource)sourceAttempted=true;else targetAttempted=true;
+          try {
+            const reply=await (isSource&&companion?checked(()=>link.applyTemporaryRadio(command)):read(command));
+            need(/^(?:>\s*)?OK(?:\s|$)/i.test(String(reply).trim()),label+' temporary radio2 was not acknowledged.');
+          } catch(error) {
+            if(isSource||link.failure||link.peerFailure||!error?.loraReplyTimeout)throw error;
+            failure=error;
+          }
+          try { await verifyActive(read,1,label); }
+          catch(error) { throw failure||error; }
+          if(!isSource){const t=now();need(Number.isFinite(t),'Invalid temporary-channel clock.');targetSettledAt=t+2500;}
+          if(failure)progress(label+' radio2 acknowledgement was lost; its requested state was read back without repeating the write.');
+        }
+        await primaryStillMatches(stageRemote,originalPrimary.target,target.saved,'Target');
+        await primaryStillMatches(stageLocal,originalPrimary.source,source.saved,'Source');
+        progress('Preparing temporary radio2 at the current primary channel on the target.');
+        await setSecondary(stageRemote,mirror,'Target',false);
+        await primaryStillMatches(stageRemote,originalPrimary.target,target.saved,'Target');
+        keyProof(await stageRemote('get public.key'),key);
+        await checked(()=>link.closeRadioSession());
+        await primaryStillMatches(stageLocal,originalPrimary.source,source.saved,'Source');
+        progress('Preparing temporary radio2 at the current primary channel on the USB source.');
+        await setSecondary(stageLocal,mirror,'Source',true);
+        await settleTarget();
+        await checked(()=>link.verifyPeer(key,password));keyProof(await stageRemote('get public.key'),key);
+        await primaryStillMatches(stageRemote,originalPrimary.target,target.saved,'Target');
+        await primaryStillMatches(stageLocal,originalPrimary.source,source.saved,'Source');
+        progress('Moving target temporary radio2 to '+shifted[0].toFixed(3)+' MHz while retaining the primary channel.');
+        await setSecondary(stageRemote,shifted,'Target',false);
+        await primaryStillMatches(stageRemote,originalPrimary.target,target.saved,'Target');
+        await checked(()=>link.closeRadioSession());
+        await primaryStillMatches(stageLocal,originalPrimary.source,source.saved,'Source');
+        progress('Moving source temporary radio2 to '+shifted[0].toFixed(3)+' MHz.');
+        await setSecondary(stageLocal,shifted,'Source',true);
+        await checked(()=>link.closeRadioSession());link.otaTargetProfile=1;await checked(()=>link.selectOtaRadio(1));
+        if(companion&&link.otaSupported===true)await checked(()=>link.resetRemoteSession(key,password));
+        await settleTarget();
+        await checked(()=>link.verifyPeer(key,password));keyProof(await stageRemote('get public.key'),key);
+        await verifyActive(stageRemote,1,'Target');await verifyActive(stageLocal,1,'Source');
+        await primaryStillMatches(stageRemote,originalPrimary.target,target.saved,'Target');
+        await primaryStillMatches(stageLocal,originalPrimary.source,source.saved,'Source');
+        await preserved(stageLocal,source,1,'Source');await preserved(stageRemote,target,1,'Target');
+        link.otaStagedOffset=true;
+        link.otaLeaseProof={source:link.sourceKey,target:key,tuple:shifted.slice(),preamble,
+          sourceProfile:1,targetProfile:1,explicitProfiles:[true,true]};
+        progress('Both temporary radio2 channels and target identity verified; primary reception stays available.');
+        return {ready:true,source:shifted.slice(),target:shifted.slice(),savedSource:source.saved,savedTarget:target.saved,
+          savedSourceSecondary:source.savedSecondary,savedTargetSecondary:target.savedSecondary,
+          sourceProfile:1,targetProfile:1,preamble,minutes:120,changedSettings,stagedOffset:true};
+      }
+      if(stagedOffset&&(source.temporaryPrimary.state==='active'||target.temporaryPrimary.state==='active'))
+        throw Error('An existing primary temporary window cannot be replaced for the automatic radio2 handoff. Keep the current channel or wait for that window to expire.');
+      if(stagedOffset)progress('The staged radio2 handoff is unavailable for this source or existing radio state; using the compatible channel setup.');
       const sourceProfile = !legacy && source.temporaryPrimary.state === 'off' && link.supportsOtaRadio2 === true &&
         (source.adoptSecondary || source.secondaryFree && !source.overlapsPrimary) ? 1 : 0;
       const targetProfile = target.temporaryPrimary.state === 'off' &&
@@ -660,8 +766,11 @@
         sourceProfile, targetProfile, preamble: v.preamble, minutes: v.minutes, changedSettings,
         adoptedSource: adoptSource, adoptedTarget: adoptTarget, refreshedSourcePrimary, pausedTargetSecondary: paused};
     } catch (error) {
-      const partial = targetAttempted || sourceAttempted ? ' Temporary setup may be partially active; check both radios before any further write. ' +
-        (targetSwitchWrites > 1 ? 'Further switch requests followed fresh checks on the original channel; no settings were automatically restored.' : 'No write was retried or automatically restored.') : '';
+      const partial = targetAttempted || sourceAttempted ? stagedAttempted
+        ? ' A temporary radio2 window may remain on '+(targetAttempted&&sourceAttempted?'both devices':targetAttempted?'the target':'the source')+
+          ' for up to 120 minutes. Saved radio settings remain unchanged and resume after expiry or reboot. Check both radios before retrying; no uncertain write was repeated.'
+        : ' Temporary setup may be partially active; check both radios before any further write. ' +
+          (targetSwitchWrites > 1 ? 'Further switch requests followed fresh checks on the original channel; no settings were automatically restored.' : 'No write was retried or automatically restored.') : '';
       const policies = changedSettings.some(change => !change.confirmed) ? ' Unverified setting changes are listed in the diagnostic log.' : '';
       const paused = targetAttempted && pausedTargetSecondary ? ' The target saved radio2 settings were not changed; its normal radio2 returns on reboot or temporary-window expiry.' : '';
       const message = (error?.message || 'Temporary channel setup failed.') + partial + policies + paused;
