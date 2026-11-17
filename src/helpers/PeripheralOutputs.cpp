@@ -30,7 +30,9 @@ const char* const names[RoleCount] = {
 const char* const path = "/outputs_v1";
 const char* const backup = "/outputs_v1.bak";
 const size_t record_size = 12;
+#if defined(ESP32_PLATFORM)
 const size_t extended_record_size = 16;
+#endif
 MainBoard* main_board = nullptr;
 FILESYSTEM* settings_fs = nullptr;
 Settings settings;
@@ -49,11 +51,13 @@ bool hasExpanderPins(const Settings& value) {
   return false;
 }
 
+#if defined(ESP32_PLATFORM)
 bool extended(const Settings& value) {
   for (unsigned i = 0; i < RoleCount; ++i)
     if (expander::isPin(value.pin[i]) || value.active_low[i]) return true;
   return false;
 }
+#endif
 
 uint32_t checksum(const uint8_t* bytes, size_t size) {
   uint32_t crc = UINT32_C(0xffffffff);
@@ -72,6 +76,7 @@ void encode(const Settings& value, uint8_t (&data)[record_size]) {
   for (unsigned i = 0; i < 4; ++i) data[8 + i] = uint8_t(crc >> (i * 8));
 }
 
+#if defined(ESP32_PLATFORM)
 void encodeExtended(const Settings& value, uint8_t (&data)[extended_record_size]) {
   memset(data, 0, sizeof(data));
   data[0] = 'O'; data[1] = 'U'; data[2] = 'T'; data[3] = 2;
@@ -84,8 +89,10 @@ void encodeExtended(const Settings& value, uint8_t (&data)[extended_record_size]
   const uint32_t crc = checksum(data, 12);
   for (unsigned i = 0; i < 4; ++i) data[12 + i] = uint8_t(crc >> (i * 8));
 }
+#endif
 
 bool readSetting(const char* name, Settings& value) {
+#if defined(ESP32_PLATFORM)
   uint8_t extended_data[extended_record_size];
   if (storage::readFixedSettingsFile(settings_fs, name, extended_data, sizeof(extended_data))) {
     if (extended_data[0] != 'O' || extended_data[1] != 'U' || extended_data[2] != 'T'
@@ -108,6 +115,7 @@ bool readSetting(const char* name, Settings& value) {
     value = next;
     return true;
   }
+#endif
   uint8_t data[record_size];
   if (!storage::readFixedSettingsFile(settings_fs, name, data, sizeof(data))
       || data[0] != 'O' || data[1] != 'U' || data[2] != 'T' || data[3] != 1)
@@ -126,12 +134,19 @@ bool readSetting(const char* name, Settings& value) {
 
 bool saveSetting(const Settings& value) {
   if (!settings_fs || writes_frozen) return false;
+#if defined(ESP32_PLATFORM)
   uint8_t data[extended_record_size];
   const size_t size = extended(value) ? extended_record_size : record_size;
   if (size == extended_record_size) encodeExtended(value, data);
   else {
     uint8_t legacy[record_size]; encode(value, legacy); memcpy(data, legacy, sizeof(legacy));
   }
+#else
+  // Native-only targets retain the original active-high v1 record and code.
+  uint8_t data[record_size];
+  const size_t size = sizeof(data);
+  encode(value, data);
+#endif
 #if defined(NRF52_PLATFORM)
   const auto outcome = storage::writeCheckedSettingsFile(settings_fs, path, data, size);
   if (outcome == AtomicFileWriter::Outcome::Indeterminate) writes_frozen = true;
@@ -146,7 +161,7 @@ bool saveSetting(const Settings& value) {
     if (file.outcome() == decltype(file)::Outcome::Indeterminate) writes_frozen = true;
     return false;
   }
-  uint8_t verified[extended_record_size];
+  uint8_t verified[sizeof(data)];
   const bool confirmed = storage::readFixedSettingsFile(settings_fs, path, verified, size)
       && memcmp(data, verified, size) == 0;
   if (!confirmed) writes_frozen = true;
@@ -286,6 +301,7 @@ bool parsePin(const char* text, int8_t& pin, bool& active_low, bool buzzer_pin) 
   } while (*text >= '0' && *text <= '9');
   const int parsed = int(value) + (external ? 64 : 0);
   if (external && !expander::isPin(parsed)) return false;
+#if defined(ESP32_PLATFORM)
   if (external) active_low = expander::recommendedActiveLow();
   if (*text) {
     if (buzzer_pin) return false;
@@ -293,6 +309,10 @@ bool parsePin(const char* text, int8_t& pin, bool& active_low, bool buzzer_pin) 
     else if (strcmp(text, ",high") == 0) active_low = false;
     else return false;
   }
+#else
+  (void)buzzer_pin;
+  if (*text) return false;
+#endif
   pin = int8_t(parsed);
   return true;
 }
@@ -304,10 +324,14 @@ void formatPin(int8_t pin, char* text, size_t capacity) {
 }
 
 void formatRole(unsigned role, char* text, size_t capacity) {
+#if defined(ESP32_PLATFORM)
   char pin[5]; formatPin(settings.pin[role], pin, sizeof(pin));
   snprintf(text, capacity, "%s%s", pin, settings.pin[role] >= 0 && role != Buzzer
       && (expander::isPin(settings.pin[role]) || settings.active_low[role])
       ? settings.active_low[role] ? ",low" : ",high" : "");
+#else
+  formatPin(settings.pin[role], text, capacity);
+#endif
 }
 } // namespace
 
@@ -429,7 +453,11 @@ bool handleCommand(const char* command, char* reply, size_t capacity) {
   Settings next = settings;
   if (!parsePin(value, next.pin[role], next.active_low[role], role == Buzzer)) {
     snprintf(reply, capacity, "Error: usage set peripheral.%s %s", names[role],
+#if defined(ESP32_PLATFORM)
         role == Buzzer ? "<0..63|off> (native GPIO)" : "<0..63|x0..x15|off>[,high|,low]");
+#else
+        "<0..63|off>");
+#endif
     return true;
   }
   next.expander_identity = hasExpanderPins(next) ? expander::configIdentity() : 0;

@@ -98,11 +98,13 @@ public:
 
   SensorManager() { node_lat = 0; node_lon = 0; node_altitude = 0; powersaving_enabled = false; }
   virtual bool i2c_probe(TwoWire& wire, uint8_t addr) { return false; }
+#if defined(ESP32_PLATFORM)
   // Boards without environmental discovery still protect common OLEDs from
   // an explicitly configured expander. Derived managers add their drivers.
   virtual bool isPrimaryI2cAddressReserved(uint8_t address) const {
     return address == 0x3c || address == 0x3d;
   }
+#endif
   virtual bool begin() { return false; }
   virtual bool querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) { return false; }
   virtual uint8_t getVoltageSensorChannels(uint8_t channels[],

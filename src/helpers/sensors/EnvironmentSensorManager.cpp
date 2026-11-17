@@ -1005,6 +1005,7 @@ static_assert(SENSOR_TABLE_SIZE <= UINT8_MAX + 1U, "Sensor descriptor index must
 // is not handed to another driver.
 // ============================================================
 
+#if defined(ESP32_PLATFORM)
 bool EnvironmentSensorManager::isPrimaryI2cAddressReserved(uint8_t address) const {
   // These are the common OLED addresses; choosing a PCF8574A address must not
   // let an explicitly configured expander overwrite an attached display.
@@ -1017,6 +1018,7 @@ bool EnvironmentSensorManager::isPrimaryI2cAddressReserved(uint8_t address) cons
   return false;
 #endif
 }
+#endif
 
 bool EnvironmentSensorManager::begin() {
   _active_sensor_count = 0;

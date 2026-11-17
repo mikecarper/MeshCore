@@ -56,6 +56,7 @@ class ExpanderSensorIntegration(unittest.TestCase):
             result = subprocess.run([
                 os.environ.get('CXX', 'g++'), '-std=c++17', '-Wall', '-Wextra',
                 '-Werror', '-Wno-unused-parameter', '-Wno-unused-variable',
+                '-DESP32_PLATFORM=1',
                 '-DENV_INCLUDE_GPS=0', '-DMESH_SENSOR_DESCRIPTOR_INDEX=0',
                 '-I' + str(work), '-I' + str(ROOT / 'src'), str(cpp),
                 str(ROOT / 'src/helpers/SensorManager.cpp'), '-o', str(binary),

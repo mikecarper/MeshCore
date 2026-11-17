@@ -181,6 +181,12 @@ void parsingAndConflicts() {
   }
   const char* invalid[]={"set peripheral.buzzer", "set peripheral.buzzer -1", "set peripheral.buzzer 64", "set peripheral.buzzer 99999999999999999999999999999999999", "set peripheral.buzzer 12 ", "set peripheral.buzzer on", "get peripheral.buzzer extra", "set peripheral.unknown 12"};
   for(const char* text:invalid)assert(command(text).find("Error:")==0);
+#if !defined(ESP32_PLATFORM)
+  // Expanded records and LED polarity are ESP32-only; native targets retain
+  // their original active-high wiring syntax and v1 persistence footprint.
+  for(const char* text:{"set peripheral.led.notify 12,low", "set peripheral.led.notify 12,high",
+      "set peripheral.led.notify x2"}) assert(command(text).find("Error:")==0);
+#endif
   assert(fs.writes==0);
   assert(command("set peripheral.buzzer 1").find("reserved")!=std::string::npos);
   assert(command("set peripheral.buzzer 9")=="OK");
