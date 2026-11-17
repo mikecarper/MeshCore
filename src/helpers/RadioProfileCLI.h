@@ -92,7 +92,7 @@ class RadioProfileCLI {
 #endif
   enum class ImageReadResult : uint8_t { Missing, Valid, Invalid, Unreadable };
   enum class RemoteMutation : uint8_t {
-    None, Saved, Temporary, Off, TempOff, DeleteTemp, Crossing
+    None, Saved, Temporary, Off, TempOff, DeleteTemp, Crossing, OnlyOn, OnlyOff
 #if MESH_ENABLE_FLEET_CONTROL
     , DeleteSavedSchedule, AddSavedSchedule, AddTemporarySchedule
 #endif
@@ -101,6 +101,8 @@ class RadioProfileCLI {
   RadioProfileConfig remote_config_;
   RadioCrossMode remote_cross_ = RadioCrossMode::Off;
   uint32_t remote_duration_ms_ = 0, remote_start_ms_ = 0;
+  uint32_t secondary_only_deadline_ms_ = 0;
+  char remote_only_owner_[17] = {};
   uint32_t remote_commit_retry_ms_ = 0;
 #if MESH_ENABLE_FLEET_CONTROL
   uint32_t remote_schedule_end_ms_ = 0;

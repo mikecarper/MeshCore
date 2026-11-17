@@ -2,9 +2,10 @@
 (function(root,factory){
   const node=typeof module==='object'&&module.exports;
   const api=factory(node?require('./lora_ota_radio_setup.js'):root.LoraOtaRadioSetup,
-    node?require('./lora_ota_recovery.js'):root.LoraOtaRecovery);
+    node?require('./lora_ota_recovery.js'):root.LoraOtaRecovery,
+    node?require('./lora_ota_secondary_only.js'):root.LoraOtaRadio2Only);
   if(node)module.exports=api;else root.LoraOtaLease=api;
-})(typeof globalThis!=='undefined'?globalThis:this,function(setup,recovery){
+})(typeof globalThis!=='undefined'?globalThis:this,function(setup,recovery,radio2Only){
   'use strict';
   const bare=value=>String(value).trim().replace(/^>\s*/,'');
   const hex=bytes=>Array.from(bytes,byte=>byte.toString(16).padStart(2,'0')).join('');
@@ -33,7 +34,7 @@
     const now=options.now||(()=>Date.now()),wait=options.wait||sleep,threshold=options.thresholdMs??20*60000;
     const radio=recovery.channel(record,link?.sourceKey,key,now());
     if(!radio)return {state:'unavailable',record};
-    if(!options.forceCheck&&radio.expiresAt-now()>threshold)return {state:'not-due',record};
+    if(!options.forceCheck&&!options.keepalive&&radio.expiresAt-now()>threshold)return {state:'not-due',record};
     if(!link?.serving||link.failure||link.relays?.length||link.knownRepeater?.toLowerCase()!==key.toLowerCase()||
       link.otaRadioProfile!==radio.sourceProfile||link.otaTargetProfile!==radio.targetProfile)
       throw Error('Lease renewal requires the same active USB source, target and selected profiles');
@@ -42,7 +43,8 @@
     // Readbacks round frequencies and primary getters expose only effective
     // preambles. Renew only profiles this browser set explicitly; adopting an
     // unknown tuple must not silently change its underlying radio generation.
-    if(explicit[0]!==true||explicit[1]!==true)
+    const canRenew=explicit[0]===true&&explicit[1]===true;
+    if(!canRenew&&!options.keepalive)
       return {state:'unavailable',record,reason:'The existing update window has no exact profile ownership proof'};
     const info=link.seeder?.info,blob=link.seeder?.blob||info?.blob;
     if(hex(info?.merkleRoot||[])!==radio.id||!(blob instanceof Uint8Array))
@@ -82,6 +84,12 @@
         return {...state,readAt:now(),remaining:remaining(state.raw)};
       };
       for(let i=0;i<2;i++)states.push(await read(i));
+      if(options.keepalive&&radio2Only){
+        const owner=radio2Only.create();
+        renewalStarted=true; // A refresh may have been applied even if its reply is lost.
+        for(const i of [1,0])if(profiles[i]===1)await owner.rearm(record.source,key,i,readers[i],active,options.progress,true);
+      }
+      if(!canRenew)return {state:'unavailable',record,reason:'The existing update window has no exact profile ownership proof'};
       if(states.some((state,i)=>profiles[i]&&setup.secondary(state.raw,'get tempradio2').automatic))
         return {state:'unavailable',record,reason:'The existing automatic preamble must retain its original update window'};
       let renewed=0;
@@ -105,6 +113,7 @@
           await wait(500);
         }
         if(!confirmed)throw error||Error('The temporary lease extension could not be confirmed; its command was not repeated');
+        if(profiles[i]===1&&radio2Only)await radio2Only.create().rearm(record.source,key,i,readers[i],active,options.progress);
         states[i]={...confirmed,expiresAt:confirmed.remaining===null?started+119*60000:confirmed.readAt+confirmed.remaining};
         renewed++;options.progress?.((i?'Target':'USB source')+' update window extended without changing its radio channel.');
       }
@@ -118,6 +127,8 @@
       return {state:renewed?'renewed':'unchanged',record:updated,renewed};
     };
     try{
+      const pin=radio2Only?.create().load();
+      if(pin&&typeof link.withRadio2OnlyBurst==='function')return await link.withRadio2OnlyBurst(key,password,run,{readTimeoutMs:7000});
       if(typeof link.withOtaAdminBurst==='function')return await link.withOtaAdminBurst(key,password,run,{wait:false,readTimeoutMs:7000});
       return await run({local:c=>link.localCommand(c),remote:c=>link.remoteCommand(key,password,c)});
     }catch(error){

@@ -149,6 +149,8 @@ public:
   virtual void begin() { }
   virtual RadioProfiles* profiles() { return nullptr; }
   virtual const RadioProfiles* profiles() const { return nullptr; }
+  virtual bool supportsSecondaryOnly() const { return false; }
+  virtual bool secondaryOnlyReady() const { return false; }
 #if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
   virtual bool w12MultiSfEnabled() const { return false; }
   virtual RadioParamApplyResult trySetW12MultiSf(bool, uint8_t, uint8_t) {

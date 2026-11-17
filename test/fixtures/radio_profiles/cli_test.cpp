@@ -17,6 +17,8 @@ struct Radio : mesh::Radio {
   Radio() { p.primary.freq=909.5; p.primary.bw=62.5; p.primary.sf=7; p.primary.cr=5; }
   mesh::RadioProfiles* profiles() override { return &p; }
   const mesh::RadioProfiles* profiles() const override { return &p; }
+  bool supportsSecondaryOnly() const override { return true; }
+  bool secondaryOnlyReady() const override { return p.secondaryOnly(); }
   bool validateProfile(const mesh::RadioProfileParams& v) const override { return mesh::RadioProfiles::valid(v) && v.freq>=minimum_frequency && v.bw<=500; }
   uint16_t profilePreamble(uint8_t profile) const override { return p.preamble(profile, 32); }
   int recvRaw(uint8_t*,int) override { return 0; }
@@ -1004,6 +1006,37 @@ static void mediaMeshScopeLifecycle() {
       assert(!scope.enabled && !scope.durable);
     }
   }
+  {
+    Fixture f(true);
+    f.cmd("set tempradio2 911.5,500,12,4,rxtx,1,32"); f.advance(2000);
+    f.cli.beginReplyCommand(); f.cmd("set radio2.only on 0123456789abcdef"); f.cli.endReplyCommand();
+    f.advance(60000); // Expiry is never extended while the reply is pending.
+    assert(f.cli.finishReplyMutation(true)); f.advance(1);
+    assert(!f.radio.p.secondaryOnly() && f.radio.p.canTransmit(0));
+  }
+  {
+    Fixture f;
+    f.cmd("set tempradio2 911.5,500,12,4,rxtx,20,32"); f.advance(2000);
+    f.cmd("set radio2.only on 0123456789abcdef");
+    f.advance(240000);
+    f.cmd("set radio2.only on 0123456789abcdef"); // matching owner renews
+    f.advance(240000);
+    f.cmd("set radio2.only on 0123456789abcde0", false); // another owner cannot renew
+    f.advance(59999); assert(f.radio.p.secondaryOnly());
+    f.advance(1); assert(!f.radio.p.secondaryOnly() && f.radio.p.canTransmit(0));
+    f.cmd("set radio2.only on 0123456789abcdef");
+    auto changed = f.radio.p.primary; changed.freq += 1;
+    f.radio.p.setPrimary(changed, false);
+    assert(!f.radio.p.secondaryOnly());
+  }
+  {
+    Fixture f;
+    g_mock_millis = UINT32_MAX - 200000;
+    f.cmd("set tempradio2 911.5,500,12,4,rxtx,20,32"); f.advance(2000);
+    f.cmd("set radio2.only on 0123456789abcdef");
+    f.advance(299999); assert(f.radio.p.secondaryOnly());
+    f.advance(1); assert(!f.radio.p.secondaryOnly());
+  }
   // Capacity can change while the old profile is retained for a remote reply.
   Fixture f(true);
   f.saved_primary_frequency = &saved_primary_frequency;
@@ -1227,6 +1260,38 @@ static void regionalMediaMeshPresets() {
 }
 
 int main(int argc, char** argv) {
+  {
+    Fixture f;
+    f.cmd("set radio2.only on 0123456789abcdef", false);
+    f.cmd("set tempradio2 911.5,500,12,4,rxtx,1,32"); f.advance(2000);
+    f.cmd("set radio2.only on 0123456789abcdef");
+    assert(!strcmp(f.cmd("get radio2.only"), "> on 0123456789ABCDEF"));
+    assert(!f.radio.p.canTransmit(0) && f.radio.p.canTransmit(1) && !f.radio.p.canCross());
+    f.cmd("set radio2.only on 0123456789ABCDEF");
+    f.cmd("set radio2.only off 0123456789ABCDE0", false);
+    assert(f.radio.p.secondaryOnly());
+    f.cmd("set radio2.only off 0123456789abcdef");
+    assert(f.radio.p.canTransmit(0) && !f.radio.p.secondaryOnly());
+    f.cmd("set radio2.only on 0123456789abcdef");
+    f.advance(60000);
+    assert(!f.radio.p.secondaryOnly() && f.radio.p.canTransmit(0));
+  }
+  for (bool delivered : {false, true}) {
+    Fixture f(true);
+    f.cmd("set tempradio2 911.5,500,12,4,rxtx,1,32"); f.advance(2000);
+    f.cli.beginReplyCommand();
+    f.cmd("set radio2.only on 0123456789abcdef");
+    f.cli.endReplyCommand();
+    assert(f.cli.hasReplyMutation() && !f.radio.p.secondaryOnly());
+    assert(f.cli.finishReplyMutation(delivered)); f.advance(1);
+    assert(f.radio.p.secondaryOnly() == delivered);
+    if (delivered) {
+      f.cli.beginReplyCommand(); f.cmd("set radio2.only off 0123456789abcdef"); f.cli.endReplyCommand();
+      assert(f.radio.p.secondaryOnly()); // response must leave on radio2 first
+      assert(f.cli.finishReplyMutation(true)); f.advance(1);
+      assert(!f.radio.p.secondaryOnly() && f.radio.p.canTransmit(0));
+    }
+  }
   {
     Fixture f;
     f.cmd("set radio2 910.5,500,12,4,rxtx,32"); f.advance(2000);

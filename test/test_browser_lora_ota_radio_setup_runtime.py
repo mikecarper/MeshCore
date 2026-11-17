@@ -69,6 +69,7 @@ def radio_setup_harness(*, secondary_supported=True, pending_firmware=False, fac
         else if(text==='get radio2')reply=SECONDARY_SUPPORTED?'> off (manual)':'Error: unsupported';
         else if(text==='get tempradio2')reply=!SECONDARY_SUPPORTED?'Error: unsupported':targetTemp==='off'?'> off':'> 909.950,500.000,5,7,rxtx,128; 0d2h0m (120 min) left';
         else if(text==='get radio2.cross')reply=SECONDARY_SUPPORTED?'> off':'Error: unsupported';
+        else if(text==='get radio2.only')reply='Unknown command';
         else if(text==='get radio2.status')reply='> rxtx; RX=0,0 TX=0,0 switches=8 errors=0 max=200us preamble=32,128; test=4/4,4/4 ready budget=220us';
         else if(text==='get radioat'||text==='get tempradioat')reply='> -none-';
         else if(text==='get radioat2'||text==='get tempradioat2')reply=SECONDARY_SUPPORTED?'> -none-':'Error: unsupported';
@@ -79,6 +80,7 @@ def radio_setup_harness(*, secondary_supported=True, pending_firmware=False, fac
     harness=replace_once(harness,"} else if(f[0]===66){const text=dec.decode(f.slice(1));let value;",
         "} else if(f[0]===66){const text=dec.decode(f.slice(1));timeline.push(['local',text]);let value;")
     harness=replace_once(harness,"else if(text==='get tempradio')value='TempRadio active: '+radio+' 100s left,preamble=32';",r'''
+        else if(text==='get radio2.only')value='Unknown command';
         else if(text==='get ota.direct.radio')value=SECONDARY_SUPPORTED?'> ota.direct.radio v=1 profile='+(selectedProfile?'radio2':'radio'):'Unknown command';
         else if(text==='set ota.direct.radio radio2'||text==='set ota.direct.radio radio'){
           if(!SECONDARY_SUPPORTED||guard||sourceTemp!=='active')throw Error('Unsafe profile selection');

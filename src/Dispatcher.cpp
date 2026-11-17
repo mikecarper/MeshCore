@@ -2035,7 +2035,7 @@ uint8_t Dispatcher::getTransmitProfileMask(const Packet* packet) const {
   // Explicit BOTH/secondary/reply-force policies cannot turn a MeshCore
   // packet into foreign-network traffic. The raw API is its only TX path.
   for (uint8_t profile = 0; profile < 2; ++profile) {
-    if (profiles->params(profile).protocol != RadioProfileProtocol::MeshCore)
+    if (!profiles->canTransmit(profile, force) || profiles->params(profile).protocol != RadioProfileProtocol::MeshCore)
       mask &= (uint8_t)~(1U << profile);
   }
   return mask;

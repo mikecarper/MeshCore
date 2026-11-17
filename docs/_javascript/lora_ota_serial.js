@@ -24,7 +24,7 @@
   }
   const SAFE_READS=new Set(['get public.key','clock','ver','board','ota status','ota self','ota ram','ota config','ota key list','ota stats','ota ls','ota qspi','ota installhash','ota bootloader status',
     'get bootloader.ver','get radio','get tempradio','get radio.rxps','get radio2','get tempradio2','get radio2.cross','get radio2.status','get radioat','get tempradioat','get radioat2','get tempradioat2',
-    'get repeat','get radio.flood','get radio2.flood',
+    'get repeat','get radio.flood','get radio2.flood','get radio2.only',
     'ota.peer status','ota.peer capabilities','ota.peer path','ota.peer timeout','ota.peer radio','ota folder']);
   function safeCommand(text){
     if(typeof text!=='string')return 'CLI command <arguments hidden>';
@@ -305,7 +305,7 @@
       this.remoteTimeout = options.remoteTimeout ?? 40000; this.pollMs = options.pollMs ?? 250;
       this.decoder = new StreamDecoder(); this.reader = null; this.writer = null; this.running = false;
       this.failure = null; this.waiter = null; this.writeQueue = Promise.resolve(); this.commandQueue = Promise.resolve();
-      this.adminQueue = Promise.resolve(); this.sourceKey = null; this.seeder = null; this.serving = false;
+      this.adminQueue = Promise.resolve(); this.radio2OnlyBurst = null; this.peerFailure = null; this.sourceKey = null; this.seeder = null; this.serving = false;
       this.folderUnknown = false;
       this.ownsPeer = false;
       this.authenticatedKey = null; this.lastPeerUse = 0; this.aclOnly = !!options.aclOnly;
@@ -401,7 +401,11 @@
         if (this.running) { this.failure = error; if (this.waiter) this.waiter(null, error); }
       }
     }
-    async localCommand(text) {
+    async localCommand(text, {burstToken} = {}) {
+      if(this.peerFailure&&/^ota\.peer(?: |$)/.test(text))throw this.peerFailure;
+      if(this.radio2OnlyBurst&&burstToken!==this.radio2OnlyBurst&&
+        /^(?:ota\.peer(?: |$)|(?:set )?(?:tempradio2?|radio(?:2)?(?:\.[a-z0-9.]+)?) )/.test(text))
+        throw new Error('The verified update radio is reserved by an active administration burst');
       const bytes = commandBytes(text, 240);
       const pathRequest=/^ota\.peer path(?: |$)/.test(text);
       // The routed wrapper configures this through localCommand directly.
@@ -455,18 +459,19 @@
       })).catch(error=>{throw errorContext(error,{otaStep:/^ota\.peer result(?: |$)/.test(text)?'Reading source reply mailbox':'Waiting for USB command reply',otaCommand:safeCommand(text),otaEndpoint:'USB Repeater',otaTimeoutMs:this.commandTimeout,otaRadio:radio});});
       this.commandQueue = operation.catch(() => {}); return operation;
     }
-    async job(command) {
+    async job(command, {burstToken} = {}) {
+      if(this.peerFailure)throw this.peerFailure;
       const radio=requestRadio(this),path=this.otaPath||'path unknown';
       try{
       // The command may reach the repeater even if its acknowledgement is
       // lost. Only jobs initiated after the empty-state check belong to us.
       this.ownsPeer = true;
-      const queued = await this.localCommand(command), match = queued.match(/^OTApeer job=([0-9a-f]{8}) state=pending$/i);
+      const queued = await this.localCommand(command,{burstToken}), match = queued.match(/^OTApeer job=([0-9a-f]{8}) state=pending$/i);
       if (!match) throw new Error(queued || 'Could not start OTA request');
       const job = match[1].toUpperCase(), deadline = Math.min(Date.now() + this.remoteTimeout,this.diagnosticDeadline??Infinity);
       let offset = 0, total = null, state = null, result = [];
       while (Date.now() < deadline) {
-        const reply = await this.localCommand('ota.peer result' + (offset ? ' ' + offset : ''));
+        const reply = await this.localCommand('ota.peer result' + (offset ? ' ' + offset : ''),{burstToken});
         const p = reply.match(/^OTApeer job=([0-9a-f]{8}) state=(pending|ok|error) bytes=(\d+) off=(\d+) data=([0-9a-f]+|-)$/i);
         if (!p || p[1].toUpperCase() !== job) throw mailboxError(new Error('OTA request changed; its result is unknown'),this.commandTimeout);
         if (p[2] === 'pending') { await sleep(this.diagnosticDeadline===null?this.pollMs:Math.min(this.pollMs,Math.max(0,deadline-Date.now()))); continue; }
@@ -609,6 +614,58 @@
         const reply = await this.job('ota.peer cmd ' + k + ' ' + text); this.lastPeerUse = Date.now();this.rememberFailureIdentity(k,text,reply);return reply;
       }).catch(error=>{throw remoteError(error,{otaStep:text==='get public.key'?'Verifying target identity':'Waiting for remote command reply',otaCommand:safeCommand(text),otaEndpoint:'remote target',otaTimeoutMs:this.remoteTimeout,otaPath:path,otaRadio:radio});});
     }
+    // A direct-only, already-authenticated administration burst. Never starts
+    // a new password login, and quarantines any ambiguous mailbox job.
+    async withRadio2OnlyBurst(publicKey,password,operation,{readTimeoutMs=7000}={}) {
+      const k=this.validatePeer(publicKey,password),source=this.sourceKey,wasServing=this.serving,targetProfile=this.otaTargetProfile,profile=this.otaRadioProfile;
+      if(!/^[a-f0-9]{64}$/i.test(source||'')||source.toLowerCase()===k||![0,1].includes(targetProfile)||![0,1].includes(profile))
+        throw new Error('A verified source and selected target profile are required');
+      if(typeof operation!=='function'||!Number.isFinite(readTimeoutMs)||readTimeoutMs<1||readTimeoutMs>20000)
+        throw new Error('Invalid guarded repeater administration');
+      const acl=this.aclOnly||password==='';
+      const token={};
+      return this.withAdmin(async()=>{
+        const admitted=()=>{
+          if(!this.running||this.failure||this.peerFailure||!this.writer||!this.portOpened||this.sourceKey!==source||wasServing&&!this.serving||
+             this.knownRepeater!==k||this.relays?.length||!this.ownsPeer||this.otaPathValue!=='OFF'||
+             this.otaTargetProfile!==targetProfile||this.otaRadioProfile!==profile)throw this.failure||new Error('Direct repeater OTA identity or route changed');
+          if(!acl&&(this.authenticatedKey!==k||this.diagnosticPassword!==password||
+             !this.lastPeerUse||Date.now()-this.lastPeerUse<0||Date.now()-this.lastPeerUse>=240000))
+            throw new Error('The existing repeater target session expired; reconnect before radio administration');
+        };
+        if(this.radio2OnlyBurst)throw new Error('A repeater administration burst is already active');
+        this.radio2OnlyBurst=token;
+        try{
+          if(!this.running||this.failure||this.peerFailure||!this.writer||!this.portOpened||this.sourceKey!==source||this.knownRepeater!==k||this.relays?.length||!this.ownsPeer)
+            throw new Error('A verified direct repeater session is required');
+          if(await this.localCommand('ota.peer path',{burstToken:token})!=='OTApeer path=off')
+            throw new Error('Radio2-only requires a verified direct repeater path');
+          admitted();
+          if(await this.localCommand('ota.peer radio',{burstToken:token})!=='OTApeer radio='+(profile?'radio2':'radio'))
+            throw new Error('The repeater OTA radio selection changed');
+          const local=async text=>{admitted();const result=await this.localCommand(text,{burstToken:token});admitted();
+            if(this.otaRadioProfile!==profile)throw new Error('The repeater OTA radio selection changed');return result;};
+          const remote=async text=>{
+            admitted();commandBytes(text,154);
+            if(this.otaRadioProfile!==profile)throw new Error('The repeater OTA radio selection changed');
+            // The peer's RF job can take 30 seconds before its firmware
+            // deadline; do not impose the Companion's short read timeout.
+            const previous=this.remoteTimeout;this.remoteTimeout=40000;
+            try{
+              const value=await this.job('ota.peer '+(acl?'cmd.acl ':'cmd ')+k+' '+text,{burstToken:token});
+              if(!acl)this.lastPeerUse=Date.now();admitted();return value;
+            }catch(error){
+              // The mailbox may still contain a pending or late result. It is
+              // never reused, even for another read, after an uncertain job.
+              this.peerFailure=error;throw error;
+            }finally{this.remoteTimeout=previous;}
+          };
+          if(String(await remote('get public.key')).trim().replace(/^>\s*/,'').toLowerCase()!==k)
+            throw new Error('The target did not prove its complete public key');
+          return await operation(Object.freeze({local,remote}));
+        }finally{this.radio2OnlyBurst=null;}
+      });
+    }
     rememberFailureIdentity(publicKey,command,reply) {
       if(!/^[a-f0-9]{64}$/i.test(publicKey||'')||!/^[a-f0-9]{64}$/i.test(this.sourceKey||'')||!['ver','board','ota status'].includes(command)||typeof reply!=='string')return;
       const value=reply.replace(/^>\s*/,'').trim();
@@ -713,7 +770,7 @@
     async close() {
       if (this.running && !this.failure) {
         if (this.serving) { try { await this.stopServing(); } catch (_) {} }
-        if (this.ownsPeer || this.supportsOtaRadio2 && this.otaRadioProfile!==0) {
+        if (!this.peerFailure && (this.ownsPeer || this.supportsOtaRadio2 && this.otaRadioProfile!==0)) {
           try {
             await this.closeRadioSession();
             if(this.supportsOtaRadio2 && this.otaRadioProfile!==0)await this.selectOtaRadio(0);

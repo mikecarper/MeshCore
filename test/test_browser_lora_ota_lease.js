@@ -201,3 +201,40 @@ test('lease retries stop at the last verified expiry without cancelling staged b
   await assert.rejects(session.maintainTemporaryLease({state:'active',status:'download: downloading 218/234 id='+MID}),/window.*expired/i);
   assert.deepEqual(f.calls,[]);
 });
+test('owned target is refreshed and re-armed after renewal in the same guarded burst',async()=>{
+  const f=fixture(),token='1212121212121212';let pin='on '+token;
+  const key=require('../docs/_javascript/lora_ota_secondary_only.js').KEY;
+  const storage=new Map([[key,JSON.stringify({version:1,source:SOURCE,target:TARGET,token,sourceOwned:false,targetOwned:true})]]);
+  const previous=globalThis.localStorage;globalThis.localStorage={getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)};
+  const base=f.link.withOtaAdminBurst;
+  f.link.withOtaAdminBurst=(k,p,action)=>base(k,p,io=>action({...io,remote:async c=>{
+    if(c==='get radio2.only'){f.calls.push([1,c]);return '> '+pin;}
+    if(c.startsWith('set radio2.only on ')){f.calls.push([1,c]);pin='on '+token;return 'OK - radio2.only on';}
+    const reply=await io.remote(c);if(c.startsWith('set tempradio2 '))pin='off';return reply;
+  }}));
+  try{
+    await maintain(f.link,TARGET,'secret',f.record,{...f.options,keepalive:true});
+    const commands=f.calls.map(c=>c[1]);const writes=commands.map((c,i)=>c==='set radio2.only on '+token?i:-1).filter(i=>i>=0);
+    const renew=commands.findIndex(c=>typeof c==='string'&&c.startsWith('set tempradio2 '));
+    assert.equal(writes.length,2);assert.ok(writes[0]<renew&&writes[1]>renew);assert.equal(pin,'on '+token);
+    assert.equal(f.calls.filter(c=>c[0]==='burst').length,1);
+  }finally{globalThis.localStorage=previous;}
+});
+test('owned repeater pins refresh and re-arm within the dedicated guarded burst',async()=>{
+  const f=fixture(),token='1212121212121212';let pin='on '+token,bursts=0;
+  const key=require('../docs/_javascript/lora_ota_secondary_only.js').KEY;
+  const storage=new Map([[key,JSON.stringify({version:1,source:SOURCE,target:TARGET,token,sourceOwned:false,targetOwned:true})]]);
+  const previous=globalThis.localStorage;globalThis.localStorage={getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)};
+  const base=f.link.withOtaAdminBurst;delete f.link.withOtaAdminBurst;
+  f.link.withRadio2OnlyBurst=(k,p,action)=>{bursts++;return base(k,p,io=>action({...io,remote:async c=>{
+    if(c==='get radio2.only'){f.calls.push([1,c]);return '> '+pin;}
+    if(c.startsWith('set radio2.only on ')){f.calls.push([1,c]);pin='on '+token;return 'OK - radio2.only on';}
+    const reply=await io.remote(c);if(c.startsWith('set tempradio2 '))pin='off';return reply;
+  }}));};
+  try{
+    await maintain(f.link,TARGET,'secret',f.record,{...f.options,keepalive:true});
+    const commands=f.calls.map(c=>c[1]),renew=commands.findIndex(c=>typeof c==='string'&&c.startsWith('set tempradio2 '));
+    const pins=commands.map((c,i)=>c==='set radio2.only on '+token?i:-1).filter(i=>i>=0);
+    assert.equal(bursts,1);assert.equal(pins.length,2);assert.ok(pins[0]<renew&&pins[1]>renew);assert.equal(pin,'on '+token);
+  }finally{globalThis.localStorage=previous;}
+});

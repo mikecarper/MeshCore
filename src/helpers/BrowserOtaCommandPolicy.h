@@ -52,7 +52,7 @@ inline bool readOnly(const char* text) {
     "get public.key", "ota status", "ota self", "ota ram", "ver", "board",
     "get bootloader.ver", "get usb.raw.max", "ota bootloader status", "ota config",
     "ota key list", "get tempradio", "get radio", "get radio.rxps", "ota installhash",
-    "ota qspi", "ota stats", "ota ls", "get radio2", "get tempradio2", "get radio2.cross",
+    "ota qspi", "ota stats", "ota ls", "get radio2", "get tempradio2", "get radio2.cross", "get radio2.only",
     "get radio2.status", "get radioat", "get tempradioat", "get radioat2",
     "get tempradioat2", "get repeat", "get radio.flood", "get radio2.flood",
     "get ota.direct", "get ota.direct.capabilities", "get ota.direct.radio", "ota folder"
@@ -76,6 +76,10 @@ inline bool command(const uint8_t* data, size_t len, bool remote) {
   }
   text[len] = 0;
   if (readOnly(text)) return true;
+  if (!strncmp(text, "set radio2.only on ", 19))
+    return strlen(text + 19) == 16 && hexadecimal(text + 19, 16);
+  if (!strncmp(text, "set radio2.only off ", 20))
+    return strlen(text + 20) == 16 && hexadecimal(text + 20, 16);
   if (!remote && !strncmp(text, "get ota.direct.reply ", 21)) {
     const char* offset = text + 21; size_t n = strlen(offset);
     if (n > 3 || !decimal(offset, n)) return false;

@@ -22,6 +22,15 @@ static bool remote(const std::string& value, bool guard = true) {
 }
 int main() {
   for (unsigned i = 0; i < 32; ++i) target[i] = i + 1;
+  for (const char* text : {"get radio2.only", "set radio2.only on 0123456789abcdef",
+                           "set radio2.only off 0123456789ABCDEF"}) {
+    assert(local(text)); assert(remote(text)); assert(!remote(text, false));
+  }
+  for (const char* text : {"set radio2.only on 0123456789abcdeg",
+                           "set radio2.only off 0123456789abcdef;reboot",
+                           "set radio2.only on 1234"}) {
+    assert(!local(text)); assert(!remote(text));
+  }
   for (const char* text : {"get ota.direct", "get ota.direct.capabilities", "get ota.direct.radio",
       "get ota.direct.reply 0", "get ota.direct.reply 160", "get usb.raw.max", "get public.key",
       "ota config", "ota stats", "ota folder", "get radio", "get tempradio2", "get radio2.status",

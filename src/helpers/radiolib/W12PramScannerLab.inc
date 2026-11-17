@@ -1233,6 +1233,10 @@ public:
     // clear an unrelated scanner failure.
     return !_lab_auto.blocked() && !_lab_handoff_retry.pending();
   }
+  bool secondaryOnlyReady() const override {
+    return !_lab_scan_active && !_lab_uncertain && !_lab_session_ldo
+        && RadioLibWrapper::secondaryOnlyReady();
+  }
   void labStopForProfileTransition() {
     if (labScannerStop()) { _lab_transition_waiting=false; return; }
     if (_lab_uncertain) { _lab_transition_waiting=false; return; }
@@ -1254,6 +1258,13 @@ public:
   }
   void loop() override {
     if (_lab_uncertain) { labServiceUncertain(); return; }
+    if (_profiles.secondaryOnly()) {
+      // Release the chip-owned scanner before host pinning. Keep its existing
+      // restoration lease alive throughout the temporary exclusive session.
+      if (labReleaseForExclusive() != mesh::RadioParamApplyResult::APPLIED) return;
+      RadioLibWrapper::loop();
+      return;
+    }
     if (!_lab_scan_active) {
 #if defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
       if (_rx_ps_armed) {

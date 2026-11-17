@@ -126,6 +126,7 @@ Bluetooth requires a compatible Companion with Bluetooth OTA support. On Android
     <p data-role="compression-summary">Checking this browser's transfer compression options...</p>
     <label><input type="checkbox" data-role="quiet-forwarding" checked> Pause normal forwarding during the update, then restore it</label>
     <p>After radio2 is verified, radio1 floods pause. Older firmware pauses forwarding on both profiles. Keep this page open until forwarding is restored.</p>
+    <p>On supported firmware, a direct Companion or Repeater connection also pauses primary reception on each device using radio2 during the transfer. Reception resumes before installation, or within five minutes if the updater stops. Older devices or unverified direct Repeater connections keep their existing receive settings.</p>
     <p data-role="quiet-forwarding-status" role="status" hidden></p>
     <button type="button" data-role="restore-forwarding" class="lora-ota-secondary" hidden>Restore forwarding</button>
     <details class="lora-ota-advanced"><summary>Update path options</summary>
@@ -420,7 +421,7 @@ OTA policy changes remain saved and are listed in the diagnostic log. RX power s
 On older Companions with USB radio controls, the page automatically aligns both
 temporary channels with the Companion's saved settings. It tests primary
 channels with a two-minute window before extending them; temporary radio2
-uses the full window and keeps the normal channel available. A missing USB
+uses the full window. Supported direct Companion and Repeater setups also pause primary reception while transferring; it resumes before installation or within five minutes if the updater stops. A missing USB
 reply during setup stops the operation and requires reconnecting. With a Companion that
 can select temporary radio2, the page first sends the target's temporary-channel
 request over the already-proven primary link. Only afterward does it enable
@@ -578,11 +579,11 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_wifi_port.js?v=direct-wifi-1"></script>
 <script src="../_javascript/lora_ota_ble_port.js?v=bluetooth-1"></script>
 <script src="../_javascript/lora_ota_wifi_scan.js?v=direct-wifi-1"></script>
-<script src="../_javascript/lora_ota_serial.js?v=zopfli-1"></script>
+<script src="../_javascript/lora_ota_serial.js?v=radio2-only-1"></script>
 <script src="../_javascript/lora_ota_companion_source.js?v=zopfli-1"></script>
-<script src="../_javascript/lora_ota_companion.js?v=ota-request-queue-1"></script>
+<script src="../_javascript/lora_ota_companion.js?v=radio2-only-1"></script>
 <script src="../_javascript/lora_ota_contacts.js?v=advert-path-1"></script>
-<script src="../_javascript/lora_ota_session.js?v=zopfli-1"></script>
+<script src="../_javascript/lora_ota_session.js?v=radio2-only-1"></script>
 <script src="../_javascript/lora_ota_route.js"></script>
 <script src="../_javascript/lora_ota_repeat.js"></script>
 <script src="../_javascript/lora_ota_quiet.js?v=workflow-first-1"></script>
@@ -598,11 +599,12 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_region_profiles.js"></script>
 <script src="../_javascript/lora_ota_radio_setup.js?v=radio2-preamble-368-1"></script>
 <script src="../_javascript/lora_ota_recovery.js?v=usb-retry-1"></script>
-<script src="../_javascript/lora_ota_lease.js?v=active-lease-retry-1"></script>
+<script src="../_javascript/lora_ota_secondary_only.js?v=1"></script>
+<script src="../_javascript/lora_ota_lease.js?v=radio2-only-1"></script>
 <script src="../_javascript/lora_ota_catalog.js?v=4aeb7bf86"></script>
 <script src="../_javascript/lora_ota_preferences.js?v=zopfli-1"></script>
 <script src="../_javascript/lora_ota_resume_store.js?v=zopfli-1"></script>
 <script src="../_javascript/lora_ota_zopfli.js?v=1"></script>
 <script src="../_javascript/lora_ota_compression.js?v=1"></script>
 <script src="../_javascript/lora_ota_zopfli_benchmark.js?v=1"></script>
-<script src="../_javascript/lora_ota_browser.js?v=zopfli-auto-1"></script>
+<script src="../_javascript/lora_ota_browser.js?v=radio2-only-1"></script>

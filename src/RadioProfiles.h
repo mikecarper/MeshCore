@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <math.h>
+#include <string.h>
 #include "RadioTxPolicy.h"
 
 namespace mesh {
@@ -77,6 +78,19 @@ class RadioProfiles {
   uint8_t reply_tx = RADIO_TX_AUTO;  // authenticated admin CLI replies only
   bool reply_force = false;
   uint32_t generation[2] = {1, 1};
+  // Volatile ownership, tied to the exact temporary secondary profile.
+  char secondary_only_owner[17] = {};
+  uint32_t secondary_only_generation = 0;
+  bool secondaryOnly() const {
+    return secondary_only_owner[0] && secondary_temporary && !primary_temporary
+        && secondary.mode == RadioProfileMode::RxTx
+        && secondary.params.protocol == RadioProfileProtocol::MeshCore
+        && secondary_only_generation == generation[1];
+  }
+  void clearSecondaryOnly() { secondary_only_owner[0] = 0; secondary_only_generation = 0; }
+  void setSecondaryOnly(const char* owner) {
+    memcpy(secondary_only_owner, owner, 17); secondary_only_generation = generation[1];
+  }
   uint32_t switches = 0;
   uint32_t rx_packets[2] = {};
   uint32_t tx_packets[2] = {};
@@ -129,11 +143,11 @@ class RadioProfiles {
 
   bool enabled() const { return secondary.mode != RadioProfileMode::Off; }
   bool canTransmit(uint8_t profile, bool reply_rx_override = false) const {
-    return profile == 0 || (profile == 1 && (secondary.mode == RadioProfileMode::RxTx
+    return (profile == 0 && !secondaryOnly()) || (profile == 1 && (secondary.mode == RadioProfileMode::RxTx
         || (reply_rx_override && secondary.mode == RadioProfileMode::Rx)));
   }
   bool canCross() const {
-    return primary.protocol == secondary.params.protocol
+    return !secondaryOnly() && primary.protocol == secondary.params.protocol
         && (cross == RadioCrossMode::On || (cross == RadioCrossMode::Auto
         && primary_temporary == secondary_temporary));
   }
@@ -303,13 +317,14 @@ class RadioProfiles {
     return true;
   }
   void setPrimary(const RadioProfileParams& p, bool temporary) {
+    if (temporary || primary != p || primary_temporary != temporary) clearSecondaryOnly();
     if (primary != p || primary_temporary != temporary) { ++generation[0]; resetSwitchTest(); }
     primary = p;
     primary_temporary = temporary;
   }
   void setSecondary(const RadioProfileConfig& p, bool temporary) {
     if (secondary.params != p.params || secondary.mode != p.mode
-        || secondary_temporary != temporary) { ++generation[1]; resetSwitchTest(); }
+        || secondary_temporary != temporary) { clearSecondaryOnly(); ++generation[1]; resetSwitchTest(); }
     secondary = p;
     secondary_temporary = temporary;
   }

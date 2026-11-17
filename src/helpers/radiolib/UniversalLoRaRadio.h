@@ -195,6 +195,8 @@ class UniversalLoRaRadio : public mesh::Radio {
   MESH_AUTO_LORA_VOID(begin, (), ())
   MESH_AUTO_LORA_RET(mesh::RadioProfiles*, profiles, (), (), nullptr)
   MESH_AUTO_LORA_CONST(const mesh::RadioProfiles*, profiles, (), (), nullptr)
+  MESH_AUTO_LORA_CONST(bool, supportsSecondaryOnly, (), (), false)
+  MESH_AUTO_LORA_CONST(bool, secondaryOnlyReady, (), (), false)
 #if MESH_RADIO_SWITCH_TUNING
   MESH_AUTO_LORA_CONST(mesh::RadioSwitchCapabilities, switchTuningCapabilities, (), (), mesh::RadioSwitchCapabilities{})
   MESH_AUTO_LORA_CONST(mesh::RadioSwitchTuning, switchTuning, (), (), mesh::RadioSwitchTuning{})

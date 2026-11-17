@@ -166,6 +166,7 @@
       this.cancelled = false; this.serving = false; this.serveTask = null; this.stopServingTask = null; this.startTask = null;
       this.leaseMaintenanceUnavailable = false;
       this.leaseRetryAt = 0;
+      this.radio2OnlyRefreshAt = 0;
       this.pollWake = null;
     }
     recordJournal(state) {
@@ -311,15 +312,19 @@
     async maintainTemporaryLease(current) {
       this.requireActive();
       const record=this.readJournal();
-      if(!this.serving||this.link.relays?.length||this.leaseMaintenanceUnavailable||!record?.radio||record.radio.expiresAt>Date.now()+20*60000)return;
+      const pinApi=typeof module==='object'&&module.exports?require('./lora_ota_secondary_only.js'):globalThis.LoraOtaRadio2Only;
+      const pin=pinApi?.create().load();
+      const keepalive=!!pin&&Date.now()>=this.radio2OnlyRefreshAt;
+      if(!this.serving||this.link.relays?.length||!record?.radio||(!keepalive&&(this.leaseMaintenanceUnavailable||record.radio.expiresAt>Date.now()+20*60000)))return;
       const leases=typeof module==='object'&&module.exports?require('./lora_ota_lease.js'):globalThis.LoraOtaLease;
       if(!leases||current?.state!=='active'||!leases.dataReady(current.status,record.id))return;
       if(record.radio.expiresAt<=Date.now())
         throw Error('The verified temporary update window has expired. The staged download was not cancelled; prepare the same update again to resume it.');
       if(this.leaseRetryAt>Date.now())return;
-      const result=await leases.maintain(this.link,this.key,this.password,record,{progress:this.progress,
+      const result=await leases.maintain(this.link,this.key,this.password,record,{progress:this.progress,keepalive,
         journal:updated=>this.journal(updated)});
       this.leaseRetryAt=result.state==='deferred'?result.retryAt:0;
+      if(keepalive&&result.state!=='deferred'&&result.state!=='waiting-data')this.radio2OnlyRefreshAt=Date.now()+120000;
       if(result.state==='unavailable')this.leaseMaintenanceUnavailable=true;
       if(result.record?.radio)this.verifiedRadio=cloneRadio(result.record.radio);
       this.requireActive();
@@ -829,6 +834,14 @@
       if (before.download !== 'ready' || current.id !== id || current.state !== 'ready') throw Error('The selected package is not ready to install');
       const rebootChannel = await this.planRebootChannel();
       this.requireActive();
+      // Release any browser-owned primary pause while both devices still use
+      // the verified update channel. The source must hear the target's saved
+      // primary immediately after target reboot and the upcoming retune.
+      const only=typeof module==='object'&&module.exports?require('./lora_ota_secondary_only.js'):globalThis.LoraOtaRadio2Only;
+      if(only?.create().load()){
+        await only.create().restore(this.link,this.key,this.password,{progress:this.progress});
+        this.requireActive();
+      }
       this.recordJournal({phase: 'install attempted', target: this.key, source: this.link.sourceKey, id, packageHash:this.packageHash, bodyHash: this.bodyHash, savedTargetRadio:rebootChannel.savedTarget});
       const command = this.installMode === 'hash' ? 'ota installhash ' + this.installHash : this.installMode === 'legacy' ? 'ota install' : null;
       if (!command) throw Error('Target installation capability is unknown');

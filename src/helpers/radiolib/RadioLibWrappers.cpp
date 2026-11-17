@@ -1130,6 +1130,7 @@ void RadioLibWrapper::cacheBeaconRestoreParams() {
 mesh::RadioParamApplyResult RadioLibWrapper::prepareBeaconTransmit(
     const mesh::RadioProfileParams& p, int8_t power) {
   using Result = mesh::RadioParamApplyResult;
+  if (_profiles.secondaryOnly()) return Result::BUSY;
 #if MESH_ENABLE_RADIO_DIRECTION
   if (!mesh::radioDirection::radioTransmitAllowed()) return Result::FAILED;
 #endif
@@ -1330,7 +1331,7 @@ void RadioLibWrapper::serviceProfileScan() {
     setProfileStandbyWarm(true);
     endReconfigure(resume);
   }
-  if (_profiles.enabled() && !_profiles.switchTestReady()) {
+  if (_profiles.enabled() && !_profiles.secondaryOnly() && !_profiles.switchTestReady()) {
     // A bounded startup self-test uses the real RX-to-RX retune path for the
     // active pair. Keep the maximum automatic provisional preamble until four good
     // samples in each direction are available. A packet, TX, or BUSY radio
@@ -1375,7 +1376,8 @@ void RadioLibWrapper::serviceProfileScan() {
     _floor_estimator.reset(true);
     _secondary_floor_estimator.reset(true);
   }
-  if (!_profiles.enabled()) target = 0;
+  if (_profiles.secondaryOnly()) target = 1;
+  else if (!_profiles.enabled()) target = 0;
   else if (restart_scan) target = _profiles.slowerProfile();
   else {
     visit_us = _profiles.listenUs(
@@ -1416,7 +1418,7 @@ void RadioLibWrapper::serviceProfileScan() {
   if (result == mesh::RadioParamApplyResult::FAILED) {
     // Retry a rejected or failing profile at a bounded rate; retain primary RX.
     _profile_retry_at = millis() + 1000;
-    tuneProfile(0);
+    if (!_profiles.secondaryOnly()) tuneProfile(0);
   }
   if (!_profiles.enabled() && _profile_rxps_suspended && _active_profile == 0
       && result == mesh::RadioParamApplyResult::APPLIED) {
@@ -2353,6 +2355,7 @@ bool RadioLibWrapper::supportsMorseTx() const {
 mesh::MorseTxResult RadioLibWrapper::startMorseTx(float frequency_mhz,
                                                 uint8_t wpm, const char* text) {
   using Result = mesh::MorseTxResult;
+  if (_profiles.secondaryOnly()) return Result::Busy;
 #if MESH_ENABLE_RADIO_DIRECTION
   if (!mesh::radioDirection::radioTransmitAllowed()) return Result::Failed;
 #endif
@@ -2508,6 +2511,7 @@ bool RadioLibWrapper::canAllocateMorseReceiver() const {
 mesh::MorseRxResult RadioLibWrapper::startMorseRx(float frequency_mhz,
                                                 uint8_t wpm, uint32_t duration_ms) {
   using Result = mesh::MorseRxResult;
+  if (_profiles.secondaryOnly()) return Result::Busy;
 #if MESH_ENABLE_RADIO_DIRECTION
   if (!mesh::radioDirection::radioReceiveAllowed()) return Result::Failed;
 #endif

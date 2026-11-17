@@ -617,6 +617,12 @@ public:
 #endif
   mesh::RadioProfiles* profiles() override { return &_profiles; }
   const mesh::RadioProfiles* profiles() const override { return &_profiles; }
+  bool supportsSecondaryOnly() const override { return true; }
+  bool secondaryOnlyReady() const override {
+    return _profiles.secondaryOnly() && _active_profile == 1
+        && _profile_generation == _profiles.generation[1] && !_profile_repair_required
+        && !_profile_refresh_required && isInRecvMode();
+  }
 #if MESH_RADIO_SWITCH_TUNING
   mesh::RadioSwitchCapabilities switchTuningCapabilities() const override;
   mesh::RadioSwitchTuning switchTuning() const override;

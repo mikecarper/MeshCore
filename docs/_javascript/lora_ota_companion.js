@@ -91,7 +91,7 @@
   const READ_ONLY=new Set(['get public.key','ota status','ota self','ota ram','ver','board','get bootloader.ver','get usb.raw.max',
     'ota bootloader status','ota config','ota key list','get tempradio','get radio','get radio.rxps','ota installhash','ota qspi','ota stats','ota ls',
     'get radio2','get tempradio2','get radio2.cross','get radio2.status','get radioat','get tempradioat','get radioat2','get tempradioat2',
-    'get repeat','get radio.flood','get radio2.flood']);
+    'get repeat','get radio.flood','get radio2.flood','get radio2.only','get radio2.only']);
   function isReadOnly(text) {
     // The OTA catalog is bounded by the protocol's 255 entries (two per page).
     return READ_ONLY.has(text) || /^ota ls (?:[1-9]|[1-9][0-9]|1[01][0-9]|12[0-8])$/.test(text);
@@ -1109,7 +1109,7 @@
       const readOnly=isReadOnly(text),bounded=maxDurationMs!==undefined;
       const optionalWrite=optionalReplyTimeoutMs!==undefined;
       if(typeof allowReacquire!=='boolean'||!allowReacquire&&(!this.otaSupported||!readOnly&&!optionalWrite)||
-          optionalWrite&&(!this.otaSupported||allowReacquire||!/^set (?:repeat|radio\.flood) (?:on|off)$/.test(text)||
+          optionalWrite&&(!this.otaSupported||allowReacquire||!/^set (?:(?:repeat|radio\.flood) (?:on|off)|radio2\.only (?:on|off) [a-fA-F0-9]{16})$/.test(text)||
             !Number.isFinite(optionalReplyTimeoutMs)||optionalReplyTimeoutMs<1||optionalReplyTimeoutMs>10000))
         throw Error('Optional command limits require an approved forwarding setting and an existing guarded session');
       if(bounded&&(!this.otaSupported||!readOnly||!Number.isFinite(maxDurationMs)||maxDurationMs<=0))

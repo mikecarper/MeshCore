@@ -50,6 +50,7 @@
     write:record=>localStorage.setItem(quietStoreKey,JSON.stringify(record)),
     clear:()=>localStorage.removeItem(quietStoreKey)
   };
+  const radio2Only=globalThis.LoraOtaRadio2Only?.create();
   let transferStopJob=null,transferStopTask=null;
   function refreshTransferStop(){
     $('transfer-stop').hidden=updatePhase!=='transfer';
@@ -121,7 +122,7 @@
     if(compressionBenchmarkPending){compressionBenchmarkManual=true;compressionBenchmark.cancel();}
     updateCompressionSummary();
   });
-  const updatesBlocked = () => !!link?.failure || sourceOtaUnsupported || !!targetAvailability && targetAvailability.state !== 'supported';
+  const updatesBlocked = () => !!link?.failure || !!link?.peerFailure || sourceOtaUnsupported || !!targetAvailability && targetAvailability.state !== 'supported';
   function showAvailability(result) {
     const notice=$('ota-availability');
     notice.hidden=!result;
@@ -146,14 +147,15 @@
     const notice=$('quiet-forwarding-status'),button=$('restore-forwarding');
     if(!notice||!button)return;
     try{
-      const record=quietStore.read();
-      notice.hidden=!record&&!quietWarning&&!secondaryWarning;button.hidden=!record;
+      const record=quietStore.read(),radioRecord=radio2Only?.load();
+      notice.hidden=!record&&!radioRecord&&!quietWarning&&!secondaryWarning;button.hidden=!record&&!radioRecord;
       if(record)notice.textContent=record.state==='paused'
         ? 'Forwarding for target '+String(record.target||'').slice(0,12)+' is paused. Restoration will be checked separately from firmware completion. Keep this page open.'
         : 'Forwarding restoration is pending for target '+String(record.target||'').slice(0,12)+
           '. Keep this page open. Reconnect the same source and target if necessary, then select Restore forwarding.';
       else notice.textContent=quietWarning;
       if(record&&quietWarning)notice.textContent+=' '+quietWarning;
+      if(radioRecord)notice.textContent+=(notice.textContent?' ':'')+'Primary reception may be paused for the update. It automatically resumes within five minutes if the updater stops, or when the radio2 window expires; reconnect the same devices to restore it sooner.';
       if(secondaryWarning)notice.textContent+=(notice.textContent?' ':'')+secondaryWarning;
     }catch(_){
       notice.hidden=button.hidden=false;
@@ -201,8 +203,14 @@
     return quietPlan.plan;
   }
   async function pauseQuietForwarding(target,password,radio){
-    if(!quietEnabled()||!radio||![radio.sourceProfile,radio.targetProfile].includes(1))return;
+    if(!radio||![radio.sourceProfile,radio.targetProfile].includes(1)||link?.relays?.length)return;
     const connection=link,canContinue=quietContinuation();
+    if(radio2Only&&(connection?.browserRawSource===true&&connection?.otaSupported===true||
+      connection?.browserRawSource!==true&&typeof connection?.withRadio2OnlyBurst==='function'&&connection?.otaPathValue==='OFF')){
+      await radio2Only.activate(connection,target,password,radio,{canContinue,progress:quietProgress});
+      refreshQuietRecovery();
+    }else log('This source cannot verify a direct radio2-only administration session; radio1 remains unchanged.');
+    if(!quietEnabled())return;
     const plan=await prepareQuietForwarding(target,password);
     if(!canContinue())throw Error('Update preparation stopped before pausing forwarding.');
     if(plan?.state==='skipped')return;
@@ -219,8 +227,23 @@
   }
   async function restoreQuietForwarding({required=false,retry=false}={}){
     try{
+      let primaryError;
+      try{
+      const radioRecord=radio2Only?.load();
+      if(radioRecord){
+        const target=$('key').value.trim().toLowerCase();
+        if(!link||link.failure||link.serving||link.folderUnknown||link.relays?.length||
+           radioRecord.source!==link.sourceKey?.toLowerCase()||radioRecord.target!==target){
+          if(required)throw Error('Reconnect the same source and target to restore primary reception. It also resumes within five minutes if the updater stops.');
+          log('Primary reception will resume within five minutes if the updater stops.');
+        }else{
+          if(link.knownRepeater?.toLowerCase()!==target)selectTarget();
+          await radio2Only.restore(link,target,$('acl').checked?'':$('password').value,{progress:quietProgress});
+        }
+      }
+      }catch(error){primaryError=error;}
       const record=quietStore.read();
-      if(!record)return;
+      if(!record){if(primaryError)throw primaryError;return;}
       if(!globalThis.LoraOtaQuiet)throw Error('Forwarding restoration support did not load. Refresh the page before restoring the saved setting.');
       const target=$('key').value.trim().toLowerCase();
       if(!link||link.failure||link.serving||link.folderUnknown||link.relays?.length||
@@ -242,8 +265,9 @@
       if(!['restored','none','already-off'].includes(result?.state))
         throw Error('Forwarding restoration is still pending. Select Restore forwarding.');
       quietWarning='';
+      if(primaryError)throw primaryError;
     }catch(error){
-      quietWarn('Forwarding restoration remains pending; the firmware result is unchanged.',error);
+      quietWarn('Settings restoration remains pending; the firmware result is unchanged.',error);
       if(link?.failure)$('reconnect').hidden=false;
       if(required)throw error;
     }finally{quietPlan=null;refreshQuietRecovery();}
@@ -270,7 +294,7 @@
   }
   function completionDisconnectTip(){
     let pending=!!secondaryWarning;
-    try{pending=pending||!!quietStore.read();}catch(_){pending=true;}
+    try{pending=pending||!!quietStore.read()||!!radio2Only?.load();}catch(_){pending=true;}
     return pending?' Firmware is verified. Review the pending settings warning before disconnecting.':
       ' You can disconnect the source radio.';
   }
@@ -414,6 +438,11 @@
     if(error?.changedSettings?.some(change=>!change.confirmed))openDetails($('diagnostics'));
     log('Error: ' + message);
     showSourceUpdate(error?.sourceUpdateRequired);
+    if(link?.peerFailure){
+      invalidate();refreshPreservedMessages();
+      status(summary+'\nThe repeater peer request timed out. Disconnect and reconnect the source before trying again.', 'error');
+      log('The repeater peer session is quarantined. Disconnect and reconnect the source before trying again; local folder cleanup remains available.');
+    }
     if(link?.failure){
       invalidate();refreshPreservedMessages();
       status(summary+(wifiConnection()?'\nWi-Fi communication stopped. Select Reconnect Wi-Fi Companion; your target and firmware choices are kept.':'\nUSB communication stopped. Select Reconnect USB source; your target and firmware choices are kept.'), 'error');
@@ -450,6 +479,7 @@
       return;
     }
     if(globalThis.LoraOtaQuiet)await restoreQuietForwarding();
+    if(link?.peerFailure)return;
     if(error?.otaLocalCheck===true || typeof LoraOtaChecks.collectFailureIdentity!=='function')return;
     const sameDevice=()=>failureId===failureSerial&&link===connection&&disconnectGeneration===generation&&connection?.sourceKey===sourceKey&&$('key').value.trim().toLowerCase()===target;
     const canRead=()=>sameDevice()&&($('acl').checked?'':$('password').value)===password&&!!direct?.running&&!direct.failure&&!connection?.failure&&!direct.investigationCancelled&&!investigationStopping&&!direct.serving&&!direct.seeder&&!direct.folderUnknown&&!direct.usbFolderAttached;
