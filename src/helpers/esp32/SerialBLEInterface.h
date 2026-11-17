@@ -286,7 +286,8 @@ public:
   bool isReadBusy() const override;
   bool isWriteBusy() const override;
   bool hasPendingIO() const override {
-    return uxQueueMessagesWaiting(recv_queue) > 0 || send_queue_len > 0;
+    return uxQueueMessagesWaiting(recv_queue) > 0 || send_queue_len > 0
+        || _otaHelloSession.load(std::memory_order_acquire) != 0 || _otaControlLen != 0;
   }
   bool takePairingRequest() override {
     return _pairingRequestPending.exchange(false, std::memory_order_acq_rel);

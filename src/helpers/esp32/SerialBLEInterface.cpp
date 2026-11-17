@@ -1649,7 +1649,8 @@ size_t SerialBLEInterface::writeFrame(const uint8_t src[], size_t len) {
 #endif
 
 bool SerialBLEInterface::isReadBusy() const {
-  return uxQueueMessagesWaiting(recv_queue) > 0;
+  return uxQueueMessagesWaiting(recv_queue) > 0
+      || _otaHelloSession.load(std::memory_order_acquire) != 0 || _otaControlLen != 0;
 }
 
 bool SerialBLEInterface::hasRequiredReplyCapacity() const {

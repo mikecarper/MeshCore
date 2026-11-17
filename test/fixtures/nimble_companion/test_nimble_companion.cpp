@@ -745,7 +745,31 @@ static void test_browser_hello_bypasses_full_tx_without_queue_peek() {
   }
 }
 
+static void test_browser_control_mailbox_keeps_idle_loop_awake() {
+  reset(); SerialBLEInterface interface;
+  assert(interface.begin("MeshCore-", "idle-browser", 123456));
+  interface.enable(); interface.enableOtaFraming();
+  NimBLEConnInfo info; authenticate(interface, info);
+  auto* server = NimBLEDevice::server.get();
+  auto* tx = server->service->characteristics[0].get();
+  auto* rx = server->service->characteristics[1].get();
+  tx->callbacks->onSubscribe(tx, info, 1); mtu = 23;
+  assert(!interface.hasPendingIO() && !interface.isReadBusy());
+  rx->setValue(mesh::ble_ota::MAGIC, sizeof(mesh::ble_ota::MAGIC));
+  rx->callbacks->onWrite(rx, info);
+  assert(interface.hasPendingIO() && interface.isReadBusy());
+  uint8_t command[MAX_FRAME_SIZE] = {};
+  assert(interface.checkRecvFrame(command) == 0);
+  assert(interface.hasPendingIO() && interface.isReadBusy());
+  test_millis += 61;
+  assert(interface.checkRecvFrame(command) == 0);
+  assert(transmitted.size() == 1);
+  assert(!interface.hasPendingIO() && !interface.isReadBusy());
+  NimBLEDevice::deinit(true);
+}
+
 int main() {
+  test_browser_control_mailbox_keeps_idle_loop_awake();
   test_browser_hello_bypasses_full_tx_without_queue_peek();
   test_live_pin_updates_without_losing_connection_or_bonds();
   test_full_bond_store_never_evicts_existing_peer();
