@@ -1,7 +1,8 @@
-#if defined(STM32_PLATFORM) && defined(MESH_STM32_MINI_NO_PROGRAM_EXIT) && MESH_STM32_MINI_NO_PROGRAM_EXIT
+#if defined(STM32_PLATFORM) && STM32_PLATFORM && defined(MESH_STM32_MINI_NO_PROGRAM_EXIT) && MESH_STM32_MINI_NO_PROGRAM_EXIT
 
-#if !defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) || !WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC
-#error "The STM32 no-exit ABI policy is qualified only for the exact Mini Repeater"
+#if (!defined(WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) || !WIO_E5_MINI_COMPACT_UNSUPPORTED_AGC) \
+    && (!defined(STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC) || !STM32WL_COMPANION_COMPACT_UNSUPPORTED_AGC)
+#error "The STM32 no-exit ABI policy requires an exact qualified Mini or USB Companion"
 #endif
 
 // The pinned, hash-qualified Arduino STM32 main calls setup() and then loops

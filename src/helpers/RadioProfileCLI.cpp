@@ -1318,6 +1318,10 @@ __attribute__((noinline)) bool RadioProfileCLI::handleSecondaryOnly(
   return true;
 }
 
+#if defined(STM32_PLATFORM) && defined(MESH_STM32_COMPANION_CLI_PACKING) && MESH_STM32_COMPANION_CLI_PACKING
+// Keep one-use helpers separate in the qualified small Companion parser.
+__attribute__((optimize("no-inline-functions-called-once")))
+#endif
 bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, bool remote_origin, const float* primary_frequency) {
 #if defined(MESH_HIL_TX_FREQ_MHZ)
   if (handleHilTxFrequencyCommand(command, reply, capacity)) return true;

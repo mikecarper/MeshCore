@@ -20,6 +20,7 @@ from cpp_source import body
 from test_serial_wifi_sessions import SANITIZER_FLAGS
 
 ROOT = Path(__file__).resolve().parents[1]
+PACKED_CLI_HOOK = 'pre:scripts/stm32_companion_packed_cli.py'
 
 
 class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
@@ -30,7 +31,7 @@ class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
         flag = '-fno-tree-loop-im'
         hook = 'post:scripts/stm32_rak_companion_size.py'
         self.assertIn(flag, shlex.split(selected['build_flags']))
-        self.assertEqual(selected['extra_scripts'].split(), ['${stm32_base.extra_scripts}', hook])
+        self.assertEqual(selected['extra_scripts'].split(), ['${stm32_base.extra_scripts}', PACKED_CLI_HOOK, hook])
         for section in config.sections():
             if section != selected.name:
                 self.assertNotIn(flag, config[section].get('build_flags', ''))
@@ -58,7 +59,7 @@ class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
         for policy in ('-fno-tree-pre','-fno-tree-slsr','-fno-code-hoisting'):
             self.assertIn(policy, shlex.split(config[target]['build_flags']))
             self.assertIn(policy, shlex.split(config['env:wio-e5-mini_repeater']['build_flags']))
-        self.assertEqual(config[target]['extra_scripts'].split(), ['${stm32_base.extra_scripts}', hook])
+        self.assertEqual(config[target]['extra_scripts'].split(), ['${stm32_base.extra_scripts}', PACKED_CLI_HOOK, hook])
         for section in config.sections():
             if section not in (target, 'env:wio-e5-mini_repeater'):
                 self.assertNotIn(flag, config[section].get('build_flags', ''))
@@ -95,7 +96,7 @@ class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
             for choice in target_policy: self.assertEqual(flags.count(choice),1)
             self.assertEqual(flags.count('MESH_CLI_SHARE_REPLY_COPIES=1'),1)
             self.assertEqual(selected['extra_scripts'].split(),[
-                '${stm32_base.extra_scripts}','post:scripts/'+script])
+                '${stm32_base.extra_scripts}',PACKED_CLI_HOOK,'post:scripts/'+script])
             for section in config.sections():
                 if section==selected.name: continue
                 other_flags=shlex.split(config[section].get('build_flags',''))
@@ -108,6 +109,7 @@ class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
                     self.assertIn('MESH_CLI_SHARE_ERROR_PREFIXES=1',other_flags)
                     self.assertIn('pre:scripts/stm32_mini_cli_replies.py',
                                   config[section]['extra_scripts'].split())
+                self.assertNotIn(PACKED_CLI_HOOK, config[section].get('extra_scripts','').split())
                 if variant!='wio-e5-mini':
                     for choice in policy: self.assertNotIn(choice,other_flags)
                 self.assertNotIn('post:scripts/'+script,config[section].get('extra_scripts','').split())
@@ -292,7 +294,7 @@ class STM32CompanionProfileTest(unittest.TestCase):
         self.assertIn("+<../examples/companion_radio/*.cpp>",
                       self.companion["build_src_filter"])
         self.assertIn("-Oz", self.companion["build_flags"])
-        self.assertEqual(self.companion["build_unflags"].split(), ["-Os"])
+        self.assertEqual(self.companion["build_unflags"].split(), ["-Os", "-fno-use-cxa-atexit"])
 
     def test_size_profile_uses_equivalent_fixed_loop_field_products(self):
         for definition in ("SHA512", "SCALAR", "FIELD"):
@@ -316,7 +318,7 @@ class TinyRelaySTM32CompanionProfileTest(STM32CompanionProfileTest):
         hook = "post:scripts/stm32_tiny_size.py"
         self.assertIn(flag, shlex.split(self.companion["build_flags"]))
         self.assertEqual(self.companion["extra_scripts"].split(), [
-            "${stm32_base.extra_scripts}", hook])
+            "${stm32_base.extra_scripts}", PACKED_CLI_HOOK, hook])
         for section in self.config.sections():
             if section != self.companion.name:
                 self.assertNotIn(flag, self.config[section].get("build_flags", ""))

@@ -207,7 +207,8 @@ bool CommonRadioPrefs::isValidBandwidth(float bandwidth) {
   return isValidLoRaBandwidth(bandwidth);
 }
 
-#if defined(NRF52_PLATFORM)
+#if defined(NRF52_PLATFORM) || (defined(STM32_PLATFORM) \
+    && defined(MESH_STM32_COMPANION_CLI_PACKING) && MESH_STM32_COMPANION_CLI_PACKING)
 // Keep shared radio parsing out of the Companion's larger command dispatcher.
 __attribute__((noinline))
 #endif

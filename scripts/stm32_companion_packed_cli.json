@@ -1,0 +1,709 @@
+{
+  "version": 1,
+  "training": [
+    "\"%s\" key:%s",
+    "%d \"%s\"",
+    "%lu.%03lu",
+    "%s (Build: %s)",
+    "%s tx.%s %s %s; active=%s%s",
+    "%s tx.%s %s; active=%s%s",
+    "%s,%s,%u,%u,rxtx,auto",
+    "%u@%lu ",
+    ",radio2=%.0f",
+    "; %lud%luh%lum (%lu min) left",
+    "; @%lu-%lu",
+    "; WARN need >%u: %s",
+    "; WARN radio2 overlaps radio1 (6kHz guard)",
+    "; WARN recommended preamble: %s=%.0f",
+    "; short override: %s",
+    "; switch=%luus",
+    "; test=%u/%u,%u/%u%s",
+    "; test=%u/%u,%u/%u%s budget=%luus",
+    "; timing self-test pending; wait=%lus",
+    "; try %sMHz",
+    "> %.3f,%.3f,%u,%u,%s,%u%s%s",
+    "> %.6f",
+    "> %.9g",
+    "> %d",
+    "> %d.%d%%",
+    "> %s",
+    "> %s %s",
+    "> %s (%s)",
+    "> %s%s%s",
+    "> %s,%s,%d,%d",
+    "> %s; RX=%lu,%lu TX=%lu,%lu switches=%lu errors=%lu max=%luus preamble=%u,%u",
+    "> %u",
+    "> (no admin password on Companion)",
+    "> chirps=%.2f,%.2f; need=%.0f,%.0f; switch=%luus; loop=%luus%s",
+    "> companion",
+    "> off",
+    "> pin is now %06lu",
+    "> radio2 change pending %s; previous channel retained",
+    "> slots: ",
+    "> slow=%s; listen_us=%lu,%lu; preamble=%u,%u",
+    "> timing self-test pending; test=%u/%u,%u/%u; wait=%lus; provisional switch=%luus preamble=%u,%u",
+    "> tx.%s: %u overrides; use get tx.%s <name|%s>",
+    "Bluetooth name save failed",
+    "CAD changed; save failed",
+    "CAD scan timing unsupported",
+    "CAD timings changed; save failed",
+    "Companion %s (protocol %u, build %s)",
+    "ERR local transport only",
+    "ERR: unsupported",
+    "ERROR: dutycycle 1-100",
+    "Error, -12 to +14",
+    "Error, 0-2",
+    "Error, 0-20",
+    "Error, 0-255",
+    "Error, 0|1",
+    "Error, 0|1|2",
+    "Error, airtime factor",
+    "Error, bad chars",
+    "Error: %s %s%s",
+    "Error: %s f,bw,sf,cr,rx|rxtx%s[,preamble|auto]",
+    "Error: %s is read-only",
+    "Error: Bluetooth name: 1-%u valid UTF-8 bytes, no control chars",
+    "Error: TX -9..%d dBm",
+    "Error: TX rejected",
+    "Error: airtime factor",
+    "Error: bad TX power",
+    "Error: get tx.%s; set tx.%s auto|radio|radio2|both|off",
+    "Error: get/set tx.%s <name|%s> [auto|radio|radio2|both|off]",
+    "Error: set cad on|off",
+    "Error: set radio.rxgain on|off",
+    "Error: tx.%s not saved",
+    "Error: unsupported",
+    "File system erase: Err",
+    "File system erase: OK",
+    "NONAME",
+    "OK",
+    "OK - %d.%d%%",
+    "OK - %s %u queued, preamble=%u",
+    "OK - %s after reply",
+    "OK - %s in 2s",
+    "OK - display rotation %lu",
+    "OK - display rotation reset to board default",
+    "OK - display.touch %s (off after reboot)",
+    "OK - interval rounded to %d",
+    "OK - powersaving %s",
+    "OK - radio.cad %s",
+    "OK - radio.cad timings saved",
+    "OK - radio2 %s%s; preamble=%u",
+    "OK - radio2.only %s",
+    "OK - saved; pending",
+    "OK - schedule cleared after reply",
+    "OK - tempradio2 %lud%luh%lum (%lu min); preamble=%u",
+    "OK - tx.reply=%s%s",
+    "PS not saved",
+    "RXPS unsupported",
+    "TX not saved",
+    "TX power rejected",
+    "TX route not saved; storage error",
+    "ack pending",
+    "all slots full",
+    "auto(%lu)",
+    "auto|on|off",
+    "bad command",
+    "bad radio params",
+    "clear tempradioat2",
+    "contact cache disabled",
+    "display rotation changed; save failed",
+    "display rotation failed",
+    "display rotation unsupported",
+    "display.rotation %u",
+    "display.rotation default",
+    "ephemeral-routed-v1",
+    "frequency 150-2500 MHz",
+    "future UTC, <=24 days",
+    "key: 12-64 hex, whole bytes",
+    "one-key DMs unsupported in build",
+    "params too long",
+    "paths=inline secrets=inline",
+    "pin must be 0-999999",
+    "power management unsupported",
+    "prefix routes; rename channel",
+    "radio params unsupported",
+    "radio2.only owned by another session",
+    "radio2.only unsupported",
+    "radio2.only: USB only",
+    "radio2: USB only",
+    "raw %u-byte path",
+    "requires active temporary MeshCore radio2 rxtx",
+    "schedule overlap",
+    "set bluetooth.name <name|default>",
+    "set display.rotation <0|90|180|270>",
+    "set display.touch on|off",
+    "set powersaving on|off",
+    "set radio.cad on|off; timings scan_ms|auto retry_ms|auto max_ms|auto",
+    "set radio.cad timings auto|100-3500 auto|1-60000 auto|1-60000",
+    "set radio.fem.rxgain on|off",
+    "set radio.fem.txgain on|off",
+    "set radio.rxps.rfrx_disabled on|off",
+    "set radio2 %s",
+    "slot: 1-4|all",
+    "stop Morse before FEM gain",
+    "temp/session overlap",
+    "timing unavailable",
+    "token must be 16 hex digits",
+    "touch diagnostics unavailable",
+    "touch diagnostics unsupported",
+    "tx.reply MODE [force:radio2/both]",
+    "use set radio2.only on|off TOKEN",
+    "use tuple"
+  ],
+  "pairs": [
+    [
+      37,
+      115
+    ],
+    [
+      100,
+      105
+    ],
+    [
+      111,
+      114
+    ],
+    [
+      101,
+      100
+    ],
+    [
+      111,
+      110
+    ],
+    [
+      114,
+      97
+    ],
+    [
+      37,
+      117
+    ],
+    [
+      59,
+      32
+    ],
+    [
+      108,
+      117
+    ],
+    [
+      101,
+      32
+    ],
+    [
+      32,
+      128
+    ],
+    [
+      116,
+      32
+    ],
+    [
+      37,
+      136
+    ],
+    [
+      129,
+      111
+    ],
+    [
+      133,
+      141
+    ],
+    [
+      105,
+      110
+    ],
+    [
+      114,
+      101
+    ],
+    [
+      114,
+      114
+    ],
+    [
+      116,
+      111
+    ],
+    [
+      145,
+      130
+    ],
+    [
+      115,
+      101
+    ],
+    [
+      116,
+      105
+    ],
+    [
+      58,
+      32
+    ],
+    [
+      69,
+      147
+    ],
+    [
+      79,
+      75
+    ],
+    [
+      99,
+      104
+    ],
+    [
+      32,
+      45
+    ],
+    [
+      111,
+      116
+    ],
+    [
+      116,
+      101
+    ],
+    [
+      62,
+      32
+    ],
+    [
+      115,
+      32
+    ],
+    [
+      152,
+      154
+    ],
+    [
+      148,
+      139
+    ],
+    [
+      142,
+      50
+    ],
+    [
+      97,
+      109
+    ],
+    [
+      97,
+      117
+    ],
+    [
+      108,
+      97
+    ],
+    [
+      97,
+      110
+    ],
+    [
+      97,
+      118
+    ],
+    [
+      102,
+      102
+    ],
+    [
+      108,
+      101
+    ],
+    [
+      116,
+      120
+    ],
+    [
+      111,
+      167
+    ],
+    [
+      159,
+      32
+    ],
+    [
+      100,
+      32
+    ],
+    [
+      108,
+      121
+    ],
+    [
+      117,
+      110
+    ],
+    [
+      116,
+      131
+    ],
+    [
+      61,
+      140
+    ],
+    [
+      44,
+      32
+    ],
+    [
+      112,
+      130
+    ],
+    [
+      115,
+      166
+    ],
+    [
+      129,
+      115
+    ],
+    [
+      163,
+      146
+    ],
+    [
+      124,
+      170
+    ],
+    [
+      97,
+      105
+    ],
+    [
+      117,
+      112
+    ],
+    [
+      44,
+      134
+    ],
+    [
+      109,
+      143
+    ],
+    [
+      151,
+      150
+    ],
+    [
+      37,
+      46
+    ],
+    [
+      117,
+      115
+    ],
+    [
+      98,
+      168
+    ],
+    [
+      112,
+      144
+    ],
+    [
+      112,
+      164
+    ],
+    [
+      115,
+      184
+    ],
+    [
+      132,
+      32
+    ],
+    [
+      169,
+      46
+    ],
+    [
+      174,
+      193
+    ],
+    [
+      178,
+      175
+    ],
+    [
+      180,
+      192
+    ],
+    [
+      132,
+      182
+    ],
+    [
+      196,
+      197
+    ],
+    [
+      198,
+      121
+    ],
+    [
+      32,
+      114
+    ],
+    [
+      101,
+      110
+    ],
+    [
+      101,
+      114
+    ],
+    [
+      110,
+      111
+    ],
+    [
+      61,
+      134
+    ],
+    [
+      132,
+      173
+    ],
+    [
+      37,
+      100
+    ],
+    [
+      48,
+      48
+    ],
+    [
+      32,
+      144
+    ],
+    [
+      97,
+      149
+    ],
+    [
+      97,
+      172
+    ],
+    [
+      128,
+      32
+    ],
+    [
+      156,
+      115
+    ],
+    [
+      138,
+      32
+    ],
+    [
+      149,
+      186
+    ],
+    [
+      155,
+      211
+    ],
+    [
+      162,
+      190
+    ],
+    [
+      142,
+      46
+    ],
+    [
+      191,
+      218
+    ],
+    [
+      216,
+      103
+    ],
+    [
+      217,
+      194
+    ],
+    [
+      84,
+      88
+    ],
+    [
+      97,
+      99
+    ],
+    [
+      97,
+      114
+    ],
+    [
+      111,
+      119
+    ],
+    [
+      114,
+      120
+    ],
+    [
+      108,
+      131
+    ],
+    [
+      110,
+      162
+    ],
+    [
+      143,
+      32
+    ],
+    [
+      155,
+      104
+    ],
+    [
+      151,
+      177
+    ],
+    [
+      32,
+      112
+    ],
+    [
+      97,
+      108
+    ],
+    [
+      109,
+      112
+    ],
+    [
+      111,
+      118
+    ],
+    [
+      124,
+      49
+    ],
+    [
+      47,
+      134
+    ],
+    [
+      108,
+      137
+    ],
+    [
+      137,
+      102
+    ],
+    [
+      153,
+      165
+    ],
+    [
+      179,
+      131
+    ],
+    [
+      160,
+      219
+    ],
+    [
+      220,
+      206
+    ],
+    [
+      48,
+      45
+    ],
+    [
+      100,
+      101
+    ],
+    [
+      102,
+      44
+    ],
+    [
+      103,
+      101
+    ],
+    [
+      105,
+      116
+    ],
+    [
+      110,
+      103
+    ],
+    [
+      115,
+      119
+    ],
+    [
+      105,
+      132
+    ],
+    [
+      128,
+      128
+    ],
+    [
+      129,
+      250
+    ],
+    [
+      131,
+      32
+    ]
+  ],
+  "max_depth": 5,
+  "array_count": 200,
+  "format_capacity": 97,
+  "sources": {
+    "examples/companion_radio/MyMesh.cpp": {
+      "input_sha": "c48b2480fccf5990db3d58c280e2d3d3d869016ff3928ff5bbc5c862f65270ba",
+      "output_sha": "ec3e52af505d3eb60756b5b3c0ca0c0b3b71b3efbb455b4151228a664575cd7e",
+      "call_count": 112,
+      "function_counts": {
+        "strcpy": 8,
+        "sprintf": 1,
+        "snprintf": 64,
+        "formatError": 39,
+        "appendReply": 0
+      }
+    },
+    "src/helpers/RadioProfileCLI.cpp": {
+      "input_sha": "24592ae0055265cc78dea7e83e8b9ee6cc4bd065aff86771531bcb903d470ac2",
+      "output_sha": "7a9bad00dabdef9550eae843f3d729e2d63d413b29f8101237c29ba43c5a6e5a",
+      "call_count": 69,
+      "function_counts": {
+        "strcpy": 0,
+        "sprintf": 0,
+        "snprintf": 34,
+        "formatError": 22,
+        "appendReply": 13
+      }
+    },
+    "src/helpers/CommonRadioPrefs.cpp": {
+      "input_sha": "94c0d1a040bfe84de2d4fef6b493a08fcb136118aa551388e016cddb32db18d4",
+      "output_sha": "4a9f18dc76645e3942d2f047401c800c2f0ad523a042c13caca39e6634a9e706",
+      "call_count": 41,
+      "function_counts": {
+        "strcpy": 25,
+        "sprintf": 16,
+        "snprintf": 0,
+        "formatError": 0,
+        "appendReply": 0
+      }
+    }
+  }
+}
