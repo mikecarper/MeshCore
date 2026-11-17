@@ -709,7 +709,44 @@ static void test_full_bond_store_never_evicts_existing_peer() {
   NimBLEDevice::deinit(true);
 }
 
+static void test_browser_hello_bypasses_full_tx_without_queue_peek() {
+  for (const bool older_command : {false, true}) {
+  reset(); SerialBLEInterface interface;
+  assert(interface.begin("MeshCore-", "browser", 123456));
+  interface.enable(); interface.enableOtaFraming();
+  NimBLEConnInfo info; authenticate(interface, info);
+  auto* server = NimBLEDevice::server.get();
+  auto* tx = server->service->characteristics[0].get();
+  auto* rx = server->service->characteristics[1].get();
+  tx->callbacks->onSubscribe(tx, info, 1); mtu = 23;
+  uint8_t reply[MAX_FRAME_SIZE] = {13};
+  for (unsigned i = 0; i < 4; ++i) assert(interface.writeFrame(reply, sizeof(reply)) == sizeof(reply));
+  const uint8_t older[] = {22, 3};
+  if (older_command) {
+    rx->setValue(older, sizeof(older));
+    rx->callbacks->onWrite(rx, info);
+  }
+  rx->setValue(mesh::ble_ota::MAGIC, sizeof(mesh::ble_ota::MAGIC));
+  rx->callbacks->onWrite(rx, info);
+  uint8_t command[MAX_FRAME_SIZE] = {};
+  assert(interface.checkRecvFrame(command) == 0 && transmitted.empty());
+  if (older_command) {
+    // The control mailbox must not jump over an older ordinary command.
+    assert(interface.isReadBusy()); mtu = 179; test_millis += 61;
+    assert(interface.checkRecvFrame(command) == sizeof(older));
+    assert(memcmp(command, older, sizeof(older)) == 0);
+    assert(interface.checkRecvFrame(command) == 0);
+  }
+  test_millis += 61;
+  assert(interface.checkRecvFrame(command) == 0);
+  assert(transmitted.size() == (older_command ? 2 : 1) && transmitted.back() == std::vector<uint8_t>(
+      mesh::ble_ota::MAGIC, mesh::ble_ota::MAGIC + sizeof(mesh::ble_ota::MAGIC)));
+  NimBLEDevice::deinit(true);
+  }
+}
+
 int main() {
+  test_browser_hello_bypasses_full_tx_without_queue_peek();
   test_live_pin_updates_without_losing_connection_or_bonds();
   test_full_bond_store_never_evicts_existing_peer();
   test_identity_modes();

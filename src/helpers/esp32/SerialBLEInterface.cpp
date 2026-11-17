@@ -1309,6 +1309,13 @@ void SerialBLEInterface::onWrite(BLECharacteristic* pCharacteristic,
   if (len > MAX_FRAME_SIZE) {
     BLE_DEBUG_PRINTLN("ERROR: onWrite(), frame too big, len=%d", len);
   } else {
+    if (_otaFramingAllowed && !_otaFramingActive && mesh::ble_ota::isHello(rxValue, len)) {
+      // A separate control mailbox needs no FreeRTOS queue-peek routine in
+      // scarce IRAM. The loop drains older ordinary commands before ACKing.
+      _otaHelloSession.store(_sessionGeneration.load(std::memory_order_acquire),
+                             std::memory_order_release);
+      return;
+    }
     Frame frame = {};
     frame.len = len;
     memcpy(frame.buf, rxValue, len);
@@ -1404,6 +1411,7 @@ void SerialBLEInterface::clearBuffers() {
   _tx_disconnect_recovery.complete();
   _tx_reset_pending.store(false, std::memory_order_release);
   _otaFramingActive = false;
+  _otaHelloSession.store(0, std::memory_order_release);
   _otaControlLen = _otaTxOffset = 0;
   _otaTxPinned = false;
   _otaReceiver.reset();
@@ -1416,6 +1424,7 @@ void SerialBLEInterface::servicePendingTxReset() {
   _tx_stall_watchdog.reset();
   _tx_disconnect_recovery.complete();
   _otaFramingActive = false;
+  _otaHelloSession.store(0, std::memory_order_release);
   _otaControlLen = _otaTxOffset = 0;
   _otaTxPinned = false;
   _otaReceiver.reset();
@@ -1832,34 +1841,35 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[], size_t capacity) {
     _tx_stall_watchdog.reset();
   }
 
-  Frame frame;
-  // Service TX above even when full, then retain a command until its required
-  // reply can be admitted. Dequeuing while all TX slots are required causes
-  // one-shot replies (including CMD66) to be silently lost by writeFrame().
-  // The handshake has its own control slot. Permit it even if old unframed
-  // notifications fill the queue and cannot fit a newly connected peer's MTU.
-  const bool hello_pending = _otaFramingAllowed && !_otaFramingActive
-      && xQueuePeek(recv_queue, &frame, 0) == pdTRUE
-      && mesh::ble_ota::isHello(frame.buf, frame.len);
-  if (deviceConnected && !_otaControlLen && (hasRequiredReplyCapacity() || hello_pending)
-      && xQueueReceive(recv_queue, &frame, 0) == pdTRUE) {
-    if (_otaFramingAllowed && !_otaFramingActive && mesh::ble_ota::isHello(frame.buf, frame.len)) {
+  if (deviceConnected && _otaFramingAllowed && !_otaFramingActive && !_otaControlLen
+      && uxQueueMessagesWaiting(recv_queue) == 0) {
+    const uint32_t hello = _otaHelloSession.exchange(0, std::memory_order_acq_rel);
+    if (hello && hello == _sessionGeneration.load(std::memory_order_acquire)) {
+      _otaReceiver.reset(new (std::nothrow) mesh::ble_ota::Receiver);
+      if (!_otaReceiver) { recoverStalledTx("insufficient memory for Bluetooth OTA framing"); return 0; }
       _otaFramingActive = true;
       memcpy(_otaControl, mesh::ble_ota::MAGIC, sizeof(mesh::ble_ota::MAGIC));
       _otaControlLen = sizeof(mesh::ble_ota::MAGIC);
       return 0;
     }
+  }
+  Frame frame;
+  // Service TX above even when full, then retain a command until its required
+  // reply can be admitted. Dequeuing while all TX slots are required causes
+  // one-shot replies (including CMD66) to be silently lost by writeFrame().
+  if (deviceConnected && !_otaControlLen && hasRequiredReplyCapacity()
+      && xQueueReceive(recv_queue, &frame, 0) == pdTRUE) {
     if (_otaFramingActive) {
-      const auto result = _otaReceiver.accept(frame.buf, frame.len);
+      const auto result = _otaReceiver->accept(frame.buf, frame.len);
       if (result == mesh::ble_ota::Receiver::Result::Invalid) {
         recoverStalledTx("invalid Bluetooth OTA command fragments"); return 0;
       }
       _otaControl[0] = mesh::ble_ota::FRAGMENT;
       _otaControl[1] = 0;
-      _otaControl[2] = _otaReceiver.received();
+      _otaControl[2] = _otaReceiver->received();
       _otaControlLen = 3;
       if (result == mesh::ble_ota::Receiver::Result::Complete)
-        return _otaReceiver.copyTo(dest, capacity);
+        return _otaReceiver->copyTo(dest, capacity);
       return 0;
     }
     if (frame.len > capacity) return 0;

@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <esp_heap_caps.h>
 #include <string>
 #include <vector>
 
@@ -16,12 +17,13 @@ class BrowserOtaSocketTest {
     return socket;
   }
   static void request(BrowserOtaSocket& gateway, const char* text) {
+    assert(gateway.ensureWorkspace());
     auto socket = makeSocket();
     gateway.candidate = WiFiClient(socket);
     gateway.candidate_active = true;
     gateway.http_len = strlen(text);
     assert(gateway.http_len < gateway.MaxHttp);
-    memcpy(gateway.http, text, gateway.http_len + 1);
+    memcpy(gateway.work->http, text, gateway.http_len + 1);
     gateway.handleHttp();
   }
   static std::vector<uint8_t> frame(uint8_t opcode, bool fin, const char* payload) {
@@ -34,6 +36,15 @@ public:
   static void run() {
     SerialWifiInterface source; source.begin(5000); source.enable();
     BrowserOtaSocket gateway(source);
+    static_assert(sizeof(BrowserOtaSocket) <= 512, "Gateway idle storage grew");
+    assert(!gateway.work);
+    mock_heap_free = 32768;
+    assert(!gateway.ensureWorkspace() && !gateway.work);
+    mock_heap_free = 65536; mock_heap_largest = 1;
+    assert(!gateway.ensureWorkspace() && !gateway.work);
+    mock_heap_largest = 65536; mock_heap_failure = true;
+    assert(!gateway.ensureWorkspace() && !gateway.work);
+    mock_heap_failure = false;
     const char info[] = "GET /ota-info HTTP/1.1\r\nOrigin: https://mikecarper.github.io\r\n\r\n";
     const char options[] = "OPTIONS /ota-info HTTP/1.1\r\nOrigin: https://mikecarper.github.io\r\n\r\n";
     const char valid[] = "GET /ota HTTP/1.1\r\nOrigin: https://mikecarper.github.io\r\n"
@@ -44,12 +55,12 @@ public:
       "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n";
 
     request(gateway, info);
-    std::string reply((char*)gateway.reply, gateway.reply_len);
+    std::string reply((char*)gateway.work->reply, gateway.reply_len);
     assert(reply.find("{\"meshcoreOta\":1}") != std::string::npos);
     assert(reply.find("Access-Control-Allow-Origin: https://mikecarper.github.io") != std::string::npos);
     assert(!gateway.reserved && !gateway.upstream);
     gateway.closeCandidate(); request(gateway, options);
-    reply.assign((char*)gateway.reply, gateway.reply_len);
+    reply.assign((char*)gateway.work->reply, gateway.reply_len);
     assert(reply.find("Access-Control-Allow-Private-Network: true") != std::string::npos);
     assert(!gateway.reserved && !gateway.upstream);
     gateway.closeCandidate(); request(gateway, wrong);
@@ -69,7 +80,7 @@ public:
     assert(!gateway.candidate && !gateway.reserved && other->connected);
     WiFiServer::incoming.clear(); request(gateway, valid);
     assert(gateway.reserved && gateway.promote && gateway.upstream.connected());
-    reply.assign((char*)gateway.reply, gateway.reply_len);
+    reply.assign((char*)gateway.work->reply, gateway.reply_len);
     assert(reply.find("101 Switching Protocols") != std::string::npos);
     assert(reply.find("s3pPLMBiTxaQ9kYGzzhZRbK+xOo=") != std::string::npos);
     other = makeSocket(); WiFiServer::incoming.push_back(WiFiClient(other));
@@ -82,7 +93,9 @@ public:
     gateway.closeCandidate();
     assert(gateway.peer_active && gateway.upstream.connected() && gateway.reserved);
     gateway.closePeer(); assert(!gateway.reserved);
+    assert(!gateway.work);
 
+    assert(gateway.ensureWorkspace());
     // Binary/continuation fragments become the original TCP byte stream.
     peer_socket = makeSocket(); auto upstream_socket = makeSocket();
     gateway.peer = WiFiClient(peer_socket); gateway.peer_active = true; gateway.upstream = WiFiClient(upstream_socket);
@@ -104,6 +117,7 @@ public:
     gateway.peer.stop();
     gateway.servicePeer();
     assert(!gateway.peer_active && !gateway.reserved);
+    assert(!gateway.work && mock_heap_allocations == mock_heap_releases);
     puts("PASS: browser OTA WebSocket security and framing");
   }
 };

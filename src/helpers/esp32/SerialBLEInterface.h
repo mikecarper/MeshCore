@@ -28,6 +28,7 @@
   #define MESH_BLE_AUTO_CACHE_REFRESH 0
 #endif
 #include <atomic>
+#include <memory>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 
@@ -133,11 +134,12 @@ class SerialBLEInterface : public BaseSerialInterface,
   std::atomic<uint32_t> _sessionGeneration{0};
   bool _otaFramingAllowed = false;
   bool _otaFramingActive = false;
+  std::atomic<uint32_t> _otaHelloSession{0};
   uint8_t _otaControl[5] = {};
   uint8_t _otaControlLen = 0;
   uint8_t _otaTxOffset = 0;
   bool _otaTxPinned = false;
-  mesh::ble_ota::Receiver _otaReceiver;
+  std::unique_ptr<mesh::ble_ota::Receiver> _otaReceiver;
 
   struct Frame {
     uint8_t len;

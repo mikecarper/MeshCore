@@ -18,14 +18,20 @@ class BrowserOtaSocket {
   bool candidate_active = false, peer_active = false, attempted = false;
   bool fragment = false;
   uint32_t accepted_at = 0, frame_started = 0, tx_started = 0, last_attempt = 0;
-  char http[MaxHttp + 1] = {};
+  // Cold socket storage exists only while a browser is connected. Internal
+  // allocation is admitted with at least 32 KiB left for the running radio.
+  struct Workspace {
+    char http[MaxHttp + 1];
+    uint8_t reply[512], rx[MaxWire], tx[MaxWire];
+  };
+  Workspace* work = nullptr;
   size_t http_len = 0;
-  uint8_t reply[512] = {};
   size_t reply_len = 0, reply_at = 0;
-  uint8_t rx[MaxWire] = {}, tx[MaxWire] = {};
   size_t rx_len = 0, tx_len = 0, tx_at = 0;
   size_t forward_at = 0, forward_len = 0;
 
+  bool ensureWorkspace();
+  void releaseWorkspaceIfIdle();
   void closeCandidate();
   void closePeer();
   void serviceCandidate();
@@ -34,7 +40,11 @@ class BrowserOtaSocket {
   bool queueFrame(uint8_t opcode, const uint8_t* data, size_t length);
   bool parseFrame();
 public:
+  static BrowserOtaSocket* create(SerialWifiInterface& source);
   explicit BrowserOtaSocket(SerialWifiInterface& source) : companion(source) {}
+  ~BrowserOtaSocket() { stop(); }
+  BrowserOtaSocket(const BrowserOtaSocket&) = delete;
+  BrowserOtaSocket& operator=(const BrowserOtaSocket&) = delete;
   void begin();
   void stop();
   void loop();

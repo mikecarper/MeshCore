@@ -13,12 +13,19 @@ HERE = ROOT / "test/fixtures/browser_ota_socket"
 
 class BrowserOtaSocketTest(unittest.TestCase):
     def test_gateway_origin_discovery_and_frames(self):
+        self.run_gateway(2)
+
+    def test_gateway_with_mbedtls_3(self):
+        self.run_gateway(3)
+
+    def run_gateway(self, mbedtls_major):
         compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
         if not compiler:
             self.skipTest("a host C++ compiler is required")
         with tempfile.TemporaryDirectory(prefix="meshcore-browser-ota-") as directory:
             binary = Path(directory) / "gateway.exe"
             command = [compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", "-DESP32=1",
+                       "-DMBEDTLS_VERSION_MAJOR=" + str(mbedtls_major),
                        "-I" + str(HERE / "mocks"), "-I" + str(WIFI / "mocks"), "-I" + str(ROOT / "src"),
                        str(HERE / "test.cpp"), str(ROOT / "src/helpers/wifi/BrowserOtaSocket.cpp"),
                        str(ROOT / "src/helpers/wifi/SerialWifiInterface.cpp"), "-o", str(binary)]
