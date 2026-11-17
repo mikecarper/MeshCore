@@ -33,6 +33,7 @@
   const aclIntent=()=>$('acl').checked||$('password').value.length===0;
   const repeaterAclIntent=()=>sourceKind()==='repeater'&&aclIntent();
   let catalogFile=null, catalogBaseFile=null, catalogDest=null, catalogVersion='', catalogInstallSupported=false, catalogCandidates=[], catalogGeneration=0;
+  let preparedFiles=null, manualFiles=null, resumeInputs=null, savedUpdate=null, currentSnapshot=null;
   let preservedCount=0, preservedExportSnapshot=null, preservedExportToken=null, preservedExportInterrupted=false;
   let investigationTimer=null, investigationStage='', investigationStopping=false, investigationActive=false;
   let operationErrorStep='LoRa update', investigationErrorContext=null;
@@ -83,6 +84,7 @@
     $('connect').textContent=wifi?'Connect Wi-Fi Companion':bluetooth?'Connect Bluetooth Companion':'Connect USB source';
     $('reconnect').textContent=wifi?'Reconnect Wi-Fi Companion':bluetooth?'Reconnect Bluetooth Companion':'Reconnect USB source';
   }
+  const preferences=globalThis.LoraOtaPreferences?.install(ui,{ignoreSavedConnection:new URLSearchParams(window.location.search).get('connection')==='bluetooth',getTargetKey:()=>contactKey||$('key').value});
   if(new URLSearchParams(window.location.search).get('connection')==='bluetooth') {
     $('connection').value='bluetooth';
     $('contact-status').textContent='Connect your Bluetooth Companion to choose the remote device.';
@@ -442,7 +444,7 @@
     }
     return bytes(file, limit);
   }
-  function journal(state) { localStorage.setItem('meshcore-browser-lora-ota', JSON.stringify({...state, at: new Date().toISOString()})); }
+  function journal(state) { localStorage.setItem('meshcore-browser-lora-ota', JSON.stringify({...state, at: new Date().toISOString()})); void refreshSavedUpdate(); }
   function readJournal() { try { return JSON.parse(localStorage.getItem('meshcore-browser-lora-ota')); } catch (_) { return null; } }
   const writeStepJournal = state => localStorage.setItem('meshcore-browser-lora-ota-chain-step', JSON.stringify(state));
   function readStepRecord(storageKey) {
@@ -456,7 +458,7 @@
     return value;
   }
   const readStepJournal = () => readStepRecord('meshcore-browser-lora-ota-chain-step');
-  const writeChainJournal = state => localStorage.setItem('meshcore-browser-lora-ota-chain', JSON.stringify({...state, at:Date.now()}));
+  const writeChainJournal = state => {localStorage.setItem('meshcore-browser-lora-ota-chain', JSON.stringify({...state, at:Date.now()}));void refreshSavedUpdate();};
   const readChainJournal = () => { try { return JSON.parse(localStorage.getItem('meshcore-browser-lora-ota-chain')); } catch (_) { return null; } };
   const readChainMeta = () => { try { return JSON.parse(localStorage.getItem('meshcore-browser-lora-ota-chain-meta')); } catch (_) { return null; } };
   const editable = ['source', 'key', 'acl', 'relays', 'candidates', 'snr', 'age', 'password', 'file', 'base', 'full-rebuild', 'image', 'signer',
@@ -466,6 +468,7 @@
   for(const profile of LoraOtaRadioSetup.regions||[]){
     const option=document.createElement('option');option.value=profile.id;option.textContent=profile.label;$('radio-region').appendChild(option);
   }
+  if(preferences?.restoreRadio?.()){radioOverride=true;$('radio-reset').hidden=false;$('radio-region-status').textContent='Your manually selected radio settings take precedence.';}
   function radioOptions() {
     return {frequency:Number($('radio-frequency').value),bandwidth:Number($('radio-bandwidth').value),
       sf:Number($('radio-sf').value),cr:Number($('radio-cr').value),
@@ -498,19 +501,23 @@
   }
   async function recoverUpdateChannel(target) {
     if(!globalThis.LoraOtaRecovery || link.relays?.length)return null;
-    let record=readJournal();
+    let record=resumeInputs?.kind==='manual'?readStepJournal():readJournal();
     if(!LoraOtaRecovery.channel(record,link.sourceKey,target)){
       // Automatic chains keep each step under their own key. A refreshed tab
       // must recover that channel before its first target login, not just the
       // single-package journal. Ambiguous saved channels are never guessed.
       const prefix='meshcore-browser-lora-ota-auto-step:'+link.sourceKey.toLowerCase()+':'+target.toLowerCase()+':',matches=[];
+      let manual=null;
+      try{manual=readStepJournal();}catch(error){if(resumeInputs?.kind==='manual')throw error;}
+      if(LoraOtaRecovery.channel(manual,link.sourceKey,target))matches.push(manual);
       for(let index=0;index<localStorage.length;index++){
         const name=localStorage.key(index);
         if(!name?.startsWith(prefix))continue;
         const candidate=readStepRecord(name);
         if(LoraOtaRecovery.channel(candidate,link.sourceKey,target))matches.push(candidate);
       }
-      if(matches.length===1)record=matches[0];
+      if(resumeInputs?.kind==='manual' && LoraOtaRecovery.channel(manual,link.sourceKey,target))record=manual;
+      else if(matches.length===1)record=matches[0];
     }
     const result=await LoraOtaRecovery.restoreSource(link,target,record,{override:explicitRadioChoice(),progress:message=>{status(message);log(message);}});
     if(!result.requiresVerification)return null;
@@ -896,17 +903,19 @@
       ? (link ? 'Repeater connected. Select Find matching firmware to check the remote device.' : 'Enter the remote device key, then connect the USB Repeater.')
       : !link ? 'Connect a Companion to load contacts.' :
       matches.length ? matches.length+' '+(matches.length===1?'device':'devices')+' found. Select a device.' : 'No matching contacts.';
+    if(current && !matches.some(c=>String(c.publicKey).toLowerCase()===current))
+      $('contact-status').textContent+=' The selected device is hidden by the search.';
     for(const contact of matches) {
       const button=document.createElement('button');
       button.type='button';button.dataset.contactKey=contact.publicKey.toLowerCase();button.textContent=LoraOtaContacts.label(contact);
       button.addEventListener('click',()=>{
         if($('contact-search').disabled)return;
         if(contactKey!==button.dataset.contactKey)clearInvestigation();
-        contactKey=button.dataset.contactKey;$('key').value=contactKey;invalidate();updateContactButtons();
+        contactKey=button.dataset.contactKey;$('key').value=contactKey;preferences?.save({targetKey:contactKey});invalidate();updateContactButtons();
       });
       list.appendChild(button);
     }
-    if(current && !matches.some(c=>c.publicKey.toLowerCase()===current)) { contactKey='';$('key').value='';clearInvestigation();invalidate(); }
+    if(current && !contacts.some(c=>String(c.publicKey).toLowerCase()===current)) { contactKey='';$('key').value='';preferences?.save({targetKey:''});clearInvestigation();invalidate(); }
     updateContactButtons();
   }
   $('contact-search').addEventListener('input',renderContacts);
@@ -949,7 +958,7 @@
     $('wifi-scan-status').textContent='';
   });
   $('wifi-results').addEventListener('change',()=>{
-    if($('wifi-results').value)$('wifi-url').value=$('wifi-results').value;
+    if($('wifi-results').value){$('wifi-url').value=$('wifi-results').value;preferences?.save();}
   });
   $('wifi-scan-stop').addEventListener('click',()=>wifiScanController?.abort());
   $('wifi-scan').addEventListener('click',async()=>{
@@ -982,7 +991,7 @@
       $('wifi-scan-status').textContent=found.length
         ? 'Found '+found.length+' compatible '+(found.length===1?'Companion.':'Companions.')+' Select one to connect.'
         : 'No devices found. Check the network prefix, local-network permission, and that both devices use the same Wi-Fi. Your browser may block local access; try current Chrome on Android.';
-      if(found.length===1){$('wifi-results').value=found[0];$('wifi-url').value=found[0];}
+      if(found.length===1){$('wifi-results').value=found[0];$('wifi-url').value=found[0];preferences?.save();}
     }catch(error){
       $('wifi-scan-status').textContent=error?.name==='AbortError'?'Scan stopped.':String(error?.message||error);
     }finally{
@@ -991,7 +1000,6 @@
       $('connect').disabled=!!link||!!connectController;busy(uiBusy);
     }
   });
-  $('acl').checked=false;
   function selectTarget() {
     const key=$('key').value.trim();
     if(!/^[0-9a-f]{64}$/i.test(key))throw Error('Choose a contact or enter the complete target public key.');
@@ -1121,6 +1129,8 @@
         contacts=await link.contacts();
         if (controller.signal.aborted) throw new DOMException('Connection canceled', 'AbortError');
         renderContacts();
+        const savedTarget=$('key').value.trim().toLowerCase();
+        if(contacts.some(c=>String(c.publicKey).toLowerCase()===savedTarget)){contactKey=savedTarget;updateContactButtons();}
         // Expand the fallback once after loading an empty eligible contact
         // list. Search filtering must not reopen it after the user closes it.
         const noEligibleContacts=!LoraOtaContacts.choices(contacts).length;
@@ -1494,7 +1504,7 @@
         const routed = new LoraOtaRoute.RoutedRepeaterTransport(link,target,chosen.relays);
         await routed.open(); link = routed;
       }
-      $('relays').value = chosen.relays.join('\n');
+      $('relays').value = chosen.relays.join('\n');preferences?.save();
       log('Selected admin route: ' + chosen.hops + ' relay(s), weakest measured SNR ' + chosen.bottleneckSnrDb + ' dB. OTA data still floods.');
       if (observed.truncated) log('The search reached its query limit; other paths may exist.');
       log('Measurements are cached, may be stale, and do not identify the radio profile.');
@@ -1510,7 +1520,93 @@
     if(kind==='step')return readStepRecord(autoJournalKey(key,kind));
     try{return JSON.parse(localStorage.getItem(autoJournalKey(key,kind)));}catch(_){return null;}
   };
-  const autoWrite=(key,kind,value)=>localStorage.setItem(autoJournalKey(key,kind),JSON.stringify(value));
+  const autoWrite=(key,kind,value)=>{localStorage.setItem(autoJournalKey(key,kind),JSON.stringify(value));void refreshSavedUpdate();};
+  function resumableSnapshot(record) {
+    if(!record)return false;
+    if(record.kind==='manual') {
+      const chain=readChainJournal(),meta=readChainMeta();
+      return !!chain && chain.phase!=='complete' && String(meta?.source||'').toLowerCase()===record.source && String(meta?.target||'').toLowerCase()===record.target;
+    }
+    if(record.kind==='automatic') {
+      const chain=autoRead(record.autoKey,'chain');
+      return !!chain && chain.phase!=='complete';
+    }
+    const prior=readJournal();
+    return !!prior && String(prior.source||'').toLowerCase()===record.source &&
+      String(prior.target||'').toLowerCase()===record.target &&
+      String(prior.packageHash||'').toLowerCase()===record.packageHash &&
+      ['prepared','pull attempted','ready','install attempted'].includes(prior.phase);
+  }
+  async function refreshSavedUpdate() {
+    try {
+      const record=await globalThis.LoraOtaResumeStore?.peek();
+      savedUpdate=resumableSnapshot(record)?record:null;
+    } catch(_) { savedUpdate=null; }
+    $('saved-update').hidden=!savedUpdate;
+    if(savedUpdate)$('saved-update-status').textContent='An interrupted update for '+savedUpdate.target.slice(0,12).toUpperCase()+' is saved in this browser. Connect the same source and select Resume saved update.';
+  }
+  async function saveUpdateInputs(kind,autoKey) {
+    if(currentSnapshot && currentSnapshot.source===link?.sourceKey?.toLowerCase() && currentSnapshot.target===session?.key?.toLowerCase() && currentSnapshot.kind===kind && (kind==='automatic'?currentSnapshot.autoKey===autoKey:currentSnapshot.packageHash===session.packageHash))return;
+    currentSnapshot=null;
+    try {
+      if(!globalThis.LoraOtaResumeStore || !preparedFiles?.file || !link?.sourceKey || !session?.key ||
+          (kind==='single' && !/^[a-f0-9]{64}$/i.test(session.packageHash||'')))throw Error('Recovery storage is unavailable');
+      currentSnapshot=await LoraOtaResumeStore.save({source:link.sourceKey,target:session.key,
+        ...preparedFiles,kind,autoKey,packageHash:kind==='single'?session.packageHash:undefined});
+      $('resume-storage-warning').hidden=true;
+    } catch(_) {
+      const warning='Could not save firmware in this browser for recovery. Keep the original firmware files if you need to resume.';
+      $('resume-storage-warning').hidden=false;$('resume-storage-warning').textContent=warning;log(warning);
+    }
+  }
+  async function clearSavedUpdate() {
+    if(!currentSnapshot)return;
+    try {
+      const removed=await LoraOtaResumeStore.clear(currentSnapshot);
+      if(removed && currentSnapshot.kind==='manual')await LoraOtaAutoChain.cache('delete',currentSnapshot.planKey);
+    } catch(_) { /* verified update remains complete */ }
+    currentSnapshot=null;await refreshSavedUpdate();
+  }
+  async function resumeSavedUpdate() {
+    if(!savedUpdate)return;
+    if(!link) {
+      if(!$('key').value)$('key').value=savedUpdate.target;
+      preferences?.save({targetKey:$('key').value});
+      $('saved-update-status').textContent='Connect the same source, then select Resume saved update again. Choose the original target if prompted.';
+      ui.querySelector('#ota-connect')?.scrollIntoView?.({block:'start'});
+      $('connect').focus();return;
+    }
+    if(link.sourceKey?.toLowerCase()!==savedUpdate.source || $('key').value.trim().toLowerCase()!==savedUpdate.target)
+      throw Error('Connect the original source and select the original target to resume this update.');
+    if(!resumableSnapshot(savedUpdate))throw Error('The matching interrupted update record is unavailable. Nothing was changed.');
+    const record=await LoraOtaResumeStore.load(savedUpdate);
+    if(!record)throw Error('The saved firmware is unavailable. Choose the original firmware file and prepare the update again.');
+    currentSnapshot=record;resumeInputs=record;$('signer').value=record.signer||'';
+    try {
+      if(record.kind==='manual') {
+        const cached=await LoraOtaAutoChain.cache('get',record.planKey),meta=readChainMeta();
+        if(!cached || cached.source!==record.source || cached.target!==record.target ||
+            !cached.prepared || !cached.config || JSON.stringify(cached.config)!==JSON.stringify(meta))
+          throw Error('The saved update path does not match the interrupted update. Nothing was changed.');
+        const recovered=await recoverUpdateChannel(record.target);
+        if(recovered){const password=$('acl').checked?'':$('password').value;await link.verifyPeer(record.target,password);await confirmUpdateChannel(recovered,record.target,password);}
+        await LoraOtaSim.simulate(meta.bootProfile,cached.prepared,meta.caps.runtimeStageCeiling);
+        chainPrepared=cached.prepared;chainConfig=cached.config;
+        $('chain-resume').disabled=false;openDetails($('chain-resume'));
+        status('Saved path checked. Select Resume saved path to verify the target and continue.','ready');
+      } else await inspect();
+    }
+    finally { resumeInputs=null; }
+  }
+  $('saved-update-resume').addEventListener('click',()=>run(()=>resumeSavedUpdate(),'Prepare saved firmware update'));
+  $('saved-update-forget').addEventListener('click',()=>run(async()=>{
+    const record=savedUpdate;if(!record)return;
+    if(!await LoraOtaResumeStore.clear(record)){await refreshSavedUpdate();status('The saved update changed. Review it before trying to forget it.','ready');return;}
+    let planRemoved=true;
+    if(record.kind==='manual')try{await LoraOtaAutoChain.cache('delete',record.planKey);}catch(_){planRemoved=false;}
+    savedUpdate=null;$('saved-update').hidden=true;
+    status(!planRemoved?'The resume record was removed, but its path cache could not be cleared. The remote update was not canceled.':record.kind==='automatic'?'Saved recovery files removed. A shared automatic path cache may remain. The remote update was not canceled.':'Saved recovery files removed from this browser. The remote update was not canceled.','ready');
+  },'Forget saved firmware'));
   function autoSession(step,target,password,key){
     const Session=link.relays?.length?LoraOtaRoutedSession.RoutedSession:LoraOtaSession.DirectSession;
     return new Session(link,target,password,step.package.info,{image:step.targetImage,inplacePlan:step.edge.inplacePlan,deferSecondaryRestoration:true,
@@ -1523,13 +1619,14 @@
     if(!Number.isInteger(index)||!prepared.steps?.[index])throw Error('The saved intermediate update step is invalid');
     const step=prepared.steps[index];session=autoSession(step,target,password,key);
     let disposition;
-    try{disposition=await session.inspect({allowExisting:true,allowReplacement:true});}
+    try{disposition=await session.inspect({allowExisting:true,allowReplacement:!resumeInputs});}
     catch(error){
       if(!error.radioSetupRequired||!canPrepareRadioChannel())throw error;
       if(preparing?.signal.aborted)throw Error('Update preparation cancelled. No firmware was uploaded.');
-      await ensureRadioChannel(target,password);disposition=await session.inspect({allowExisting:true,allowReplacement:true});
+      await ensureRadioChannel(target,password);disposition=await session.inspect({allowExisting:true,allowReplacement:!resumeInputs});
     }
     if(preparing?.signal.aborted)throw Error('Update preparation cancelled. No firmware was uploaded.');
+    if(resumeInputs?.kind==='automatic' && !resume)throw Error('No matching interrupted update path was found.');
     if(resume&&index===0&&record.phase==='step starting'&&autoRead(key,'step')==null&&disposition.download!=='idle')
       throw Object.assign(Error('The first update step has no saved transfer record, and the target is not idle. Its staged update was left unchanged; no pull or install was sent.'),
         {otaLocalCheck:true,otaLocalStateCheck:true,otaEndpoint:'Browser',otaStep:'Check initial update-step recovery state'});
@@ -1576,12 +1673,16 @@
   async function runAutomatic(){
     const context=autoChain;if(!context)return;
     const {prepared,target,key,resume}=context,password=$('acl').checked?'':$('password').value;
-    const connection=link,controller=new AbortController();preparing=controller;busy(true);preparedDownload=null;
+    const connection=link,job=session,generation=disconnectGeneration;busy(true);
+    try {
+    await saveUpdateInputs('automatic',key);
+    if(disconnecting||disconnectGeneration!==generation||link!==connection||session!==job||$('key').value.trim().toLowerCase()!==target.toLowerCase())throw Error('The source or target changed while saving the update. Reconnect and prepare it again.');
+    const controller=new AbortController();preparing=controller;preparedDownload=null;
     status('Checking the saved update path...');
-    try{
       // Saving the exact prepared path precedes all firmware writes. Passwords
       // are never persisted with the images, packages or phase journals.
       await LoraOtaAutoChain.cache('put',key,{source:link.sourceKey.toLowerCase(),target:target.toLowerCase(),prepared});
+      if(disconnecting||disconnectGeneration!==generation||link!==connection||session!==job||controller.signal.aborted)throw Error('The source disconnected while saving the update. Reconnect and prepare it again.');
       const readStepJournal=()=>autoRead(key,'step'),writeStepJournal=state=>autoWrite(key,'step',state);
       const runner=new LoraOtaChain.ChainRunner({prepared,link,targetKey:target,
         readLive:()=>LoraOtaChainUi.readLive(link,target,password),
@@ -1610,13 +1711,14 @@
       status('Update complete. The remote device is running the verified firmware.','complete');
       $('update-summary').textContent='Installed and verified on '+result.live.hwId+' in '+result.steps+' automatic steps.'+completionDisconnectTip();
       log('Automatic update complete; all '+result.steps+' installations verified.');
+      await clearSavedUpdate();
     }catch(error){
       if(transferStopJob===session&&!link?.failure&&!link?.folderUnknown)return;
       await fail(error);
       $('update-summary').textContent='Update paused. Select Prepare update to continue automatically from the saved step.';
     }finally{
       autoStep='';updatePhase='';preparing=null;
-      if(link===connection){busy(false);$('inspect').disabled=!link||updatesBlocked();}
+      busy(false);$('inspect').disabled=!link||updatesBlocked();
     }
   }
   async function inspect() {
@@ -1634,6 +1736,8 @@
     try {
       if (!link) throw Error('Connect a source radio first.');
       requireUpdatesAvailable();
+      if(resumeInputs && (link.sourceKey?.toLowerCase()!==resumeInputs.source || $('key').value.trim().toLowerCase()!==resumeInputs.target))
+        throw Error('Connect the original source and select the original target to resume.');
       const targetKey=selectTarget(), password=$('acl').checked ? '' : $('password').value;
       const standard=sourceKind()==='companion' && link.otaSupported===false;
       // A fresh USB connection must prove the target again. Preparation can
@@ -1648,7 +1752,7 @@
       };
       if(recovered)await verify();
       const remote=command=>standard ? link.investigateCommand(targetKey,password,command) : link.remoteCommand(targetKey,password,command);
-      let file = catalogFile || $('file').files[0];
+      let file = resumeInputs?.file || catalogFile || $('file').files[0];
       if(!file && $('firmware-choice').value && catalogDest) {
         const candidate=catalogCandidates[Number($('firmware-choice').value)];
         if(candidate) { await loadCatalogCandidate(candidate,catalogGeneration);file=catalogFile;status('Preparing the update: checking the device and radio channel...'); }
@@ -1657,15 +1761,19 @@
       const isFirmware = /\.(?:bin|zip)$/i.test(file.name);
       // Internal-stage nRF targets cannot install a full package. Keep their
       // selected differential even if the full-package recovery option was set.
-      const forceFull = isFirmware && $('full-rebuild').checked && !(catalogDest?.nrf && !catalogDest.external);
-      const baseFile = forceFull ? null : ($('base').files[0] || (isFirmware ? catalogBaseFile : null));
+      const forceFull = !resumeInputs && isFirmware && $('full-rebuild').checked && !(catalogDest?.nrf && !catalogDest.external);
+      const baseFile = forceFull ? null : (resumeInputs ? resumeInputs.base : ($('base').files[0] || (isFirmware ? catalogBaseFile : null)));
+      preparedFiles={file,base:baseFile||null,image:resumeInputs ? resumeInputs.image : ($('image').files[0]||null),signer:$('signer').value.trim()};
       diagnostics.selected={name:file.name};
       if(baseFile)diagnostics.installed={name:baseFile.name};
       const input = isFirmware ? await firmwareBytes(file, baseFile ? 4 * 1024 * 1024 : undefined) : await bytes(file);
       let cachedAuto=null;
       if(isFirmware&&typeof indexedDB!=='undefined'){
         const goal=await MeshCoreMotaPackage.parseEndF(input);
-        try{cachedAuto=await LoraOtaAutoChain.cache('get',autoCacheKey(targetKey,LoraOtaChecks.hex(goal.imageHash)));}catch(_){/* ordinary updates do not need recovery storage */}
+        const key=autoCacheKey(targetKey,LoraOtaChecks.hex(goal.imageHash));
+        if(resumeInputs?.kind==='automatic' && key!==resumeInputs.autoKey)throw Error('The saved firmware does not match this update path.');
+        try{cachedAuto=await LoraOtaAutoChain.cache('get',key);}catch(_){/* ordinary updates do not need recovery storage */}
+        if(resumeInputs?.kind==='automatic' && !cachedAuto)throw Error('The saved update path is unavailable; choose the original firmware and prepare again.');
       }
       checkConnected();
       const signerText = $('signer').value.trim();
@@ -1720,6 +1828,7 @@
           if(goal.targetId===destination.targetId && goal.hwId===destination.hwId &&
               goal.fwVersion===destination.version && LoraOtaChecks.hex(goal.bodyHash)===destination.baseHash) {
             await finishQuietForwarding();
+            if(resumeInputs)await clearSavedUpdate();
             status('The target already reports the selected firmware. No update is needed.', 'complete');
             $('update-summary').textContent=destination.hwId+': '+file.name+' is already running.';
             log('Target identity, firmware version and reported body hash match the selected image.');
@@ -1819,10 +1928,12 @@
         if (baseFile) throw Error('An installed firmware image is only used when creating a differential from a .bin.');
         info = await MeshCoreMotaPackage.parseMota(input, expectedSigner ? {expectedSigner} : {});
       }
-      const targetImage = $('image').files[0];
+      const targetImage = resumeInputs ? resumeInputs.image : $('image').files[0];
       if (!info.isFull && !targetImage && !expectedImage) throw Error('Select the matching new .bin image for the differential package.');
       if (!expectedImage && targetImage) expectedImage = await firmwareBytes(targetImage);
       checkConnected();
+      if(resumeInputs?.kind==='single' && !await MeshCoreMotaPackage.matchesRecovery(info.blob,{sourceKey:link.sourceKey,targetKey,recovery:readJournal()}))
+        throw Error('The saved firmware does not match the interrupted update. Nothing was replaced.');
       const Session = link.relays?.length ? LoraOtaRoutedSession.RoutedSession : LoraOtaSession.DirectSession;
       session = new Session(link, $('key').value.trim(), $('acl').checked ? '' : $('password').value, info, {
         signerVerified:!!expectedSigner && info.signed, image:expectedImage, inplacePlan,deferSecondaryRestoration:true,
@@ -1831,19 +1942,22 @@
       // Reject a wrong/corrupt image before changing either radio. A completed
       // installation can also be verified without reopening an update channel.
       let dest;
-      try { dest = await session.inspect({allowExisting:true,allowReplacement:true}); }
+      try { dest = await session.inspect({allowExisting:true,allowReplacement:!resumeInputs}); }
       catch(error) {
         if(link.relays?.length || !error.radioSetupRequired || !canPrepareRadioChannel())throw error;
         await applyTargetRadioHardware(info.hwId);
         await ensureRadioChannel(targetKey,password);
-        dest = await session.inspect({allowExisting:true,allowReplacement:true});
+        dest = await session.inspect({allowExisting:true,allowReplacement:!resumeInputs});
       }
+      if(resumeInputs && !['active','failed','ready','installed'].includes(dest.download) &&
+          !(resumeInputs.kind==='single' && dest.download==='idle' && readJournal()?.phase==='prepared'))
+        throw Error('There is no matching interrupted download to resume. Nothing was replaced.');
       if(dest.download!=='installed')await applyTargetRadioHardware(dest.hwId);
       if(dest.download!=='installed'&&!link.relays?.length&&explicitRadioChoice()&&!chosenRadioMatches(session)){
         await ensureRadioChannel(targetKey,password);
-        dest=await session.inspect({allowExisting:true,allowReplacement:true});
+        dest=await session.inspect({allowExisting:true,allowReplacement:!resumeInputs});
       }
-      if(dest.download==='installed')await finishQuietForwarding();
+      if(dest.download==='installed'){await finishQuietForwarding();if(resumeInputs)await clearSavedUpdate();}
       else await pauseQuietForwarding(targetKey,password,session.verifiedRadio);
       preparedDownload=['idle','active','failed','ready','replace'].includes(dest.download)?dest.download:null;
       preparedReplacement=dest.download==='replace' ? dest.existingDownload : null;
@@ -1876,22 +1990,28 @@
     finally { preparing = null;$('prepare-stop').hidden=true; busy(false); $('inspect').disabled = !link || updatesBlocked(); }
   }
   async function transfer(resume) {
-    const job=session;transferStopJob=transferStopTask=null;
+    const job=session,connection=link,generation=disconnectGeneration;transferStopJob=transferStopTask=null;
+    busy(true);try {
+    await saveUpdateInputs('single');
+    if(disconnecting||disconnectGeneration!==generation||link!==connection||session!==job||$('key').value.trim().toLowerCase()!==job.key.toLowerCase())throw Error('The source or target changed while saving the update. Reconnect and prepare it again.');
     preparedDownload=null;
     updatePhase='transfer';transferStage='';sourceBytesRead=0;sourceActivityAt=0;sourceManifestReadLogged=false;lastTransferPercent=null;
     $('transfer').disabled = true; $('resume').disabled = true; $('inspect').disabled = true; busy(true);
-    try { await job.start({resume}); if(transferStopJob===job)return;preparedDownload='ready';log('Transfer complete. Check the target and select Install.'); $('install').disabled = false;status('Transfer complete. Select Install and verify update.', 'ready'); }
+    await job.start({resume}); if(transferStopJob===job)return;preparedDownload='ready';log('Transfer complete. Check the target and select Install.'); $('install').disabled = false;status('Transfer complete. Select Install and verify update.', 'ready'); }
     catch (error) { if(transferStopJob!==job||link?.failure||link?.folderUnknown)await fail(error); }
     finally { updatePhase='';busy(false); $('inspect').disabled = !link || updatesBlocked(); }
   }
   async function updateRemote() {
     if(!uiBusy&&autoChain&&preparedDownload&&!updatesBlocked())return runAutomatic();
     if(uiBusy || !session || !preparedDownload || updatesBlocked())return;
-    const job=session, download=preparedDownload, replacement=preparedReplacement;
-    transferStopJob=transferStopTask=null;
-    preparedDownload=preparedReplacement=null;busy(true);
-    for(const name of ['inspect','transfer','resume','install'])$(name).disabled=true;
+    const job=session,connection=link,generation=disconnectGeneration,download=preparedDownload,replacement=preparedReplacement;
+    busy(true);
     try {
+    await saveUpdateInputs('single');
+    if(disconnecting||disconnectGeneration!==generation||link!==connection||session!==job||$('key').value.trim().toLowerCase()!==job.key.toLowerCase())throw Error('The source or target changed while saving the update. Reconnect and prepare it again.');
+    transferStopJob=transferStopTask=null;
+    preparedDownload=preparedReplacement=null;
+    for(const name of ['inspect','transfer','resume','install'])$(name).disabled=true;
       if(download!=='ready') {
         updatePhase='transfer';
         transferStage='';sourceBytesRead=0;sourceActivityAt=0;sourceManifestReadLogged=false;lastTransferPercent=null;
@@ -1910,6 +2030,7 @@
       log('Installed and verified: '+result.hwId+' '+result.baseHash.toUpperCase());
       status('Update complete. The remote device is running the verified firmware.', 'complete');
       $('update-summary').textContent='Installed and verified on '+result.hwId+'.'+completionDisconnectTip();
+      await clearSavedUpdate();
     } catch(error) {
       if(transferStopJob===job&&!link?.failure&&!link?.folderUnknown)return;
       await fail(error);
@@ -2044,7 +2165,7 @@
   async function install() {
     preparedDownload=null;
     $('install').disabled = true; $('inspect').disabled = true; busy(true);
-    try { const result = await session.install(); await finishQuietForwarding();preparedDownload=null;log('Installed and verified: ' + result.hwId + ' ' + result.baseHash.toUpperCase());status('Update complete. The remote device is running the verified firmware.', 'complete'); }
+    try { const result = await session.install(); await finishQuietForwarding();await clearSavedUpdate();preparedDownload=null;log('Installed and verified: ' + result.hwId + ' ' + result.baseHash.toUpperCase());status('Update complete. The remote device is running the verified firmware.', 'complete'); }
     catch (error) { await fail(error); }
     finally { busy(false); $('inspect').disabled = !link || updatesBlocked(); }
   }
@@ -2113,6 +2234,7 @@
       log('Simulating each differential with the matching bootloader...');
       await LoraOtaSim.simulate(bootProfile,chainPrepared,caps.runtimeStageCeiling);
       chainConfig={source:link.sourceKey,target,current,caps,baseImageHash:LoraOtaChecks.hex(first.imageHash),objective,preamble,minutes,sourceRadio,targetPreamble,bootProfile};
+      manualFiles={file:goalFile,base:baseFile,image:null,signer:''};
       const route=chainPrepared.route;
       log('Selected path: '+route.steps.map(s=>s.from+' -> '+s.to+' ('+s.kind+')').join('; ')+'.');
       log('Estimate: '+route.totals.rfTransmissions+' radio transmissions'+
@@ -2129,6 +2251,7 @@
   async function runChain(resume=false) {
     if (!chainPrepared || !chainConfig || !link) return fail(Error('Compare and simulate the update path first.'));
     busy(true); $('inspect').disabled=true;
+    const connection=link,preparedPath=chainPrepared,config=chainConfig,generation=disconnectGeneration;
     const signalController = new AbortController(); preparing=signalController;
     try {
       const {target,bootProfile,caps,sourceRadio,minutes,targetPreamble}=chainConfig;
@@ -2142,6 +2265,23 @@
       };
       await readLive();
       await LoraOtaSim.simulate(bootProfile,chainPrepared,caps.runtimeStageCeiling);
+      if(!(resume && currentSnapshot?.kind==='manual')) {
+        let createdPlanKey=null;
+        try {
+          const final=chainPrepared.steps[chainPrepared.steps.length-1].to;
+          const goal=chainPrepared.nodes.find(node=>node.id===final)?.imageHash;
+          if(!manualFiles?.file || !/^[a-f0-9]{64}$/i.test(goal||''))throw Error('Saved path files are unavailable');
+          const source=link.sourceKey.toLowerCase(),nonce=LoraOtaChecks.hex(crypto.getRandomValues(new Uint8Array(16))),planKey='manual:'+source+':'+target.toLowerCase()+':'+goal.toLowerCase()+':'+nonce;
+          await LoraOtaAutoChain.cache('put',planKey,{source,target:target.toLowerCase(),prepared:chainPrepared,config:chainConfig});createdPlanKey=planKey;
+          currentSnapshot=await LoraOtaResumeStore.save({source,target,...manualFiles,kind:'manual',planKey});
+          $('resume-storage-warning').hidden=true;
+        } catch(_) {
+          if(createdPlanKey)try{await LoraOtaAutoChain.cache('delete',createdPlanKey);}catch(_){}
+          currentSnapshot=null;const warning='Could not save the multi-version path in this browser. Keep the exact original firmware files and planning settings if you need to resume.';
+          $('resume-storage-warning').hidden=false;$('resume-storage-warning').textContent=warning;log(warning);
+        }
+      }
+      if(disconnecting||signalController.signal.aborted||disconnectGeneration!==generation||link!==connection||chainPrepared!==preparedPath||chainConfig!==config||$('key').value.trim().toLowerCase()!==target.toLowerCase())throw Error('The source or target changed while saving the update. Reconnect and compare the path again.');
       if(!resume) localStorage.setItem('meshcore-browser-lora-ota-chain-meta',JSON.stringify(chainConfig));
       const Session=link.relays?.length?LoraOtaRoutedSession.RoutedSession:LoraOtaSession.DirectSession;
       const runner=new LoraOtaChain.ChainRunner({
@@ -2157,6 +2297,7 @@
       const result=await runner.run({resume,signal:signalController.signal});
       await finishQuietForwarding();
       log('Update sequence complete; verified '+result.steps+' installation(s).');
+      await clearSavedUpdate();
     } catch(error) { await fail(error); }
     finally { preparing=null;busy(false);$('inspect').disabled=!link || updatesBlocked(); }
   }
@@ -2164,5 +2305,6 @@
   $('chain-plan').addEventListener('click', () => run(()=>planChain(),'Plan multi-version firmware update'));
   $('chain-run').addEventListener('click', () => run(()=>runChain(false),'Run multi-version firmware update'));
   $('chain-resume').addEventListener('click', () => run(()=>runChain(true),'Resume multi-version firmware update'));
+  void refreshSavedUpdate();
   $('disconnect').addEventListener('click', () => close().then(() => log('Disconnected.')).catch(error=>fail(error,'Disconnect USB source')));
 })();

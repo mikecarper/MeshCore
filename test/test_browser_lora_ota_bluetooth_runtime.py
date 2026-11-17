@@ -107,12 +107,13 @@ class BluefyVisibilityTest(unittest.TestCase):
                 harness=one_replace(harness,"window.addEventListener('load',async()=>{try{",'''window.addEventListener('load',async()=>{try{
     await report({connection:el('connection').value,optionsHidden:el('bluetooth-options').hidden,
       button:el('connect').textContent,status:el('contact-status').textContent,
-      anchor:document.getElementById('ota-connect')?.id,hash:location.hash,chooserCalls});return;''')
+      anchor:document.getElementById('ota-connect')?.id,anchorIncludesResume:document.getElementById('ota-connect')?.contains(el('saved-update')),hash:location.hash,chooserCalls});return;''')
                 result=run_harness(harness,timeout=30)
                 self.assertNotIn('error',result,result)
                 self.assertEqual(result['connection'],expected)
                 self.assertEqual(result['optionsHidden'],expected!='bluetooth')
                 self.assertEqual(result['anchor'],'ota-connect')
+                self.assertTrue(result['anchorIncludesResume'])
                 self.assertEqual(result['hash'],'#ota-connect')
                 self.assertEqual(result['chooserCalls'],0)
                 if expected=='bluetooth':

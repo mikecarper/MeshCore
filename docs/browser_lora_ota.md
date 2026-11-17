@@ -18,6 +18,13 @@ Bluetooth requires a compatible Companion with Bluetooth OTA support. On Android
   </aside>
   <p data-role="browser-support" class="lora-ota-notice" role="alert" hidden></p>
   <section id="ota-connect" class="lora-ota-step" style="scroll-margin-top: 6rem;">
+    <aside data-role="saved-update" class="lora-ota-notice" hidden>
+      <p data-role="saved-update-status">An interrupted update is saved in this browser.</p>
+      <small>Forgetting these files does not cancel the remote update.</small>
+      <button type="button" data-role="saved-update-resume">Resume saved update</button>
+      <button type="button" class="lora-ota-secondary" data-role="saved-update-forget">Forget saved update</button>
+    </aside>
+    <p data-role="resume-storage-warning" class="lora-ota-notice" role="status" hidden></p>
     <h2>1. Connect and choose the remote device</h2>
     <label>Connection
       <select data-role="connection"><option value="usb">USB</option><option value="wifi">Wi-Fi Companion</option><option value="bluetooth">Bluetooth Companion</option></select>
@@ -194,6 +201,7 @@ Bluetooth requires a compatible Companion with Bluetooth OTA support. On Android
   </details>
   <details class="lora-ota-advanced">
     <summary>Multi-version nRF52 update</summary>
+    <p>If you reopen this page during a multi-version update, connect the same source and select <strong>Resume saved update</strong>. If browser storage was unavailable, reselect the exact original firmware files and planning settings, then choose <strong>Compare paths</strong> and <strong>Resume saved path</strong>.</p>
     <p>For nRF52 internal staging, choose the exact installed firmware above, the final firmware above, and optionally up to six intermediate images below. Each intermediate must contain OTA receiver evidence; the actual node is checked after every reboot. Prepared packages are unsigned. Use the single-update controls above for ESP32 or nRF52 with external storage.</p>
     <p><label>Intermediate firmware images (.bin or .zip)<br><input data-role="chain-files" type="file" accept=".bin,.zip" multiple></label></p>
     <p><label><input data-role="chain-attest" type="checkbox"> I have tested every selected intermediate on this exact hardware and confirmed it retains working LoRa OTA.</label></p>
@@ -209,6 +217,14 @@ Bluetooth requires a compatible Companion with Bluetooth OTA support. On Android
   </details>
   </details>
 </div>
+
+## Resume an interrupted update
+
+The browser remembers your connection, target and update choices. When you start a transfer, it also tries to save the selected firmware files in this browser. After reopening the page, connect the same source and select **Resume saved update**. The updater checks the target and saved package before offering the next step. It does not save your admin password; leave it blank when the source already has access through the target's ACL.
+
+For a manually assembled multi-version path, **Resume saved update** restores the saved plan and offers **Resume saved path**. If the browser could not save the plan, reselect the original firmware files and planning settings, then use **Compare paths** and **Resume saved path**.
+
+Browser storage can be unavailable, cleared, or full. If the firmware cannot be saved, the updater warns you to keep the original files so you can select them again. Saved choices and firmware stay on this device and are not synced to another browser or phone. Forgetting saved firmware does not cancel the target's update. A shared automatic-path cache may remain in this browser.
 
 ## Bluetooth Companion connection
 
@@ -574,10 +590,12 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_sim.js"></script>
 <script src="../_javascript/lora_ota_chain.js?v=workflow-first-1"></script>
 <script src="../_javascript/lora_ota_chain_ui.js?v=auto-paths-3"></script>
-<script src="../_javascript/lora_ota_auto_chain.js?v=auto-paths-2"></script>
+<script src="../_javascript/lora_ota_auto_chain.js?v=resume-auto-paths-2"></script>
 <script src="../_javascript/lora_ota_region_profiles.js"></script>
 <script src="../_javascript/lora_ota_radio_setup.js?v=radio2-preamble-368-1"></script>
 <script src="../_javascript/lora_ota_recovery.js?v=usb-retry-1"></script>
 <script src="../_javascript/lora_ota_lease.js?v=active-lease-retry-1"></script>
 <script src="../_javascript/lora_ota_catalog.js?v=4aeb7bf86"></script>
-<script src="../_javascript/lora_ota_browser.js?v=bluetooth-link-1"></script>
+<script src="../_javascript/lora_ota_preferences.js?v=1"></script>
+<script src="../_javascript/lora_ota_resume_store.js?v=1"></script>
+<script src="../_javascript/lora_ota_browser.js?v=resume-1"></script>

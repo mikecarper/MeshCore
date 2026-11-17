@@ -103,7 +103,7 @@ HARNESS = r'''<script>
     search('Test');if(keys().join(',')!==key||!visible(buttons()[0]))throw Error('visible contact name search failed');
     buttons()[0].click();if(el('key').value!==key||buttons()[0].getAttribute('aria-pressed')!=='true')throw Error('contact selection failed');
     search('');if(keys().length!==5||!buttons().find(b=>b.dataset.contactKey===key&&b.getAttribute('aria-pressed')==='true'))throw Error('selection did not persist when more contacts appeared');
-    search('no such device');if(buttons().length||!el('contact-status').textContent.toLowerCase().includes('no matching')||el('key').value)throw Error('no-match search failed to clear selection');
+    search('no such device');if(buttons().length||!el('contact-status').textContent.toLowerCase().includes('hidden by the search')||el('key').value!==key)throw Error('no-match search failed to preserve selection');
     el('key').value=key;el('key').dispatchEvent(new Event('input',{bubbles:true}));if(el('key').value!==key)throw Error('manual public-key fallback failed');
     search('Test');buttons()[0].click();
     if(el('key').value!==key)throw Error('contact selection failed');el('inspect').click();await wait(()=>!el('transfer').disabled||el('status').textContent.includes('Error:'));

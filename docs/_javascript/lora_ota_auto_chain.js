@@ -148,7 +148,7 @@
     });
     try{return await new Promise((resolve,reject)=>{
       const transaction=db.transaction('plans',action==='get'?'readonly':'readwrite'),store=transaction.objectStore('plans');
-      const request=action==='get'?store.get(key):store.put(value,key);let result;
+      const request=action==='get'?store.get(key):action==='delete'?store.delete(key):store.put(value,key);let result;
       request.onsuccess=()=>{result=request.result;};
       transaction.oncomplete=()=>resolve(result);transaction.onerror=transaction.onabort=()=>reject(Error('Could not save browser update recovery state'));
     });}finally{db.close();}
