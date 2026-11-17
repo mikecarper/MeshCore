@@ -17,14 +17,14 @@ Bluetooth requires a compatible Companion with Bluetooth OTA support. On Android
     <pre id="lora-ota-error-details" data-role="error-details">Detailed errors will appear here. Passwords and secret command arguments are hidden.</pre>
   </aside>
   <p data-role="browser-support" class="lora-ota-notice" role="alert" hidden></p>
-  <section class="lora-ota-step">
+  <section id="ota-connect" class="lora-ota-step" style="scroll-margin-top: 6rem;">
     <h2>1. Connect and choose the remote device</h2>
     <label>Connection
       <select data-role="connection"><option value="usb">USB</option><option value="wifi">Wi-Fi Companion</option><option value="bluetooth">Bluetooth Companion</option></select>
     </label>
     <section data-role="bluetooth-options" hidden>
       <p>Turn on Bluetooth, disconnect other apps from the Companion, and select <strong>Connect Bluetooth Companion</strong> to choose your device. The Companion needs firmware with Bluetooth OTA support.</p>
-      <p data-role="bluefy-help" hidden>On iPhone or iPad, <a href="https://apps.apple.com/us/app/bluefy-web-ble-browser/id1492822055">install Bluefy</a>, then <a href="bluefy://open?url=https%3A%2F%2Fmikecarper.github.io%2FMeshCore%2Fbrowser_lora_ota%2F">open this updater in Bluefy</a>. If the link does not open it, copy <code>https://mikecarper.github.io/MeshCore/browser_lora_ota/</code> into Bluefy's address bar.</p>
+      <p data-role="bluefy-help" hidden>On iPhone or iPad, <a href="https://apps.apple.com/us/app/bluefy-web-ble-browser/id1492822055">install Bluefy</a>, then <a href="bluefy://open?url=https%3A%2F%2Fmikecarper.github.io%2FMeshCore%2Fbrowser_lora_ota%2F%3Fconnection%3Dbluetooth%23ota-connect">open this updater in Bluefy</a>. If the link does not open it, copy <code>https://mikecarper.github.io/MeshCore/browser_lora_ota/?connection=bluetooth#ota-connect</code> into Bluefy's address bar.</p>
     </section>
     <section data-role="wifi-options" hidden>
       <p>Scan your local network, or enter the Companion's Wi-Fi address. <a href="#wi-fi-companion-connection">Wi-Fi setup instructions</a>.</p>
@@ -580,4 +580,4 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_recovery.js?v=usb-retry-1"></script>
 <script src="../_javascript/lora_ota_lease.js?v=active-lease-retry-1"></script>
 <script src="../_javascript/lora_ota_catalog.js?v=4aeb7bf86"></script>
-<script src="../_javascript/lora_ota_browser.js?v=bluetooth-1"></script>
+<script src="../_javascript/lora_ota_browser.js?v=bluetooth-link-1"></script>

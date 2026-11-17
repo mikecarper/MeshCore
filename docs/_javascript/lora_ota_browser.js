@@ -83,6 +83,10 @@
     $('connect').textContent=wifi?'Connect Wi-Fi Companion':bluetooth?'Connect Bluetooth Companion':'Connect USB source';
     $('reconnect').textContent=wifi?'Reconnect Wi-Fi Companion':bluetooth?'Reconnect Bluetooth Companion':'Reconnect USB source';
   }
+  if(new URLSearchParams(window.location.search).get('connection')==='bluetooth') {
+    $('connection').value='bluetooth';
+    $('contact-status').textContent='Connect your Bluetooth Companion to choose the remote device.';
+  }
   updateConnectionControls();
   const updatesBlocked = () => !!link?.failure || sourceOtaUnsupported || !!targetAvailability && targetAvailability.state !== 'supported';
   function showAvailability(result) {

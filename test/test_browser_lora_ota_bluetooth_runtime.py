@@ -2,6 +2,7 @@
 """Exercise Bluetooth choice and capability gating in the updater UI."""
 import os
 import unittest
+from urllib.parse import parse_qs, urlsplit
 from test_browser_lora_ota_companion_runtime import HARNESS
 from test_browser_lora_ota_nrf_runtime import run_harness
 from test_browser_lora_ota_routed_runtime import one_replace
@@ -91,6 +92,32 @@ class BluefyVisibilityTest(unittest.TestCase):
                 self.assertEqual(result['bluefyHidden'],hidden)
                 self.assertIn('apps.apple.com/us/app/bluefy',result['install'])
                 self.assertTrue(result['open'].startswith('bluefy://open?url='))
+                target=parse_qs(urlsplit(result['open']).query)['url'][0]
+                self.assertEqual(target,'https://mikecarper.github.io/MeshCore/browser_lora_ota/?connection=bluetooth#ota-connect')
+                self.assertIn(target,result['text'])
+
+    def test_bluefy_link_selects_bluetooth_without_connecting(self):
+        for query, expected in [('', 'usb'), ('?connection=bluetooth', 'bluetooth'), ('?connection=invalid', 'usb')]:
+            with self.subTest(query=query):
+                harness=one_replace(HARNESS, '<script>\n(()=>{', '''<script>
+(()=>{
+  history.replaceState(null,'',QUERY+'#ota-connect');
+  let chooserCalls=0;
+  Object.defineProperty(navigator,'bluetooth',{value:{requestDevice:()=>{chooserCalls++;throw Error('unexpected chooser')}},configurable:true});'''.replace('QUERY',repr(query)))
+                harness=one_replace(harness,"window.addEventListener('load',async()=>{try{",'''window.addEventListener('load',async()=>{try{
+    await report({connection:el('connection').value,optionsHidden:el('bluetooth-options').hidden,
+      button:el('connect').textContent,status:el('contact-status').textContent,
+      anchor:document.getElementById('ota-connect')?.id,hash:location.hash,chooserCalls});return;''')
+                result=run_harness(harness,timeout=30)
+                self.assertNotIn('error',result,result)
+                self.assertEqual(result['connection'],expected)
+                self.assertEqual(result['optionsHidden'],expected!='bluetooth')
+                self.assertEqual(result['anchor'],'ota-connect')
+                self.assertEqual(result['hash'],'#ota-connect')
+                self.assertEqual(result['chooserCalls'],0)
+                if expected=='bluetooth':
+                    self.assertEqual(result['button'],'Connect Bluetooth Companion')
+                    self.assertIn('Bluetooth Companion',result['status'])
 
 
 
