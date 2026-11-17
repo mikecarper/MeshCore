@@ -4,6 +4,14 @@
 
 # GAT562 browser differential update paths
 
+**Withdrawn:** this automatic bridge route is disabled following a reported
+GAT562 boot failure. The failed download ID `9DF841DF` identifies the first
+Full bridge below. Decoder and flash-layout checks do not qualify an
+intermediate application's physical startup. The exact images are blocked even
+when loaded from saved browser plans. Retain recovery records; use USB recovery
+if the device is unreachable. The measurements below are historical research,
+not authorization to install these bridges.
+
 The browser now prepares and runs application bridge sequences through the
 ordinary Prepare update / Update remote firmware actions. Deep search is an
 optional slower comparison of every page-aligned workspace. Both fewer-install

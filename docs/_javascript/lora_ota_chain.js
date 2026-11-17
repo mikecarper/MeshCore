@@ -33,6 +33,7 @@
         throw Error('A prepared chain, authenticated source and target, live reader, session factory and separate journals are required');
       if (o.readStepJournal === o.readChainJournal || o.writeStepJournal === o.writeChainJournal)
         throw Error('Chain and step recovery journals must be separate');
+      checks.assertPreparedAllowed(o.prepared);
       Object.assign(this,o); this.running=false;
       this.sourceKey=o.link.sourceKey.toLowerCase(); this.targetKey=o.targetKey.toLowerCase();
       this.nodes=new Map(o.prepared.nodes.map(n=>[n.id,n]));
@@ -86,6 +87,7 @@
     }
     async runOnce({resume=false,signal} = {}) {
       this.cancelCheck(signal);
+      checks.assertPreparedAllowed(this.prepared);
       if (!this.link.sourceKey || this.link.sourceKey.toLowerCase() !== this.sourceKey) throw Error('The connected source identity changed');
       const planHash=await this.fingerprint(), saved=this.readChainJournal();
       let index=0, recovery=false, phase='step starting';

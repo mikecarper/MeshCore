@@ -570,7 +570,7 @@ if preparation fails, remove the old image to use a full package instead.
 
 </details>
 
-<script src="../_javascript/lora_ota_checks.js?v=initial-step-recovery-1"></script>
+<script src="../_javascript/lora_ota_checks.js?v=gat-bridge-withdrawal-1"></script>
 <script src="../_javascript/lora_ota_package.js"></script>
 <script src="../_javascript/lora_ota_zip.js"></script>
 <script src="../_javascript/lora_ota_delta.js?v=auto-paths-3"></script>
@@ -582,7 +582,7 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_companion_source.js?v=zopfli-1"></script>
 <script src="../_javascript/lora_ota_companion.js?v=radio2-only-1"></script>
 <script src="../_javascript/lora_ota_contacts.js?v=advert-path-1"></script>
-<script src="../_javascript/lora_ota_session.js?v=radio2-only-1"></script>
+<script src="../_javascript/lora_ota_session.js?v=gat-bridge-withdrawal-1"></script>
 <script src="../_javascript/lora_ota_route.js"></script>
 <script src="../_javascript/lora_ota_repeat.js"></script>
 <script src="../_javascript/lora_ota_quiet.js?v=workflow-first-1"></script>
@@ -592,9 +592,9 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_plan.js"></script>
 <script src="../_javascript/lora_ota_candidates.js?v=auto-paths-1"></script>
 <script src="../_javascript/lora_ota_sim.js"></script>
-<script src="../_javascript/lora_ota_chain.js?v=workflow-first-1"></script>
+<script src="../_javascript/lora_ota_chain.js?v=gat-bridge-withdrawal-1"></script>
 <script src="../_javascript/lora_ota_chain_ui.js?v=auto-paths-3"></script>
-<script src="../_javascript/lora_ota_auto_chain.js?v=resume-auto-paths-2"></script>
+<script src="../_javascript/lora_ota_auto_chain.js?v=gat-bridge-withdrawal-1"></script>
 <script src="../_javascript/lora_ota_region_profiles.js"></script>
 <script src="../_javascript/lora_ota_radio_setup.js?v=staged-offset-1"></script>
 <script src="../_javascript/lora_ota_recovery.js?v=usb-retry-1"></script>
@@ -606,4 +606,4 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_zopfli.js?v=1"></script>
 <script src="../_javascript/lora_ota_compression.js?v=1"></script>
 <script src="../_javascript/lora_ota_zopfli_benchmark.js?v=1"></script>
-<script src="../_javascript/lora_ota_browser.js?v=staged-offset-1"></script>
+<script src="../_javascript/lora_ota_browser.js?v=gat-bridge-withdrawal-1"></script>

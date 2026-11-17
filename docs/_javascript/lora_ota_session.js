@@ -830,6 +830,7 @@
     }
     async install() {
       this.requireActive();
+      checks.assertApplicationAllowed(this.info?.imageHash);
       const id = checks.hex(this.info.merkleRoot), before = await this.inspect({allowExisting:true}), current = await this.readDownload();
       if (before.download !== 'ready' || current.id !== id || current.state !== 'ready') throw Error('The selected package is not ready to install');
       const rebootChannel = await this.planRebootChannel();

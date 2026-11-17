@@ -7,6 +7,32 @@
   'use strict';
   const keyPattern = /^[0-9a-f]{64}$/i;
   function hex(bytes) { return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join(''); }
+  // These compiled GAT562 intermediates had decoder validation but no physical
+  // startup qualification. The first was identified in a reported boot failure.
+  // Keep this check independent of the catalog so saved plans cannot bypass it.
+  const withdrawnApplications = new Set([
+    'd06a56d213ff15b3bd03b87ebf36b31d842d0226a450804f5162d575786fe2a9',
+    'fc682e476741e1aee0323e3d242c3d60700df6a620d8bd14c8af9fbede289699',
+    '1bdd9239a8736cda53237b0f692b0832fc995e57279988d60c36bd9b453f8b54',
+    '54d2fd0fd8a7a982fa61e7aad51ab6aa560564613c8ded1107a938e16ed300cc',
+    '4703a3430b53152290f20fc458ec3b9940466e817736f7bac4c818839c282336',
+    '8ab642d577a82c9c32a2528b886e104a917bc701f8ab8645d8e643b9d35d1fb5'
+  ]);
+  function assertApplicationAllowed(imageHash) {
+    const value=typeof imageHash==='string'?imageHash.toLowerCase():imageHash instanceof Uint8Array?hex(imageHash):'';
+    if(withdrawnApplications.has(value))throw Object.assign(Error(
+      'This GAT562 intermediate firmware has been withdrawn after a reported boot failure. '+
+      'Do not install or resume this update path. Its saved recovery records were kept. '+
+      'Use USB recovery if the device is unreachable. If the selected release needs this intermediate path '+
+      'because its direct update does not fit, install that release over USB.'),
+      {code:'OTA_WITHDRAWN_APPLICATION',otaLocalCheck:true,otaEndpoint:'Browser',otaStep:'Check intermediate firmware qualification'});
+  }
+  function assertPreparedAllowed(prepared) {
+    for(const step of prepared?.steps||[]){
+      assertApplicationAllowed(step.package?.info?.imageHash);
+      assertApplicationAllowed(prepared.nodes?.find(node=>node.id===step.to)?.imageHash);
+    }
+  }
   function failureIdentityText(value,limit=160) {
     if(typeof value!=='string')return '';
     const text=value.replace(/(?:https?:\/\/|file:\/\/)[^\s<>]+/gi,'<address hidden>')
@@ -366,6 +392,7 @@
   }
   function validate(info, dest, verifiedSigner, options = {}) {
     if (!info || !dest || !(info.baseHash instanceof Uint8Array)) throw Error('Invalid package metadata');
+    assertApplicationAllowed(info.imageHash);
     if (info.isBootloader) throw Error('Bootloader updates are not supported by this updater');
     if (info.signed && !verifiedSigner) throw Error('A signed package requires its full trusted signing key');
     if (info.targetId !== dest.targetId || info.hwId !== dest.hwId) throw Error('Package hardware or target does not match');
@@ -509,5 +536,5 @@
         plan.memorySize + stagedFlashBytes(info.blob.length,plan.layoutFlags,ceiling,hybridRamReply) > ceiling - plan.app)
       throw Error('The current nRF52 staging space no longer fits this differential');
   }
-  return { route, destination, availability, readReceiver, coldRakStatus, prepareColdRakStorage, validate, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, needsHybridRam, confirmHybridRam, legacyHybridRam, probeHybridRam, readHybridRam, stagedFlashBytes, validateInternalPlan, version, hex, failureAdvice, explicitMaxBlock, errorDetails, collectFailureIdentity };
+  return { route, destination, availability, readReceiver, coldRakStatus, prepareColdRakStorage, validate, assertApplicationAllowed, assertPreparedAllowed, confirmSequentialTarget, isKnownEsp32, ensureSequentialTarget, internalStage, qspiCapacity, needsHybridRam, confirmHybridRam, legacyHybridRam, probeHybridRam, readHybridRam, stagedFlashBytes, validateInternalPlan, version, hex, failureAdvice, explicitMaxBlock, errorDetails, collectFailureIdentity };
 });

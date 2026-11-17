@@ -4,6 +4,14 @@
 
 # Browser application bridge bank
 
+The six GAT562 30S intermediate applications in this bank are withdrawn after
+a reported boot failure involving the first bridge (`9DF841DF`). Automatic
+selection, manual installation of these exact images, and saved-plan resumption
+are blocked. The files remain here for investigation; they are not approved
+update candidates. Keep recovery records. An unreachable device requires USB
+recovery. A supported standalone release may still need USB if a direct
+differential package does not fit.
+
 These content-addressed JSON resources contain gzip/base64 encodings of
 unchanged, compiled nRF52 application images. They are not bootloader images.
 `index.json` pins the complete installed and selected image hashes, board and

@@ -38,6 +38,8 @@
         route.images.some(x=>!SHA.test(x?.sha256||'')||!Number.isInteger(x.size)||x.size<80||x.size>MAX_IMAGE)||
         new Set([route.from,route.to,...route.images.map(x=>x.sha256)]).size!==route.images.length+2)
       throw Error('Invalid intermediate firmware catalog entry');
+    for(const image of route.images)checks.assertApplicationAllowed(image.sha256);
+    if(route.disabled===true)throw Error(route.disabledReason||'This automatic intermediate update path is disabled. Choose a supported standalone release.');
     return route;
   }
   async function loadImage(entry,options){

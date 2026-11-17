@@ -6,6 +6,8 @@
       "to": "9261ac3cdcef3b01167f95fabd3f5b1cb258df770bd698f629eaac7586511eab",
       "targetId": 403422751,
       "hwId": "GAT562_30S_Mesh_Kit",
+      "disabled": true,
+      "disabledReason": "GAT562 intermediate firmware withdrawn after a reported boot failure. Do not install or resume this path. Keep recovery records and use USB recovery if the device is unreachable.",
       "images": [
         {
           "sha256": "d06a56d213ff15b3bd03b87ebf36b31d842d0226a450804f5162d575786fe2a9",

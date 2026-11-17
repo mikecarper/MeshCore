@@ -1668,6 +1668,7 @@
         if(!cached || cached.source!==record.source || cached.target!==record.target ||
             !cached.prepared || !cached.config || JSON.stringify(cached.config)!==JSON.stringify(meta))
           throw Error('The saved update path does not match the interrupted update. Nothing was changed.');
+        LoraOtaChecks.assertPreparedAllowed(cached.prepared);
         const recovered=await recoverUpdateChannel(record.target);
         if(recovered){const password=$('acl').checked?'':$('password').value;await link.verifyPeer(record.target,password);await confirmUpdateChannel(recovered,record.target,password);}
         await LoraOtaSim.simulate(meta.bootProfile,cached.prepared,meta.caps.runtimeStageCeiling);
@@ -1694,6 +1695,7 @@
       journal:state=>autoWrite(key,'step',state),readJournal:()=>autoRead(key,'step')});
   }
   async function readyAutomatic(prepared,target,password,key,file,cached=false){
+    LoraOtaChecks.assertPreparedAllowed(prepared);
     const record=autoRead(key,'chain'),resume=!!record&&record.phase!=='complete';
     const index=resume?record.index:0;
     if(!Number.isInteger(index)||!prepared.steps?.[index])throw Error('The saved intermediate update step is invalid');
@@ -1755,6 +1757,7 @@
     const {prepared,target,key,resume}=context,password=$('acl').checked?'':$('password').value;
     const connection=link,job=session,generation=disconnectGeneration;busy(true);
     try {
+    LoraOtaChecks.assertPreparedAllowed(prepared);
     await saveUpdateInputs('automatic',key);
     if(disconnecting||disconnectGeneration!==generation||link!==connection||session!==job||$('key').value.trim().toLowerCase()!==target.toLowerCase())throw Error('The source or target changed while saving the update. Reconnect and prepare it again.');
     const controller=new AbortController();preparing=controller;preparedDownload=null;
@@ -1823,7 +1826,7 @@
       const standard=sourceKind()==='companion' && link.otaSupported===false;
       // A fresh USB connection must prove the target again. Preparation can
       // do that itself, including after reconnecting an older Companion.
-      const recovered=await recoverUpdateChannel(targetKey);
+      let recovered=null;
       if(standard && !link.investigationEnabled)await link.enableStandardInvestigation();
       let peerVerified=false, liveTargetOtaStatus=null;
       const verify=async()=>{
@@ -1831,7 +1834,6 @@
         const result=await link.verifyPeer(targetKey,password);await confirmUpdateChannel(recovered,targetKey,password);
         peerVerified=true;return result;
       };
-      if(recovered)await verify();
       const remote=command=>standard ? link.investigateCommand(targetKey,password,command) : link.remoteCommand(targetKey,password,command);
       let file = resumeInputs?.file || catalogFile || $('file').files[0];
       if(!file && $('firmware-choice').value && catalogDest) {
@@ -1856,6 +1858,12 @@
         try{cachedAuto=await LoraOtaAutoChain.cache('get',key);}catch(_){/* ordinary updates do not need recovery storage */}
         if(resumeInputs?.kind==='automatic' && !cachedAuto)throw Error('The saved update path is unavailable; choose the original firmware and prepare again.');
       }
+      if(isFirmware)LoraOtaChecks.assertApplicationAllowed((await MeshCoreMotaPackage.parseEndF(input)).imageHash);
+      else if(input.length>=64)LoraOtaChecks.assertApplicationAllowed(input.subarray(32,64));
+      if(cachedAuto?.source===link.sourceKey?.toLowerCase()&&cachedAuto.target===targetKey.toLowerCase())
+        LoraOtaChecks.assertPreparedAllowed(cachedAuto.prepared);
+      recovered=await recoverUpdateChannel(targetKey);
+      if(recovered)await verify();
       checkConnected();
       const signerText = $('signer').value.trim();
       let expectedImage = null, inplacePlan = null;
@@ -2337,6 +2345,7 @@
     const signalController = new AbortController(); preparing=signalController;
     $('chain-stop').hidden=false;$('chain-stop').disabled=false;
     try {
+      LoraOtaChecks.assertPreparedAllowed(chainPrepared);
       const {target,bootProfile,caps,sourceRadio,minutes,targetPreamble}=chainConfig;
       const password=$('acl').checked?'':$('password').value;
       const readLive=async()=>{
