@@ -69,12 +69,12 @@ class BrowserChannelChoiceTest(unittest.TestCase):
     def test_unknown_custom_tuple_does_not_guess_a_country(self):
         self.check_channel([865, 125, 10, 5], [865, 125, 10, 5])
 
-    def test_us_canada_recognized_profile_uses_500_khz(self):
-        result = self.check_channel([910.525, 62.5, 7, 5], [909.950, 500, 5, 7])
+    def test_us_canada_recognized_primary_previews_200_khz_offset(self):
+        result = self.check_channel([910.525, 62.5, 7, 5], [910.725, 62.5, 7, 5])
         self.assertIn('Country cannot be determined', result['regionStatus'])
 
     def test_shared_australia_brazil_profile_does_not_guess_the_country(self):
-        result = self.check_channel([923.125, 62.5, 8, 8], [921.500, 500, 5, 7])
+        result = self.check_channel([923.125, 62.5, 8, 8], [923.325, 62.5, 8, 8])
         self.assertIn('Country cannot be determined', result['regionStatus'])
 
     def test_explicit_region_overrides_active_window(self):
@@ -106,11 +106,11 @@ class BrowserChannelChoiceTest(unittest.TestCase):
                 self.assertFalse(bytes(frame[1:]).decode().startswith(('tempradio ', 'set tempradio2 ')), result)
 
     def test_known_sx127x_companion_automatically_uses_sf7(self):
-        result = self.check_channel([910.525, 62.5, 7, 5], [909.950, 500, 7, 7], source_board='Heltec V2')
+        result = self.check_channel([910.525, 62.5, 7, 5], [909.950, 500, 7, 7], source_board='Heltec V2', region='us-ca')
         self.assertIn('SX127x', result['regionStatus'])
 
     def test_sx1262_companion_retains_sf5(self):
-        self.check_channel([910.525, 62.5, 7, 5], [909.950, 500, 5, 7], source_board='Heltec V4')
+        self.check_channel([910.525, 62.5, 7, 5], [909.950, 500, 5, 7], source_board='Heltec V4', region='us-ca')
 
     def test_repeater_reads_board_once_for_generated_sf5_and_caches_it(self):
         from test_browser_lora_ota_runtime import HARNESS as repeater_harness
@@ -152,7 +152,7 @@ class BrowserChannelChoiceTest(unittest.TestCase):
         self.assertNotIn('error',result,result)
         self.assertEqual(result['frequency'],'908.500',result)
         self.assertIn('manually selected',result['regionStatus'])
-        self.assertIn('tempradio 908.500,500,5,7',result['commands'])
+        self.assertIn('tempradio 908.500,62.5,7,5',result['commands'])
 
     def check_channel(self, saved, expected, **options):
         frequency, bandwidth, sf, cr = expected

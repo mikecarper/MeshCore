@@ -21,7 +21,7 @@ class Nrf52CliPrefixTrimTest(unittest.TestCase):
                 return value.replace('$PROJECT_DIR', str(ROOT))
 
             def BoardConfig(self):
-                return {'build.mcu': 'nrf52840'}
+                return {'build.mcu': self.get('test_mcu', 'nrf52840')}
 
             def AddBuildMiddleware(self, callback, pattern):
                 self.setdefault('hooks', []).append((callback, pattern))
@@ -42,6 +42,22 @@ class Nrf52CliPrefixTrimTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             TRIM.install(Environment(BUILD_FLAGS=flags, CPPDEFINES=[],
                                      SRC_FILTER=['+<../examples/simple_sensor>']))
+        mini_flags = ['-DSTM32_PLATFORM=1', '-DMESH_CLI_SHARE_ERROR_PREFIXES=1',
+                      '-DMESH_CLI_SHARE_REPLY_COPIES=1']
+        mini = dict(**common, BUILD_FLAGS=mini_flags, PIOENV='wio-e5-mini_repeater',
+                    test_mcu='stm32wle5jc')
+        exact_mini = Environment(**mini)
+        TRIM.install(exact_mini)
+        self.assertEqual([pattern for _, pattern in exact_mini['hooks']],
+                         ['*MyMesh.cpp', '*CommonCLI.cpp', '*OtaCli.cpp', '*CLIReplyCopy.cpp'])
+        for changed in ({'PIOENV': 'wio-e5-mini_sensor'}, {'PIOENV': 'wio-e5_repeater'},
+                        {'test_mcu': 'stm32wl55jc'},
+                        {'BUILD_FLAGS': mini_flags[1:]},
+                        {'BUILD_FLAGS': mini_flags[:-1]},
+                        {'SRC_FILTER': ['+<../examples/simple_sensor>']},
+                        {'SRC_FILTER': ['+<../examples/simple_repeater>', '+<../examples/companion_radio>']}):
+            with self.subTest(mini=changed), self.assertRaises(ValueError):
+                TRIM.install(Environment(**(mini | changed)))
 
     def test_reviewed_sources_preserve_every_original_literal(self):
         calls = []
@@ -56,6 +72,18 @@ class Nrf52CliPrefixTrimTest(unittest.TestCase):
                 self.assertEqual(after, before)
                 calls.extend(f'check(mesh::cli::{function}, "{prefix}" "{literal}", "{literal}");'
                              for literal in before)
+                if filename in TRIM.PAIRED_COUNTS:
+                    quoted = r'((?:\\.|[^"\\])*)'
+                    pair_before = re.findall(r'strcpy\s*\(\s*reply\s*,\s*MESH_CLI_REPLY_TEXT\(\s*"'
+                        + re.escape(prefix) + quoted + r'"\s*,\s*"' + re.escape(prefix)
+                        + quoted + r'"\s*\)\s*\)', original)
+                    pair_after = re.findall(re.escape(macro)
+                        + r'\(reply, MESH_CLI_REPLY_TEXT\("' + quoted + r'", "' + quoted + r'"\)\)', patched)
+                    self.assertEqual(len(pair_before), TRIM.PAIRED_COUNTS[filename].get(prefix, 0))
+                    self.assertEqual(pair_after, pair_before)
+                    calls.extend(f'check(mesh::cli::{function}, MESH_CLI_REPLY_TEXT("{prefix}" "{verbose}", '
+                                 f'"{prefix}" "{compact}"), MESH_CLI_REPLY_TEXT("{verbose}", "{compact}"));'
+                                 for verbose, compact in pair_before)
             with self.assertRaises(ValueError):
                 TRIM.patched_source(filename, original + '\n')
         self.assertGreater(len(calls), 200)
@@ -70,10 +98,14 @@ class Nrf52CliPrefixTrimTest(unittest.TestCase):
         program = r'''
 #include <cassert>
 #include <cstring>
+#include <helpers/CLIReplyText.h>
 namespace mesh { namespace cli {
 char* copyErrorDash(char*, const char*);
 char* copyOkDash(char*, const char*);
 char* copyOtaError(char*, const char*);
+char* copyErrorColon(char*, const char*);
+char* copyErrorComma(char*, const char*);
+char* copyUpperErrorColon(char*, const char*);
 } }
 static void check(char* (*copy)(char*, const char*), const char* expected, const char* suffix) {
   char actual[512], reference[512];
@@ -91,12 +123,71 @@ int main() {
             unit, implementation, binary = directory / 'check.cpp', directory / 'CLIReplyCopy.cpp', directory / 'check'
             unit.write_text(program, encoding='utf-8')
             implementation.write_text(helper, encoding='utf-8')
-            command = [compiler, '-std=c++17', '-Os', '-flto', '-Wall', '-Wextra', '-Werror',
+            for compact in (0, 1):
+                command = [compiler, '-std=c++17', '-Os', '-flto', '-Wall', '-Wextra', '-Werror',
                        '-DMESH_CLI_SHARE_REPLY_COPIES=1', '-DMESH_CLI_SHARE_MEMORY_OPERATIONS=1',
+                       '-DMESH_CLI_COMPACT_REPLIES=' + str(compact),
                        '-DMESH_CLI_SHARE_ERROR_PREFIXES=1', '-I', str(ROOT / 'src'),
                        '-I', str(ROOT / 'src/helpers'), str(unit), str(implementation), '-o', str(binary)]
-            subprocess.run(command, check=True, timeout=60)
-            subprocess.run([str(binary)], check=True, timeout=30)
+                subprocess.run(command, check=True, timeout=60)
+                subprocess.run([str(binary)], check=True, timeout=30)
+
+    def test_disabled_trim_macros_preserve_verbose_and_compact_replies(self):
+        compiler = shutil.which('g++')
+        if not compiler:
+            self.skipTest('C++ compiler unavailable')
+        checked = 0
+        with tempfile.TemporaryDirectory(prefix='cli-prefix-fallback-') as directory:
+            directory = Path(directory)
+            unit, binary = directory / 'check.cpp', directory / 'check'
+            for filename, (_, groups) in TRIM.CASES.items():
+                original = (ROOT / filename).read_text(encoding='utf-8')
+                patched = TRIM.patched_source(filename, original)
+                start = patched.index('#if ' + TRIM.ENABLED)
+                end = patched.index('#endif\n\n', start) + len('#endif\n\n')
+                # Compile the actual emitted fallback definitions, rather
+                # than reproducing their concatenation in the test harness.
+                definitions = patched[start:end]
+                calls = []
+                quoted = r'((?:\\.|[^"\\])*)'
+                for prefix, macro, _, _ in groups:
+                    direct = re.findall(r'strcpy\s*\(\s*reply\s*,\s*"'
+                        + re.escape(prefix) + quoted + r'"\s*\)', original)
+                    calls.extend(f'CHECK({macro}, "{prefix}" "{suffix}", "{suffix}");'
+                                 for suffix in direct)
+                    pairs = re.findall(r'strcpy\s*\(\s*reply\s*,\s*MESH_CLI_REPLY_TEXT\(\s*"'
+                        + re.escape(prefix) + quoted + r'"\s*,\s*"' + re.escape(prefix)
+                        + quoted + r'"\s*\)\s*\)', original)
+                    calls.extend(f'CHECK({macro}, MESH_CLI_REPLY_TEXT("{prefix}" "{verbose}", '
+                                 f'"{prefix}" "{compact}"), MESH_CLI_REPLY_TEXT("{verbose}", "{compact}"));'
+                                 for verbose, compact in pairs)
+                checked += len(calls)
+                program = r'''
+#include <cassert>
+#include <cstring>
+#include <helpers/CLIReplyText.h>
+''' + definitions + r'''
+#define CHECK(COPY, EXPECTED, SUFFIX) do { \
+  char actual[512], reference[512]; \
+  memset(actual, 0x55, sizeof(actual)); \
+  memset(reference, 0x55, sizeof(reference)); \
+  assert(strlen(EXPECTED) + 4 < sizeof(actual)); \
+  assert(COPY(actual + 2, SUFFIX) == actual + 2); \
+  strcpy(reference + 2, EXPECTED); \
+  assert(memcmp(actual, reference, sizeof(actual)) == 0); \
+} while (0)
+int main() {
+''' + '\n'.join(calls) + '\n}\n'
+                unit.write_text(program, encoding='utf-8')
+                for compact in (0, 1):
+                    with self.subTest(source=filename, compact=compact):
+                        command = [compiler, '-std=c++17', '-Os', '-Wall', '-Wextra', '-Werror',
+                            '-DMESH_CLI_SHARE_ERROR_PREFIXES=0', '-DMESH_CLI_SHARE_REPLY_COPIES=0',
+                            '-DMESH_CLI_COMPACT_REPLIES=' + str(compact),
+                            '-I', str(ROOT / 'src'), str(unit), '-o', str(binary)]
+                        subprocess.run(command, check=True, timeout=60)
+                        subprocess.run([str(binary)], check=True, timeout=30)
+        self.assertEqual(checked, 418)
 
 
 if __name__ == '__main__':

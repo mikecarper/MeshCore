@@ -1032,6 +1032,8 @@ class CommonCLI {
                                 uint16_t preamble) __attribute__((noinline));
   bool applyAndSavePrimaryRadioParams(float freq, float bw, uint8_t sf, uint8_t cr,
                                     uint16_t preamble, char* reply) __attribute__((noinline));
+  void handleScheduledRadio(const char* args, bool temporary, char* reply)
+      __attribute__((noinline));
   enum RxSetting : uint8_t {
     RxGain = 1, RxPowerSaving = 2, RxSideDetectors = 4, RxRfRx = 8,
     RxPendingMask = 15, RxRfRxDisabled = 128

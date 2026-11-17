@@ -596,7 +596,7 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_chain_ui.js?v=auto-paths-3"></script>
 <script src="../_javascript/lora_ota_auto_chain.js?v=gat-bridge-withdrawal-1"></script>
 <script src="../_javascript/lora_ota_region_profiles.js"></script>
-<script src="../_javascript/lora_ota_radio_setup.js?v=staged-offset-1"></script>
+<script src="../_javascript/lora_ota_radio_setup.js?v=staged-offset-2"></script>
 <script src="../_javascript/lora_ota_recovery.js?v=usb-retry-1"></script>
 <script src="../_javascript/lora_ota_secondary_only.js?v=1"></script>
 <script src="../_javascript/lora_ota_lease.js?v=radio2-only-1"></script>

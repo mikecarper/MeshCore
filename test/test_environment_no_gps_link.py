@@ -62,6 +62,9 @@ int main() {
   EnvironmentSensorManager sensors;
   assert(sensors.begin());
   SensorManager& hooks = sensors;
+  assert(hooks.isPrimaryI2cAddressReserved(0x3c));
+  assert(hooks.isPrimaryI2cAddressReserved(0x3d));
+  assert(!hooks.isPrimaryI2cAddressReserved(0x27));
   assert(!hooks.supportsSharedPeripheralMode());
   hooks.configureSharedPeripheralMode(true);
   hooks.configureSharedPeripheralMode(false);
@@ -95,6 +98,8 @@ class EnvironmentNoGpsLinkTest(unittest.TestCase):
             with self.subTest(defines=defines), tempfile.TemporaryDirectory(prefix="environment-no-gps-") as folder:
                 processed = self.preprocess(original, defines)
                 signatures = SIGNATURES
+                if "-DESP32_PLATFORM" in defines:
+                    signatures += ("bool EnvironmentSensorManager::isPrimaryI2cAddressReserved(",)
                 rak = "-DRAK_BOARD" in defines
                 if rak:
                     signatures += ("void EnvironmentSensorManager::applyWisBlockRailPower()",

@@ -466,7 +466,10 @@
           savedSourceSecondary:source.savedSecondary,savedTargetSecondary:target.savedSecondary,
           sourceProfile:1,targetProfile:1,preamble,minutes:120,changedSettings,stagedOffset:true};
       }
-      if(stagedOffset&&(source.temporaryPrimary.state==='active'||target.temporaryPrimary.state==='active'))
+      // Raw-only legacy Companions cannot perform a radio2 handoff. Their
+      // compatibility path below must still adopt or trial the saved primary
+      // channel, including when manual temporary windows are already active.
+      if(stagedOffset&&!legacy&&(source.temporaryPrimary.state==='active'||target.temporaryPrimary.state==='active'))
         throw Error('An existing primary temporary window cannot be replaced for the automatic radio2 handoff. Keep the current channel or wait for that window to expire.');
       if(stagedOffset)progress('The staged radio2 handoff is unavailable for this source or existing radio state; using the compatible channel setup.');
       const sourceProfile = !legacy && source.temporaryPrimary.state === 'off' && link.supportsOtaRadio2 === true &&

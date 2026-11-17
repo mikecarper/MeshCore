@@ -77,7 +77,7 @@ class MiniRepeaterProfileTest(unittest.TestCase):
         self.assertEqual(245760 + 16384, 256 * 1024)
         self.assertEqual(self.repeater["platform_packages"].split(), [
             "platformio/toolchain-gccarmnoneeabi@^1.140201.0"])
-        self.assertEqual(self.repeater["build_unflags"].split(), ["-Os"])
+        self.assertEqual(self.repeater["build_unflags"].split(), ["-Os", "-fno-use-cxa-atexit"])
         self.assertIn("+<../examples/simple_repeater/*.cpp>",
                       self.repeater["build_src_filter"])
         self.assertNotIn("MAX_CLIENTS", self.flags)

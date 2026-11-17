@@ -4690,6 +4690,28 @@ bool CommonCLI::handleSdCardGetCmd(const char* config, char* reply) {
 }
 #endif
 
+void CommonCLI::handleScheduledRadio(const char* args, bool temporary, char* reply) {
+  float freq, bw;
+  uint8_t sf, cr;
+  uint32_t start_time, end_time;
+  uint16_t preamble = 0;
+  char legacy[120];
+  if (!mesh::RadioProfileCLI::parseSuffix(args, temporary ? 6 : 5, legacy, sizeof(legacy), preamble)
+      || !parseScheduledRadioArgs(legacy, temporary, freq, bw, sf, cr, start_time, end_time, _rtc->getCurrentTime())) {
+    strcpy(reply, temporary
+        ? MESH_CLI_REPLY_TEXT("Error, use: set tempradioat f,bw,sf,cr,start,end (UTC or +minutes)", "Error, set tempradioat f,bw,sf,cr,start,end (UTC or +minutes)")
+        : MESH_CLI_REPLY_TEXT("Error, use: set radioat f,bw,sf,cr,start (UTC or +minutes)", "Error, set radioat f,bw,sf,cr,start (UTC or +minutes)"));
+  } else if (!acceptsPrimaryRadioParams(freq, bw, sf, cr, preamble)) {
+    strcpy(reply, MESH_CLI_REPLY_TEXT("Error, invalid radio params", "Error, bad radio params"));
+  } else {
+    _callbacks->addScheduledRadioParams(temporary, freq, bw, sf, cr, start_time, end_time, reply, preamble);
+    if (strncmp(reply, "OK", 2) == 0) {
+      _radio_profiles.appendPrimaryChirpWarning(reply, 160, sf, bw, preamble);
+      appendRxPowerSavingAdjustmentNote(reply, _prefs, sf, bw);
+    }
+  }
+}
+
 void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* reply) {
   const char* config = &command[4];
 #if defined(ESP_PLATFORM)
@@ -5606,41 +5628,9 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       strcpy(reply, MESH_CLI_REPLY_TEXT("Error, invalid radio params", "Error, bad radio params"));
     }
   } else if (memcmp(config, "radioat ", 8) == 0) {
-    float freq, bw;
-    uint8_t sf, cr;
-    uint32_t start_time, end_time;
-    uint16_t preamble = 0;
-    char legacy[120];
-    if (!mesh::RadioProfileCLI::parseSuffix(&config[8], 5, legacy, sizeof(legacy), preamble)
-        || !parseScheduledRadioArgs(legacy, false, freq, bw, sf, cr, start_time, end_time, _rtc->getCurrentTime())) {
-      strcpy(reply, MESH_CLI_REPLY_TEXT("Error, use: set radioat f,bw,sf,cr,start (UTC or +minutes)", "Error, set radioat f,bw,sf,cr,start (UTC or +minutes)"));
-    } else if (!acceptsPrimaryRadioParams(freq, bw, sf, cr, preamble)) {
-      strcpy(reply, MESH_CLI_REPLY_TEXT("Error, invalid radio params", "Error, bad radio params"));
-    } else {
-      _callbacks->addScheduledRadioParams(false, freq, bw, sf, cr, start_time, end_time, reply, preamble);
-      if (strncmp(reply, "OK", 2) == 0) {
-        _radio_profiles.appendPrimaryChirpWarning(reply, 160, sf, bw, preamble);
-        appendRxPowerSavingAdjustmentNote(reply, _prefs, sf, bw);
-      }
-    }
+    handleScheduledRadio(&config[8], false, reply);
   } else if (memcmp(config, "tempradioat ", 12) == 0) {
-    float freq, bw;
-    uint8_t sf, cr;
-    uint32_t start_time, end_time;
-    uint16_t preamble = 0;
-    char legacy[120];
-    if (!mesh::RadioProfileCLI::parseSuffix(&config[12], 6, legacy, sizeof(legacy), preamble)
-        || !parseScheduledRadioArgs(legacy, true, freq, bw, sf, cr, start_time, end_time, _rtc->getCurrentTime())) {
-      strcpy(reply, MESH_CLI_REPLY_TEXT("Error, use: set tempradioat f,bw,sf,cr,start,end (UTC or +minutes)", "Error, set tempradioat f,bw,sf,cr,start,end (UTC or +minutes)"));
-    } else if (!acceptsPrimaryRadioParams(freq, bw, sf, cr, preamble)) {
-      strcpy(reply, MESH_CLI_REPLY_TEXT("Error, invalid radio params", "Error, bad radio params"));
-    } else {
-      _callbacks->addScheduledRadioParams(true, freq, bw, sf, cr, start_time, end_time, reply, preamble);
-      if (strncmp(reply, "OK", 2) == 0) {
-        _radio_profiles.appendPrimaryChirpWarning(reply, 160, sf, bw, preamble);
-        appendRxPowerSavingAdjustmentNote(reply, _prefs, sf, bw);
-      }
-    }
+    handleScheduledRadio(&config[12], true, reply);
   } else if (memcmp(config, "lat ", 4) == 0) {
     float latitude = 0.0f;
     if (mesh::cli::parseDecimalStrict(&config[4], latitude)) {

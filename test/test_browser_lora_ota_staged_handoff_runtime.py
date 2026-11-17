@@ -5,7 +5,7 @@ from test_browser_lora_ota_radio_setup_runtime import radio_setup_harness
 
 
 def staged_harness():
-    text=radio_setup_harness().replace(',128',',368').replace('preamble=128','preamble=368')
+    text=radio_setup_harness(automatic_offset=True).replace(',128',',368').replace('preamble=128','preamble=368')
     text=text.replace("let sourceTemp='off',targetTemp='off'", "let sourceTuple='',targetTuple='',sourceTemp='off',targetTemp='off'",1)
     target_old="targetTemp==='off'?'> off':'> 909.950,500.000,5,7,rxtx,368; 0d2h0m (120 min) left'"
     target_new="targetTemp==='off'?'> off':'> '+targetTuple+',rxtx,368; 0d2h0m (120 min) left'"
@@ -57,7 +57,7 @@ class BrowserStagedHandoffRuntime(unittest.TestCase):
         self.assertFalse(any('ota install ' in str(command) for command in result['cmds']))
 
     def test_unrecognized_primary_preview_keeps_current_channel(self):
-        harness=radio_setup_harness()
+        harness=radio_setup_harness(automatic_offset=True)
         self.assertIn("radio='910.525,62.5,7,5'",harness)
         harness=harness.replace("radio='910.525,62.5,7,5'","radio='910.500,62.5,7,5'",1)
         self.assertIn('v.setUint32(48,910525,true)',harness)

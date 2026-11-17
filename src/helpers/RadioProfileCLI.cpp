@@ -1264,6 +1264,60 @@ void RadioProfileCLI::formatConfig(char* reply, size_t capacity, const RadioProf
   appendSecondaryWarnings(reply, capacity, preview);
 }
 
+__attribute__((noinline)) bool RadioProfileCLI::handleSecondaryOnly(
+    const char* args, int verb, bool remote_origin, char* reply, size_t capacity) {
+  enum { Get, Set, Delete };
+  auto* p = radio_ ? radio_->profiles() : nullptr;
+  if (!p || !radio_->supportsSecondaryOnly()) {
+    cli::formatError(reply, capacity, "radio2.only unsupported"); return true;
+  }
+  if (verb == Get && !*args) {
+    if (!p->secondaryOnly()) snprintf(reply, capacity, "> off");
+    else snprintf(reply, capacity, "> %s %s",
+        radio_->secondaryOnlyReady() ? "on" : "pending", p->secondary_only_owner);
+    return true;
+  }
+  const bool enable = !strncmp(args, "on ", 3);
+  const bool disable = !strncmp(args, "off ", 4);
+  const char* token = args + (enable ? 3 : disable ? 4 : 0);
+  char owner[17];
+  if (verb != Set || (!enable && !disable) || strlen(token) != 16) {
+    cli::formatError(reply, capacity, "use set radio2.only on|off TOKEN"); return true;
+  }
+  for (unsigned i = 0; i < 16; ++i) {
+    char c = token[i];
+    if (c >= 'a' && c <= 'f') c -= 'a' - 'A';
+    if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F'))) {
+      cli::formatError(reply, capacity, "token must be 16 hex digits"); return true;
+    }
+    owner[i] = c;
+  }
+  owner[16] = 0;
+  if (remote_origin && !remote_command_) {
+    cli::formatError(reply, capacity, "radio2.only: USB only"); return true;
+  }
+  if (hasReplyMutation()) { cli::formatError(reply, capacity, "ack pending"); return true; }
+  if (p->secondaryOnly() && strcmp(p->secondary_only_owner, owner)) {
+    cli::formatError(reply, capacity, "radio2.only owned by another session"); return true;
+  }
+  if (enable && (!temp_active_ || temp_pending_ || !p->secondary_temporary
+      || p->primary_temporary || p->secondary.mode != RadioProfileMode::RxTx
+      || p->secondary.params.protocol != RadioProfileProtocol::MeshCore)) {
+    cli::formatError(reply, capacity, "requires active temporary MeshCore radio2 rxtx"); return true;
+  }
+  if (remote_command_) {
+    stageRemoteMutation(enable ? RemoteMutation::OnlyOn : RemoteMutation::OnlyOff,
+                        {}, p->generation[1]);
+    memcpy(remote_only_owner_, owner, sizeof(owner));
+  } else if (enable) {
+    p->setSecondaryOnly(owner);
+    secondary_only_deadline_ms_ = millis() + 300000UL;
+  }
+  else p->clearSecondaryOnly();
+  snprintf(reply, capacity, "OK - radio2.only %s", enable ? "on" : "off");
+  return true;
+}
+
 bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, bool remote_origin, const float* primary_frequency) {
 #if defined(MESH_HIL_TX_FREQ_MHZ)
   if (handleHilTxFrequencyCommand(command, reply, capacity)) return true;
@@ -1285,57 +1339,9 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
 #if MESH_RADIO_SWITCH_TUNING
   if (handleFastSettings(key, args, verb, remote_origin, reply, capacity)) return true;
 #endif
-  if (!strcmp(key, "radio2.only")) {
-    auto* p = radio_ ? radio_->profiles() : nullptr;
-    if (!p || !radio_->supportsSecondaryOnly()) {
-      cli::formatError(reply, capacity, "radio2.only unsupported"); return true;
-    }
-    if (verb == Get && !*args) {
-      if (!p->secondaryOnly()) snprintf(reply, capacity, "> off");
-      else snprintf(reply, capacity, "> %s %s",
-          radio_->secondaryOnlyReady() ? "on" : "pending", p->secondary_only_owner);
-      return true;
-    }
-    const bool enable = !strncmp(args, "on ", 3);
-    const bool disable = !strncmp(args, "off ", 4);
-    const char* token = args + (enable ? 3 : disable ? 4 : 0);
-    char owner[17];
-    if (verb != Set || (!enable && !disable) || strlen(token) != 16) {
-      cli::formatError(reply, capacity, "use set radio2.only on|off TOKEN"); return true;
-    }
-    for (unsigned i = 0; i < 16; ++i) {
-      char c = token[i];
-      if (c >= 'a' && c <= 'f') c -= 'a' - 'A';
-      if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F'))) {
-        cli::formatError(reply, capacity, "token must be 16 hex digits"); return true;
-      }
-      owner[i] = c;
-    }
-    owner[16] = 0;
-    if (remote_origin && !remote_command_) {
-      cli::formatError(reply, capacity, "radio2.only: USB only"); return true;
-    }
-    if (hasReplyMutation()) { cli::formatError(reply, capacity, "ack pending"); return true; }
-    if (p->secondaryOnly() && strcmp(p->secondary_only_owner, owner)) {
-      cli::formatError(reply, capacity, "radio2.only owned by another session"); return true;
-    }
-    if (enable && (!temp_active_ || temp_pending_ || !p->secondary_temporary
-        || p->primary_temporary || p->secondary.mode != RadioProfileMode::RxTx
-        || p->secondary.params.protocol != RadioProfileProtocol::MeshCore)) {
-      cli::formatError(reply, capacity, "requires active temporary MeshCore radio2 rxtx"); return true;
-    }
-    if (remote_command_) {
-      stageRemoteMutation(enable ? RemoteMutation::OnlyOn : RemoteMutation::OnlyOff,
-                          {}, p->generation[1]);
-      memcpy(remote_only_owner_, owner, sizeof(owner));
-    } else if (enable) {
-      p->setSecondaryOnly(owner);
-      secondary_only_deadline_ms_ = millis() + 300000UL;
-    }
-    else p->clearSecondaryOnly();
-    snprintf(reply, capacity, "OK - radio2.only %s", enable ? "on" : "off");
-    return true;
-  }
+  if (!strcmp(key, "radio2.only"))
+    return handleSecondaryOnly(args, verb, remote_origin, reply, capacity);
+
 #if !defined(COMPANION_RADIO_FULL) && !MESH_ROLE_COMPANION
 #if !MESH_ENABLE_FLOOD_PROFILE_POLICY
   if (!strcmp(key, "radio.flood") || !strcmp(key, "radio2.flood")) {

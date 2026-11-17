@@ -38,7 +38,8 @@ def delayed_legacy_target_harness():
     return harness
 
 
-def radio_setup_harness(*, secondary_supported=True, pending_firmware=False, factory_defaults=False, policy_failure=False):
+def radio_setup_harness(*, secondary_supported=True, pending_firmware=False, factory_defaults=False, policy_failure=False,
+                        automatic_offset=False):
     harness=replace_once(HARNESS,"let expected,pkg,mid=''",
         "let sourceTemp='off',targetTemp='off',selectedProfile=0,targetAcknowledgedAt=0,pendingReads=0,timeline=[],fileReads=0,packageBuilds=0;const sourcePolicy={rxps:FACTORY_DEFAULTS?'on':'unsupported',autofetch:'off',autoinstall:'off',hops:FACTORY_DEFAULTS?3:0},targetPolicy={...sourcePolicy,rxps:FACTORY_DEFAULTS?'on':'off'};let expected,pkg,mid=''")
     harness=replace_once(harness,"else if(f[0]===26){if(!guard",
@@ -147,6 +148,13 @@ def radio_setup_harness(*, secondary_supported=True, pending_firmware=False, fac
     timeline,cmds,frames:port.frames,fileReads,packageBuilds});}});
 })();
 </script>'''
+    if not automatic_offset:
+        # This endpoint models the chosen 909.950/BW500 compatibility profile.
+        # Keep its trial/retry tests on that profile; the staged-handoff suite
+        # opts in to real automatic defaults and models both changing tuples.
+        harness = replace_once(harness, "el('password').value='password';el('connect').click();",
+            "el('radio-region').value='us-ca';el('radio-region').dispatchEvent(new Event('change'));"
+            "await wait(()=>!el('radio-region').disabled);el('password').value='password';el('connect').click();")
     return harness.replace('SECONDARY_SUPPORTED','true'if secondary_supported else'false').replace('FIRMWARE_PENDING','true'if pending_firmware else'false').replace('FACTORY_DEFAULTS','true'if factory_defaults else'false').replace('POLICY_FAILURE','true'if policy_failure else'false')
 
 
@@ -330,6 +338,11 @@ def expired_download_resume_harness():
     if(workflowState!=='complete')throw Error('Resume failed: '+el('workflow-status').textContent);""")
     harness = replace_once(harness, 'leaseReadLost,leaseRenewals,leaseResults,workflowState,',
         'retained,resumedData,resumedRequest,leaseReadLost,leaseRenewals,leaseResults,workflowState,')
+    # Disconnect intentionally resets the radio controls. Select this fixture's
+    # fixed compatibility profile again before reconnecting to resume it.
+    harness = replace_once(harness, "el('connect').click();await wait(()=>!el('inspect').disabled);",
+        "el('radio-region').value='us-ca';el('radio-region').dispatchEvent(new Event('change'));"
+        "await wait(()=>!el('radio-region').disabled);el('connect').click();await wait(()=>!el('inspect').disabled);")
     return harness.replace(',128', ',368').replace('preamble=128', 'preamble=368')
 
 

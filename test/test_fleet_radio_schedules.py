@@ -38,6 +38,9 @@ class Radio {public:
  virtual bool isInRecvMode()const{return true;}
  virtual RadioProfiles* profiles()=0;
  virtual const RadioProfiles* profiles()const=0;
+ // No exclusive physical-profile transport: preserve the production defaults.
+ virtual bool supportsSecondaryOnly()const{return false;}
+ virtual bool secondaryOnlyReady()const{return false;}
  // This scheduler fixture has no accelerated physical-radio transport. Match
  // the production Radio defaults without accepting or persisting tuning.
  virtual RadioSwitchCapabilities switchTuningCapabilities()const{return {};}
@@ -198,11 +201,10 @@ struct PrimaryFixture {
  FleetChannel fleet{&disk,&node};LocalIdentity publisher;unsigned dispatched=0;char reply[160]={};
  PrimaryFixture(){fake_ms=1000;node.rtc.now=mesh.clock.now;profiles.begin(&disk,&physical,&mesh.clock,true);
   enroll(fleet,publisher);bind(fleet,mesh,profiles);}
+ @PRIMARY_SCHEDULE@
  void handle(const char* text,char* reply){
   if(!strncmp(text,"set ",4)){
-   const char* config=text+4;RTC* _rtc=&node.rtc;MyMesh* _callbacks=&node;
-   RadioProfileCLI& _radio_profiles=profiles;RadioPrefs* _prefs=&node._prefs;
-   auto appendRxPowerSavingAdjustmentNote=[](char*,RadioPrefs*,uint8_t,float){};
+   const char* config=text+4;
    if(false){
 @PRIMARY_SET@
    }else assert(false);
@@ -414,6 +416,13 @@ uint16_t rxPowerSavingPreambleForParams(uint8_t,float){return 32;}
   end=cli.index('  } else if (memcmp(config, "lat ", 4) == 0)',start)
   primary_extra=PRIMARY_EXTRA.replace('@PRIMARY_SET@',cli[start:end])
   primary_extra=primary_extra.replace('@PRIMARY_ACCEPT@',body(cli,'bool CommonCLI::acceptsPrimaryRadioParams(').replace('CommonCLI::','').replace('_radio_profiles','profiles'))
+  schedule=body(cli,'void CommonCLI::handleScheduledRadio(').replace('CommonCLI::','')
+  schedule=schedule.replace('{','''{
+   RTC* _rtc=&node.rtc;MyMesh* _callbacks=&node;
+   RadioProfileCLI& _radio_profiles=profiles;RadioPrefs* _prefs=&node._prefs;
+   auto appendRxPowerSavingAdjustmentNote=[](char*,RadioPrefs*,uint8_t,float){};
+''',1)
+  primary_extra=primary_extra.replace('@PRIMARY_SCHEDULE@',schedule)
   physical,secondary=HARNESS.split('struct Fixture {',1)
   secondary=('struct Fixture {'+secondary).replace(' assert(argc==2);const std::string scenario=argv[1];Fixture f;',
    ' assert(argc==2);if(!strncmp(argv[1],"primary_",8))return primary(argc,argv);const std::string scenario=argv[1];Fixture f;')

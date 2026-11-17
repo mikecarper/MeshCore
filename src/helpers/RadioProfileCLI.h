@@ -130,6 +130,8 @@ class RadioProfileCLI {
   bool handleFastSettings(const char* key, const char* args, int verb,
                           bool remote, char* reply, size_t capacity);
 #endif
+  bool handleSecondaryOnly(const char* args, int verb, bool remote_origin,
+                           char* reply, size_t capacity);
   bool discardCorruptSavedImagesForWrite();
   bool applyReplyMutation();
   ImageReadResult readImage(const char* path, uint8_t* bytes, size_t size);

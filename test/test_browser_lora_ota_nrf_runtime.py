@@ -167,7 +167,8 @@ def run_harness(harness, timeout=45, *, radio2_preamble=128, compression_mode='n
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=5)
     if missing_scripts: raise AssertionError(f'Browser scripts did not load: {missing_scripts}')
-    if len(results) != 1: raise AssertionError('Expected one browser result')
+    if len(results) != 1:
+        raise AssertionError(f'Expected one browser result; received {len(results)}: {repr(results)[:2000]}')
     return results[0]
 
 

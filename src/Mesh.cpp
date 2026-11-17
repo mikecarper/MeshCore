@@ -353,25 +353,7 @@ void Mesh::begin() {
   _next_direct_retry_timeout = 0;
   _next_flood_retry_timeout = 0;
   memset(_direct_retries, 0, sizeof(_direct_retries));
-  for (int i = 0; i < TOTAL_FLOOD_RETRY_SLOTS; i++) {
-    _flood_retries[i].packet = NULL;
-    _flood_retries[i].trigger_packet = NULL;
-    _flood_retries[i].retry_started_at = 0;
-    _flood_retries[i].retry_at = 0;
-    _flood_retries[i].retry_delay = 0;
-    _flood_retries[i].message_timestamp = 0;
-    _flood_retries[i].retry_attempts_sent = 0;
-    memset(_flood_retries[i].retry_key, 0, sizeof(_flood_retries[i].retry_key));
-    memset(_flood_retries[i].message_replacement_key, 0,
-           sizeof(_flood_retries[i].message_replacement_key));
-    _flood_retries[i].priority = 0;
-    _flood_retries[i].progress_marker = 0;
-    _flood_retries[i].self_advert = false;
-    _flood_retries[i].waiting_final_echo = false;
-    _flood_retries[i].queued = false;
-    _flood_retries[i].has_message_replacement_key = false;
-    _flood_retries[i].active = false;
-  }
+  memset(_flood_retries, 0, sizeof(_flood_retries));
   for (int i = 0; i < MAX_RECENT_ADVERT_ECHOS; i++) {
     memset(_recent_advert_echoes[i].packet_hash, 0,
            sizeof(_recent_advert_echoes[i].packet_hash));
@@ -2310,23 +2292,7 @@ void Mesh::clearFloodRetrySlot(int idx) {
   if (_flood_retries[idx].waiting_final_echo && _flood_retries[idx].packet != NULL) {
     releasePacket(_flood_retries[idx].packet);
   }
-  _flood_retries[idx].packet = NULL;
-  _flood_retries[idx].trigger_packet = NULL;
-  _flood_retries[idx].retry_started_at = 0;
-  _flood_retries[idx].retry_at = 0;
-  _flood_retries[idx].retry_delay = 0;
-  _flood_retries[idx].message_timestamp = 0;
-  _flood_retries[idx].retry_attempts_sent = 0;
-  memset(_flood_retries[idx].retry_key, 0, sizeof(_flood_retries[idx].retry_key));
-  memset(_flood_retries[idx].message_replacement_key, 0,
-         sizeof(_flood_retries[idx].message_replacement_key));
-  _flood_retries[idx].priority = 0;
-  _flood_retries[idx].progress_marker = 0;
-  _flood_retries[idx].self_advert = false;
-  _flood_retries[idx].waiting_final_echo = false;
-  _flood_retries[idx].queued = false;
-  _flood_retries[idx].has_message_replacement_key = false;
-  _flood_retries[idx].active = false;
+  memset(&_flood_retries[idx], 0, sizeof(_flood_retries[idx]));
   if (rebuild_timeout) rebuildNextFloodRetryTimeout();
 }
 

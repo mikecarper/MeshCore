@@ -99,12 +99,24 @@ class Mesh : public Dispatcher {
     uint8_t payload_type;
     uint8_t priority;
     uint8_t progress_marker;
+#if defined(NRF52_PLATFORM) && MESH_CLIENT_REPEATER_ONLY
+    // Loop-owned flags are never serialized or passed by reference. nRF52
+    // infrastructure keeps their independent state in one RAM byte. Other
+    // roles retain byte fields to avoid increasing their constrained flash.
+    bool expect_path_growth : 1;
+    bool final_hop_retry : 1;
+    bool waiting_final_echo : 1;
+    bool queued : 1;
+    bool has_message_replacement_key : 1;
+    bool active : 1;
+#else
     bool expect_path_growth;
     bool final_hop_retry;
     bool waiting_final_echo;
     bool queued;
     bool has_message_replacement_key;
     bool active;
+#endif
   };
 
   struct FloodRetryEntry {
@@ -119,12 +131,26 @@ class Mesh : public Dispatcher {
     uint8_t message_replacement_key[MAX_HASH_SIZE];
     uint8_t priority;
     uint8_t progress_marker;
+#if defined(NRF52_PLATFORM) && MESH_CLIENT_REPEATER_ONLY
+    bool self_advert : 1;
+    bool waiting_final_echo : 1;
+    bool queued : 1;
+    bool has_message_replacement_key : 1;
+    bool active : 1;
+#else
     bool self_advert;
     bool waiting_final_echo;
     bool queued;
     bool has_message_replacement_key;
     bool active;
+#endif
   };
+#if defined(NRF52_PLATFORM) && MESH_CLIENT_REPEATER_ONLY
+  static_assert(sizeof(void*) != 4 || sizeof(DirectRetryEntry) <= 68,
+                "Direct retry flags must not add per-slot alignment padding");
+  static_assert(sizeof(void*) != 4 || sizeof(FloodRetryEntry) <= 44,
+                "Flood retry flags must not add per-slot alignment padding");
+#endif
 
   struct RecentAdvertEchoEntry {
     uint8_t packet_hash[MAX_HASH_SIZE];

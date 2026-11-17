@@ -947,7 +947,7 @@ test('automatic crossing with an existing temporary secondary and overlapping un
 
 test('compatibility source aligns existing manual windows automatically without rewriting saved channels', async () => {
   const f = fixture({legacy: true, initialPrimary: [909.95, 250, 5, 5], factoryDefaults: true});
-  const before = f.before(), result = await setup.prepare(f.link, key, 'pw', selected, f.options);
+  const before = f.before(), result = await setup.prepare(f.link, key, 'pw', selected, {...f.options, stagedOffset: true});
   assert.equal(result.ready, true); assert.equal(result.sourceProfile, 0); assert.equal(result.targetProfile, 0);
   assert.deepEqual(result.source, [910.5250244, 62.5, 7, 5]); assert.equal(f.before(), before);
   const radioWrites = f.events.filter(row => ['source', 'target'].includes(row[0]) && row[1].startsWith('tempradio '));
@@ -995,7 +995,7 @@ test('a short matching source primary is refreshed once before an existing targe
 test('a raw-only legacy source retains matching primary windows without a refresh even when optional idle getters exist', async () => {
   const f = fixture({legacy:true,initialPrimary:[910.5250244,62.5,7,5],initialMinutes:4,
     overrides:[['source:ota stats','fetch idle'],['source:ota folder','folder=off']]});
-  const result=await setup.prepare(f.link,key,'pw',selected,f.options);
+  const result=await setup.prepare(f.link,key,'pw',selected,{...f.options,stagedOffset:true});
   assert.equal(result.adoptedSource,true);assert.equal(result.refreshedSourcePrimary,false);
   assert.equal(f.writes().length,0);assert.equal(f.states.source[0].minutes,4);
 });

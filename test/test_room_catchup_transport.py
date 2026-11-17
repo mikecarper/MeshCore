@@ -173,6 +173,8 @@ class RoomCatchUpTransportTests(unittest.TestCase):
         cls.directory = tempfile.TemporaryDirectory(prefix="room-catchup-transport-")
         cls.addClassCleanup(cls.directory.cleanup)
         cls.binary = cls.build("production", production_source())
+        cls.packed_binary = cls.build("production-packed", "#define NRF52_PLATFORM 1\n"
+                                      "#define MESH_CLIENT_REPEATER_ONLY 1\n" + production_source())
 
     def run_case(self, name, expected):
         checked = subprocess.run([str(self.binary), name], capture_output=True, text=True, timeout=15)
@@ -184,6 +186,11 @@ class RoomCatchUpTransportTests(unittest.TestCase):
 
     def test_actual_mesh_cancellation_key_timestamp_kind_and_both_profiles(self):
         self.run_case("cancel", "actual cancellation retires one delivery across profiles and preserves every unrelated retry passed")
+
+    def test_actual_cancellation_with_packed_infrastructure_retry_flags(self):
+        checked = subprocess.run([str(self.packed_binary), "cancel"], capture_output=True, text=True, timeout=15)
+        self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
+        self.assertIn("preserves every unrelated retry passed", checked.stdout)
 
     def test_negative_controls_detect_broad_timestamp_and_key_cancellation(self):
         source = (ROOT / "src/Mesh.cpp").read_text()
