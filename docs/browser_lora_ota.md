@@ -123,11 +123,14 @@ Bluetooth requires a compatible Companion with Bluetooth OTA support. On Android
     <p>A staged update is discarded only if you choose Replace and install update.</p>
     </details>
     <p>Prepare update checks the firmware and link, and finds a fitting update path. Intermediate updates, when needed, run automatically.</p>
+    <p data-role="compression-summary">Transfer compression: Zopfli (1,000 iterations). Preparing the transfer can take a long time; choose fast compression under Update path options if preferred.</p>
     <label><input type="checkbox" data-role="quiet-forwarding" checked> Pause normal forwarding during the update, then restore it</label>
     <p>After radio2 is verified, radio1 floods pause. Older firmware pauses forwarding on both profiles. Keep this page open until forwarding is restored.</p>
     <p data-role="quiet-forwarding-status" role="status" hidden></p>
     <button type="button" data-role="restore-forwarding" class="lora-ota-secondary" hidden>Restore forwarding</button>
     <details class="lora-ota-advanced"><summary>Update path options</summary>
+      <label>Transfer compression<select data-role="compression"><option value="zopfli" selected>Zopfli (1,000 iterations; slower preparation)</option><option value="native">Fast browser compression</option></select></label>
+      <p>Zopfli prepares every block before the transfer and may take a long time for large updates, especially on older phones. It is used when the target supports compressed blocks. Path estimates use fast compression and are approximate.</p>
       <label><input type="checkbox" data-role="auto-search" checked> Compare compatible intermediate updates automatically</label>
       <label>Prefer<select data-role="auto-objective"><option value="steps">Fewest installs, then least data</option><option value="data">Least radio data, then fewest installs</option></select></label>
       <label>Search<select data-role="auto-depth"><option value="standard">Automatic</option><option value="deep">Deep search (takes longer)</option></select></label>
@@ -209,7 +212,7 @@ Bluetooth requires a compatible Companion with Bluetooth OTA support. On Android
     <p><label>Optimize <select data-role="chain-objective"><option value="packets">Fewer packets</option><option value="airtime">Estimated airtime and reboots</option></select></label>
     <label>Estimated preamble <input data-role="chain-preamble" type="number" min="1" max="65535" value="128"></label>
     <label>Minutes per new temporary window <input data-role="chain-minutes" type="number" min="1" max="10080" value="240"></label></p>
-    <p><button type="button" data-role="chain-plan" disabled>Compare paths</button> <button type="button" data-role="chain-run" disabled>Run selected path</button> <button type="button" data-role="chain-resume" disabled>Resume saved path</button></p>
+    <p><button type="button" data-role="chain-plan" disabled>Compare paths</button> <button type="button" data-role="chain-run" disabled>Run selected path</button> <button type="button" data-role="chain-resume" disabled>Resume saved path</button> <button type="button" data-role="chain-stop" class="lora-ota-secondary" hidden>Stop update</button></p>
     <p>Estimates exclude retries, status polls and congestion. Use the single-update controls for an actual update.</p>
   </details>
   <details class="lora-ota-advanced" data-role="diagnostics"><summary>Diagnostic log</summary>
@@ -574,11 +577,11 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_wifi_port.js?v=direct-wifi-1"></script>
 <script src="../_javascript/lora_ota_ble_port.js?v=bluetooth-1"></script>
 <script src="../_javascript/lora_ota_wifi_scan.js?v=direct-wifi-1"></script>
-<script src="../_javascript/lora_ota_serial.js?v=ota-quiet-1"></script>
-<script src="../_javascript/lora_ota_companion_source.js"></script>
+<script src="../_javascript/lora_ota_serial.js?v=zopfli-1"></script>
+<script src="../_javascript/lora_ota_companion_source.js?v=zopfli-1"></script>
 <script src="../_javascript/lora_ota_companion.js?v=bluetooth-1"></script>
 <script src="../_javascript/lora_ota_contacts.js?v=advert-path-1"></script>
-<script src="../_javascript/lora_ota_session.js?v=active-lease-retry-1"></script>
+<script src="../_javascript/lora_ota_session.js?v=zopfli-1"></script>
 <script src="../_javascript/lora_ota_route.js"></script>
 <script src="../_javascript/lora_ota_repeat.js"></script>
 <script src="../_javascript/lora_ota_quiet.js?v=workflow-first-1"></script>
@@ -596,6 +599,8 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_recovery.js?v=usb-retry-1"></script>
 <script src="../_javascript/lora_ota_lease.js?v=active-lease-retry-1"></script>
 <script src="../_javascript/lora_ota_catalog.js?v=4aeb7bf86"></script>
-<script src="../_javascript/lora_ota_preferences.js?v=1"></script>
-<script src="../_javascript/lora_ota_resume_store.js?v=1"></script>
-<script src="../_javascript/lora_ota_browser.js?v=resume-1"></script>
+<script src="../_javascript/lora_ota_preferences.js?v=zopfli-1"></script>
+<script src="../_javascript/lora_ota_resume_store.js?v=zopfli-1"></script>
+<script src="../_javascript/lora_ota_zopfli.js?v=1"></script>
+<script src="../_javascript/lora_ota_compression.js?v=1"></script>
+<script src="../_javascript/lora_ota_browser.js?v=zopfli-1"></script>

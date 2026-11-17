@@ -152,6 +152,7 @@
     constructor(link, key, password, info, options = {}) {
       this.link = link; this.key = key; this.password = password; this.info = info;
       this.signerVerified = !!options.signerVerified; this.image = options.image; this.compress = options.compress || null; this.inplacePlan = options.inplacePlan || null;
+      this.compressionMode = options.compressionMode || 'native';
       this.onStage = options.onStage || (() => {});
       // Only an explicit, hash-bound application chain can request an equal-
       // version bridge. Discovery and ordinary single updates remain forward-only.
@@ -168,7 +169,7 @@
       this.pollWake = null;
     }
     recordJournal(state) {
-      this.journal(this.verifiedRadio ? {...state, radio:cloneRadio(this.verifiedRadio)} : state);
+      this.journal({...state, compression:this.compressionMode, ...(this.verifiedRadio ? {radio:cloneRadio(this.verifiedRadio)} : {})});
     }
     restorePausedSecondaryRecord(record) {
       // A journal cannot supply restoration expectations for another radio or
@@ -392,6 +393,8 @@
       if (!options.allowExisting || state.id !== checks.hex(this.info.merkleRoot))
         throw Error('Target already has another OTA download; keep the original firmware selected to recover it');
       const record = this.readJournal();
+      if (record && (record.compression || 'native') !== this.compressionMode)
+        throw Error('Resume with the original transfer compression setting.');
       if (!record || typeof record.target !== 'string' || typeof record.source !== 'string' ||
           record.target.toLowerCase() !== this.key.toLowerCase() ||
           record.source.toLowerCase() !== this.link.sourceKey?.toLowerCase() || record.id !== state.id ||
@@ -629,6 +632,18 @@
       if (replacement && (options.resume || !/^[0-9a-f]{8}$/.test(replacement.id || '') ||
           !['active','failed','ready'].includes(replacement.state))) throw Error('Invalid download replacement request');
       this.cancelled = false; this.tempRadio = null; this.leaseMaintenanceUnavailable = false; this.leaseRetryAt = 0;
+      // Prepare slow encoders before the target is asked to pull. Request
+      // handlers must respond immediately once the source is on the air.
+      if (typeof this.compress?.prepare === 'function') {
+        const controller = new AbortController(); this.compressionAbort = controller;
+        this.onStage('compressing', {done:0,total:0});
+        try {
+          await this.compress.prepare(this.info, {signal:controller.signal,progress:(done,total)=>{
+            this.requireActive(); this.onStage('compressing', {done,total});
+          }});
+        } finally { if(this.compressionAbort===controller)this.compressionAbort=null; }
+        this.requireActive();
+      }
       this.onStage('checking');
       let before = await this.inspect({allowExisting:!!options.resume, allowReplacement:!!replacement});
       this.requireActive();
@@ -853,6 +868,7 @@
     }
     stop() {
       this.cancelled = true;
+      this.compressionAbort?.abort();
       this.pollWake?.();
       return this.stopOwnedSource();
     }

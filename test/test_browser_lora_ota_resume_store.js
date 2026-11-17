@@ -68,3 +68,11 @@ test('manual plan keys must match both identities',async()=>{
   await assert.rejects(store.save({source,target,file:file('goal.bin','abc'),kind:'manual',planKey:'manual:'+other+':'+target+':'+pkg+':'+('e'.repeat(32))}),/manual update plan/);
   await store.clear(rec);
 });
+
+test('preserves the exact compression choice and defaults old records to native',async()=>{
+  const rec=await store.save({source,target,file:file('goal.bin','abc'),compression:'zopfli'});
+  assert.equal((await store.peek()).compression,'zopfli');assert.equal((await store.load(rec)).compression,'zopfli');
+  await assert.rejects(store.save({source,target,file:file('x.bin','x'),compression:'unknown'}),/compression/);
+  const old=rows.get('latest');delete old.compression;rows.set('latest',old);
+  assert.equal((await store.load(rec)).compression,'native');await store.clear(rec);
+});

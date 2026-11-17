@@ -7,7 +7,8 @@
   'use strict';
   const KEY='meshcore-browser-lora-ota-preferences-v1';
   const selections={connection:['usb','wifi','bluetooth'],source:['auto','companion','repeater'],
-    'auto-objective':['steps','data'],'auto-depth':['standard','deep']};
+    'auto-objective':['steps','data'],'auto-depth':['standard','deep'],
+    'compression':['native','zopfli']};
   const toggles=['acl','quiet-forwarding','auto-search'];
   const roles=[...Object.keys(selections),'wifi-url','key','relays','candidates','snr','age',...toggles];
   const radioFields=['radio-frequency','radio-bandwidth','radio-sf','radio-cr',

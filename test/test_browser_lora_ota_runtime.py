@@ -127,7 +127,8 @@ class BrowserLoraOtaRuntimeTest(unittest.TestCase):
         forwarding_opt_out = ('<script>(()=>{const checkbox=document.querySelector('
             "'[data-lora-ota] [data-role=\"quiet-forwarding\"]');"
             'if(checkbox)checkbox.checked=false;})();</script>')
-        page = '<!doctype html><meta charset="utf-8">' + div + forwarding_opt_out + HARNESS + ''.join(scripts)
+        fast_compression = '<script>document.querySelector(\'[data-role="compression"]\').value="native";</script>'
+        page = '<!doctype html><meta charset="utf-8">' + div + forwarding_opt_out + fast_compression + HARNESS + ''.join(scripts)
         done = threading.Event()
         results, missing_scripts = [], []
 

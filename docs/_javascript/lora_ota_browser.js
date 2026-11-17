@@ -84,12 +84,18 @@
     $('connect').textContent=wifi?'Connect Wi-Fi Companion':bluetooth?'Connect Bluetooth Companion':'Connect USB source';
     $('reconnect').textContent=wifi?'Reconnect Wi-Fi Companion':bluetooth?'Reconnect Bluetooth Companion':'Reconnect USB source';
   }
+  function updateCompressionSummary(){
+    $('compression-summary').textContent=$('compression').value==='zopfli'
+      ? 'Transfer compression: Zopfli (1,000 iterations). Preparing the transfer can take a long time; choose fast compression under Update path options if preferred.'
+      : 'Transfer compression: fast browser compression. Change this under Update path options.';
+  }
   const preferences=globalThis.LoraOtaPreferences?.install(ui,{ignoreSavedConnection:new URLSearchParams(window.location.search).get('connection')==='bluetooth',getTargetKey:()=>contactKey||$('key').value});
   if(new URLSearchParams(window.location.search).get('connection')==='bluetooth') {
     $('connection').value='bluetooth';
     $('contact-status').textContent='Connect your Bluetooth Companion to choose the remote device.';
   }
   updateConnectionControls();
+  updateCompressionSummary();$('compression').addEventListener('change',updateCompressionSummary);
   const updatesBlocked = () => !!link?.failure || sourceOtaUnsupported || !!targetAvailability && targetAvailability.state !== 'supported';
   function showAvailability(result) {
     const notice=$('ota-availability');
@@ -243,8 +249,14 @@
     return pending?' Firmware is verified. Review the pending settings warning before disconnecting.':
       ' You can disconnect the source radio.';
   }
-  function sessionStage(stage) {
-    if(updatePhase!=='transfer' || transferStopJob===session || transferStage===stage)return;
+  function sessionStage(stage, detail) {
+    if(updatePhase!=='transfer' || transferStopJob===session)return;
+    if(stage==='compressing') {
+      const suffix=detail?.total ? ' '+detail.done+' of '+detail.total+' blocks.' : '';
+      status('Preparing Zopfli compression (1,000 iterations).'+suffix);
+      return;
+    }
+    if(transferStage===stage)return;
     transferStage=stage;
     const messages={
       checking:link?.relays?.length ? 'Checking the route, target and radio settings...' : 'Checking the target and radio settings...',
@@ -462,7 +474,7 @@
   const readChainJournal = () => { try { return JSON.parse(localStorage.getItem('meshcore-browser-lora-ota-chain')); } catch (_) { return null; } };
   const readChainMeta = () => { try { return JSON.parse(localStorage.getItem('meshcore-browser-lora-ota-chain-meta')); } catch (_) { return null; } };
   const editable = ['source', 'key', 'acl', 'relays', 'candidates', 'snr', 'age', 'password', 'file', 'base', 'full-rebuild', 'image', 'signer',
-    'chain-files', 'chain-attest', 'chain-objective', 'chain-preamble', 'chain-minutes','auto-search','auto-objective','auto-depth'];
+    'chain-files', 'chain-attest', 'chain-objective', 'chain-preamble', 'chain-minutes','auto-search','auto-objective','auto-depth','compression'];
   const radioFields=['radio-frequency','radio-bandwidth','radio-sf','radio-cr','radio-preamble','radio2-preamble','radio-minutes'];
   const radioDefaults=Object.fromEntries([...radioFields,'radio-region'].map(name=>[name,$(name).value]));
   for(const profile of LoraOtaRadioSetup.regions||[]){
@@ -1016,6 +1028,13 @@
   function supportedCompression() {
     try { new CompressionStream('deflate-raw'); return compressor; } catch (_) { return null; }
   }
+  function transferCompression() {
+    if($('compression').value==='zopfli') {
+      if(!globalThis.LoraOtaCompression)throw Error('Zopfli compression is unavailable in this browser.');
+      return LoraOtaCompression.createZopfli(globalThis.LoraOtaZopfli);
+    }
+    return supportedCompression();
+  }
   async function close() {
     stopAdvertScan('Advertisement path checks stopped.');
     $('advert-path-progress').hidden=true;
@@ -1546,7 +1565,7 @@
     if(savedUpdate)$('saved-update-status').textContent='An interrupted update for '+savedUpdate.target.slice(0,12).toUpperCase()+' is saved in this browser. Connect the same source and select Resume saved update.';
   }
   async function saveUpdateInputs(kind,autoKey) {
-    if(currentSnapshot && currentSnapshot.source===link?.sourceKey?.toLowerCase() && currentSnapshot.target===session?.key?.toLowerCase() && currentSnapshot.kind===kind && (kind==='automatic'?currentSnapshot.autoKey===autoKey:currentSnapshot.packageHash===session.packageHash))return;
+    if(currentSnapshot && currentSnapshot.source===link?.sourceKey?.toLowerCase() && currentSnapshot.target===session?.key?.toLowerCase() && currentSnapshot.kind===kind && currentSnapshot.compression===preparedFiles?.compression && (kind==='automatic'?currentSnapshot.autoKey===autoKey:currentSnapshot.packageHash===session.packageHash))return;
     currentSnapshot=null;
     try {
       if(!globalThis.LoraOtaResumeStore || !preparedFiles?.file || !link?.sourceKey || !session?.key ||
@@ -1581,7 +1600,7 @@
     if(!resumableSnapshot(savedUpdate))throw Error('The matching interrupted update record is unavailable. Nothing was changed.');
     const record=await LoraOtaResumeStore.load(savedUpdate);
     if(!record)throw Error('The saved firmware is unavailable. Choose the original firmware file and prepare the update again.');
-    currentSnapshot=record;resumeInputs=record;$('signer').value=record.signer||'';
+    currentSnapshot=record;resumeInputs=record;$('signer').value=record.signer||'';$('compression').value=record.compression||'native';updateCompressionSummary();
     try {
       if(record.kind==='manual') {
         const cached=await LoraOtaAutoChain.cache('get',record.planKey),meta=readChainMeta();
@@ -1610,7 +1629,7 @@
   function autoSession(step,target,password,key){
     const Session=link.relays?.length?LoraOtaRoutedSession.RoutedSession:LoraOtaSession.DirectSession;
     return new Session(link,target,password,step.package.info,{image:step.targetImage,inplacePlan:step.edge.inplacePlan,deferSecondaryRestoration:true,
-      allowSameVersion:step.edge.allowSameVersion===true,compress:supportedCompression(),progress:log,onStage:sessionStage,
+      allowSameVersion:step.edge.allowSameVersion===true,compress:transferCompression(),compressionMode:$('compression').value,progress:log,onStage:sessionStage,
       journal:state=>autoWrite(key,'step',state),readJournal:()=>autoRead(key,'step')});
   }
   async function readyAutomatic(prepared,target,password,key,file,cached=false){
@@ -1763,7 +1782,7 @@
       // selected differential even if the full-package recovery option was set.
       const forceFull = !resumeInputs && isFirmware && $('full-rebuild').checked && !(catalogDest?.nrf && !catalogDest.external);
       const baseFile = forceFull ? null : (resumeInputs ? resumeInputs.base : ($('base').files[0] || (isFirmware ? catalogBaseFile : null)));
-      preparedFiles={file,base:baseFile||null,image:resumeInputs ? resumeInputs.image : ($('image').files[0]||null),signer:$('signer').value.trim()};
+      preparedFiles={file,base:baseFile||null,image:resumeInputs ? resumeInputs.image : ($('image').files[0]||null),signer:$('signer').value.trim(),compression:$('compression').value};
       diagnostics.selected={name:file.name};
       if(baseFile)diagnostics.installed={name:baseFile.name};
       const input = isFirmware ? await firmwareBytes(file, baseFile ? 4 * 1024 * 1024 : undefined) : await bytes(file);
@@ -1937,7 +1956,7 @@
       const Session = link.relays?.length ? LoraOtaRoutedSession.RoutedSession : LoraOtaSession.DirectSession;
       session = new Session(link, $('key').value.trim(), $('acl').checked ? '' : $('password').value, info, {
         signerVerified:!!expectedSigner && info.signed, image:expectedImage, inplacePlan,deferSecondaryRestoration:true,
-        compress:supportedCompression(), progress:log, onStage:sessionStage, journal, readJournal
+        compress:transferCompression(), compressionMode:$('compression').value, progress:log, onStage:sessionStage, journal, readJournal
       });
       // Reject a wrong/corrupt image before changing either radio. A completed
       // installation can also be verified without reopening an update channel.
@@ -2234,7 +2253,7 @@
       log('Simulating each differential with the matching bootloader...');
       await LoraOtaSim.simulate(bootProfile,chainPrepared,caps.runtimeStageCeiling);
       chainConfig={source:link.sourceKey,target,current,caps,baseImageHash:LoraOtaChecks.hex(first.imageHash),objective,preamble,minutes,sourceRadio,targetPreamble,bootProfile};
-      manualFiles={file:goalFile,base:baseFile,image:null,signer:''};
+      manualFiles={file:goalFile,base:baseFile,image:null,signer:'',compression:$('compression').value};
       const route=chainPrepared.route;
       log('Selected path: '+route.steps.map(s=>s.from+' -> '+s.to+' ('+s.kind+')').join('; ')+'.');
       log('Estimate: '+route.totals.rfTransmissions+' radio transmissions'+
@@ -2253,6 +2272,7 @@
     busy(true); $('inspect').disabled=true;
     const connection=link,preparedPath=chainPrepared,config=chainConfig,generation=disconnectGeneration;
     const signalController = new AbortController(); preparing=signalController;
+    $('chain-stop').hidden=false;$('chain-stop').disabled=false;
     try {
       const {target,bootProfile,caps,sourceRadio,minutes,targetPreamble}=chainConfig;
       const password=$('acl').checked?'':$('password').value;
@@ -2288,8 +2308,8 @@
         prepared:chainPrepared, link, targetKey:target, readLive,
         readStepJournal,writeStepJournal,readChainJournal,writeChainJournal,
         createSession:async step=>(session=new Session(link,target,password,step.package.info,{
-          image:step.targetImage,inplacePlan:step.edge.inplacePlan,compress:supportedCompression(),deferSecondaryRestoration:true,
-          progress:log,journal:writeStepJournal,readJournal:readStepJournal
+          image:step.targetImage,inplacePlan:step.edge.inplacePlan,compress:transferCompression(),compressionMode:$('compression').value,deferSecondaryRestoration:true,
+          progress:log,onStage:(stage,detail)=>{if(stage==='compressing')status('Preparing Zopfli compression (1,000 iterations). '+(detail?.done||0)+' of '+(detail?.total||0)+' blocks.');},journal:writeStepJournal,readJournal:readStepJournal
         })),
         rearm:async ({signal})=>LoraOtaChainUi.rearm(link,target,password,sourceRadio,minutes,{signal,preamble:targetPreamble}),
         confirmRearm:async()=>LoraOtaChainUi.activeRadio(link,target,password,sourceRadio,targetPreamble)
@@ -2299,8 +2319,9 @@
       log('Update sequence complete; verified '+result.steps+' installation(s).');
       await clearSavedUpdate();
     } catch(error) { await fail(error); }
-    finally { preparing=null;busy(false);$('inspect').disabled=!link || updatesBlocked(); }
+    finally { preparing=null;$('chain-stop').hidden=true;busy(false);$('inspect').disabled=!link || updatesBlocked(); }
   }
+  $('chain-stop').addEventListener('click',()=>{if(preparing){$('chain-stop').disabled=true;preparing.abort();session?.stop();status('Stopping update...');}});
   $('install').addEventListener('click', () => run(()=>install(),'Install firmware and verify the remote device after reboot'));
   $('chain-plan').addEventListener('click', () => run(()=>planChain(),'Plan multi-version firmware update'));
   $('chain-run').addEventListener('click', () => run(()=>runChain(false),'Run multi-version firmware update'));

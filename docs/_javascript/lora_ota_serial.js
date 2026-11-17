@@ -157,7 +157,10 @@
           try {
             const encoded = new Uint8Array(await this.compress(raw));
             this.compressed.set(block, encoded.length < raw.length ? encoded : null);
-          } catch (_) { this.compressed.set(block, null); }
+          } catch (error) {
+            if(this.compress.strict)throw Error('Zopfli transfer compression failed: '+String(error?.message||error));
+            this.compressed.set(block, null);
+          }
         }
         const encoded = this.compressed.get(block);
         if (encoded && offset + length <= encoded.length) {

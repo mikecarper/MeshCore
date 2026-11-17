@@ -42,7 +42,7 @@ def resume_harness(case):
       await wait(()=>el('status').textContent.includes('Error:'));
     }
     await report({savedVisible,restoredKey,selected,status:el('status').textContent,update:el('update').textContent,
-      disabled:el('update').disabled,commandsBefore,cmds,frames:port.frames});return;
+      disabled:el('update').disabled,compression:el('compression').value,commandsBefore,cmds,frames:port.frames});return;
 '''.replace('CASE',repr(case))
     return HARNESS[:start]+flow+HARNESS[end:]
 
@@ -70,6 +70,12 @@ class BrowserResumeReloadTest(unittest.TestCase):
         self.assertEqual(result['update'],'Update remote firmware')
         self.assertFalse(result['disabled'])
         self.assertFalse(any(cmd.startswith('ota pull ') or cmd.startswith('ota installhash ') or cmd=='ota install' for cmd in result['cmds']))
+
+    def test_legacy_recovery_restores_native_compression_even_with_new_default(self):
+        result=run_harness(resume_harness('match'),timeout=90,compression_mode=None)
+        self.assertNotIn('error',result,result)
+        self.assertEqual(result['compression'],'native')
+        self.assertEqual(result['update'],'Resume and install update')
 
     def test_mismatched_source_or_target_never_sends_remote_commands(self):
         for case in ['wrong-source','wrong-target']:

@@ -108,7 +108,7 @@ def changed_internal_harness(kind):
     return harness
 
 
-def run_harness(harness, timeout=45, *, radio2_preamble=128):
+def run_harness(harness, timeout=45, *, radio2_preamble=128, compression_mode='native'):
     markdown = (ROOT / 'docs/browser_lora_ota.md').read_text(encoding='utf-8')
     div = re.search(r'<div data-lora-ota>.*?</div>', markdown, re.S).group()
     scripts = re.findall(r'<script src="[^"]+"></script>', markdown)
@@ -124,7 +124,10 @@ def run_harness(harness, timeout=45, *, radio2_preamble=128):
     preamble_choice = '' if radio2_preamble is None else (
         '<script>document.querySelector(\'[data-role="radio2-preamble"]\').value='
         + str(int(radio2_preamble)) + ';</script>')
-    page = '<!doctype html><meta charset="utf-8">' + div + forwarding_opt_out + preamble_choice + harness + ''.join(scripts)
+    compression_choice = '' if compression_mode is None else (
+        '<script>document.querySelector(\'[data-role="compression"]\').value='
+        + json.dumps(compression_mode) + ';</script>')
+    page = '<!doctype html><meta charset="utf-8">' + div + forwarding_opt_out + preamble_choice + compression_choice + harness + ''.join(scripts)
     done = threading.Event()
     results, missing_scripts = [], []
 
@@ -136,6 +139,7 @@ def run_harness(harness, timeout=45, *, radio2_preamble=128):
                 body = page.encode('utf-8')
             elif (re.fullmatch(r'/_javascript/lora_ota_[a-z_]+\.js', path) or re.fullmatch(
                     r'/_javascript/vendor/detools-js/[a-z-]+\.js', path) or
+                    re.fullmatch(r'/_javascript/vendor/zopfli/(?:libzopfli\.js|zopfli\.wasm)', path) or
                     re.fullmatch(r'/_javascript/otafix_sim/worker\.js', path) or
                     re.fullmatch(r'/_javascript/otafix_sim/build/otafix-2\.4\.(?:3|6|9|11|12)-rak(?:3401|4631)-internal\.wasm', path)):
                 body = (ROOT / 'docs' / path.lstrip('/')).read_bytes()

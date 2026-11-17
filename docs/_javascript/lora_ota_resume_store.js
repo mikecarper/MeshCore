@@ -19,6 +19,8 @@
     if(!source||!target||!['single','automatic','manual'].includes(kind))throw Error('Saved update identities are invalid.');
     const signer=value.signer==null||value.signer===''?'':key(value.signer);
     if(signer===null)throw Error('Saved signing key is invalid.');
+    const compression=value.compression??'native';
+    if(!['native','zopfli'].includes(compression))throw Error('Saved compression choice is invalid.');
     let autoKey=value.autoKey??null;
     if(autoKey!==null){
       if(typeof autoKey!=='string')throw Error('Saved update path is invalid.');
@@ -36,7 +38,7 @@
     if(packageHash===null)throw Error('Saved package hash is invalid.');
     const recordId=forSave?hex(webCrypto().getRandomValues(new Uint8Array(16))):value.recordId;
     if(typeof recordId!=='string'||!idPattern.test(recordId))throw Error('Saved update record is invalid.');
-    return {source,target,kind,autoKey,planKey,signer,packageHash,recordId:recordId.toLowerCase()};
+    return {source,target,kind,autoKey,planKey,signer,compression,packageHash,recordId:recordId.toLowerCase()};
   }
   async function digest(data){return hex(new Uint8Array(await webCrypto().subtle.digest('SHA-256',data)));}
   async function pack(file,required){

@@ -71,7 +71,10 @@
       let encoded=raw, compressed=false;
       if(v2&&(mask&0x4000)&&this.compress) {
         if(!this.encoded.has(index)) {
-          let candidate;try { candidate=new Uint8Array(await this.compress(raw)); } catch (_) { candidate=raw; }
+          let candidate;try { candidate=new Uint8Array(await this.compress(raw)); } catch (error) {
+            if(this.compress.strict){const failure=Error('Zopfli transfer compression failed: '+String(error?.message||error));failure.otaCompressionFailure=true;throw failure;}
+            candidate=raw;
+          }
           const use=candidate.length>0&&candidate.length<raw.length;
           this.encoded.set(index,{data:use?candidate:raw.slice(),compressed:use});
         }
@@ -114,7 +117,7 @@
         }
         if(frames.length>64)return [];
         return frames.map(wrap);
-      } catch (_) { return []; }
+      } catch (error) { if(error?.otaCompressionFailure)throw error;return []; }
     }
   }
   return {Source,decode,wrap};
