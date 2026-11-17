@@ -107,7 +107,7 @@ public:
   bool begin() override;
   // Configured expander addresses must not overlap another compiled driver
   // on the primary expansion bus, even when that sensor is currently absent.
-  bool isPrimaryI2cAddressReserved(uint8_t address) const;
+  bool isPrimaryI2cAddressReserved(uint8_t address) const override;
   bool querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) override;
   uint8_t getVoltageSensorChannels(uint8_t channels[],
                                    uint8_t capacity) const override;

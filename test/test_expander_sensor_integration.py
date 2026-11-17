@@ -28,6 +28,12 @@ class ExpanderSensorIntegration(unittest.TestCase):
         expanded = expanded.replace(original, r'''int main() {
           for(auto& ack:acknowledged) ack=true;
           TestSensors sensors;
+          SensorManager no_environment;
+          assert(no_environment.isPrimaryI2cAddressReserved(0x3c));
+          assert(no_environment.isPrimaryI2cAddressReserved(0x3d));
+          assert(!no_environment.isPrimaryI2cAddressReserved(0x27));
+          const SensorManager& generic = sensors;
+          assert(generic.isPrimaryI2cAddressReserved(0x76));
           assert(sensors.isPrimaryI2cAddressReserved(0x76));
           assert(sensors.isPrimaryI2cAddressReserved(0x3c));
           assert(sensors.isPrimaryI2cAddressReserved(0x3d));
