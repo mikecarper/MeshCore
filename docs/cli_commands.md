@@ -1372,8 +1372,19 @@ not LCD health. A damaged or nonstandard panel can require an override.
 `oled` explicitly selects and checks the OLED driver. `tft` explicitly selects
 the TFT driver and reports `TFT (forced)` rather than claiming detection.
 `off` disables display initialization and reports `off`, distinct from
-`none detected`. Selections apply immediately and survive reboot in the checked
-`/display_type` file. A failed save leaves the live selection unchanged.
+`none detected`. Selections survive reboot in the checked `/display_type` file.
+A failed save leaves the live selection unchanged.
+
+In new unified Full Companion builds, `set display.type oled` followed by
+`reboot` also releases GPIO33/44/47/48 for accessories. The same firmware
+supports both wiring arrangements. `get display.type` reports `oled`
+without `reboot required` after that boot; Auto keeps the display-pin union reserved,
+even when it detects an OLED. See the [OLED-only wiring guide](rotary_input.md#oled-expansion-mode-in-the-same-unified-firmware).
+Clear accessory assignments and remove their wiring before switching away
+from this OLED profile. Such changes are saved for reboot; they cannot start
+TFT/touch live or allow new accessory assignments while pending. Other
+display selections apply immediately. Corrupt or unreadable saved settings
+keep display probing disabled until repaired and rebooted.
 
 `board` combines the detected radio front end with the live display status,
 for example `Heltec V4.3 OLED`, `Heltec V4.2 TFT`, or `Heltec V4.3 off`.
@@ -4052,11 +4063,20 @@ Rotary navigation also requires a supported display UI.
 Rotary pins, steps, reverse and pull-up settings also have individual getters.
 Assignments are saved and applied immediately. Protected pins and conflicting
 physical-pad assignments are rejected across GPIO timers, notifications,
-rotary inputs and custom outputs. LEDs are active high; the Bluetooth LED
+rotary inputs and custom outputs. Native LEDs default to active high; the Bluetooth LED
 indicates the enabled transport, including advertising. See the
 [wiring and board guide](rotary_input.md), including the Heltec V4 display/touch
 pin limits. RTTTL melodies and alert patterns use the existing
 [notification commands](notifications.md).
+
+ESP32 Full Companion also supports a configured I2C expander on the board's
+existing expansion bus: `get expander`, `set expander <type>,<address>`, and
+`set expander off`. Types are `pcf8575`, `pcf8574`, `pcf8574a`, `mcp23017`,
+and `mcp23008`. Rotary/LED assignments accept `x0` through `x15` (only
+`x0` through `x7` on eight-pin chips; MCP23017 excludes `x7` and `x15`);
+LED pins accept `,low` or `,high`.
+Passive buzzers still require native GPIO. See the
+[expander wiring and configuration guide](i2c_expanders.md).
 
 ---
 

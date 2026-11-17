@@ -108,24 +108,27 @@ when the application console uses USB. The resistor limits current while
 that contact is grounded. See Espressif's
 [ESP32-S3 startup wiring](https://docs.espressif.com/projects/esp-techpedia/en/latest/esp-friends/get-started/try-firmware/try-firmware-hardware/esp32s3.html).
 
-The unified image protects the union of OLED, TFT and touch-controller pins,
+In the default Auto mode, the unified image protects the union of OLED, TFT and touch-controller pins,
 even if startup detects only an OLED or no display. GPIO44, GPIO47 and GPIO48
 remain reserved for touch reset/I2C, and GPIO40/41 remain reserved for GNSS
 wake/PPS. Radio, GNSS, battery, memory, debug and USB nets also stay protected.
-After GPIO6/43 are allocated to this encoder, the standard unified image has
-no spare permitted GPIO for the four additional outputs. It cannot safely
-host the encoder and all the lights/buzzer together with that hardware mapping.
-Do not substitute display or GNSS pins because an accessory was not detected.
+After GPIO6/43 are allocated to this encoder, Auto mode has
+no spare permitted native GPIO for the four additional outputs. The
+[ESP32 I2C expander arrangement](i2c_expanders.md) moves the encoder and
+LEDs to an external chip and frees GPIO6 for the passive buzzer.
+Alternatively, explicitly select [OLED expansion mode](#oled-expansion-mode-in-the-same-unified-firmware)
+and reboot to use four native output pins. Do not substitute display or GNSS
+pins merely because an accessory was not detected.
 
 In particular, the following proposed LED/buzzer assignments are **not valid**
-for this unified image:
+in Auto mode:
 
 | Proposed connection | Why the pin is unavailable |
 | --- | --- |
 | Notification LED on GPIO35 | The board's built-in LED already uses this pin; firmware reserves it. |
 | GPS LED on GPIO34 | This controls the GNSS power supply. It is not an external status-LED output. |
 | Bluetooth LED on GPIO36 | This controls the Vext power rail. Toggling it would change peripheral power. |
-| Passive buzzer on GPIO33 | The unified OLED/TFT image reserves it for TFT display data, including when only an OLED is detected. |
+| Passive buzzer on GPIO33 | Auto mode reserves it for TFT display data, including when only an OLED is detected. Explicit OLED mode plus reboot can release it. |
 
 The GPIO34/35/36 board connections are documented in Heltec's
 [V4 pin map](https://heltec.org/project/wifi-lora-32-v4/#DocsResource) and
@@ -136,14 +139,67 @@ Check `get peripheral.pins.available` after assigning the encoder. An empty
 GPIO list means there are no permitted output pins left. The commands below
 do not override reservations. For an encoder plus three independent LEDs and
 a buzzer, use hardware with enough available pins or an expansion design with
-matching firmware support. An I2C GPIO expander cannot be assigned through
-these MCU-pin commands; a buzzer also needs a suitable waveform output/driver.
+matching firmware support. ESP32 Full Companion can use
+[explicitly named expander pins](i2c_expanders.md) for rotary inputs and LEDs;
+a passive buzzer still needs a native waveform output/driver.
+
+### OLED expansion mode in the same unified firmware
+
+For a V4/V4.3 **ESP32-S3R2 with only an OLED**, the unified Full Companion firmware can
+release GPIO33, GPIO44, GPIO47 and GPIO48 for accessories. This is an
+explicit boot profile: saving `display.type oled` and rebooting releases
+the pins. Auto-detection of an OLED does not. Do not attach the TFT/touch expansion kit in this mode.
+It does not apply to V4 R8 boards.
+
+With the new firmware installed, enter separately:
+
+```text
+set display.type oled
+reboot
+```
+
+Reconnect and check `get display.type`: it should report `oled` without `reboot required`.
+Disconnect power before adding wires.
+
+| Component | Connection |
+| --- | --- |
+| Encoder CLK | GPIO6 |
+| Encoder DT | GPIO43 through 1 kohm |
+| Encoder switch | GPIO0 |
+| Encoder common and switch ground | GND |
+| Passive buzzer signal | GPIO33, with a suitable driver if required |
+| Notification LED positive | GPIO44 through its current-limiting resistor |
+| GPS LED positive | GPIO47 through its current-limiting resistor |
+| Bluetooth LED positive | GPIO48 through its current-limiting resistor |
+| Buzzer and LED negatives | GND |
+
+After reconnecting:
+
+```text
+set rotary.pins 6,43,0
+set rotary.steps 4
+set rotary on
+set peripheral.buzzer 33
+set peripheral.led.notify 44
+set peripheral.led.gps 47
+set peripheral.led.ble 48
+```
+
+The usual sound/mute and alert rules still apply. GPIO38/39 and GPIO40/41
+remain reserved for GNSS. Native USB must be enabled to use GPIO43/44 this
+way. Release the encoder button during reset. Prewired LEDs with verified
+suitable built-in resistors do not need another series resistor.
+
+Clear assignments and remove accessory wiring from these four pins before
+using the TFT/touch kit. Save `set display.type auto` and reboot to restore
+the default TFT/OLED pin protections. Profile changes never release pins
+immediately while the old display is running.
 
 ## Passive buzzer and status LEDs
 
 Use current-limiting resistors for LEDs, and an appropriate driver when a
-buzzer or other load exceeds the GPIO's current rating. LED outputs are
-active high.
+buzzer or other load exceeds the GPIO's current rating. Native LED outputs
+default to active high; configured expander LEDs can select either polarity.
 
 ### Check the electrical ratings before choosing outputs
 
@@ -167,7 +223,8 @@ active high.
 
 ### Configure outputs on a board with available pins
 
-These commands accept Arduino MCU pins, not I2C-expander numbers:
+Numeric pins below are Arduino MCU GPIOs. ESP32 Full Companion also accepts
+explicit `xN` expander pins for LEDs; see the [expander guide](i2c_expanders.md).
 
 ```text
 get peripherals

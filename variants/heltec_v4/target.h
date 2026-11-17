@@ -2,12 +2,10 @@
 
 // GPIO40 and GPIO41 are hard-wired to GNSS WAKE and PPS respectively.
 // Keep them unavailable even when no GNSS data is detected at startup.
-#if defined(HELTEC_V4_DISPLAY_UNIFIED) && HELTEC_V4_DISPLAY_UNIFIED && defined(DISPLAY_CLASS)
-  // The stock TFT touch controller is probed on 47/48, with reset on 44.
-  #define USER_GPIO_RESERVED_PINS 40, 41, 44, 47, 48
-#else
-  #define USER_GPIO_RESERVED_PINS 40, 41
-#endif
+#define USER_GPIO_RESERVED_PINS 40, 41
+// The unified image additionally reserves TFT touch pins 44/47/48 through
+// UserGpioPinPolicy unless an explicit OLED-only expansion mode was latched
+// at boot. Merely detecting OLED, Off, or no display never releases them.
 
 #define RADIOLIB_STATIC_ONLY 1
 #include <RadioLib.h>

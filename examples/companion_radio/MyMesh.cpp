@@ -19,6 +19,7 @@
 #endif
 #include <helpers/LedSettings.h>
 #include <helpers/PeripheralOutputs.h>
+#include <helpers/I2cExpander.h>
 #include <helpers/RotarySettings.h>
 #include <helpers/ui/DisplayPowerSettings.h>
 #if defined(HELTEC_V4_DISPLAY_UNIFIED) && HELTEC_V4_DISPLAY_UNIFIED && defined(DISPLAY_CLASS)
@@ -4470,6 +4471,7 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
   if (mesh::cli::deferForRadioMaintenance(_radio && _radio->isAGCMaintenancePending(),
           command, reply, reply_size)) return true;
 #if MESH_CUSTOM_PERIPHERALS
+  if (mesh::expander::handleCommand(command, reply, reply_size)) return true;
   if (mesh::peripherals::handleCommand(command, reply, reply_size)) return true;
   if (mesh::ui::handleRotaryCommand(command, reply, reply_size)) return true;
 #endif

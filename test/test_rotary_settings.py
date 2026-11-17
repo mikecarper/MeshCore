@@ -338,6 +338,7 @@ class RotarySettingsTests(unittest.TestCase):
                 "MeshCore.h": BOARD, "Arduino.h": ARDUINO, "target.h": "#pragma once\n",
                 "helpers/ContactFileTransaction.h": (ROOT / "src/helpers/ContactFileTransaction.h").read_text(),
                 "helpers/PersistentStoreFormat.h": (ROOT / "src/helpers/PersistentStoreFormat.h").read_text(),
+                "helpers/I2cExpander.h": (ROOT / "test/fixtures/expander_rotary/I2cExpander.h").read_text(),
             }.items():
                 (folder / name).write_text(content, encoding="ascii")
             source = folder / "test.cpp"
@@ -355,7 +356,7 @@ class RotarySettingsTests(unittest.TestCase):
                     result = subprocess.run([
                         compiler, "-std=c++11", "-Wall", "-Wextra", "-Werror",
                         "-Wno-unused-function", "-g", "-O1", "-fno-omit-frame-pointer",
-                        "-fsanitize=address,undefined", "-fno-pie", "-no-pie",
+                        *([] if os.name == "nt" else ["-fsanitize=address,undefined"]), "-fno-pie", "-no-pie",
                         "-DMESH_CUSTOM_PERIPHERALS=1", *["-D" + flag for flag in flags],
                         "-I", str(folder), "-I", str(ROOT / "src"), str(source),
                         str(ROOT / "src/helpers/RotarySettings.cpp"),

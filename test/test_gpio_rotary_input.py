@@ -341,7 +341,8 @@ class GpioRotaryInputTest(unittest.TestCase):
                         compiler, "-std=c++11", "-Wall", "-Wextra", "-Werror",
                         "-Wno-error=reorder",  # Existing RotaryInputGPIO constructor.
                         "-g", "-O1", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
-                        "-fsanitize=address,undefined", *flags, "-I", str(temporary),
+                        *([] if os.name == "nt" else ["-fsanitize=address,undefined"]),
+                        *flags, "-I", str(temporary),
                         "-I", str(ROOT / "src"), str(temporary / "main.cpp"),
                         str(ROOT / "src/helpers/ui/GpioRotaryInput.cpp"),
                         str(ROOT / "src/helpers/ui/RotaryInputGPIO.cpp"),

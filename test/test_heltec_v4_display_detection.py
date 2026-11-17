@@ -143,6 +143,7 @@ public:
   unsigned applied=0;
   bool oled=true,tft=false;
   auto mode() const { return _mode; }
+  void setConfigurationFault(bool) {}
   void setMode(mesh::ui::HeltecV4DisplayMode mode) { _mode=mode; ++applied; }
   const char* status() const {
     if(_mode==mesh::ui::HeltecV4DisplayMode::Off) return "off";
@@ -210,12 +211,12 @@ int main() {
     if(field!=5) { invalid[5]=0; for(unsigned i=0;i<5;++i) invalid[5]^=invalid[i]; }
     fs.files["/display_type"]=invalid;
     assert(!loadHeltecV4DisplaySettings(&fs,display));
-    assert(display.mode()==HeltecV4DisplayMode::Auto);
+    assert(display.mode()==HeltecV4DisplayMode::Off);
   }
   assert(!loadHeltecV4DisplaySettings(nullptr,display));
   const auto no_fs=display.applied;
   assert(command("set display.type off") && strstr(reply,"save failed"));
-  assert(display.mode()==HeltecV4DisplayMode::Auto && display.applied==no_fs);
+  assert(display.mode()==HeltecV4DisplayMode::Off && display.applied==no_fs);
   assert(!loadHeltecV4DisplaySettings(&fs,display));
   assert(command("set display.type off") && display.mode()==HeltecV4DisplayMode::Off);
   fs.files.clear(); // Factory reset erases this file with the rest of SPIFFS.

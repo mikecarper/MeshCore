@@ -10,6 +10,7 @@
 #include "RuntimePinClaims.h"
 #include "RotarySettings.h"
 #include "PeripheralOutputs.h"
+#include "I2cExpander.h"
 #include <helpers/esp32/ManagementPassword.h>
 #if MESH_ENABLE_EMERGENCY_POWER
 #include <esp_task_wdt.h>
@@ -1385,6 +1386,7 @@ void ESP32Board::shutdownPeripherals() {
   }
 #endif
   mesh::peripherals::shutdown();
+  mesh::expander::shutdown();
 #endif
   // Power off the display if any
 #ifdef DISPLAY_CLASS

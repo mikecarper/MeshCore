@@ -142,6 +142,79 @@ assert(!available(47, Use::Output));
 assert(!available(48, Use::Output));
 """)
 
+    def test_unified_v4_explicit_oled_expansion_releases_only_four_display_pads(self):
+        config = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=(";",))
+        config.read([ROOT / "platformio.ini", ROOT / "variants/heltec_v4/platformio.ini"])
+
+        def expand(value):
+            def reference(match):
+                section, key = match[1].rsplit(".", 1)
+                return expand(config[section][key])
+            return re.sub(r"\$\{([^}]+)\}", reference, value)
+
+        flags = expand(config["heltec_v4_display"]["build_flags"])
+        macros = [name + "=" + value for name, value in re.findall(
+            r"-D\s*((?:P_LORA_|PIN_|ENV_PIN_|HELTEC_V4_)[A-Z0-9_]+)=(-?\d+)\b", flags)]
+        common = ["ESP32_PLATFORM", "MESH_CUSTOM_PERIPHERALS=1", "CONFIG_IDF_TARGET_ESP32S3", "ARDUINO_USB_CDC_ON_BOOT=1",
+                  "DISPLAY_CLASS=HeltecV4Display", "USER_GPIO_RESERVED_PINS=40,41", *macros]
+        adapter = """
+constexpr uint8_t TX=43, RX=44, SDA=3, SCL=4;
+#define digitalPinIsValid(pin) ((pin) <= 21 || ((pin) >= 26 && (pin) <= 48))
+#define digitalPinCanOutput(pin) (digitalPinIsValid(pin) && (pin) != 46)
+"""
+        self.run_policy(common, adapter, """
+assert(!mesh::ui::heltecV4OledExpansionActive());
+for(uint8_t pin:{33,44,47,48})assert(!available(pin,Use::Output));
+mesh::ui::setHeltecV4OledExpansionAtBoot(true);
+assert(mesh::ui::heltecV4OledExpansionActive());
+assert(mesh::ui::heltecV4OledExpansionPinsAvailable());
+for(uint8_t pin=0;pin<64;++pin) {
+  const bool allowed=pin==6||pin==33||pin==43||pin==44||pin==47||pin==48;
+  assert(available(pin,Use::Output)==allowed);
+  assert(available(pin,Use::InputPullup)==allowed);
+}
+for(uint8_t pin:{17,18,21,34,38,39,40,41,42,8,9,10,11,12,13,14,19,20})
+  assert(!available(pin,Use::Output));
+assert(availableButton(0));
+mesh::ui::setHeltecV4OledExpansionAllocation(false);
+assert(mesh::ui::heltecV4OledExpansionActive());
+assert(!mesh::ui::heltecV4OledExpansionPinsAvailable());
+for(uint8_t pin:{33,44,47,48})assert(!available(pin,Use::Output));
+assert(available(6,Use::Output));
+mesh::ui::setHeltecV4OledExpansionAllocation(true);
+for(uint8_t pin:{33,44,47,48})assert(available(pin,Use::Output));
+mesh::ui::setHeltecV4OledExpansionAtBoot(false);
+mesh::ui::setHeltecV4OledExpansionAllocation(true);
+assert(!mesh::ui::heltecV4OledExpansionPinsAvailable());
+""")
+        # Only display ownership is released: another peripheral on any one
+        # of these pads still wins, including a UART on the freed touch reset.
+        self.run_policy(common + ["PIN_SERIAL_TX=44", "PIN_TOUCH_RST=47",
+                                 "PIN_KEYBOARD_INT=48", "PIN_I2C_INTERNAL_SDA=33"], adapter, """
+mesh::ui::setHeltecV4OledExpansionAtBoot(true);
+for(uint8_t pin:{33,44,47,48})assert(!available(pin,Use::Output));
+assert(available(6,Use::Output));
+""")
+        self.run_policy([value for value in common if value != "MESH_CUSTOM_PERIPHERALS=1"] +
+                        ["MESH_CUSTOM_PERIPHERALS=0"], adapter, """
+mesh::ui::setHeltecV4OledExpansionAtBoot(true);
+mesh::ui::setHeltecV4OledExpansionAllocation(true);
+assert(!mesh::ui::heltecV4OledExpansionPinsAvailable());
+for(uint8_t pin:{33,44,47,48})assert(!available(pin,Use::Output));
+""")
+
+    def test_other_display_targets_cannot_enable_heltec_oled_pin_exception(self):
+        self.run_policy(["ESP32_PLATFORM", "CONFIG_IDF_TARGET_ESP32S3", "ARDUINO_USB_CDC_ON_BOOT=1",
+                         "PIN_TFT_SDA=33", "PIN_BOARD_SDA=4", "PIN_BOARD_SCL=3"], """
+constexpr uint8_t TX=43, RX=44, SDA=4, SCL=3;
+#define digitalPinIsValid(pin) ((pin) < 49)
+#define digitalPinCanOutput(pin) ((pin) < 49 && (pin) != 46)
+""", """
+mesh::ui::setHeltecV4OledExpansionAtBoot(true);
+assert(!mesh::ui::heltecV4OledExpansionActive());
+assert(!available(33,Use::Output));
+""")
+
     def test_nrf52_maps_aliases_and_guards_flash_power_and_native_rotary(self):
         self.run_policy(["NRF52_PLATFORM", "PINS_COUNT=13", "USER_GPIO_ALLOWED_PINS=0,1,2,3,4,5,6,7,8,9,10,11,12",
                          "PIN_QSPI_CS=1", "PIN_BUTTON1_A=4", "PIN_BUTTON1_B=5",

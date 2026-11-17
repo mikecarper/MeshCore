@@ -32,7 +32,9 @@ public:
 private:
   static bool validConfiguration(int16_t clkPin, int16_t dtPin,
                                  int16_t buttonPin, uint16_t steps);
-  uint8_t readState() const;
+  bool readState(uint8_t& state) const;
+  bool readButton(bool& pressed) const;
+  void stopAfterIoFailure();
   RotaryInputEvent pollRotation();
   RotaryInputEvent pollButton();
 
@@ -43,6 +45,7 @@ private:
   bool reverse;
   bool pullups;
   bool ready = false;
+  bool retained_button_pullup = false;
   bool rotation_polling = true;
   uint8_t previous_state = 0;
   int16_t transition_accumulator = 0;

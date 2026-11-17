@@ -2,6 +2,7 @@
 
 #include "HeltecV4Display.h"
 #include "HeltecV4DisplayProbe.h"
+#include <helpers/ui/HeltecV4GpioPolicy.h>
 #include "ColorTheme.h"
 
 // Runtime budget guard: both concrete drivers/private Wire are linked globals,
@@ -94,9 +95,18 @@ void HeltecV4Display::releasePower() {
 }
 
 void HeltecV4Display::releasePins() {
+  if (_configuration_fault) return;
   if (_wire_started) {
     _display_wire.end();
     _wire_started = false;
+  }
+  if (mesh::ui::heltecV4OledExpansionActive()) {
+    // These are the only display pads owned by an OLED-expansion boot.
+    // In particular, never release or toggle accessory outputs on 33/44/47/48.
+    const int pins[] = {kOledSda, kOledScl, PIN_OLED_RESET};
+    for (int pin : pins) if (pin >= 0) pinMode(pin, INPUT);
+    _known_tft = false;
+    return;
   }
   // No inactive driver may back-power a disconnected panel. Wire on GPIO4/3
   // belongs to RTC/environmental sensors and is never stopped or remapped.
@@ -117,7 +127,7 @@ void HeltecV4Display::releasePins() {
 
 void HeltecV4Display::deactivate() {
   if (_active && _active->isOn()) _active->turnOff();
-  if (_type == Type::Tft) _tft.releaseBus();
+  if (_type == Type::Tft && !mesh::ui::heltecV4OledExpansionActive()) _tft.releaseBus();
   _active = nullptr;
   _type = Type::None;
   releasePins();
@@ -132,10 +142,13 @@ bool HeltecV4Display::startOledBus() {
 }
 
 bool HeltecV4Display::probeOled() {
+  if (_configuration_fault) return false;
   // Keep the TFT deselected while the same GPIO17/18 pair is briefly used
   // as OLED I2C. GPIO21 is OLED reset / TFT backlight; release it before ACK.
-  digitalWrite(PIN_TFT_CS, HIGH);
-  pinMode(PIN_TFT_CS, OUTPUT);
+  if (!mesh::ui::heltecV4OledExpansionActive()) {
+    digitalWrite(PIN_TFT_CS, HIGH);
+    pinMode(PIN_TFT_CS, OUTPUT);
+  }
   digitalWrite(PIN_OLED_RESET, LOW);
   pinMode(PIN_OLED_RESET, OUTPUT);
   delay(10);
@@ -147,6 +160,7 @@ bool HeltecV4Display::probeOled() {
 }
 
 bool HeltecV4Display::probeTouchAssembly() {
+  if (_configuration_fault || mesh::ui::heltecV4OledExpansionActive()) return false;
   if (_wire_started) {
     _display_wire.end();
     _wire_started = false;
@@ -187,6 +201,8 @@ void HeltecV4Display::updateDimensions() {
 }
 
 bool HeltecV4Display::startSelected(Type type) {
+  if (_configuration_fault) return false;
+  if (type == Type::Tft && mesh::ui::heltecV4OledExpansionActive()) return false;
   bool ready = false;
   if (type == Type::Oled && startOledBus()) {
     _oled.setRotationDegrees(_rotation);
@@ -220,6 +236,12 @@ bool HeltecV4Display::startSelected(Type type) {
 bool HeltecV4Display::begin() {
   const volatile char* unified = meshcore_capability_display_heltec_v4_unified;
   (void)*unified;
+  if (_configuration_fault) {
+    _started = true; ++_generation;
+    _active = nullptr; _type = Type::None;
+    _status = "saved display config invalid";
+    setPalette(); updateDimensions(); return false;
+  }
   // A boot with display.type=off must not enable any display/probe outputs.
   if (_started) deactivate();
   _started = true;
@@ -236,7 +258,7 @@ bool HeltecV4Display::begin() {
     const volatile char* autodetect = meshcore_capability_display_autodetect_heltec_v4;
     (void)*autodetect;
     oled = probeOled();
-    if (!oled) tft = probeTouchAssembly();
+    if (!oled && !mesh::ui::heltecV4OledExpansionActive()) tft = probeTouchAssembly();
   }
   const Type selected = mesh::ui::selectHeltecV4Display(_mode, oled, tft);
   if (selected == Type::None) {
@@ -257,6 +279,8 @@ bool HeltecV4Display::begin() {
 
 bool HeltecV4Display::setMode(Mode mode) {
   if (unsigned(mode) > unsigned(Mode::Off)) return false;
+  if (_configuration_fault && mode != Mode::Off) return false;
+  if (mode == Mode::Tft && mesh::ui::heltecV4OledExpansionActive()) return false;
   _mode = mode;
   if (_started) begin();
   // A valid off/headless choice is successful even though begin() reports no
@@ -281,6 +305,7 @@ void HeltecV4Display::setFlipped(bool flipped) {
 }
 
 void HeltecV4Display::turnOn() {
+  if (_configuration_fault) return;
   if (!_active || _active->isOn()) return;
   claimPower();
   // The wrapper owns the rail. Reinitialize after it was cut, even though
@@ -291,8 +316,9 @@ void HeltecV4Display::turnOn() {
 }
 
 void HeltecV4Display::turnOff() {
+  if (_configuration_fault) return;
   if (_active && _active->isOn()) _active->turnOff();
-  if (_type == Type::Tft) _tft.releaseBus();
+  if (_type == Type::Tft && !mesh::ui::heltecV4OledExpansionActive()) _tft.releaseBus();
   releasePins();
   releasePower();
 }

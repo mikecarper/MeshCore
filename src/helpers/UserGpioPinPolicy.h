@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "sensors/EnvironmentI2CConfig.h"
+#include "ui/HeltecV4GpioPolicy.h"
 #if defined(STATION_G3_ESP32)
 #include <StationG3RadioSlot.h>
 #endif
@@ -37,6 +38,15 @@ inline bool samePhysicalPin(uint8_t first, uint8_t second) {
 }
 
 inline bool isFirmwareReserved(uint8_t pin, bool allow_user_button = false) {
+#if defined(HELTEC_V4_DISPLAY_UNIFIED) && HELTEC_V4_DISPLAY_UNIFIED && defined(DISPLAY_CLASS)
+  if (!mesh::ui::heltecV4OledExpansionPinsAvailable()) {
+    // The stock TFT touch bus is probed on 47/48, with reset on 44.
+    if (pin == 44 || pin == 47 || pin == 48) return true;
+#if defined(PIN_TFT_SDA) && PIN_TFT_SDA == 33
+    if (pin == 33) return true;
+#endif
+  }
+#endif
 #if defined(M5STACK_CARDPUTER_ADV)
   // Cardputer-Adv's built-in IR transmitter is connected even when its driver
   // is not compiled. Its display/audio/I2C aliases are listed below too.
@@ -513,7 +523,9 @@ inline bool isFirmwareReserved(uint8_t pin, bool allow_user_button = false) {
     PIN_TFT_MOSI,
 #endif
 #ifdef PIN_TFT_SDA
+#if !(defined(HELTEC_V4_DISPLAY_UNIFIED) && HELTEC_V4_DISPLAY_UNIFIED && defined(DISPLAY_CLASS) && PIN_TFT_SDA == 33)
     PIN_TFT_SDA,
+#endif
 #endif
 #ifdef PIN_TFT_MISO
     PIN_TFT_MISO,

@@ -6,7 +6,9 @@
 #include "ST7789LCDDisplay.h"
 
 // One display interface for the original V4/V4.3 base board and its original
-// touch expansion kit. R8 uses a different MCU memory/pin configuration.
+// touch expansion kit. A boot-latched explicit OLED display preference
+// suppresses all TFT/touch lifecycle operations while retaining this image.
+// R8 uses a different MCU memory/pin configuration.
 class HeltecV4Display : public DisplayDriver {
   using Mode = mesh::ui::HeltecV4DisplayMode;
   using Type = mesh::ui::HeltecV4DisplayType;
@@ -24,6 +26,7 @@ class HeltecV4Display : public DisplayDriver {
   bool _power_claimed = false;
   bool _known_tft = false;
   bool _flipped = false;
+  bool _configuration_fault = false;
   uint16_t _rotation = 0;
   uint32_t _generation = 0;
 
@@ -45,6 +48,9 @@ public:
         _oled(nullptr, &_display_wire), _tft(nullptr), _power(power) {}
 
   bool begin();
+  // Boot loader only: a damaged settings record must not trigger hardware
+  // discovery on pins which may still have user accessories attached.
+  void setConfigurationFault(bool fault) { _configuration_fault = fault; }
   bool setMode(Mode mode);
   Mode mode() const { return _mode; }
   Type selectedType() const { return _type; }

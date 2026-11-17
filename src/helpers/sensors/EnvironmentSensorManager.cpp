@@ -3,6 +3,7 @@
 #include "I2CAddressClaimPolicy.h"
 #include "EnvironmentI2CConfig.h"
 #include "NmeaSentenceProbe.h"
+#include <helpers/I2cExpander.h>
 #if defined(OTA_RAK_AUTO_STORE) && defined(RAK_BOARD)
 #include "../ota/OtaStoreQspiNrf52.h"
 #endif
@@ -1004,6 +1005,19 @@ static_assert(SENSOR_TABLE_SIZE <= UINT8_MAX + 1U, "Sensor descriptor index must
 // is not handed to another driver.
 // ============================================================
 
+bool EnvironmentSensorManager::isPrimaryI2cAddressReserved(uint8_t address) const {
+  // These are the common OLED addresses; choosing a PCF8574A address must not
+  // let an explicitly configured expander overwrite an attached display.
+  if (address == 0x3c || address == 0x3d) return true;
+#if ENV_HAS_SECONDARY_I2C
+  return false;
+#else
+  for (size_t i = 0; i < SENSOR_TABLE_SIZE; ++i)
+    if (SENSOR_TABLE[i].address == address) return true;
+  return false;
+#endif
+}
+
 bool EnvironmentSensorManager::begin() {
   _active_sensor_count = 0;
 #if defined(RAK_BOARD) && !defined(RAK_WISMESH_TAG)
@@ -1063,6 +1077,9 @@ bool EnvironmentSensorManager::begin() {
       continue;
     }
     const uint8_t address = static_cast<uint8_t>(configured_address);
+#if MESH_CUSTOM_PERIPHERALS && defined(ESP32_PLATFORM) && !ENV_HAS_SECONDARY_I2C
+    if (mesh::expander::ownsAddress(address)) continue;
+#endif
 #if defined(MESH_SOLARXIAO_POWER) && MESH_SOLARXIAO_POWER
     // Native carrier drivers own these addresses in Full and Reduced builds.
     // In particular, never allow an INA219 initializer to configure the INA260.
@@ -1079,6 +1096,9 @@ bool EnvironmentSensorManager::begin() {
     const SensorDef& def = SENSOR_TABLE[i];
     if (!mesh::isValidI2cPeripheralAddress(def.address)) continue;
     const uint8_t address = static_cast<uint8_t>(def.address);
+#if MESH_CUSTOM_PERIPHERALS && defined(ESP32_PLATFORM) && !ENV_HAS_SECONDARY_I2C
+    if (mesh::expander::ownsAddress(address)) continue;
+#endif
 #if defined(MESH_SOLARXIAO_POWER) && MESH_SOLARXIAO_POWER
     if (TELEM_WIRE == &Wire && (address == 0x40 || address == 0x68)) continue;
 #endif

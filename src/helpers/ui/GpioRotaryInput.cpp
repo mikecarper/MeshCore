@@ -1,4 +1,8 @@
 #include "GpioRotaryInput.h"
+#include <helpers/CustomPeripheralConfig.h>
+#if defined(ESP32_PLATFORM) && MESH_CUSTOM_PERIPHERALS
+#include <helpers/I2cExpander.h>
+#endif
 
 namespace {
 // Signed movement for (previous AB << 2) | current AB. Adjacent bounce
@@ -12,6 +16,20 @@ constexpr int8_t QUADRATURE_TRANSITIONS[16] = {
 };
 constexpr uint32_t BUTTON_DEBOUNCE_MILLIS = 25;
 constexpr uint32_t BUTTON_LONG_PRESS_MILLIS = 1200;
+bool inputMode(int16_t pin, bool pullup) {
+#if defined(ESP32_PLATFORM) && MESH_CUSTOM_PERIPHERALS
+  if (mesh::expander::isPin(pin)) return mesh::expander::configurePin(pin, false, pullup);
+#endif
+  pinMode(pin, pullup ? INPUT_PULLUP : INPUT);
+  return true;
+}
+bool inputLevel(int16_t pin, bool& high) {
+#if defined(ESP32_PLATFORM) && MESH_CUSTOM_PERIPHERALS
+  if (mesh::expander::isPin(pin)) return mesh::expander::read(pin, high);
+#endif
+  high = digitalRead(pin) != LOW;
+  return true;
+}
 #if defined(NRF52_PLATFORM) || defined(RP2040_PLATFORM)
 // Wake sd_app_evt_wait()/WFI so task-context polling can observe the edge.
 // No quadrature or button state is changed in interrupt context.
@@ -49,12 +67,26 @@ bool GpioRotaryInput::configure(int16_t clkPin, int16_t dtPin,
   return true;
 }
 
-uint8_t GpioRotaryInput::readState() const {
-  return (digitalRead(clk_pin) == LOW ? 0 : 2) |
-         (digitalRead(dt_pin) == LOW ? 0 : 1);
+bool GpioRotaryInput::readState(uint8_t& state) const {
+#if defined(ESP32_PLATFORM) && MESH_CUSTOM_PERIPHERALS
+  if (mesh::expander::isPin(clk_pin) && mesh::expander::isPin(dt_pin))
+    return mesh::expander::readPair(clk_pin, dt_pin, state);
+#endif
+  bool clk, dt;
+  if (!inputLevel(clk_pin, clk) || !inputLevel(dt_pin, dt)) return false;
+  state = (clk ? 2 : 0) | (dt ? 1 : 0);
+  return true;
+}
+
+bool GpioRotaryInput::readButton(bool& pressed) const {
+  bool high;
+  if (!inputLevel(button_pin, high)) return false;
+  pressed = !high;
+  return true;
 }
 
 bool GpioRotaryInput::begin() {
+  if (retained_button_pullup) end();
   ready = false;
   transition_accumulator = 0;
   button_raw_pressed = false;
@@ -68,11 +100,16 @@ bool GpioRotaryInput::begin() {
     return false;
   }
 
-  pinMode(clk_pin, pullups ? INPUT_PULLUP : INPUT);
-  pinMode(dt_pin, pullups ? INPUT_PULLUP : INPUT);
+  // A partial expander configuration is released through end() too. No
+  // expander identifier is ever passed to an Arduino GPIO operation.
+  ready = true;
+  if (!inputMode(clk_pin, pullups) || !inputMode(dt_pin, pullups)) {
+    stopAfterIoFailure(); return false;
+  }
   if (button_pin >= 0) {
-    pinMode(button_pin, pullups ? INPUT_PULLUP : INPUT);
-    button_raw_pressed = digitalRead(button_pin) == LOW;
+    if (!inputMode(button_pin, pullups) || !readButton(button_raw_pressed)) {
+      stopAfterIoFailure(); return false;
+    }
     button_pressed = button_raw_pressed;
     // A switch held during initialization must be released before it can
     // produce a press or enter the UI's held-button rescue action.
@@ -80,7 +117,7 @@ bool GpioRotaryInput::begin() {
     button_changed_at = millis();
     button_down_at = button_changed_at;
   }
-  previous_state = readState();
+  if (!readState(previous_state)) { stopAfterIoFailure(); return false; }
 #if defined(NRF52_PLATFORM) || defined(RP2040_PLATFORM)
   if (rotation_polling) {
     attachInterrupt(uint32_t(clk_pin), wakeRotaryPoller, CHANGE);
@@ -93,6 +130,12 @@ bool GpioRotaryInput::begin() {
 }
 
 void GpioRotaryInput::end() {
+  // A fault may leave the native user switch pulled up for the ordinary
+  // board-button fallback. Explicit disable/reassignment still releases it.
+  if (retained_button_pullup) {
+    inputMode(button_pin, false);
+    retained_button_pullup = false;
+  }
   // Remove our optional pull-ups when pins are reassigned. Never access pins
   // from a rejected configuration or from an object that was not started.
   if (ready) {
@@ -103,9 +146,9 @@ void GpioRotaryInput::end() {
     }
     if (button_pin >= 0) detachInterrupt(uint32_t(button_pin));
 #endif
-    pinMode(clk_pin, INPUT);
-    pinMode(dt_pin, INPUT);
-    if (button_pin >= 0) pinMode(button_pin, INPUT);
+    inputMode(clk_pin, false);
+    inputMode(dt_pin, false);
+    if (button_pin >= 0) inputMode(button_pin, false);
   }
   ready = false;
   transition_accumulator = 0;
@@ -115,12 +158,28 @@ void GpioRotaryInput::end() {
   button_long_press_sent = false;
 }
 
+void GpioRotaryInput::stopAfterIoFailure() {
+  bool native_button = button_pin >= 0;
+#if defined(ESP32_PLATFORM) && MESH_CUSTOM_PERIPHERALS
+  native_button = native_button && !mesh::expander::isPin(button_pin);
+#endif
+  const bool preserve_pullup = native_button && pullups;
+  end();
+  if (preserve_pullup) {
+    // Settings keep this pin claimed until an explicit disable/reassignment.
+    // Losing an I2C encoder must not leave a shared native user button floating.
+    pinMode(button_pin, INPUT_PULLUP);
+    retained_button_pullup = true;
+  }
+}
+
 RotaryInputEvent GpioRotaryInput::poll() {
   if (!ready) return RotaryInputEvent::None;
 
   // Sample both sources even when they coincide. A switch action wins, and
   // the completed rotation is consumed rather than replayed on the next poll.
   RotaryInputEvent rotation = rotation_polling ? pollRotation() : RotaryInputEvent::None;
+  if (!ready) return RotaryInputEvent::None;
   if (button_pin >= 0) {
     RotaryInputEvent button = pollButton();
     if (button != RotaryInputEvent::None) return button;
@@ -129,8 +188,9 @@ RotaryInputEvent GpioRotaryInput::poll() {
 }
 
 bool GpioRotaryInput::isButtonPressed() const {
+  bool pressed = false;
   return ready && button_pin >= 0 && button_armed && button_pressed &&
-         digitalRead(button_pin) == LOW;
+         readButton(pressed) && pressed;
 }
 
 bool GpioRotaryInput::needsPolling() const {
@@ -164,7 +224,7 @@ void GpioRotaryInput::setRotationPolling(bool active) {
   transition_accumulator = 0;
   // No AB polling is needed while suspended. Sampling on each mode change
   // makes the first resumed step independent of turns made with the screen off.
-  if (ready) previous_state = readState();
+  if (ready && !readState(previous_state)) stopAfterIoFailure();
 #if defined(NRF52_PLATFORM) || defined(RP2040_PLATFORM)
   if (ready && active) {
     attachInterrupt(uint32_t(clk_pin), wakeRotaryPoller, CHANGE);
@@ -175,7 +235,8 @@ void GpioRotaryInput::setRotationPolling(bool active) {
 
 RotaryInputEvent GpioRotaryInput::pollButton() {
   const uint32_t now = millis();
-  const bool pressed = digitalRead(button_pin) == LOW;
+  bool pressed;
+  if (!readButton(pressed)) { stopAfterIoFailure(); return RotaryInputEvent::None; }
   if (pressed != button_raw_pressed) {
     button_raw_pressed = pressed;
     button_changed_at = now;
@@ -207,7 +268,10 @@ RotaryInputEvent GpioRotaryInput::pollButton() {
 }
 
 RotaryInputEvent GpioRotaryInput::pollRotation() {
-  const uint8_t current_state = readState();
+  uint8_t current_state;
+  // A lost bus sample stops the input. It is not treated as a released
+  // contact, and reconnecting a device cannot replay a partial detent/click.
+  if (!readState(current_state)) { stopAfterIoFailure(); return RotaryInputEvent::None; }
   if (current_state == previous_state) return RotaryInputEvent::None;
 
   const int8_t movement =

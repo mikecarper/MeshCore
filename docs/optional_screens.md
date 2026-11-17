@@ -42,11 +42,22 @@ TFT assembly. This identifies the touchscreen assembly, not a working LCD.
 With neither display detected, the firmware continues without a screen.
 
 `get display.type` reports the saved choice and active display. Use
-`set display.type auto|oled|tft|off` to change it immediately and save the choice.
+`set display.type auto|oled|tft|off` to save the choice.
 `auto` is the default. `off` explicitly disables rendering; it is distinct from
 an absent or unrecognized screen. `board` reports the radio front-end revision
 and active display, including the off/headless states. V4.2/V4.3 is inferred
 from the detected radio front end, rather than reading a PCB revision code.
+
+In new Full Companion builds, explicitly saving `set display.type oled`
+and rebooting releases GPIO33/44/47/48 for accessories in this same unified
+image. `get display.type` then reports `oled` without `reboot required`.
+Auto-detecting an OLED keeps those pins reserved. See the
+[OLED wiring and commands](rotary_input.md#oled-expansion-mode-in-the-same-unified-firmware).
+Remove accessory assignments and wiring before selecting Auto/TFT/Off and
+rebooting. Leaving the OLED boot profile never starts TFT/touch live; the
+change waits for reboot. Other live display choices retain their usual behavior.
+Unreadable or corrupt saved settings disable display probing until repaired
+and rebooted.
 
 This change applies to newly built and qualified unified images. Existing
 releases retain their compiled OLED/TFT behavior. The picker advertises the

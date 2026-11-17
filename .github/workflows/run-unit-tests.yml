@@ -1626,6 +1626,9 @@ jobs:
         run: |
           python3 -B test/test_gpio_rotary_input.py -v
           python3 -B test/test_rotary_settings.py -v
+          python3 -B test/test_i2c_expander.py -v
+          python3 -B test/test_rotary_expander.py -v
+          python3 -B test/test_expander_sensor_integration.py -v
           python3 -B test/test_peripheral_outputs.py -v
           python3 -B test/test_notification_gpio_claims.py -v
           python3 -B test/test_peripheral_pin_policy.py -v
@@ -1685,6 +1688,7 @@ jobs:
           python3 -B test/test_heltec_r8_display_detection.py -v
           python3 -B test/test_heltec_r8_display_rotation.py -v
           python3 -B test/test_heltec_v4_display_detection.py -v
+          python3 -B test/test_heltec_v4_oled_gpio.py -v
           python3 -B test/test_heltec_v4_unified_catalog.py -v
           python3 -B test/test_tdeck_display_cooperation.py -v
           python3 -B test/test_muzi_accessory_detection.py -v

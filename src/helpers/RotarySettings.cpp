@@ -7,6 +7,9 @@
 #include <helpers/FilePresence.h>
 #include <helpers/RuntimePinClaims.h>
 #include <helpers/ui/GpioRotaryInput.h>
+#if defined(ESP32_PLATFORM)
+#include <helpers/I2cExpander.h>
+#endif
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
 #include <helpers/AtomicFileWriter.h>
 #else
@@ -24,6 +27,7 @@ struct Config {
   bool enabled = false;
   int16_t clk = -1, dt = -1, button = -1;
   uint16_t steps = 4;
+  uint16_t expander_identity = 0;
   bool reverse = false, pullup = true;
 };
 MainBoard* main_board = nullptr;
@@ -32,6 +36,52 @@ bool ui_available = false, writable = false;
 Config selected;
 GpioRotaryInput input(-1, -1);
 uint64_t active_claims = 0;
+uint16_t active_expander_claims = 0;
+
+bool isExpanderPin(int16_t pin) {
+#if defined(ESP32_PLATFORM)
+  return expander::isPin(pin);
+#else
+  (void)pin; return false;
+#endif
+}
+
+bool hasExpanderPins(const Config& config) {
+  return isExpanderPin(config.clk) || isExpanderPin(config.dt) || isExpanderPin(config.button);
+}
+
+uint16_t expanderIdentity() {
+#if defined(ESP32_PLATFORM)
+  return expander::configIdentity();
+#else
+  return 0;
+#endif
+}
+
+void formatPin(int16_t pin, char* value, size_t capacity) {
+  if (isExpanderPin(pin)) snprintf(value, capacity, "x%u", unsigned(pin - 64));
+  else snprintf(value, capacity, "%d", int(pin));
+}
+
+bool validPinCode(int16_t pin) {
+  return (pin >= -1 && pin <= 63) || isExpanderPin(pin);
+}
+
+void releaseExpanderClaims(uint16_t mask) {
+#if defined(ESP32_PLATFORM)
+  expander::release(pins::Owner::Rotary, mask);
+#else
+  (void)mask;
+#endif
+}
+
+bool claimExpanderPins(uint16_t mask) {
+#if defined(ESP32_PLATFORM)
+  return expander::tryClaim(pins::Owner::Rotary, mask);
+#else
+  return mask == 0;
+#endif
+}
 
 uint16_t checksum(const uint8_t* data, size_t size) {
   uint16_t crc = 0xffff;
@@ -45,8 +95,9 @@ uint16_t checksum(const uint8_t* data, size_t size) {
 
 bool validShape(const Config& config) {
   if (config.steps < 1 || config.steps > 255 ||
-      config.clk < -1 || config.clk > 63 || config.dt < -1 || config.dt > 63 ||
-      config.button < -1 || config.button > 63) return false;
+      !validPinCode(config.clk) || !validPinCode(config.dt) ||
+      !validPinCode(config.button)) return false;
+  if (hasExpanderPins(config) ? !config.expander_identity : config.expander_identity != 0) return false;
   if (config.clk < 0 || config.dt < 0)
     return !config.enabled && config.clk == -1 && config.dt == -1 && config.button == -1;
   return config.clk != config.dt && config.clk != config.button && config.dt != config.button;
@@ -54,13 +105,18 @@ bool validShape(const Config& config) {
 
 void encode(const Config& config, uint8_t (&data)[ImageSize]) {
   memset(data, 0, sizeof(data));
-  data[0] = 'R'; data[1] = 'Y'; data[2] = 1;
+  data[0] = 'R'; data[1] = 'Y';
+  // Older firmware rejects this version instead of interpreting an expander
+  // endpoint as a native GPIO. Existing native records remain byte-identical.
+  data[2] = hasExpanderPins(config) ? 2 : 1;
   data[3] = config.enabled;
   data[4] = config.clk < 0 ? 255 : config.clk;
   data[5] = config.dt < 0 ? 255 : config.dt;
   data[6] = config.button < 0 ? 255 : config.button;
   data[7] = config.steps;
   data[8] = config.reverse; data[9] = config.pullup;
+  data[10] = uint8_t(config.expander_identity);
+  data[11] = uint8_t(config.expander_identity >> 8);
   const uint16_t crc = checksum(data, 14);
   data[14] = crc; data[15] = crc >> 8;
 }
@@ -74,6 +130,7 @@ bool readConfig(const char* path, Config& config) {
   decoded.dt = data[5] == 255 ? -1 : data[5];
   decoded.button = data[6] == 255 ? -1 : data[6];
   decoded.steps = data[7]; decoded.reverse = data[8] != 0; decoded.pullup = data[9] != 0;
+  decoded.expander_identity = uint16_t(data[10]) | (uint16_t(data[11]) << 8);
   encode(decoded, expected);
   if (!validShape(decoded) || memcmp(data, expected, sizeof(data)) != 0) return false;
   config = decoded;
@@ -82,14 +139,27 @@ bool readConfig(const char* path, Config& config) {
 
 // Input-only signals use the same physical-pad registry as custom outputs and
 // CLI GPIO. Alias pin numbers must never allocate one pad to two encoder wires.
-bool validatePins(const Config& config, uint64_t& claims) {
+bool validatePins(const Config& config, uint64_t& claims, uint16_t& expander_claims) {
   claims = 0;
+  expander_claims = 0;
   if (!main_board || !validShape(config)) return false;
+  // A saved x-pin assignment belongs to one explicitly configured chip and
+  // address. An offline boot must not let a later replacement inherit it.
+  if (hasExpanderPins(config) && config.expander_identity != expanderIdentity()) return false;
   if (config.clk < 0) return !config.enabled;
   const int16_t wires[] = {config.clk, config.dt, config.button};
   for (unsigned i = 0; i < 3; ++i) {
     if (wires[i] < 0) continue;
     const uint8_t pin = uint8_t(wires[i]);
+#if defined(ESP32_PLATFORM)
+    if (isExpanderPin(pin)) {
+      const uint16_t mask = expander::pinMask(pin);
+      if (!expander::inputAvailable(pin, config.pullup) || !mask ||
+          (expander_claims & mask) || expander::claimedByOther(pin, pins::Owner::Rotary)) return false;
+      expander_claims |= mask;
+      continue;
+    }
+#endif
     const bool available = i == 2
         ? main_board->isPeripheralButtonAvailable(pin, config.pullup)
         : main_board->isPeripheralPinAvailable(pin, config.pullup);
@@ -127,7 +197,7 @@ bool saveConfig(const Config& config) {
   return true;
 }
 
-bool apply(const Config& config, uint64_t claims) {
+bool apply(const Config& config, uint64_t claims, uint16_t expander_claims) {
   input.end();
   bool ready = !config.enabled;
   if (config.enabled) {
@@ -135,7 +205,9 @@ bool apply(const Config& config, uint64_t claims) {
                             config.reverse, config.pullup) && input.begin();
   }
   pins::release(pins::Owner::Rotary, active_claims & ~claims);
+  releaseExpanderClaims(active_expander_claims & ~expander_claims);
   active_claims = claims;
+  active_expander_claims = expander_claims;
   selected = config;
   return ready;
 }
@@ -194,13 +266,29 @@ bool parseNumber(const char*& text, int16_t& result, bool allow_absent = false) 
 }
 
 bool parsePins(const char* text, Config& config) {
+  const auto parsePin = [](const char*& input, int16_t& pin, bool absent) -> bool {
+    input = skipSpaces(input);
+    if (*input == 'x') {
+#if defined(ESP32_PLATFORM)
+      ++input;
+      int16_t channel;
+      if (!parseNumber(input, channel) || channel < 0 || channel > 15) return false;
+      pin = int16_t(64 + channel);
+      return true;
+#else
+      return false;
+#endif
+    }
+    return parseNumber(input, pin, absent) && pin <= 63;
+  };
   config.button = -1;
-  if (!parseNumber(text, config.clk) || *text++ != ',' ||
-      !parseNumber(text, config.dt)) return false;
+  if (!parsePin(text, config.clk, false) || *text++ != ',' ||
+      !parsePin(text, config.dt, false)) return false;
   if (*text == ',') {
     ++text;
-    if (!parseNumber(text, config.button, true)) return false;
+    if (!parsePin(text, config.button, true)) return false;
   }
+  config.expander_identity = hasExpanderPins(config) ? expanderIdentity() : 0;
   return *text == 0 && validShape(config);
 }
 
@@ -222,12 +310,21 @@ void availablePins(char* reply, size_t capacity) {
   size_t used = prefix < 0 ? 0 : size_t(prefix);
   if (used >= capacity) return;
   bool any = false;
-  for (uint8_t pin = 0; pin < 64; ++pin) {
-    if (!main_board || !main_board->isPeripheralPinAvailable(pin, selected.pullup)) continue;
-    const uint16_t physical = main_board->peripheralPinIdentity(pin);
-    if (!pins::pinMask(physical) || pins::claimedByOther(physical, pins::Owner::Rotary)) continue;
-    char token[5];
-    const size_t count = size_t(snprintf(token, sizeof(token), "%s%u", any ? "," : "", unsigned(pin)));
+  for (uint8_t pin = 0; pin < 80; ++pin) {
+    if (pin < 64) {
+      if (!main_board || !main_board->isPeripheralPinAvailable(pin, selected.pullup)) continue;
+      const uint16_t physical = main_board->peripheralPinIdentity(pin);
+      if (!pins::pinMask(physical) || pins::claimedByOther(physical, pins::Owner::Rotary)) continue;
+    } else {
+#if defined(ESP32_PLATFORM)
+      if (!expander::inputAvailable(pin, selected.pullup) ||
+          expander::claimedByOther(pin, pins::Owner::Rotary)) continue;
+#else
+      continue;
+#endif
+    }
+    char pin_text[5], token[6]; formatPin(pin, pin_text, sizeof(pin_text));
+    const size_t count = size_t(snprintf(token, sizeof(token), "%s%s", any ? "," : "", pin_text));
     if (used + count + 4 >= capacity) {
       snprintf(reply + used, capacity - used, "...");
       return;
@@ -243,7 +340,9 @@ void availablePins(char* reply, size_t capacity) {
 bool beginRotarySettings(MainBoard& board, FILESYSTEM* fs, bool ui_supported) {
   input.end();
   pins::release(pins::Owner::Rotary, active_claims);
+  releaseExpanderClaims(active_expander_claims);
   active_claims = 0;
+  active_expander_claims = 0;
   selected = Config(); main_board = &board; settings_fs = fs;
   ui_available = ui_supported; writable = false;
   Config candidate;
@@ -267,9 +366,13 @@ bool beginRotarySettings(MainBoard& board, FILESYSTEM* fs, bool ui_supported) {
   selected = candidate;
   if (!candidate.enabled) return false;
   uint64_t claims = 0;
-  if (!ui_available || !validatePins(candidate, claims) ||
+  uint16_t expander_claims = 0;
+  if (!ui_available || !validatePins(candidate, claims, expander_claims) ||
       !pins::tryClaim(pins::Owner::Rotary, claims)) return false;
-  return apply(candidate, claims);
+  if (!claimExpanderPins(expander_claims)) {
+    pins::release(pins::Owner::Rotary, claims); return false;
+  }
+  return apply(candidate, claims, expander_claims);
 }
 
 RotaryInput* customRotaryInput() {
@@ -283,18 +386,25 @@ bool setRotaryUiSupported(bool supported) {
   if (!supported) {
     input.end();
     pins::release(pins::Owner::Rotary, active_claims);
+    releaseExpanderClaims(active_expander_claims);
     active_claims = 0;
+    active_expander_claims = 0;
     return false;
   }
   if (input.isReady()) return true;
   uint64_t claims = 0;
-  if (!selected.enabled || !validatePins(selected, claims) ||
+  uint16_t expander_claims = 0;
+  if (!selected.enabled || !validatePins(selected, claims, expander_claims) ||
       !pins::tryClaim(pins::Owner::Rotary, claims)) return false;
-  return apply(selected, claims);
+  if (!claimExpanderPins(expander_claims)) {
+    pins::release(pins::Owner::Rotary, claims); return false;
+  }
+  return apply(selected, claims, expander_claims);
 }
 
 bool rotaryOwnsButtonPin(uint8_t pin) {
   return rotarySettingsEnabled() && selected.button >= 0 && main_board &&
+      !isExpanderPin(selected.button) &&
       main_board->peripheralPinIdentity(pin) ==
       main_board->peripheralPinIdentity(uint8_t(selected.button));
 }
@@ -322,16 +432,18 @@ bool handleRotaryCommand(const char* command, char* reply, size_t capacity) {
     return true;
   }
   if (get) {
+    char clk[5], dt[5], button[5];
+    formatPin(selected.clk, clk, sizeof(clk)); formatPin(selected.dt, dt, sizeof(dt));
+    formatPin(selected.button, button, sizeof(button));
     if (*end) snprintf(reply, capacity, "Error: use get rotary[.pins|.steps|.reverse|.pullup]");
     else if (field == Available) availablePins(reply, capacity);
     else if (field == All) snprintf(reply, capacity,
-        "rotary %s pins %d,%d,%d steps %u reverse %s pullup %s%s",
-        selected.enabled ? "on" : "off", selected.clk, selected.dt, selected.button,
+        "rotary %s pins %s,%s,%s steps %u reverse %s pullup %s%s",
+        selected.enabled ? "on" : "off", clk, dt, button,
         unsigned(selected.steps), selected.reverse ? "on" : "off", selected.pullup ? "on" : "off",
         !selected.enabled || input.isReady() ? "" :
         !ui_available ? " inactive:no display" : " inactive:pin conflict");
-    else if (field == Pins) snprintf(reply, capacity, "rotary.pins %d,%d,%d",
-        selected.clk, selected.dt, selected.button);
+    else if (field == Pins) snprintf(reply, capacity, "rotary.pins %s,%s,%s", clk, dt, button);
     else if (field == Steps) snprintf(reply, capacity, "rotary.steps %u", unsigned(selected.steps));
     else snprintf(reply, capacity, "rotary.%s %s", field == Reverse ? "reverse" : "pullup",
         (field == Reverse ? selected.reverse : selected.pullup) ? "on" : "off");
@@ -355,20 +467,27 @@ bool handleRotaryCommand(const char* command, char* reply, size_t capacity) {
     if (parsed) candidate.steps = steps;
   }
   uint64_t candidate_claims = 0;
+  uint16_t candidate_expander_claims = 0;
   const char* error = nullptr;
   if (!parsed) error = "Error: invalid rotary value";
   else if (candidate.enabled && !ui_available) error = "Error: rotary UI unsupported";
   else if (!validShape(candidate)) error = "Error: invalid rotary value";
   else if ((candidate.enabled || field == Pins || field == Pullup) &&
-           !validatePins(candidate, candidate_claims)) error = "Error: rotary pins reserved or unavailable";
+           !validatePins(candidate, candidate_claims, candidate_expander_claims)) error = "Error: rotary pins reserved or unavailable";
   else {
-    if (!candidate.enabled) candidate_claims = 0;
+    if (!candidate.enabled) { candidate_claims = 0; candidate_expander_claims = 0; }
     const uint64_t added = candidate_claims & ~active_claims;
+    const uint16_t added_expander = candidate_expander_claims & ~active_expander_claims;
     if (!pins::tryClaim(pins::Owner::Rotary, candidate_claims)) error = "Error: rotary pins in use";
+    else if (!claimExpanderPins(candidate_expander_claims)) {
+      pins::release(pins::Owner::Rotary, added);
+      error = "Error: rotary expander pins in use";
+    }
     else if (!saveConfig(candidate)) {
       pins::release(pins::Owner::Rotary, added);
+      releaseExpanderClaims(added_expander);
       error = "Error: rotary save unconfirmed; reboot may differ";
-    } else if (!apply(candidate, candidate_claims)) {
+    } else if (!apply(candidate, candidate_claims, candidate_expander_claims)) {
       error = "Error: rotary initialization failed";
     }
   }

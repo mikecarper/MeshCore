@@ -21,6 +21,7 @@ HARNESS = r'''
 #include <helpers/CompanionNotificationPolicy.h>
 #include <helpers/LedPolicy.h>
 #include <helpers/RuntimePinClaims.h>
+#include <helpers/I2cExpander.h>
 #include <helpers/RadioMaintenanceCLI.h>
 #include "NotificationSettingsFile.h"
 constexpr unsigned INPUT=0,OUTPUT=1,LOW=0,HIGH=1;
@@ -221,6 +222,9 @@ void customAdaptersAndLocalCli() {
   assert(mesh.handleLocalControlCommand("get rotary",reply,sizeof(reply)));
   assert(strstr(reply,"maintenance pending")&&mesh::ui::rotary_calls==rotary_before);
   mesh.radio.pending=false;
+  // This fixture models RP2040. The newly dispatched expander command must
+  // use the production disabled-platform stub rather than imply support.
+  assert(!mesh.handleLocalControlCommand("get expander",reply,sizeof(reply)));
   assert(mesh.handleLocalControlCommand("get peripherals",reply,sizeof(reply))&&!strcmp(reply,"> external outputs"));
   assert(mesh.handleLocalControlCommand("get rotary",reply,sizeof(reply))&&!strcmp(reply,"> rotary"));
 }

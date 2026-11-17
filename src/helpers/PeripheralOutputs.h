@@ -10,8 +10,9 @@ class MainBoard;
 namespace peripherals {
 
 #if MESH_CUSTOM_PERIPHERALS
-// Optional external outputs use the firmware's Arduino pin numbers. No pin
-// is driven until a complete saved record passes this board's pin policy.
+// Optional external outputs use Arduino pins; ESP32 LEDs may additionally use
+// configured I2C-expander channels x0..x15. Passive buzzers require native GPIO.
+// No pin is driven until a complete saved record passes its ownership policy.
 // Call from the main loop; transport callbacks must defer commands there.
 void begin(MainBoard& board, FILESYSTEM* fs);
 // Terminal power-off: release runtime pins without changing saved settings.

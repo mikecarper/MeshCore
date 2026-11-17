@@ -1,3 +1,7 @@
+<!-- meshcore-hosted-doc-link:start -->
+<p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/test-results/browser_lora_ota_usb_speed_2026-11-16/">View this page on MeshCore Docs</a>.</p>
+<!-- meshcore-hosted-doc-link:end -->
+
 # Browser LoRa OTA USB speed test
 
 On 16 November 2026, a W12 Companion connected by native Web Serial served a

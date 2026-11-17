@@ -6,6 +6,7 @@
 #include <helpers/LedSettings.h>
 #include <helpers/RotarySettings.h>
 #include <helpers/PeripheralOutputs.h>
+#include <helpers/I2cExpander.h>
 #if MESH_CUSTOM_PERIPHERALS
 #include <helpers/ui/RotaryInput.h>
 #endif
@@ -3845,6 +3846,13 @@ void setup() {
   if (!mesh::storage::internalPrimaryFilesystemReady(primary_fs_boot)
       || store.isVolatilePrimaryFS()) regulator_prefs_fs = nullptr;
 #endif
+#if MESH_CUSTOM_PERIPHERALS && defined(ESP32_PLATFORM)
+  mesh::expander::setAddressConflictCheck([](uint8_t address) {
+    return sensors.isPrimaryI2cAddressReserved(address);
+  });
+  // Reserve the saved address before environmental discovery can probe it.
+  mesh::expander::begin(board, regulator_prefs_fs);
+#endif
 #ifdef MESH_COMPANION_WIRELESS_POLICY
   mesh::wireless::loadBootPolicy(regulator_prefs_fs,
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
@@ -4599,6 +4607,9 @@ void loop() {
   if (!morse_timing) mesh::lr2021::loopLR2021CalibrationSettings(radio_driver);
 #endif
   if (!morse_timing) sensors.loop();
+#if MESH_CUSTOM_PERIPHERALS && defined(ESP32_PLATFORM)
+  if (!morse_timing) mesh::expander::loop();
+#endif
 #if MESH_CUSTOM_PERIPHERALS
 #if defined(DISPLAY_CLASS) && !CARDPUTER_ADV_UI
 #if defined(HELTEC_V4_DISPLAY_UNIFIED) && HELTEC_V4_DISPLAY_UNIFIED

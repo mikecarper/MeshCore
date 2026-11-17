@@ -68,6 +68,55 @@ inline void play() { ++ticks; }
 }
 '''
 
+EXPANDER = r'''
+#pragma once
+#include <helpers/RuntimePinClaims.h>
+namespace mesh { namespace expander {
+inline bool enabled=false,ready=false,sink=false,fail_write=false;
+inline uint16_t identity=0x0127;
+inline unsigned width=16,io=0;
+inline uint16_t owners[4]={};
+inline bool level[16]={},output[16]={};
+inline unsigned lows[16]={},configurations[16]={};
+inline bool isPin(int pin) {
+#if defined(ESP32_PLATFORM)
+  return pin>=64&&pin<80;
+#else
+  (void)pin;return false;
+#endif
+}
+inline uint16_t pinMask(int pin) {return isPin(pin)?uint16_t(1u<<(pin-64)):0;}
+inline bool available(int pin) {return enabled&&ready&&isPin(pin)&&unsigned(pin-64)<width;}
+inline bool online() {return ready;}
+inline uint16_t configIdentity() {return enabled?identity:0;}
+inline bool supportsPullup(bool enabled_pullup) {return !sink||enabled_pullup;}
+inline unsigned pinCount() {return enabled?width:0;}
+inline bool recommendedActiveLow() {return sink;}
+inline uint16_t held(pins::Owner owner) {return unsigned(owner)<4?owners[unsigned(owner)]:0;}
+inline bool claimedByOther(int pin,pins::Owner except=pins::Owner::None) {
+  for(unsigned i=0;i<4;++i)if(i!=unsigned(except)&&(owners[i]&pinMask(pin)))return true;
+  return false;
+}
+inline bool tryClaim(pins::Owner owner,uint16_t mask) {
+  if(!mask)return true;
+  if(unsigned(owner)>=4||!enabled||!ready||(mask&~((1u<<width)-1u)))return false;
+  for(unsigned i=0;i<4;++i)if(i!=unsigned(owner)&&(owners[i]&mask))return false;
+  owners[unsigned(owner)]|=mask;return true;
+}
+inline void release(pins::Owner owner,uint16_t mask) {if(unsigned(owner)<4)owners[unsigned(owner)]&=~mask;}
+inline bool write(int pin,bool high) {
+  if(!available(pin))return false;
+  ++io;if(fail_write){ready=false;return false;}
+  level[pin-64]=high;if(!high)++lows[pin-64];return true;
+}
+inline bool configurePin(int pin,bool out,bool pullup=false) {
+  if(!available(pin))return false;
+  if(!out&&!supportsPullup(pullup))return false;
+  ++io;++configurations[pin-64];output[pin-64]=out;return true;
+}
+}}
+'''
+
 HARNESS = r'''
 #include <cassert>
 #include <cstring>
@@ -321,9 +370,105 @@ void terminalShutdown() {
   begin(board,&fs);assert(configuredBuzzerPin()==12&&configuredNotificationLed()&&claims(15));
   shutdown();
 }
+#if defined(ESP32_PLATFORM)
+void expanderOutputs() {
+  using namespace mesh::expander;
+  mesh::MainBoard board;MockFS fs;
+  mesh::peripherals::shutdown();resetOwners();
+  enabled=true;ready=true;sink=false;width=16;fail_write=false;identity=0x0127;
+  begin(board,&fs);
+  assert(command("set peripheral.buzzer x2").find("native GPIO")!=std::string::npos);
+  assert(command("set peripheral.led.notify 64").find("Error:")==0);
+  assert(command("set peripheral.led.notify x16").find("Error:")==0);
+  assert(fs.writes==0);
+  assert(mesh::expander::tryClaim(Owner::Rotary,pinMask(64)));
+  assert(command("set peripheral.led.notify x0").find("already in use")!=std::string::npos);
+  assert(command("get peripheral.pins.available").find(" x0 ")==std::string::npos);
+  assert(command("set peripheral.buzzer 6")=="OK");
+  assert(command("set peripheral.led.notify x2")=="OK");
+  assert(command("set peripheral.led.gps x3")=="OK");
+  assert(command("set peripheral.led.ble x4")=="OK");
+  assert(command("get peripheral.led.notify")=="> x2,high");
+  assert(claims(66)&&claims(67)&&claims(68)&&claims(6));
+  assert(mesh::expander::held(Owner::Outputs)==(pinMask(66)|pinMask(67)|pinMask(68)));
+  assert(mesh::pins::held(Owner::Outputs)==mesh::pins::pinMask(6));
+  assert(fs.files[target].size()==16&&fs.files[target][3]==2);
+  assert(output[2]&&!level[2]);
+  mesh::peripherals::loop(false,false,false);
+  const unsigned idle_io=io;
+  for(unsigned n=0;n<100;++n)mesh::peripherals::loop(false,false,false);
+  assert(io==idle_io); // unchanged LEDs never generate repeated I2C writes
+  notificationLed(true);mesh::peripherals::loop(true,true,false);
+  assert(level[2]&&level[3]&&level[4]);
+  begin(board,&fs);
+  assert(command("get peripherals")=="> buzzer=6 led.notify=x2,high led.gps=x3,high led.ble=x4,high");
+  // Atomic save failure leaves current wiring, ownership and hardware intact.
+  fs.fail_open=true;
+  const unsigned before=io;
+  assert(command("set peripheral.led.notify x5").find("save unconfirmed")!=std::string::npos);
+  assert(io==before&&claims(66)&&!claims(69));fs.fail_open=false;
+  // A disconnected expander cannot admit a new assignment, but off still works.
+  ready=false;
+  const unsigned offline_io=io;
+  assert(mesh::expander::held(Owner::Outputs)==(pinMask(66)|pinMask(67)|pinMask(68)));
+  assert(command("set peripheral.led.notify x5").find("unavailable")!=std::string::npos);
+  assert(command("set peripheral.led.notify off")=="OK");
+  assert(!claims(66)&&claims(67)&&claims(68));
+  assert(mesh::expander::held(Owner::Outputs)==(pinMask(67)|pinMask(68)));
+  assert(command("set peripheral.led.gps off")=="OK");
+  assert(!claims(67)&&claims(68)&&mesh::expander::held(Owner::Outputs)==pinMask(68));
+  assert(command("set peripheral.led.ble off")=="OK");
+  assert(mesh::expander::held(Owner::Outputs)==0&&!claims(66));
+  assert(io==offline_io&&claims(6)); // Release never drives unavailable I2C or native buzzer pins.
+  mesh::expander::release(Owner::Rotary,0xffff);
+  for(unsigned owner=0;owner<4;++owner)
+    assert(mesh::expander::held(Owner(owner))==0); // No owners remain to block reconfiguration.
+  ready=true;
+  assert(command("set peripheral.led.notify x2")=="OK");
+  fail_write=true;notificationLed(true);
+  assert(!ready);
+  const unsigned lost_io=io;
+  for(unsigned n=0;n<100;++n)mesh::peripherals::loop(true,true,false);
+  assert(io==lost_io); // bus failure does not start a retry storm
+  assert(command("set peripheral.led.notify off")=="OK");
+  mesh::peripherals::shutdown();mesh::expander::release(Owner::Rotary,0xffff);
+  // PCF outputs default to sink wiring. No LOW pulse occurs while disabled.
+  MockFS pcf;ready=true;fail_write=false;sink=true;width=8;identity=0x0427;
+  begin(board,&pcf);const unsigned initial_lows=lows[2];
+  assert(command("set peripheral.led.notify x2")=="OK");
+  assert(command("get peripheral.led.notify")=="> x2,low");
+  assert(level[2]&&lows[2]==initial_lows);
+  notificationLed(true);assert(!level[2]);notificationLed(false);assert(level[2]);
+  // Persist actual polarity: another driver recommendation never reverses it.
+  sink=false;begin(board,&pcf);
+  assert(command("get peripheral.led.notify")=="> x2,low");
+  assert(level[2]);
+  assert(command("set peripheral.led.gps x8").find("unavailable")!=std::string::npos);
+  assert(command("set peripheral.led.gps x3,high")=="OK");
+  assert(command("get peripheral.led.gps")=="> x3,high");
+  assert(command("set peripheral.led.ble 12,low")=="OK");
+  assert(levels[12]==HIGH);mesh::peripherals::loop(false,true,false);assert(levels[12]==LOW);
+  mesh::peripherals::shutdown();
+  assert(level[2]&&!output[2]&&!output[3]);
+  // Reboot after changing the chip/address cannot drive stale LED assignments.
+  identity=0x0126;
+  const unsigned changed_device_io=io;
+  begin(board,&pcf);
+  assert(command("get peripherals").find("saved pins rejected")!=std::string::npos);
+  assert(io==changed_device_io&&mesh::expander::held(Owner::Outputs)==0);
+  mesh::peripherals::shutdown();identity=0x0427;
+  enabled=false;ready=false;sink=false;
+  begin(board,&pcf);
+  assert(command("get peripherals").find("saved pins rejected")!=std::string::npos);
+  assert(mesh::expander::held(Owner::Outputs)==0);mesh::peripherals::shutdown();
+}
+#endif
 int main() {
   defaultsAndPersistence();parsingAndConflicts();outputsAndBuzzerOwnership();saveFailuresAndRecovery();
   terminalShutdown();
+#if defined(ESP32_PLATFORM)
+  expanderOutputs();
+#endif
 }
 '''
 
@@ -388,6 +533,7 @@ class PeripheralOutputsTests(unittest.TestCase):
             (folder / "helpers/IdentityStore.h").write_text(filesystem)
             (folder / "helpers/ContactFileTransaction.h").write_text(
                 (ROOT / "src/helpers/ContactFileTransaction.h").read_text())
+            (folder / "helpers/I2cExpander.h").write_text(EXPANDER)
             (folder / "MeshCore.h").write_text(BOARD)
             (folder / "Arduino.h").write_text(ARDUINO)
             (folder / "NonBlockingRtttl.h").write_text(RTTTL)
