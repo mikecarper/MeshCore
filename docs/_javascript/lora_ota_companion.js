@@ -16,6 +16,14 @@
     return value||null;
   }
   function join(...chunks){const out=new Uint8Array(chunks.reduce((n,c)=>n+c.length,0));let at=0;for(const c of chunks){out.set(c,at);at+=c.length;}return out;}
+  // Keep one pending copy of an exact DATA request while a burst is in flight.
+  // A changed missing-fragment mask or a later retry is a distinct request.
+  function isOtaDataRequest(packet){
+    if(!(packet instanceof Uint8Array)||packet.length<11||![0x31,0x32].includes(packet[0])||packet[1]!==0||packet[2]!==6)return false;
+    const body=packet.length-2;
+    return (body-5)%4===0&&(body-5)/4<=4;
+  }
+  function samePacket(a,b){return !!a&&a.length===b.length&&a.every((value,index)=>value===b[index]);}
   function u32(n){const b=new Uint8Array(4);new DataView(b.buffer).setUint32(0,n,true);return b;}
   function packet(payload){if(!payload.length||payload.length>300)throw Error('Invalid Companion frame size');return join(Uint8Array.of(60,payload.length&255,payload.length>>8),payload);}
   const INBOX_KEY='meshcore-lora-ota-preserved-inbox-v1';
@@ -271,7 +279,11 @@
       }}}
       catch(e){if(this.running){this.failure=e;this.usbFolderSource?.fail(e);this.pending?.reject(e);this.loginWaiter?.reject(e);}}}
     onFrame(frame){
-      if(frame[0]===0x88&&frame.length>5&&this.serving){if(this.radioQueue.length<64){this.radioQueue.push(frame.slice(3));this.pumpRadio();}return;}
+      if(frame[0]===0x88&&frame.length>5&&this.serving){
+        const packet=frame.slice(3);
+        if(isOtaDataRequest(packet)&&this.radioQueue.some(queued=>samePacket(queued,packet)))return;
+        if(this.radioQueue.length<64){this.radioQueue.push(packet);this.pumpRadio();}return;
+      }
       if((frame[0]===0x85||frame[0]===0x86)&&this.loginWaiter&&frame.length>=8&&hex(frame.slice(2,8))===this.knownRepeater.slice(0,12)){
         const waiter=this.loginWaiter;this.loginWaiter=null;
         if(frame[0]!==0x85)waiter.reject(Error('Repeater rejected the login'));

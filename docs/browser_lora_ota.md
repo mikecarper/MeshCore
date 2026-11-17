@@ -580,7 +580,7 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_wifi_scan.js?v=direct-wifi-1"></script>
 <script src="../_javascript/lora_ota_serial.js?v=zopfli-1"></script>
 <script src="../_javascript/lora_ota_companion_source.js?v=zopfli-1"></script>
-<script src="../_javascript/lora_ota_companion.js?v=bluetooth-1"></script>
+<script src="../_javascript/lora_ota_companion.js?v=ota-request-queue-1"></script>
 <script src="../_javascript/lora_ota_contacts.js?v=advert-path-1"></script>
 <script src="../_javascript/lora_ota_session.js?v=zopfli-1"></script>
 <script src="../_javascript/lora_ota_route.js"></script>
