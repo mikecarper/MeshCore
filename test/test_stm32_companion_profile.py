@@ -99,7 +99,15 @@ class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
             for section in config.sections():
                 if section==selected.name: continue
                 other_flags=shlex.split(config[section].get('build_flags',''))
-                self.assertNotIn('MESH_CLI_SHARE_REPLY_COPIES=1',other_flags)
+                # The exact Mini Repeater independently opts into the
+                # hash-qualified, byte-identical prefix/copy sharing hook.
+                mini_repeater=(variant=='wio-e5-mini' and section=='env:wio-e5-mini_repeater')
+                self.assertEqual(other_flags.count('MESH_CLI_SHARE_REPLY_COPIES=1'),
+                                 int(mini_repeater),section)
+                if mini_repeater:
+                    self.assertIn('MESH_CLI_SHARE_ERROR_PREFIXES=1',other_flags)
+                    self.assertIn('pre:scripts/stm32_mini_cli_replies.py',
+                                  config[section]['extra_scripts'].split())
                 if variant!='wio-e5-mini':
                     for choice in policy: self.assertNotIn(choice,other_flags)
                 self.assertNotIn('post:scripts/'+script,config[section].get('extra_scripts','').split())
