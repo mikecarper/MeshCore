@@ -1375,7 +1375,8 @@ the TFT driver and reports `TFT (forced)` rather than claiming detection.
 `none detected`. Selections survive reboot in the checked `/display_type` file.
 A failed save leaves the live selection unchanged.
 
-In new unified Full Companion builds, `set display.type oled` followed by
+In the [Heltec V4.3 R2 1.18.0.3 preview](https://github.com/mikecarper/MeshCore/releases/tag/heltec-v4-v1.18.0.3-preview1),
+`set display.type oled` followed by
 `reboot` also releases GPIO33/44/47/48 for accessories. The same firmware
 supports both wiring arrangements. `get display.type` reports `oled`
 without `reboot required` after that boot; Auto keeps the display-pin union reserved,
@@ -4075,8 +4076,13 @@ existing expansion bus: `get expander`, `set expander <type>,<address>`, and
 and `mcp23008`. Rotary/LED assignments accept `x0` through `x15` (only
 `x0` through `x7` on eight-pin chips; MCP23017 excludes `x7` and `x15`);
 LED pins accept `,low` or `,high`.
+These polarity options are ESP32-only; nRF52/RP2040 native LEDs remain active high.
 Passive buzzers still require native GPIO. See the
 [expander wiring and configuration guide](i2c_expanders.md).
+The [Heltec V4.3 R2 1.18.0.3 preview](https://github.com/mikecarper/MeshCore/releases/tag/heltec-v4-v1.18.0.3-preview1)
+includes these drivers. With TFT, use the expander for encoder/LEDs and GPIO6
+for the buzzer; with OLED, explicit OLED selection plus reboot permits the
+native accessory wiring without an expander.
 
 ---
 

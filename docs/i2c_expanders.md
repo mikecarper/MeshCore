@@ -4,6 +4,10 @@
 
 # ESP32 I2C expanders
 
+For Heltec V4.3 ESP32-S3R2, [download 1.18.0.3 Preview 1](https://github.com/mikecarper/MeshCore/releases/tag/heltec-v4-v1.18.0.3-preview1).
+The same image supports OLED and TFT. This preview passed software/build
+checks; physical expander and TFT operation remain unqualified.
+
 ESP32 Full Companion and custom builds with `MESH_CUSTOM_PERIPHERALS=1`
 support one configured expander on the board's existing expansion I2C bus.
 The board must define `PIN_BOARD_SDA` and `PIN_BOARD_SCL`. Native GPIO
@@ -32,7 +36,11 @@ recommended breakout for this arrangement.
 
 ## Heltec V4.3: PCF8575, encoder, buzzer and three LEDs
 
-Use the unified native-USB Full Companion image. Before powering the module,
+For TFT, keep `display.type auto` or `tft`; the encoder and LEDs use the
+expander, leaving GPIO6 for the buzzer. OLED can use this arrangement too,
+or the [native-pin setup without an expander](rotary_input.md#oled-expansion-mode-in-the-same-unified-firmware).
+
+Use the unified native-USB Full Companion preview linked above. Before powering the module,
 set its address jumpers to **0x27** (A0, A1 and A2 high). Default `0x20`
 can conflict with a soil-sensor probe. Compiled sensor/display addresses
 are protected, so another board may require a different unused address.

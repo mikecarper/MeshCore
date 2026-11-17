@@ -12,6 +12,16 @@ The encoder needs a supported display UI; outputs also work without a display.
 Existing board-provided encoders remain the default until a custom encoder is
 enabled.
 
+**Heltec V4.3 preview:** [download 1.18.0.3 Preview 1](https://github.com/mikecarper/MeshCore/releases/tag/heltec-v4-v1.18.0.3-preview1)
+for ESP32-S3R2 (not R8). Use `*-merged.bin` for USB installation; use the
+application `.bin` for Wi-Fi only with a compatible existing Full partition
+layout. Build and host checks passed; physical accessory qualification is pending.
+
+For the EC11, buzzer and three LEDs: **OLED needs no expander** after the
+[OLED selection and reboot](#oled-expansion-mode-in-the-same-unified-firmware).
+**TFT uses an [expander](i2c_expanders.md)** for the encoder and LEDs,
+leaving native GPIO6 for the buzzer.
+
 ## Connect and configure an encoder
 
 Disconnect USB, the battery and any solar/external supply before soldering.
@@ -40,7 +50,7 @@ Every wire must use a different physical pad.
 
 | Command | Effect |
 | --- | --- |
-| `set rotary.pins <CLK>,<DT>[,<SW>]` | Select Arduino pin numbers; omit SW or use `-1` for no switch |
+| `set rotary.pins <CLK>,<DT>[,<SW>]` | Select Arduino GPIOs or ESP32 expander `xN` pins; omit SW or use `-1` for no switch |
 | `set rotary on` / `set rotary off` | Enable the selected encoder, or release its pins |
 | `set rotary.steps <1..255>` | Electrical transitions per detent; default `4` |
 | `set rotary.reverse on` / `off` | Reverse the turn direction |
@@ -151,7 +161,7 @@ explicit boot profile: saving `display.type oled` and rebooting releases
 the pins. Auto-detection of an OLED does not. Do not attach the TFT/touch expansion kit in this mode.
 It does not apply to V4 R8 boards.
 
-With the new firmware installed, enter separately:
+With the 1.18.0.3 preview installed, enter separately:
 
 ```text
 set display.type oled
@@ -199,7 +209,8 @@ immediately while the old display is running.
 
 Use current-limiting resistors for LEDs, and an appropriate driver when a
 buzzer or other load exceeds the GPIO's current rating. Native LED outputs
-default to active high; configured expander LEDs can select either polarity.
+default to active high. ESP32 native and expander LEDs accept `,low` or
+`,high`; nRF52/RP2040 native outputs remain active high.
 
 ### Check the electrical ratings before choosing outputs
 

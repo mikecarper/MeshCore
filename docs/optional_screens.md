@@ -48,23 +48,28 @@ an absent or unrecognized screen. `board` reports the radio front-end revision
 and active display, including the off/headless states. V4.2/V4.3 is inferred
 from the detected radio front end, rather than reading a PCB revision code.
 
-In new Full Companion builds, explicitly saving `set display.type oled`
+The [Heltec V4.3 R2 1.18.0.3 preview](https://github.com/mikecarper/MeshCore/releases/tag/heltec-v4-v1.18.0.3-preview1)
+adds accessory pin release to Full Companion. Explicitly saving `set display.type oled`
 and rebooting releases GPIO33/44/47/48 for accessories in this same unified
 image. `get display.type` then reports `oled` without `reboot required`.
 Auto-detecting an OLED keeps those pins reserved. See the
 [OLED wiring and commands](rotary_input.md#oled-expansion-mode-in-the-same-unified-firmware).
+For TFT plus the encoder, buzzer and three LEDs, use the
+[I2C expander arrangement](i2c_expanders.md) and retain Auto/TFT selection.
 Remove accessory assignments and wiring before selecting Auto/TFT/Off and
 rebooting. Leaving the OLED boot profile never starts TFT/touch live; the
 change waits for reboot. Other live display choices retain their usual behavior.
 Unreadable or corrupt saved settings disable display probing until repaired
 and rebooted.
 
-This change applies to newly built and qualified unified images. Existing
+Unified display selection applies to newly built unified images. Older
 releases retain their compiled OLED/TFT behavior. The picker advertises the
 combined image only when its application and source-bound metadata prove that
 it includes the new driver. V4.3 OLED detection, live selection and reboot
 persistence passed on the Mercerwood test board. Physical TFT detection and
 display operation remain unqualified. See the [validation record](test-results/firmware_variant_consolidation.md#unified-ordinary-v4-update-2026-10-26).
+The 1.18.0.3 preview's new accessory wiring and expander support passed host
+tests and build checks; physical qualification of those additions is pending.
 
 The V4 R8 retains its separate hardware image because its memory configuration
 and display wiring differ. Older TFT/expansion-kit target names remain explicit
