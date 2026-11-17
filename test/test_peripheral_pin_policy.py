@@ -206,6 +206,7 @@ for(uint8_t pin:{33,44,47,48})assert(!available(pin,Use::Output));
     def test_other_display_targets_cannot_enable_heltec_oled_pin_exception(self):
         self.run_policy(["ESP32_PLATFORM", "CONFIG_IDF_TARGET_ESP32S3", "ARDUINO_USB_CDC_ON_BOOT=1",
                          "PIN_TFT_SDA=33", "PIN_BOARD_SDA=4", "PIN_BOARD_SCL=3"], """
+#include <helpers/ui/HeltecV4GpioPolicy.h>
 constexpr uint8_t TX=43, RX=44, SDA=4, SCL=3;
 #define digitalPinIsValid(pin) ((pin) < 49)
 #define digitalPinCanOutput(pin) ((pin) < 49 && (pin) != 46)

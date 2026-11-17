@@ -4,7 +4,9 @@
 #include <stdint.h>
 
 #include "sensors/EnvironmentI2CConfig.h"
+#if defined(HELTEC_V4_DISPLAY_UNIFIED) && HELTEC_V4_DISPLAY_UNIFIED && defined(DISPLAY_CLASS)
 #include "ui/HeltecV4GpioPolicy.h"
+#endif
 #if defined(STATION_G3_ESP32)
 #include <StationG3RadioSlot.h>
 #endif
