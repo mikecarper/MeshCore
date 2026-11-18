@@ -42,6 +42,25 @@ firmware command is `set fr any pb=2+ d`. A rate-limit action on this rule uses
 one allowance shared by both widths, rather than a separate limit for each.
 Four-byte paths remain unsupported.
 
+### High-traffic mesh example
+
+This preset stops forwarding request and group-data floods at three received
+hops and control floods at one. Response, anonymous-request, and path floods
+can travel farther, with a cutoff at nine received hops.
+
+```text
+set flood.filter req 3+
+set flood.filter response 9+
+set flood.filter 0x06 3+
+set flood.filter 0x07 9+
+set flood.filter path 9+
+set flood.filter control 1+
+get flood.filter
+```
+
+In the simulator, select [High-traffic mesh](#high-traffic-preset) to load the
+same six rules.
+
 <div class="filter-tool" data-filter-tool>
   <div class="filter-management-safety" role="note">
     <strong>Remote login and direct routes</strong>
@@ -125,8 +144,8 @@ Four-byte paths remain unsupported.
         <span>Rate-limit packets whose path starts with 860C</span>
         <code>when path=prefix:860C do rate=10/min</code>
       </button>
-      <button type="button" data-example="high_traffic">
-        <span>Drop selected flood types at their hop limits</span>
+      <button type="button" id="high-traffic-preset" data-example="high_traffic">
+        <span>High-traffic mesh</span>
         <code>when type=control hops=1+ do drop<br>when type=req hops=3+ do drop; same for type=grp_data<br>when type=response hops=9+ do drop; same for type=anon_req and type=path</code>
       </button>
       <button type="button" data-example="moderation">
