@@ -1184,10 +1184,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
   }
 
   if (pkt->isRouteDirect() && pkt->getPayloadType() == PAYLOAD_TYPE_TRACE) {
-    if (pkt->payload_len < 9) {
-      MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): incomplete TRACE packet", getLogDateTime());
-      return ACTION_RELEASE;
-    }
+    // The layout gate above already checked the header, route and SNR count.
     if (pkt->path_len < MAX_PATH_SIZE) {
       uint8_t i = 0;
       uint32_t trace_tag;
