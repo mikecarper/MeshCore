@@ -1233,12 +1233,19 @@ TEST(TraceForwardingSafety, FinalSnrSlotIsSafeAndDeniedAdmissionDoesNotMarkSeen)
   EXPECT_EQ(0, tables.mark_seen_calls);
   node.forwardFloods = true;
   mesh::Packet last = blocked;
-  last.path_len = MAX_PATH_SIZE - 1;
-  last.payload_len = 9 + MAX_PATH_SIZE;
-  memset(last.payload + 9, 0x42, MAX_PATH_SIZE);
+  last.path_len = 62;
+  last.payload_len = 9 + 63;
+  memset(last.payload + 9, 0x42, 63);
   EXPECT_NE(ACTION_RELEASE, node.receivePacket(&last));
-  EXPECT_EQ(MAX_PATH_SIZE, last.path_len);
-  EXPECT_EQ(17, last.path[MAX_PATH_SIZE - 1]);
+  EXPECT_EQ(63, last.path_len);
+  EXPECT_EQ(17, last.path[62]);
+  EXPECT_EQ(1, tables.mark_seen_calls);
+
+  mesh::Packet unencodable = last;
+  unencodable.path_len = 63;
+  unencodable.payload_len = 9 + 64;
+  unencodable.payload[9 + 63] = 0x42;
+  EXPECT_EQ(ACTION_RELEASE, node.receivePacket(&unencodable));
   EXPECT_EQ(1, tables.mark_seen_calls);
 }
 
@@ -2320,3 +2327,4 @@ int main(int argc, char** argv) {
 }
 
 #include "../fixtures/radio_profiles/mesh_tests.h"
+#include "../fixtures/trace_echo_validation.h"

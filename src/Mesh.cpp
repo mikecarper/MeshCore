@@ -114,21 +114,28 @@ static uint8_t decodeTraceHashSize(uint8_t flags, uint8_t route_bytes) {
   return size_linear;
 }
 
+static bool getTraceLayout(const Packet* packet, uint8_t& hash_size, uint8_t& route_hops) {
+  if (packet == NULL || packet->payload_len < 9
+      || packet->payload_len > sizeof(packet->payload)) return false;
+
+  const uint8_t route_bytes = packet->payload_len - 9;
+  hash_size = decodeTraceHashSize(packet->payload[8], route_bytes);
+  if (hash_size == 0 || route_bytes % hash_size != 0) return false;
+
+  route_hops = route_bytes / hash_size;
+  // TRACE uses a plain SNR count, not the packed hash-size/count encoding.
+  // Every route must be able to append its last SNR without setting size bits.
+  return route_hops <= 63 && route_hops <= sizeof(packet->path)
+      && packet->path_len <= route_hops;
+}
+
+static void calculateTracePrefixKey(const Packet* packet, uint8_t prefix_len, uint8_t* key) {
+  Utils::sha256(key, MAX_HASH_SIZE, &prefix_len, sizeof(prefix_len), packet->path, prefix_len);
+}
+
 static uint8_t getTraceRemainingHops(const Packet* packet) {
-  if (packet == NULL || packet->payload_len < 9) {
-    return 0;
-  }
-
-  uint8_t route_bytes = packet->payload_len - 9;
-  uint8_t hash_size = decodeTraceHashSize(packet->payload[8], route_bytes);
-  if (hash_size == 0) {
-    return 0;
-  }
-
-  uint8_t route_hops = route_bytes / hash_size;
-  if (packet->path_len >= route_hops) {
-    return 0;
-  }
+  uint8_t hash_size, route_hops;
+  if (!getTraceLayout(packet, hash_size, route_hops)) return 0;
   return route_hops - packet->path_len;
 }
 
@@ -1161,6 +1168,14 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
   // arriving through another transport implementation.
   if (pkt->violatesRoutePolicy()) return ACTION_RELEASE;
 
+  if (pkt->getPayloadType() == PAYLOAD_TYPE_TRACE) {
+    uint8_t hash_size, route_hops;
+    if (!getTraceLayout(pkt, hash_size, route_hops)) {
+      MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): invalid TRACE layout", getLogDateTime());
+      return ACTION_RELEASE;
+    }
+  }
+
   observeForwardedAdvertEcho(pkt);
   if (pkt->isRouteDirect()) {
     cancelDirectRetryOnEcho(pkt);
@@ -1818,8 +1833,10 @@ void Mesh::calculateDirectRetryKey(const Packet* packet, uint8_t* dest_key) cons
 }
 
 bool Mesh::calculateTraceReplacementKey(const Packet* packet, uint8_t* dest_key) const {
+  uint8_t hash_size, route_hops;
   if (packet == NULL || dest_key == NULL || !packet->isRouteDirect()
-      || packet->getPayloadType() != PAYLOAD_TYPE_TRACE || packet->payload_len < 9) {
+      || packet->getPayloadType() != PAYLOAD_TYPE_TRACE
+      || !getTraceLayout(packet, hash_size, route_hops)) {
     return false;
   }
 
@@ -1893,6 +1910,12 @@ bool Mesh::cancelDirectRetryOnEcho(const Packet* packet) {
       : packet->getPathHashCount() < _direct_retries[i].progress_marker;
     if (!is_echo) {
       continue;
+    }
+
+    if (_direct_retries[i].expect_path_growth) {
+      uint8_t prefix_key[MAX_HASH_SIZE];
+      calculateTracePrefixKey(packet, _direct_retries[i].progress_marker, prefix_key);
+      if (memcmp(prefix_key, _direct_retries[i].trace_prefix_key, sizeof(prefix_key)) != 0) continue;
     }
 
     int8_t echo_snr_x4 = packet->_snr;
@@ -2105,17 +2128,12 @@ bool Mesh::getDirectRetryTarget(const Packet* packet, const uint8_t*& next_hop_h
       break;
 
     case PAYLOAD_TYPE_TRACE: {
-      if (packet->payload_len < 9) {
+      uint8_t hash_size, route_hops;
+      if (!getTraceLayout(packet, hash_size, route_hops) || packet->path_len >= route_hops) {
         return false;
       }
 
-      uint8_t route_bytes = packet->payload_len - 9;
-      uint8_t hash_size = decodeTraceHashSize(packet->payload[8], route_bytes);
       uint16_t offset = (uint16_t)packet->path_len * (uint16_t)hash_size;
-      if (offset + hash_size > route_bytes) {
-        return false;
-      }
-
       next_hop_hash = &packet->payload[9 + offset];
       next_hop_hash_len = hash_size;
       progress_marker = packet->path_len;
@@ -2271,6 +2289,7 @@ void Mesh::maybeScheduleDirectRetry(const Packet* packet, uint8_t priority, bool
   entry.priority = priority;
   entry.progress_marker = progress_marker;
   entry.expect_path_growth = expect_path_growth;
+  if (expect_path_growth) calculateTracePrefixKey(packet, progress_marker, entry.trace_prefix_key);
   entry.final_hop_retry = final_hop_retry;
   entry.active = true;
   _active_direct_retry_count++;

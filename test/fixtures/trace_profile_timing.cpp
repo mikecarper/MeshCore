@@ -314,7 +314,8 @@ struct TraceWalk {
   unsigned forwarded, completed, path_length, snr_bytes, wire_length;
 };
 
-static TraceWalk forwardTrace(MyMesh& origin, uint8_t hash_size, uint8_t hops) {
+static TraceWalk forwardTrace(MyMesh& origin, uint8_t hash_size, uint8_t hops,
+                              bool stop_on_rejection = false) {
   uint8_t wire[MAX_TRANS_UNIT];
   unsigned length = origin.manager.queued.front()->writeTo(wire);
   for (unsigned hop = 0; hop != hops; ++hop) {
@@ -324,6 +325,12 @@ static TraceWalk forwardTrace(MyMesh& origin, uint8_t hash_size, uint8_t hops) {
     memcpy(receiver.self_id.key, packet->payload + 9 + hop * hash_size, hash_size);
     packet->_snr = 16;
     const uint32_t action = receiver.receiveTrace(packet);
+    if (stop_on_rejection && action == ACTION_RELEASE) {
+      TraceWalk result{hop, receiver.completed, packet->path_len,
+                       packet->getPathByteLen(), length};
+      receiver.releasePacket(packet);
+      return result;
+    }
     assert(action != ACTION_RELEASE && receiver.completed == 0);
     assert(packet->path_len == hop + 1);
     assert(receiver.queueOutboundPacket(packet, (action >> 24) - 1, action & 0x00ffffff));
@@ -365,14 +372,14 @@ static void hopBoundaryChecks(unsigned selected_hash = 0) {
         assert(walked.forwarded == 63 && walked.completed == 1);
         assert(walked.path_length == 63 && walked.snr_bytes == 63);
       } else if (node.error != ERR_CODE_ILLEGAL_ARG) {
-        // Exact old admission exposes two independent protocol limits: a raw
-        // path_len of 64 serializes as packed hash-size 2/count 0, and TRACE's
-        // completion callback is guarded by path_len < MAX_PATH_SIZE.
+        // Mutating only the producer cannot bypass the receiver's new layout
+        // guard. The old admission still allocates a packet and wraps its
+        // timeout, but the first receiver now rejects the impossible route.
         assert(node.error == 0 && node._delayed_replies.hasBinaryTrace());
         assert(node.manager.allocations == 1 && node.manager.queued.size() == 1);
-        const auto walked = forwardTrace(node, hash_size, hops);
-        assert(walked.forwarded == 64 && walked.completed == 0);
-        assert(walked.path_length == 64 && walked.snr_bytes == 0);
+        const auto walked = forwardTrace(node, hash_size, hops, true);
+        assert(walked.forwarded == 0 && walked.completed == 0);
+        assert(walked.path_length == 0 && walked.snr_bytes == 0);
         const uint32_t airtime = radio.driver.getProfileAirtime(0, 11 + hash_size * hops);
         const uint32_t wrapped = 500U + (6U * airtime + 250U);
         const uint32_t unwrapped = 500U + (6U * airtime + 250U) * 65U;

@@ -93,7 +93,12 @@ class Mesh : public Dispatcher {
     uint8_t retry_attempts_sent;
     uint8_t retry_key[MAX_HASH_SIZE];
     uint8_t trace_replacement_key[MAX_HASH_SIZE];
-    uint8_t message_replacement_key[MAX_HASH_SIZE];
+    // TXT_MSG replacement and TRACE prefix validation are mutually exclusive.
+    // Keep the prefix after the final packet is freed without growing a slot.
+    union {
+      uint8_t message_replacement_key[MAX_HASH_SIZE];
+      uint8_t trace_prefix_key[MAX_HASH_SIZE];
+    };
     uint8_t next_hop_hash[MAX_HASH_SIZE];
     uint8_t next_hop_hash_len;
     uint8_t payload_type;

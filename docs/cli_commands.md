@@ -6211,6 +6211,13 @@ It applies to direct messages, ACK packets, multipart packets carrying ACK
 payloads, TRACE packets, and recognized RAW_CUSTOM telemetry (`TTB1`, `TVB1`,
 `IVB1`, `N1B1`, `N2B1`) with a non-empty hop path.
 
+TRACE echoes must preserve the SNR readings already present in the transmitted
+copy and add at least one new hop. Incomplete routes, packed SNR counts, counts
+beyond the route, and routes exceeding 63 hops are rejected before they can
+cancel a retry or update link-success statistics. A well-formed TRACE with a
+different SNR history still undergoes normal TRACE processing. Prefix validation
+also applies during the final echo wait after the packet buffer is released.
+
 The shared state, count, base, and step controls work on repeater, room-server,
 and sensor firmware. Recent-repeater/SNR controls are repeater-only because the
 other roles do not keep the repeater reachability table they require.

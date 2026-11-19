@@ -37,7 +37,8 @@ class TraceProfileTimingTests(unittest.TestCase):
             methods += extract_braced(mesh, signature) + "\n"
         trace_receive = extract_braced(mesh,
             "if (pkt->isRouteDirect() && pkt->getPayloadType() == PAYLOAD_TYPE_TRACE)")
-        methods += "uint32_t Mesh::receiveTrace(Packet* pkt) {\n" + trace_receive
+        trace_validation = extract_braced(mesh, "if (pkt->getPayloadType() == PAYLOAD_TYPE_TRACE)")
+        methods += "uint32_t Mesh::receiveTrace(Packet* pkt) {\n" + trace_validation + "\n" + trace_receive
         methods += "\nreturn ACTION_RELEASE;\n}\n"
         methods += "}\n" + extract_braced(driver, "uint32_t RadioLibWrapper::getProfileAirtime(") + "\n"
         terminal = extract_braced(companion, "void MyMesh::sendTerminalTraceRoute(")
@@ -61,6 +62,7 @@ class TraceProfileTimingTests(unittest.TestCase):
             (work / "constants.inc").write_text(constants, encoding="ascii")
             (work / "trace_priority.inc").write_text("\n".join(extract_braced(mesh, signature)
                 for signature in ("static uint8_t decodeTraceHashSize(",
+                                  "static bool getTraceLayout(",
                                   "static uint8_t getTraceRemainingHops(",
                                   "static uint8_t getTraceDirectPriority(")), encoding="ascii")
             binary_path = work / "trace"
@@ -81,7 +83,7 @@ class TraceProfileTimingTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("PASS: 63-hop traces complete and 64-hop commands have no side effects", result.stdout)
 
-    def test_exact_old_64_hop_admission_cannot_complete_and_wraps_timeout(self):
+    def test_old_64_hop_admission_is_rejected_by_receivers_and_wraps_timeout(self):
         def old(terminal, binary):
             changed, count = re.subn(r"\(path_len >> path_sz\) >= MAX_PATH_SIZE",
                 "(path_len >> path_sz) > MAX_PATH_SIZE", binary)
