@@ -561,7 +561,10 @@ inline int stat(const char* path, struct stat*) {
     def test_main_loop_dispatch(self):
         source = (ROOT / "examples/companion_radio/main.cpp").read_text()
         dispatch = re.search(
-            r"#if CARDPUTER_ADV_UI\n  the_mesh_cp\.loop\(\);\n#else\n  the_mesh\.loop\(\);\n#endif",
+            r"#if CARDPUTER_ADV_UI\n  the_mesh_cp\.loop\(\);\n#else\n"
+            r"  the_mesh\.loop\(\);\n"
+            r"#ifdef RECOVERABLE_EXTERNAL_RADIO\n  if \(companion_radio_available\)\n#endif\n"
+            r"    mesh::ota::ota_nrf52_confirm_trial\(\);\n#endif",
             source)
         self.assertIsNotNone(dispatch)
         harness = r'''
@@ -570,15 +573,31 @@ struct MyMesh { unsigned base_calls = 0; void loop() { ++base_calls; } };
 struct CardputerMesh : MyMesh { unsigned custom_calls = 0; void loop() { MyMesh::loop(); ++custom_calls; } };
 CardputerMesh the_mesh_cp;
 MyMesh& the_mesh = the_mesh_cp;
+static unsigned confirmations = 0;
+namespace mesh::ota {
+void ota_nrf52_confirm_trial() {
+  assert(the_mesh.base_calls == 1);
+  ++confirmations;
+}
+}
+#ifdef RECOVERABLE_EXTERNAL_RADIO
+[[maybe_unused]] static bool companion_radio_available = RADIO_AVAILABLE;
+#endif
 int main() {
 @DISPATCH@
   assert(the_mesh.base_calls == 1);
   assert(the_mesh_cp.custom_calls == CARDPUTER_ADV_UI);
+  assert(confirmations == unsigned(!CARDPUTER_ADV_UI && RADIO_AVAILABLE));
 }
 '''.replace("@DISPATCH@", dispatch.group())
         for enabled in (0, 1):
-            with self.subTest(cardputer=enabled):
-                self.run_cpp(harness, flags=(f"-DCARDPUTER_ADV_UI={enabled}",))
+            for radio_available, recoverable in ((1, False), (1, True), (0, True)):
+                with self.subTest(cardputer=enabled, radio_available=radio_available,
+                                  recoverable=recoverable):
+                    flags = (f"-DCARDPUTER_ADV_UI={enabled}", f"-DRADIO_AVAILABLE={radio_available}")
+                    if recoverable:
+                        flags += ("-DRECOVERABLE_EXTERNAL_RADIO",)
+                    self.run_cpp(harness, flags=flags)
 
 
 if __name__ == "__main__":

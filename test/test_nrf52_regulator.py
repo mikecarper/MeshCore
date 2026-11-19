@@ -34,7 +34,8 @@ class Nrf52RegulatorTests(unittest.TestCase):
             "void NRF52Board::feedWatchdog(bool enabled)",
             "void NRF52Board::serviceWatchdog()",
         ))
-        reload = body(source, "static void reloadWatchdogChannels()")
+        reload_source = (ROOT / "src/helpers/nrf52/WatchdogReload.h").read_text()
+        reload = body(reload_source, "inline void nrf52_reload_watchdog()")
         fixture = r'''
 #include <cassert>
 #include <cstdint>
@@ -75,7 +76,13 @@ struct NRF52Board {
   void serviceWatchdog();
 };
 #if NRF52_WATCHDOG_TIMEOUT_SECONDS > 0
+namespace mesh {
 @RELOAD@
+namespace ota {
+static bool trial_pending = false;
+bool ota_nrf52_trial_pending() { return trial_pending; }
+}
+}
 #endif
 @METHODS@
 int main() {
@@ -141,6 +148,14 @@ int main() {
   board.feedWatchdog(false);
   assert(clean_marks == 2 * unsigned(callbacks));
   assert(resumes == unsigned(callbacks));
+  mesh::ota::trial_pending = true;
+  const unsigned before_trial = reloads;
+  board.feedWatchdog(true);
+  board.serviceWatchdog();
+  assert(reloads == before_trial && board.watchdog_disable_reset_pending);
+  mesh::ota::trial_pending = false;
+  board.serviceWatchdog();
+  assert(reloads == before_trial + 2);
 #endif
 }
 '''.replace("@RELOAD@", reload).replace("@METHODS@", methods)

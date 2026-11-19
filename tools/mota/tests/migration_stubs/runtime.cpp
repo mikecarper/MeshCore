@@ -11,6 +11,7 @@ extern "C" const uint8_t g_meshcore_internal_extrafs __attribute__((weak));
 #include "nrf_mbr.h"
 #include "nrf_sdm.h"
 #include "nrf_soc.h"
+#include "helpers/nrf52/SoftDeviceState.h"
 
 #include <cassert>
 #include <cstdint>
@@ -76,6 +77,7 @@ InstalledVariant installed_variant_for_runtime(const uint8_t *image, size_t size
 // replaced: function-like 'volatile(...)' captures the extended assembly, but
 // leaves ordinary 'volatile uint8_t *' memory reads unchanged. The adapter is
 // an explicit failing trap, never a successful simulated flash operation.
+// SoftDeviceState.h is included above so its compiler barrier remains real.
 // A classification boundary permits a reset injection while still using the
 // real classifier for every completed check.
 #define __attribute__(...)
