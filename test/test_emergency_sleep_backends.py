@@ -59,7 +59,13 @@ static struct {
   ReloadRegister RR[8]{};
 } nrf_watchdog;
 #define NRF_WDT (&nrf_watchdog)
+namespace mesh {
 @NRF_RELOAD@
+namespace ota {
+static bool trial_pending = false;
+bool ota_nrf52_trial_pending() { return trial_pending; }
+}
+}
 
 using esp_err_t = int;
 static constexpr int ESP_OK = 0, ESP_ERR_NOT_FOUND = 1, ESP_ERR_INVALID_STATE = 2;
@@ -124,6 +130,7 @@ static void reset() {
   scheduler = taskSCHEDULER_RUNNING;
   tick_ms = 1; delayed_ticks = nrf_feeds = 0;
   nrf_watchdog = {0, 60 * 32768UL};
+  mesh::ota::trial_pending = false;
   task_watchdog_status = ESP_ERR_INVALID_STATE;
   task_watchdog_feeds = fail_watchdog_feed = 0;
   timer_us = last_armed_us = 0; timer_calls = sleep_calls = clear_calls = 0;
@@ -171,6 +178,9 @@ int main() {
   reset(); nrf_watchdog.RUNSTATUS = 1; nrf_watchdog.CRV = 2 * 32768;
   assert(nrf.emergencySleepMilliseconds(10000));
   assert(delayed_ticks == 1000 && nrf_feeds == 2); // Short inherited watchdog.
+  reset(); nrf_watchdog.RUNSTATUS = 1; mesh::ota::trial_pending = true;
+  assert(nrf.emergencySleepMilliseconds(100));
+  assert(events == std::vector<std::string>{"delay"} && nrf_feeds == 0);
   reset(); nrf_watchdog.RUNSTATUS = 1; nrf_watchdog.CRV = 32767;
   assert(!nrf.emergencySleepMilliseconds(10000)); assert(events.empty());
 
@@ -236,13 +246,14 @@ class EmergencySleepBackendTests(unittest.TestCase):
             ("core", "src/MeshCore.h"),
             ("nrf", "src/helpers/NRF52Board.cpp"),
             ("nrf_header", "src/helpers/NRF52Board.h"),
+            ("watchdog", "src/helpers/nrf52/WatchdogReload.h"),
             ("esp", "src/helpers/ESP32Board.cpp"),
             ("esp_header", "src/helpers/ESP32Board.h"))}
         code = HARNESS
         for marker, source, signature in (
             ("DEFAULT_SUPPORT", "core", "virtual bool supportsEmergencySleep() const"),
             ("DEFAULT_SLEEP", "core", "virtual bool emergencySleepMilliseconds("),
-            ("NRF_RELOAD", "nrf", "static void reloadWatchdogChannels("),
+            ("NRF_RELOAD", "watchdog", "inline void nrf52_reload_watchdog("),
             ("NRF_SUPPORT", "nrf_header", "bool supportsEmergencySleep() const override"),
             ("NRF_USB", "nrf", "bool NRF52Board::isUsbHostConnected("),
             ("ESP_SUPPORT", "esp_header", "bool supportsEmergencySleep() const override"),

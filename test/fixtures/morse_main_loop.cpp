@@ -1,6 +1,7 @@
 #include <helpers/MorseLoopPolicy.h>
 #include <helpers/PowerSavingDiagnostics.h>
 #include <helpers/PowerManagementUtils.h>
+#include <helpers/ota/OtaRollback.h>
 #include <cstdarg>
 static unsigned usb_services=0,command_services=0,transport_services=0,delays=0;
 static unsigned usb_bluetooth_priority_services=0;
