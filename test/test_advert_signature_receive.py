@@ -55,6 +55,7 @@ class AdvertSignatureReceiveTests(unittest.TestCase):
 #include <helpers/AdvertSignature.h>
 
 constexpr unsigned PAYLOAD_TYPE_ADVERT = 4;
+constexpr unsigned PAYLOAD_TYPE_TRACE = 9;
 constexpr uint32_t ACTION_RELEASE = 0;
 struct Packet {
   uint8_t* payload;
@@ -62,6 +63,10 @@ struct Packet {
   unsigned getPayloadType() const { return PAYLOAD_TYPE_ADVERT; }
   bool violatesRoutePolicy() const { return false; }
 };
+static bool getTraceLayout(const Packet*, uint8_t&, uint8_t&) {
+  assert(false && "Advertisement entry must not call TRACE validation");
+  return false;
+}
 struct Identity {
   const uint8_t* signature = nullptr;
   const uint8_t* message = nullptr;
