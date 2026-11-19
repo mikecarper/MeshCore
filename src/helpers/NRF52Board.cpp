@@ -7,6 +7,8 @@
 #include "nrf52/SleepCycleState.h"
 #include "nrf52/ShutdownLeds.h"
 #include "nrf52/BluetoothLed.h"
+#include "nrf52/WatchdogReload.h"
+#include "ota/OtaRollback.h"
 #include <target.h>
 #include "PeripheralPinPolicy.h"
 #include "RuntimePinClaims.h"
@@ -292,21 +294,9 @@ float NRF52Board::getAdcMultiplier() const {
   return mesh::MainBoard::getAdcMultiplier();
 }
 
-#if NRF52_WATCHDOG_TIMEOUT_SECONDS > 0 || MESH_ENABLE_EMERGENCY_POWER
-static void reloadWatchdogChannels() {
-  // Ordinarily only RR0 is enabled. If a bootloader left the watchdog running
-  // with a different reload channel, service every enabled channel.
-  const uint32_t enabled_channels = NRF_WDT->RREN & 0xFFUL;
-  for (uint8_t channel = 0; channel < 8; channel++) {
-    if (enabled_channels & (1UL << channel)) {
-      NRF_WDT->RR[channel] = WDT_RR_RR_Reload;
-    }
-  }
-}
-#endif
-
 void NRF52Board::feedWatchdog(bool enabled) {
 #if NRF52_WATCHDOG_TIMEOUT_SECONDS > 0
+  if (mesh::ota::ota_nrf52_trial_pending()) return;
   // The nRF52 watchdog cannot be stopped after it starts. When the persisted
   // setting is turned off, deliberately stop reloading it; the resulting
   // watchdog reset is the only software-only way to return it to the stopped
@@ -332,7 +322,7 @@ void NRF52Board::feedWatchdog(bool enabled) {
     NRF_WDT->TASKS_START = 1;
   }
 
-  reloadWatchdogChannels();
+  mesh::nrf52_reload_watchdog();
   if (watchdog_disable_reset_pending) {
     watchdog_disable_reset_pending = false;
     // Cancel a planned watchdog-off reset with fresh recovery state. Feed
@@ -346,7 +336,7 @@ void NRF52Board::feedWatchdog(bool enabled) {
 
 void NRF52Board::serviceWatchdog() {
 #if NRF52_WATCHDOG_TIMEOUT_SECONDS > 0
-  if (NRF_WDT->RUNSTATUS != 0) reloadWatchdogChannels();
+  if (NRF_WDT->RUNSTATUS != 0 && !mesh::ota::ota_nrf52_trial_pending()) mesh::nrf52_reload_watchdog();
 #endif
 }
 
@@ -947,9 +937,9 @@ bool NRF52Board::emergencySleepMilliseconds(uint32_t millisecs) {
   const TickType_t ticks = pdMS_TO_TICKS(millisecs);
   if (ticks == 0) return false;
   // Service inherited watchdogs even when this build does not start one.
-  if (NRF_WDT->RUNSTATUS != 0) reloadWatchdogChannels();
+  if (NRF_WDT->RUNSTATUS != 0 && !mesh::ota::ota_nrf52_trial_pending()) mesh::nrf52_reload_watchdog();
   vTaskDelay(ticks);
-  if (NRF_WDT->RUNSTATUS != 0) reloadWatchdogChannels();
+  if (NRF_WDT->RUNSTATUS != 0 && !mesh::ota::ota_nrf52_trial_pending()) mesh::nrf52_reload_watchdog();
   return true;
 }
 #endif

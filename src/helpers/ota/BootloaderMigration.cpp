@@ -8,6 +8,7 @@
 #include "BootloaderMigrationPolicy.h"
 #include "BootloaderMigrationResource.h"
 #include "OtaSelf.h"
+#include "../nrf52/SoftDeviceState.h"
 
 #include <Arduino.h>
 #include <SHA256.h>
@@ -118,7 +119,7 @@ bool lock_automatic_for_firmware() {
 
 bool read_reboot_marker(uint32_t &result) {
   uint8_t enabled = 0;
-  if (sd_softdevice_is_enabled(&enabled) != NRF_SUCCESS) return false;
+  if (mesh_nrf52::softdeviceIsEnabled(enabled) != NRF_SUCCESS) return false;
   if (enabled) {
     if (sd_power_gpregret_get(0, &result) != NRF_SUCCESS) return false;
   } else {
@@ -136,7 +137,7 @@ uint8_t retained_result() {
 
 bool write_reboot_marker(uint8_t marker) {
   uint8_t enabled = 0;
-  if (sd_softdevice_is_enabled(&enabled) != NRF_SUCCESS) return false;
+  if (mesh_nrf52::softdeviceIsEnabled(enabled) != NRF_SUCCESS) return false;
   if (enabled) {
     uint32_t current = 0;
     if (sd_power_gpregret_get(0, &current) != NRF_SUCCESS) return false;
@@ -167,7 +168,7 @@ void install() {
     return;
   }
   uint8_t enabled = 0;
-  if (sd_softdevice_is_enabled(&enabled) != NRF_SUCCESS ||
+  if (mesh_nrf52::softdeviceIsEnabled(enabled) != NRF_SUCCESS ||
       (enabled && sd_softdevice_disable() != NRF_SUCCESS)) {
     pending = false;
     last_result = 2;

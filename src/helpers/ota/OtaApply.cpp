@@ -24,6 +24,12 @@
   #include "OtaSelf.h"
   #include "OtaFlashLayout_nrf52.h"
   #include "OtaBlInfo.h"            // read the bootloader capability marker before arming an apply
+  #include "OtaRollback.h"
+  #include "OtaRollbackRecord.h"
+  #include "Utils.h"
+  #if defined(ENABLE_OTA) && !defined(OTA_SEEDER_ONLY) && (defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE))
+    #include <Arduino.h>
+  #endif
   #include "flash/flash_nrf5x.h"  // Adafruit core internal-flash driver (has its own extern "C")
   #include "nrf.h"
   #include "nrf_soc.h"
@@ -870,6 +876,99 @@ bool ota_apply_mota_nrf52(OtaStoreFlashNrf52& store,
 #if defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE)
 static const size_t NRF52_APPLY_MSG_CAP = 96;
 
+#if defined(ENABLE_OTA) && !defined(OTA_SEEDER_ONLY)
+extern "C" bool mesh_flash_nrf5x_program_word(uint32_t addr, uint32_t value);
+extern "C" bool mesh_flash_nrf5x_flush_checked(void);
+
+static mota_rollback_record_t read_rollback_page(uint32_t page) {
+  mota_rollback_record_t record;
+  const auto* flash = reinterpret_cast<const volatile uint8_t*>(page);
+  auto* bytes = reinterpret_cast<uint8_t*>(&record);
+  for (size_t i = 0; i < sizeof(record); ++i) bytes[i] = flash[i];
+  return record;
+}
+
+static uint32_t trial_page() {
+  const uint32_t app_base = mota_nrf52_app_base();
+  const uint32_t pages[] = {MOTA_ROLLBACK_EXPANDED_PAGE, MOTA_ROLLBACK_LEGACY_PAGE};
+  for (uint32_t page : pages) {
+    const auto record = read_rollback_page(page);
+    if (record.phase == MOTA_ROLLBACK_RUNNING && mota_rollback_valid(&record, app_base, page))
+      return page;
+  }
+  return 0;
+}
+
+static uint32_t& running_trial_page() {
+  static uint32_t page = trial_page();
+  return page;
+}
+
+bool ota_nrf52_trial_pending() {
+  return running_trial_page() != 0;
+}
+
+void ota_nrf52_confirm_trial() {
+  // OTAFIX only starts a trial for an image that supplies this health hook.
+  alignas(4) static const char marker[] = MOTA_ROLLBACK_APP_CAPABILITY;
+  if (*reinterpret_cast<const volatile char*>(marker) != 'M') return;
+  uint32_t& page = running_trial_page();
+  if (!page) return;
+  static const uint32_t first_healthy_loop = millis();
+  if (millis() - first_healthy_loop < 5000u) return;
+  const uint32_t phase_addr = page + offsetof(mota_rollback_record_t, phase);
+  if (mesh_flash_nrf5x_program_word(phase_addr, MOTA_ROLLBACK_DONE)) page = 0;
+}
+
+static bool bootloader_supports_rollback() {
+  for (uint32_t addr = MOTA_NRF52_BL_START; addr + 8u <= MOTA_NRF52_BL_END; addr += 4u) {
+    if (memcmp(reinterpret_cast<const void*>(addr), MOTA_ROLLBACK_CAPABILITY, 8u) == 0)
+      return true;
+  }
+  return false;
+}
+
+template <typename Store>
+static bool prepare_rollback(Store& store, const MotaManifest& manifest, SelfFwInfo& self,
+                             uint8_t medium, uint32_t workspace_used, bool& prepared) {
+  if (ota_nrf52_trial_pending()) return false;
+  if (!bootloader_supports_rollback()) return true;
+  if (!self.valid && !ota_self_firmware(self)) return true;
+  const uint32_t app_base = mota_nrf52_app_base();
+  const uint32_t ceiling = mota_nrf52_layout_stage_ceiling();
+  const uint32_t page = ceiling - MOTA_NRF52_FLASH_PAGE;
+  if (!self.valid || app_base >= page || self.image_len > page - app_base ||
+      workspace_used > page - app_base) return true;
+  const auto previous = read_rollback_page(page);
+  if (mota_rollback_valid(&previous, app_base, page)) {
+    if (previous.phase != MOTA_ROLLBACK_READY && previous.phase != MOTA_ROLLBACK_DONE &&
+        previous.phase != MOTA_ROLLBACK_FAILED) return false;
+  } else {
+    const auto* words = reinterpret_cast<const uint32_t*>(page);
+    for (uint32_t i = 0; i < MOTA_NRF52_FLASH_PAGE / sizeof(*words); ++i) {
+      if (words[i] != UINT32_MAX) return true;
+    }
+  }
+
+  mota_rollback_record_t record = {};
+  const auto* image = reinterpret_cast<const uint8_t*>(app_base);
+  record.magic = MOTA_ROLLBACK_MAGIC;
+  record.media = medium;
+  record.previous_size = self.image_len;
+  record.next_size = manifest.image_size;
+  record.phase = MOTA_ROLLBACK_READY;
+  Utils::sha256(record.previous_hash, sizeof(record.previous_hash), image, self.image_len);
+  memcpy(record.next_hash, manifest.image_hash, sizeof(record.next_hash));
+  if (!store.saveRollback(image, self.image_len, record.offset)) return false;
+  record.crc32 = mota_rollback_crc(&record);
+  if (flash_nrf5x_write(page, &record, sizeof(record)) != static_cast<int>(sizeof(record)) ||
+      !mesh_flash_nrf5x_flush_checked()) return false;
+  const auto saved = read_rollback_page(page);
+  prepared = memcmp(&saved, &record, sizeof(record)) == 0;
+  return prepared;
+}
+#endif
+
 #if defined(OTA_SD_STORE)
 static bool external_application_approve(OtaStoreSdNrf52& store,
                                          const uint8_t container_hash[32]) {
@@ -887,7 +986,7 @@ static bool external_application_approve(OtaStoreQspiNrf52& store,
 template <typename Store>
 static bool ota_apply_mota_nrf52_external(Store& store, const SignerAllowlist& allow,
                                           uint8_t storage_flag, const char* storage_name,
-                                          bool require_trusted_signature,
+                                          bool require_trusted_signature, uint8_t medium,
                                           ApplyState& st, char* msg) {
   st = ApplyState();
   uint8_t hdr[8], manifest[MOTA_MFL];
@@ -959,6 +1058,7 @@ static bool ota_apply_mota_nrf52_external(Store& store, const SignerAllowlist& a
   }
 
   SelfFwInfo fi;
+  uint32_t workspace_used = m.image_size;
   if (delta) {
     if (!ota_self_firmware(fi) || !fi.valid) {
       strcpy(msg, "cannot read running firmware (no EndF)");
@@ -991,16 +1091,24 @@ static bool ota_apply_mota_nrf52_external(Store& store, const SignerAllowlist& a
       strcpy(msg, "invalid in-place patch geometry");
       return false;
     }
+    if (d.shift + d.from > workspace_used) workspace_used = d.shift + d.from;
   }
+  bool rollback_prepared = false;
+#if defined(ENABLE_OTA) && !defined(OTA_SEEDER_ONLY)
+  if (!prepare_rollback(store, m, fi, medium, workspace_used, rollback_prepared)) {
+    strcpy(msg, "could not save rollback image; update canceled");
+    return false;
+  }
+#endif
   if (!external_application_approve(store, vr.container_hash)) {
     snprintf(msg, NRF52_APPLY_MSG_CAP, "%s handoff failed: %s", storage_name,
              store.last_error());
     return false;
   }
   snprintf(msg, NRF52_APPLY_MSG_CAP,
-           "verified%s %s image on %s; rebooting into bootloader once this reply is sent",
+           "verified%s %s on %s; rollback %s; rebooting into bootloader",
            vr.is_signed ? " (signer trusted)" : " (unsigned)", full ? "full" : "delta",
-           storage_name);
+           storage_name, rollback_prepared ? "ready" : "unavailable");
   return true;
 }
 #endif
@@ -1197,7 +1305,8 @@ bool ota_apply_mota_nrf52(OtaStoreSdNrf52& store, const SignerAllowlist& allow,
     return false;
   }
 #endif
-  if (!ota_apply_mota_nrf52_external(store, allow, OTA_BL_STORAGE_SD, "SD", true, st, msg))
+  if (!ota_apply_mota_nrf52_external(store, allow, OTA_BL_STORAGE_SD, "SD", true,
+                                      GPREGRET2_OTA_STAGE_SD, st, msg))
     return false;
 #if defined(OTA_RAK15002_SD_STORE) && defined(OTA_RAK_AUTO_STORE)
   g_nrf52_external_handoff = GPREGRET2_OTA_STAGE_SD;
@@ -1237,9 +1346,6 @@ bool ota_apply_mota_nrf52(OtaStoreQspiNrf52& store, const SignerAllowlist& allow
   g_nrf52_apply_store = nullptr;
 #endif
   g_nrf52_external_handoff = GPREGRET2_OTA_STAGE_QSPI;
-  if (!ota_apply_mota_nrf52_external(store, allow, OTA_BL_STORAGE_QSPI, "QSPI", false, st, msg)) {
-    return false;
-  }
 #if defined(OTA_RAK_AUTO_STORE)
   if (OtaStoreQspiNrf52::headerW25Detected()) {
     g_nrf52_external_handoff = GPREGRET2_OTA_STAGE_HEADER_W25;
@@ -1254,7 +1360,8 @@ bool ota_apply_mota_nrf52(OtaStoreQspiNrf52& store, const SignerAllowlist& allow
     }
   }
 #endif
-  return true;
+  return ota_apply_mota_nrf52_external(store, allow, OTA_BL_STORAGE_QSPI, "QSPI", false,
+                                      g_nrf52_external_handoff, st, msg);
 }
 
 #if defined(OTA_QSPI_BOOTLOADER_UPDATE)

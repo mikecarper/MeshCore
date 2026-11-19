@@ -77,9 +77,10 @@ struct SignerAllowlist {};
 struct ApplyState {};
 template<class Store> bool ota_apply_mota_nrf52_external(
     Store&, const SignerAllowlist&, uint8_t flag, const char*, bool trusted,
-    ApplyState&, char*) {
+    uint8_t medium, ApplyState&, char*) {
   ++verification_calls;
   assert(trusted == (flag == OTA_BL_STORAGE_SD));
+  assert(medium == (trusted ? GPREGRET2_OTA_STAGE_SD : GPREGRET2_OTA_STAGE_QSPI));
   return verified;
 }
 void ota_nrf52_set_reset_handoff(uint8_t req, uint8_t src) { request = req; source = src; }

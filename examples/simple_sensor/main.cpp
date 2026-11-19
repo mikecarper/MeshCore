@@ -4,6 +4,7 @@
 #include <helpers/radiolib/LR2021SafeMode.h>
 #endif
 #include <helpers/LedSettings.h>
+#include <helpers/ota/OtaRollback.h>
 #include "SensorMesh.h"
 #include <math.h>
 #include <helpers/IdentityGeneration.h>
@@ -441,6 +442,7 @@ void loop() {
           the_mesh.getPowerCLI(), command[0], the_mesh.emergencyPowerBusy())) return;
 #endif
   the_mesh.loop();
+  mesh::ota::ota_nrf52_confirm_trial();
 #if MESH_WARM_RX_REFRESH
   // The Dispatcher may have admitted a new lease in this pass.
   if (radio_driver.serviceAGCMaintenanceFastLane()) return;

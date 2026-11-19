@@ -209,6 +209,7 @@ public:
   bool read(uint32_t offset, uint8_t *buf, uint32_t len) const override;
   uint32_t capacity() const override;
   uint32_t staged_size() const override { return _total; }
+  bool saveRollback(const uint8_t* image, uint32_t size, uint32_t& offset);
   void clear() override;
   bool discard() override;
   bool set_meta_size(uint32_t meta_bytes) override;

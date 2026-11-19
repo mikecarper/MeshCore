@@ -5,6 +5,7 @@
 #include "OtaByteIO.h"
 #include "OtaFlashLayout_nrf52.h"
 #include <helpers/nrf52/QspiFlashWake.h>
+#include <helpers/nrf52/WatchdogReload.h>
 #include "hal/nrf_gpio.h"
 #include "hal/nrf_qspi.h"
 #include "nrf.h"
@@ -802,6 +803,20 @@ bool OtaStoreQspiNrf52::rawWrite(uint32_t address, const void *data, uint32_t le
     length -= n;
   }
   return true;
+}
+
+bool OtaStoreQspiNrf52::saveRollback(const uint8_t* image, uint32_t size, uint32_t& offset) {
+  const uint32_t start = (_total + PAGE - 1u) & ~(PAGE - 1u);
+  const uint32_t reserved = (size + PAGE - 1u) & ~(PAGE - 1u);
+  bool ok = _total && ensureFlash() && start <= _flash_size && reserved <= _flash_size - start;
+  for (uint32_t done = 0; ok && done < size; done += PAGE) {
+    const uint32_t count = size - done < PAGE ? size - done : PAGE;
+    ok = rawErasePage(start + done) && rawWrite(start + done, image + done, count);
+    if (NRF_WDT->RUNSTATUS) mesh::nrf52_reload_watchdog();
+  }
+  releaseFlash();
+  if (ok) offset = start;
+  return ok;
 }
 
 bool OtaStoreQspiNrf52::rawErasePage(uint32_t address) {

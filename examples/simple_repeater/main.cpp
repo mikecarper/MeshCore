@@ -31,6 +31,7 @@
 #endif
 
 #include "MyMesh.h"
+#include <helpers/ota/OtaRollback.h>
 #if defined(OTA_BOOTLOADER_MIGRATION)
 #include <helpers/ota/BootloaderMigration.h>
 #endif
@@ -864,6 +865,7 @@ void loop() {
 #endif
 
   the_mesh.loop();
+  mesh::ota::ota_nrf52_confirm_trial();
 #if MESH_WARM_RX_REFRESH
   // The Dispatcher may have admitted a new lease in this pass.
   if (radio_driver.serviceAGCMaintenanceFastLane()) return;

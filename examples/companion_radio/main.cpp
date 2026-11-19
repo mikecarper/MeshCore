@@ -41,6 +41,7 @@ static CompanionMdns companion_mdns;
 #include <helpers/WirelessPolicyBackend.h>
 #endif
 #include "CompanionWiFi.h"
+#include <helpers/ota/OtaRollback.h>
 #if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
 #include <WiFi.h>
 #endif
@@ -4562,6 +4563,10 @@ void loop() {
   the_mesh_cp.loop();
 #else
   the_mesh.loop();
+#ifdef RECOVERABLE_EXTERNAL_RADIO
+  if (companion_radio_available)
+#endif
+    mesh::ota::ota_nrf52_confirm_trial();
 #endif
 #if MESH_WARM_RX_REFRESH
   if (radio_driver.serviceAGCMaintenanceFastLane()) return;

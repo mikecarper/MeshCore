@@ -16,6 +16,7 @@
 #include "OtaSdBootToken.h"
 #include "OtaSelf.h"
 #include "OtaSdSpiBusNrf52.h"
+#include <helpers/nrf52/WatchdogReload.h>
 #include "flash/flash_nrf5x.h"
 
 #ifndef OTA_SD_SCK_MHZ
@@ -466,7 +467,35 @@ void OtaStoreSdNrf52::clear() {}
 bool OtaStoreSdNrf52::approve_for_bootloader(const uint8_t[32], const uint8_t[32]) {
   fail("source-only SD archive cannot stage/apply"); return false;
 }
+bool OtaStoreSdNrf52::saveRollback(const uint8_t*, uint32_t, uint32_t&) { return false; }
 #else
+bool OtaStoreSdNrf52::saveRollback(const uint8_t* image, uint32_t size, uint32_t& first) {
+  if (!mount() || !busAccessAllowed() || !_sd->card()) return false;
+  static const char path[] = "/meshcore-rollback.bin";
+  if (_sd->exists(path) && !_sd->remove(path)) return false;
+  OtaSdFile file;
+  if (!file.open(path, O_RDWR | O_CREAT | O_EXCL)) return false;
+
+  Sector_t start = 0, last = 0;
+  const uint32_t card_sectors = _sd->card()->sectorCount();
+  const uint32_t needed = (size + 511u) / 512u;
+  bool ok = file.preAllocate(size) && file.contiguousRange(&start, &last) &&
+            start != 0 && start <= last && last < card_sectors && needed <= last - start + 1u &&
+            _first_sector != 0 && _allocated_sectors != 0 &&
+            (start >= _first_sector + _allocated_sectors ||
+             (start < _first_sector && needed <= _first_sector - start));
+  for (uint32_t done = 0; ok && done < size; done += 4096u) {
+    const uint32_t count = size - done < 4096u ? size - done : 4096u;
+    ok = file.write(image + done, count) == count;
+    if (NRF_WDT->RUNSTATUS) mesh::nrf52_reload_watchdog();
+  }
+  ok = ok && file.sync() && _sd->card()->syncDevice();
+  file.close();
+  if (ok) first = start;
+  else _sd->remove(path);
+  return ok;
+}
+
 bool OtaStoreSdNrf52::locate_file() {
   if (!busAccessAllowed()) return false;
   Sector_t first = 0, last = 0;

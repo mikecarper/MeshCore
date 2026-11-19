@@ -56,6 +56,22 @@ FIXED_VERIFY = """static bool fal_verify (uint32_t addr, void const * buf, uint3
   }
   return true;
 }
+
+bool mesh_flash_nrf5x_program_word(uint32_t addr, uint32_t value)
+{
+  if ((addr & 3u) || addr < (uint32_t)__flash_arduino_start ||
+      addr >= BOOTLOADER_ADDR || !mesh_flash_nrf5x_flush_checked()) return false;
+  uint32_t volatile const * word = (uint32_t volatile const *)addr;
+  uint32_t const previous = *word;
+  if ((previous & value) != value) return false;
+  if (previous == value) return true;
+
+  // Use the same completion event as ordinary filesystem writes, but never
+  // erase or buffer this word. A reset must leave the rest of its page intact.
+  if (!_sem) _sem = xSemaphoreCreateBinary();
+  return _sem && fal_sub_program(addr, &value, sizeof(value)) == NRF_SUCCESS &&
+         *word == value;
+}
 """
 
 OLD_CACHE_FLUSH = """void flash_cache_flush (flash_cache_t* fc)

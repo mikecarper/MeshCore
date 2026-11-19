@@ -32,6 +32,14 @@ class Nrf52InternalFlashFixTest(unittest.TestCase):
         self.assertIn("fc->verify", patched)
         self.assertEqual(module.patched_cache_source(patched), patched)
 
+    def test_program_word_bypasses_erase_and_checks_readback(self):
+        patched = module.patched_source(module.OLD_WAIT + module.OLD_FLUSH + module.OLD_VERIFY)
+        word_writer = patched.split("bool mesh_flash_nrf5x_program_word", 1)[1]
+        self.assertIn("(previous & value) != value", word_writer)
+        self.assertIn("fal_sub_program(addr, &value, sizeof(value))", word_writer)
+        self.assertIn("*word == value", word_writer)
+        self.assertNotIn("fal_erase(", word_writer)
+
     def test_internalfs_propagates_checked_flush_failure(self):
         source = (module.OLD_INTERNAL_READ + module.OLD_INTERNAL_PROG
                   + module.OLD_INTERNAL_ERASE_WRITE + module.OLD_INTERNAL_SYNC)
