@@ -4,12 +4,12 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const delta = require('../docs/_javascript/lora_ota_delta.js');
 
-function nrfImage(version, flags=0, app=0x26000) {
+function nrfImage(version, flags=0, app=0x26000, hwId="board") {
   const body=Buffer.alloc(16000,0xA4), record=Buffer.alloc(24), end=Buffer.alloc(56);
   record.write('mOTALay1');record[8]=1;record[9]=flags;record.writeUInt16LE(24,10);record.writeUInt32LE(app,12);
   record.writeUInt32LE(flags===2?0xD4000:flags===12?0xE0000:0xED000,16);record.writeUInt32LE(flags===2?0xD4000:0xED000,20);
   const b=Buffer.concat([body,record]);end.write('EndF');end.writeUInt32LE(b.length,4);
-  crypto.createHash('sha256').update(b).digest().copy(end,8,0,8);end.writeUInt32LE(version,16);end.writeUInt32LE(0x12345678,20);end.write('board',24);
+  crypto.createHash('sha256').update(b).digest().copy(end,8,0,8);end.writeUInt32LE(version,16);end.writeUInt32LE(0x12345678,20);end.write(hwId,24);
   return Buffer.concat([b,end]);
 }
 
@@ -50,4 +50,15 @@ test('QSPI requires confirmed apply and capacity and never emits unsigned SD pac
   }
   const base=nrfImage(0x01120001,1),target=nrfImage(0x01120002,1);
   await assert.rejects(delta.buildInPlaceDelta(base,target,{runtimeStorage:'sd',runtimeQspiApply:true,runtimeStorageBytes:1024*1024}),/Unsupported/);
+});
+
+test('RAK4631 adaptive QSPI packages leave the rollback journal outside the workspace', async () => {
+  const base = nrfImage(0x01120001, 48, 0x26000, 'RAK4631');
+  const target = nrfImage(0x01120002, 48, 0x26000, 'RAK4631');
+  const storage = {runtimeStorage:'qspi', runtimeQspiApply:true, runtimeStorageBytes:2*1024*1024};
+  await assert.rejects(
+    delta.buildInPlaceDelta(base, target, {...storage, memorySize:0xED000-0x26000}),
+    /Invalid requested in-place workspace/);
+  const result = await delta.buildInPlaceDelta(base, target, {...storage, memorySize:0xEC000-0x26000});
+  assert.deepEqual(Buffer.from(delta.applyInPlace(base, result.payload)), target);
 });

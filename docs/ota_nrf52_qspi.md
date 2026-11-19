@@ -439,6 +439,21 @@ are disabled even if the installed bootloader supports SD. No RAK15002 SD
 bootloader handoff is claimed. Update this trial firmware over USB/BLE; normal
 RAK4631 receiver targets and MeshTower SD self-update are unchanged.
 
+## Automatic rollback on canonical RAK4631 receivers
+
+The combined RAK4631 OTAFIX bootloader with rollback support lets the receiver
+save its running application to the detected W25Q16, RAK15001, or RAK15002
+before applying an update. A trial-aware update must confirm a healthy boot.
+If it stalls before confirming, the hardware watchdog restarts the board and
+OTAFIX restores the saved image. `ota status` reports `blrc:AC` after recovery.
+
+Keep the last 4 KiB page below InternalFS (`0xEC000`) outside the in-place
+workspace. The browser reserves it for adaptive RAK4631 QSPI updates. The
+receiver refuses an external install on a rollback-capable bootloader if it
+cannot save the prior image and record the trial. An older bootloader can
+still install an update using its existing apply path. OTAFIX 2.4.12 and
+2.4.13-preview.1 predate rollback support on the combined RAK4631 bootloader.
+
 ## Optional RAK15002 storage in canonical RAK4631 images
 
 This is a separate **STORE** path, not an expansion of the older

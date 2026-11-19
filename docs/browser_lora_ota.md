@@ -573,7 +573,7 @@ if preparation fails, remove the old image to use a full package instead.
 <script src="../_javascript/lora_ota_checks.js?v=gat-bridge-withdrawal-1"></script>
 <script src="../_javascript/lora_ota_package.js"></script>
 <script src="../_javascript/lora_ota_zip.js"></script>
-<script src="../_javascript/lora_ota_delta.js?v=auto-paths-3"></script>
+<script src="../_javascript/lora_ota_delta.js?v=rak4631-rollback-1"></script>
 <script src="../_javascript/lora_ota_port.js"></script>
 <script src="../_javascript/lora_ota_wifi_port.js?v=direct-wifi-1"></script>
 <script src="../_javascript/lora_ota_ble_port.js?v=bluetooth-1"></script>

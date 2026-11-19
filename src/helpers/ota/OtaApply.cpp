@@ -956,9 +956,9 @@ static bool bootloader_supports_rollback() {
 
 template <typename Store>
 static bool prepare_rollback(Store& store, const MotaManifest& manifest, SelfFwInfo& self,
-                             uint8_t medium, uint32_t workspace_used, bool& prepared) {
+                             uint8_t medium, uint32_t workspace_used, bool capable, bool& prepared) {
   if (ota_nrf52_trial_pending()) return false;
-  if (!bootloader_supports_rollback()) return true;
+  if (!capable) return true;
   if (!self.valid && !ota_self_firmware(self)) return true;
   const uint32_t app_base = mota_nrf52_app_base();
   const uint32_t ceiling = mota_nrf52_layout_stage_ceiling();
@@ -970,9 +970,22 @@ static bool prepare_rollback(Store& store, const MotaManifest& manifest, SelfFwI
     if (previous.phase != MOTA_ROLLBACK_READY && previous.phase != MOTA_ROLLBACK_DONE &&
         previous.phase != MOTA_ROLLBACK_FAILED) return false;
   } else {
-    const auto* words = reinterpret_cast<const uint32_t*>(page);
-    for (uint32_t i = 0; i < MOTA_NRF52_FLASH_PAGE / sizeof(*words); ++i) {
-      if (words[i] != UINT32_MAX) return true;
+#if defined(OTA_RAK_AUTO_STORE) && defined(OTA_RAK15002_SD_STORE)
+    // External staging owns the expanded journal page after the image and
+    // rewrite workspace checks above. A previous internal staging session
+    // can leave bytes here. The legacy page can still contain live data.
+    static_assert(MOTA_ROLLBACK_EXPANDED_PAGE >= MOTA_NRF52_BOOT_SCRATCH_END,
+                  "rollback journal must be outside bootloader scratch");
+    static_assert(MOTA_ROLLBACK_EXPANDED_PAGE + MOTA_NRF52_FLASH_PAGE ==
+                      MOTA_NRF52_STAGE_CEILING_EXPANDED,
+                  "rollback journal must stay below the internal filesystem");
+    if (page != MOTA_ROLLBACK_EXPANDED_PAGE)
+#endif
+    {
+      const auto* words = reinterpret_cast<const uint32_t*>(page);
+      for (uint32_t i = 0; i < MOTA_NRF52_FLASH_PAGE / sizeof(*words); ++i) {
+        if (words[i] != UINT32_MAX) return true;
+      }
     }
   }
 
@@ -1121,10 +1134,17 @@ static bool ota_apply_mota_nrf52_external(Store& store, const SignerAllowlist& a
   }
   bool rollback_prepared = false;
 #if defined(ENABLE_OTA) && !defined(OTA_SEEDER_ONLY)
-  if (!prepare_rollback(store, m, fi, medium, workspace_used, rollback_prepared)) {
+  const bool rollback_capable = bootloader_supports_rollback();
+  if (!prepare_rollback(store, m, fi, medium, workspace_used, rollback_capable, rollback_prepared)) {
     strcpy(msg, "could not save rollback image; update canceled");
     return false;
   }
+#if defined(OTA_RAK_AUTO_STORE) && defined(OTA_RAK15002_SD_STORE)
+  if (rollback_capable && !rollback_prepared) {
+    strcpy(msg, "rollback journal unavailable; use a smaller in-place workspace or USB DFU");
+    return false;
+  }
+#endif
 #endif
   if (!external_application_approve(store, vr.container_hash)) {
     snprintf(msg, NRF52_APPLY_MSG_CAP, "%s handoff failed: %s", storage_name,

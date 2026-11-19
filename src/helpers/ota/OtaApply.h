@@ -146,6 +146,7 @@ bool ota_installed_bootloader_identity(OtaBootloaderIdentity& out);
 
 inline uint8_t ota_nrf52_boot_result_or_zero(uint8_t value) {
   return ((value >= 0x90u && value <= 0x9Fu) ||
+          value == 0xACu || value == 0xADu || // external rollback restored / failed
           // B0..BC are the ordinary apply progress/failure/success results;
           // Retained-source OTAFIX paths use BD for authorization/handoff failure.
           (value >= 0xB0u && value <= 0xBDu) ||

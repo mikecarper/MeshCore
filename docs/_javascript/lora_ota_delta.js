@@ -182,6 +182,10 @@
       // The linked application end never exceeds this layout's apply ceiling,
       // and also preserves QSPI bootloader scratch where present.
       usableCeiling=a.end;
+      // The combined RAK4631 OTAFIX keeps its external rollback journal in
+      // the last page below InternalFS. Leave room even in deep searches.
+      if (base.hwId === 'RAK4631' && (a.flags & 32))
+        usableCeiling = Math.min(usableCeiling, a.ceiling - PAGE);
     } else {
       const runtimeCeiling=options.runtimeStageCeiling;
       if(!Number.isInteger(runtimeCeiling)||runtimeCeiling%PAGE||runtimeCeiling<=a.app||runtimeCeiling>0xED000)

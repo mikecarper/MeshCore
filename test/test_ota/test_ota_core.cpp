@@ -38,6 +38,9 @@ static std::vector<uint8_t> boot_manifest_bytes();
 TEST(OtaBootResult, AcceptsOnlyOtafixApplyDiagnostics) {
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0x90), 0x90);
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0x9F), 0x9F);
+  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xAC), 0xAC);
+  EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xAD), 0xAD);
+  EXPECT_FALSE(ota_nrf52_boot_update_result(0xAC));
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xB0), 0xB0);
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xB8), 0xB8);
   EXPECT_EQ(ota_nrf52_boot_result_or_zero(0xBC), 0xBC);
