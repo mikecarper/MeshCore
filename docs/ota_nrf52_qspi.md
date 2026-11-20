@@ -536,26 +536,12 @@ media during a transfer.
 #### Full Companion
 
 The Full Companion is deliberately different: its optional RAK15002 holds
-peer archives for caching and serving, never its own install image. It may
-also compile RAK13800 Ethernet, but Ethernet and the card electrically share
-CS26 and cannot operate together. In this combined profile physical Ethernet
-starts **off** and `set eth on` is only a this-boot choice.
+peer archives for caching and serving, never its own install image.
+RAK4631 Full Companion uses USB and BLE and does not compile RAK13800
+Ethernet. For card status or cache controls, use `get sdcard [free]` or
+`ota cache [on|off]`.
 
-To use Ethernet, stop/cancel any active OTA capture or serve work, detach any
-host folder source, **physically remove the SD card**, then run:
-
-```text
-get eth
-set eth on
-```
-
-The command refuses unsafe ownership states rather than forcing the bus. To
-return to the card, run `set eth off`, wait for it to report off, then insert
-the card and use `get sdcard [free]` or `ota cache [on|off]`. If a card is
-inserted while Ethernet is active, Ethernet fails closed; use `set eth off`
-before accessing the card. This is not a supported hot-swap procedure.
-
-The combined RAK15002 receiver/Companion/RAK13800 path has host-side checks,
+The combined RAK15002 and RAK13800 room-server path has host-side checks,
 but **has not yet received hardware qualification**. Do not treat these rules
 as proof that a particular card, Ethernet module, loader migration, or live
 card insertion has been field-tested.

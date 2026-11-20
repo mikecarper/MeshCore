@@ -6,7 +6,7 @@
 #include "../ui/Nrf52FontConfig.h"
 #include "OtaDeflateConfig.h"
 #if defined(ENABLE_OTA) || defined(OTA_TRANSPORT_DEFLATE_TEST) || COMPANION_FEATURE_READER \
-    || MESHCORE_FONT_DEFLATE
+    || MESHCORE_FONT_DEFLATE || COMPANION_FEATURE_BOOKS
 #if defined(__GNUC__) && !defined(__clang__)
 /* nRF52's Arduino recipe defaults to -Ofast, which more than doubles this
  * decoder. Keep the size policy local to tinf instead of changing MeshCore. */

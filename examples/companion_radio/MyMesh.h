@@ -253,6 +253,11 @@ public:
   void cancelSerialOperationsForRoute(BaseSerialInterface* route);
   bool hasFiniteDelayedReplyForRoute(BaseSerialInterface* route) const;
   void resetUsbHostSessionInput();
+#if COMPANION_FEATURE_BOOKS
+  BaseSerialInterface* reader_usb_route = nullptr;
+  DataStore& readerStore() { return *_store; }
+  bool handleUsbReaderCommand(const char* command, char* reply, size_t cap);
+#endif
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
   void setDirectAdminUsbRoute(BaseSerialInterface* route) {
     if (route != _ota_direct_usb_route) {

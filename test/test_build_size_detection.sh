@@ -71,27 +71,26 @@ apply_nrf52_size_profile ikoka_nano_nrf_22dbm_repeater
 [[ "$PLATFORMIO_BUILD_UNFLAGS" == *'-Ofast'* ]] || fail "aggressive optimization was not removed"
 [[ "$PLATFORMIO_BUILD_FLAGS" != *'-UENV_INCLUDE_'* ]] || fail "sensor support was reduced"
 
-# The legacy RAK4631 Ethernet image inherits the same optimizer without inheriting
-# Full Companion's transport/source-only OTA overlay or reducing its sensors.
+# The RAK4631 Full Companion size policy keeps its SD source and other flags.
 (
-  PIO_ENV_PLATFORM_BY_NAME[RAK_4631_companion_radio_ethernet]=NRF52_PLATFORM
-  PIO_ENV_OTA_BY_NAME[RAK_4631_companion_radio_ethernet]=1
-  expected_flags='-DENABLE_OTA=1 -DOTA_FLASH_STORE=1 -DETHERNET_ENABLED=1 -DENV_INCLUDE_GPS=1 -DENV_INCLUDE_BME680_BSEC=1'
+  PIO_ENV_PLATFORM_BY_NAME[RAK_4631_companion_radio_full]=NRF52_PLATFORM
+  PIO_ENV_OTA_BY_NAME[RAK_4631_companion_radio_full]=1
+  expected_flags='-DENABLE_OTA=1 -DOTA_RAK15002_SD_STORE=1 -DENV_INCLUDE_GPS=1 -DENV_INCLUDE_BME680_BSEC=1'
   for profile in auto standard; do
     BUILD_PROFILE_FOR_TARGET=$profile
     PLATFORMIO_BUILD_FLAGS=$expected_flags
-    PLATFORMIO_BUILD_UNFLAGS='-D EXTRAFS=1'
+    PLATFORMIO_BUILD_UNFLAGS='-UOTA_FLASH_STORE'
     PLATFORMIO_BOARD_UPLOAD_MAXIMUM_SIZE=712704
-    PLATFORMIO_BOARD_BUILD_LDSCRIPT=boards/nrf52840_s140_v6.ld
-    apply_nrf52_size_profile RAK_4631_companion_radio_ethernet
+    PLATFORMIO_BOARD_BUILD_LDSCRIPT=boards/nrf52840_s140_v6_extrafs.ld
+    apply_nrf52_size_profile RAK_4631_companion_radio_full
     [ "$PLATFORMIO_BUILD_FLAGS" = "$expected_flags" ] \
-      || fail "Ethernet Companion added an optimizer override or changed features ($profile)"
-    [ "$PLATFORMIO_BUILD_UNFLAGS" = $'-D EXTRAFS=1\n-Ofast' ] \
-      || fail "Ethernet Companion removed flags other than aggressive optimization ($profile)"
+      || fail "Full Companion added an optimizer override or changed features ($profile)"
+    [ "$PLATFORMIO_BUILD_UNFLAGS" = $'-UOTA_FLASH_STORE\n-Ofast' ] \
+      || fail "Full Companion removed flags other than aggressive optimization ($profile)"
     [ "$PLATFORMIO_BOARD_UPLOAD_MAXIMUM_SIZE" = 712704 ] \
-      || fail "Ethernet Companion changed its application size limit"
-    [ "$PLATFORMIO_BOARD_BUILD_LDSCRIPT" = boards/nrf52840_s140_v6.ld ] \
-      || fail "Ethernet Companion changed its flash layout"
+      || fail "Full Companion changed its application size limit"
+    [ "$PLATFORMIO_BOARD_BUILD_LDSCRIPT" = boards/nrf52840_s140_v6_extrafs.ld ] \
+      || fail "Full Companion changed its flash layout"
   done
   for target in RAK_4631_companion_radio_usb RAK_4631_companion_radio_ble Other_companion_radio_ethernet; do
     PIO_ENV_PLATFORM_BY_NAME[$target]=NRF52_PLATFORM
@@ -99,7 +98,7 @@ apply_nrf52_size_profile ikoka_nano_nrf_22dbm_repeater
     PLATFORMIO_BUILD_UNFLAGS=''
     apply_nrf52_size_profile "$target"
     [ -z "$PLATFORMIO_BUILD_FLAGS" ] && [ -z "$PLATFORMIO_BUILD_UNFLAGS" ] \
-      || fail "RAK Ethernet optimization expanded to unrelated target $target"
+      || fail "Full Companion optimization expanded to unrelated target $target"
   done
 )
 

@@ -264,8 +264,8 @@ available from a canonical image:
 - Standalone Terminal Chat is omitted when the same exact hardware has either
   Full Companion or a USB Companion, because their local text terminal supplies
   the same role. Heltec E290 and T190 similarly publish one combined USB + BLE
-  Companion. RAK4631 repeater and room-server Ethernet builds stay separate;
-  only the RAK4631 Ethernet Companion is folded into Full Companion.
+  Companion. RAK4631 repeater and room-server Ethernet builds stay available;
+  RAK4631 Companion builds use USB or BLE instead of Ethernet.
 - Matching RS-232 bridge roles are compiled into the normal repeater and
   selected at runtime with `bridge.enabled`, `bridge.baud`, and `bridge.uart`.
   Historical bridge names remain directly buildable but are omitted from bulk

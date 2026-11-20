@@ -125,6 +125,7 @@ bool handleRak4631PeripheralCommand(const char* command, char* reply, size_t cap
 #include "helpers/radiolib/RxBoostedGainDefaults.h"
 #include "helpers/radiolib/CadTiming.h"
 
+#include "BookLibrary.h"
 #if COMPANION_FEATURE_READER
 static bool isCompanionReaderRequest(const char* command) {
   if (!command) return false;
@@ -7182,6 +7183,16 @@ void MyMesh::handleSetChannelFrame(const uint8_t* cmd_frame) {
   }
 }
 
+#if COMPANION_FEATURE_BOOKS
+bool MyMesh::handleUsbReaderCommand(const char* command, char* reply, size_t cap) {
+  if (!strncmp(command, "rdb ", 4) && mesh::morseTimingActive(_radio)) {
+    snprintf(reply, cap, "RDB ERR Storage or radio busy");
+    return true;
+  }
+  return mesh::books::library.command(*_store, command, reply, cap);
+}
+#endif
+
 void MyMesh::handleCmdFrame(size_t len) {
   if (len == 0) {
     writeErrFrame(ERR_CODE_ILLEGAL_ARG);
@@ -7331,11 +7342,15 @@ void MyMesh::handleCmdFrame(size_t len) {
       beginUsbLoggingReplyBarrier(reply_route);
       reply_buf[0] = 0;
       bool handled = false;
+#if COMPANION_FEATURE_BOOKS
+      if (reply_route && reply_route == reader_usb_route)
+        handled = handleUsbReaderCommand(text, reply_buf, sizeof(reply_buf));
+#endif
 #if defined(MESHCORE_EXTRAFS_HIL)
       // This hook is deliberately reachable only from a directly attached
       // Companion frame. It is not part of handleCommand(), so an on-air
       // administrator command can never fill, corrupt, or reset the device.
-      handled = handleExtraFsHilCommand(text, reply_buf, sizeof(reply_buf));
+      if (!handled) handled = handleExtraFsHilCommand(text, reply_buf, sizeof(reply_buf));
 #endif
       if (!handled) handled = handleCommand(text, 0, reply_buf);
       if (!handled) {
@@ -12774,6 +12789,9 @@ void MyMesh::loop() {
     sendPacket(pkt, 1, 0);
   }
 
+#if COMPANION_FEATURE_BOOKS
+  mesh::books::library.poll();
+#endif
   if (_cli_rescue) {
     checkCLIRescueCmd();
   } else {

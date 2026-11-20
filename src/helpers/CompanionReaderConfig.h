@@ -8,6 +8,15 @@
   #define COMPANION_READER_COMPACT_STREAM 0
 #endif
 
+#ifndef COMPANION_FEATURE_BOOKS
+  #if !COMPANION_FEATURE_READER && defined(COMPANION_RADIO_FULL) && defined(ENABLE_USB_INTERFACE) \
+      && (defined(ESP32_PLATFORM) || defined(NRF52_PLATFORM))
+    #define COMPANION_FEATURE_BOOKS 1
+  #else
+    #define COMPANION_FEATURE_BOOKS 0
+  #endif
+#endif
+
 #if COMPANION_FEATURE_READER \
     && !(defined(COMPANION_RADIO_FULL) && defined(ENABLE_USB_INTERFACE) \
          && (defined(ESP32_PLATFORM) || defined(NRF52_PLATFORM)))

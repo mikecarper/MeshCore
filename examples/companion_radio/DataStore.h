@@ -222,6 +222,10 @@ public:
 #endif
   FILESYSTEM* getPrimaryFS() const { return _fs; }
   FILESYSTEM* getSecondaryFS() const { return _fsExtra; }
+#if COMPANION_FEATURE_BOOKS
+  FILESYSTEM* readerFS() const;
+  uint32_t readerFreeBytes(FILESYSTEM* fs) const;
+#endif
 #if defined(NRF52_PLATFORM)
   void useVolatilePrimaryFS(FILESYSTEM& fs);
   bool isVolatilePrimaryFS() const { return _volatile_primary_fs; }

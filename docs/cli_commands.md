@@ -2188,8 +2188,8 @@ boot.
 (such as `wio-e5-mini_repeater`) and ESP-NOW-only builds (`MESH_PRIMARY_ESPNOW`
 without a LoRa primary radio) omit radio presets by default; there the preset
 commands return the ordinary unknown-command reply. `RAK_4631_companion_radio_full`
-also sets `MESH_ENABLE_RADIO_PRESETS=0` because it has no flash left under its
-size gate. Other builds include them; set `-D MESH_ENABLE_RADIO_PRESETS=0` or
+also sets `MESH_ENABLE_RADIO_PRESETS=0`. Other builds include them by default;
+set `-D MESH_ENABLE_RADIO_PRESETS=0` or
 `=1` to override.
 
 **Storage switch:** `MESH_RADIO_PRESETS_RESIDENT`. By default (`1`) the preset
@@ -7906,24 +7906,7 @@ to charge above it or have USB power restored before it wakes.
 
 ---
 
-### Ethernet (when Ethernet support is compiled in)
-
-Ethernet support is available on RAK4631 boards with a RAK13800 (W5100S)
-Ethernet module. Use the `_ethernet` firmware variants (for example,
-`RAK_4631_repeater_ethernet`) for the normal Ethernet-only configuration.
-
-`RAK_4631_companion_radio_full` is a distinct combined profile: it can compile
-both physical RAK13800 Ethernet and an optional RAK15002 SD mOTA archive. They
-share CS26, so they are mutually exclusive. Ethernet defaults off on a fresh
-install. `set eth on/off` saves the choice across reboot in the shared profiles:
-
-```text
-get eth
-set eth on
-set eth off
-get sdcard free
-ota cache [on|off]
-```
+### SD maintenance on nRF52 Companions
 
 SD-capable nRF52 Companion builds also share the infrastructure SD commands:
 `get sdcard ls [page]`, `get sdcard dir [page]`, maintenance history, and
@@ -7931,12 +7914,11 @@ SD-capable nRF52 Companion builds also share the infrastructure SD commands:
 history; use `get sdcard free` for capacity. See the
 [SD command details and ownership guards](test-results/companion_cli_parity_2026-10-23.md#shared-sd-commands).
 
-Before `set eth on`, remove the SD card and finish/cancel any active OTA
-capture, transfer, serving, or host-folder work. The command rejects an
-inserted card or a busy archive instead of taking the shared bus. Turn
-Ethernet off before accessing or inserting the card. An insertion while
-Ethernet is live fails closed and still needs `set eth off`; it is not a
-supported hot-swap flow. This combined hardware path is not yet qualified.
+### Ethernet (when Ethernet support is compiled in)
+
+Ethernet support is available on RAK4631 Repeater and Room Server builds with
+a RAK13800 (W5100S) module. Use the `_ethernet` firmware variants, for example
+`RAK_4631_repeater_ethernet`. RAK4631 Companion builds do not include Ethernet.
 
 The SD-capable Ethernet-room receiver,
 `RAK_4631_room_server_ethernet_lora_ota_no_external_sensors`, uses the same

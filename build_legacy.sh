@@ -4236,7 +4236,6 @@ apply_nrf52_size_profile() {
   fi
   if ! is_repeater_role_target "$env_name" \
       && ! is_nrf52_companion_radio_full_target "$env_name" \
-      && [ "$env_name" != "RAK_4631_companion_radio_ethernet" ] \
       && { ! is_lora_ota_build "$env_name" \
            || ! is_lora_ota_only_target "$env_name"; }; then
     return 0
@@ -4245,7 +4244,7 @@ apply_nrf52_size_profile() {
   # The framework defaults to -Ofast, which expands repeated Curve25519
   # arithmetic when software Ed25519 is linked alongside CC310. Inherit the
   # canonical nrf52_base -Oz optimizer rather than appending a weaker -Os
-  # override for repeaters, Full Companion, Ethernet, and constrained OTA
+  # override for repeaters, Full Companion, and constrained OTA
   # recipes. Keep hardware crypto, software fallback, sensors, transports,
   # OTA, the 8 KiB loop stack, and each board's application/storage layout.
   append_platformio_build_unflags "-Ofast"

@@ -150,8 +150,12 @@ static mesh::ui::RadioProfileSystemStatus radioProfileSystemStatus(
 #endif
 #endif
 
-#if COMPANION_FEATURE_READER
+#if COMPANION_FEATURE_BOOKS
+#include "BookReaderScreen.h"
+#elif COMPANION_FEATURE_READER
 #include "ReaderScreen.h"
+#endif
+#if COMPANION_FEATURE_READER || COMPANION_FEATURE_BOOKS
 #if UI_POCKET_GUI
 #include "PocketReaderDisplay.h"
 #endif
@@ -978,7 +982,7 @@ public:
   }
   bool hasPairingPin() const { return _pairing_pin_visible; }
 
-#if COMPANION_FEATURE_READER || UI_POCKET_GUI
+#if COMPANION_FEATURE_READER || COMPANION_FEATURE_BOOKS || UI_POCKET_GUI
   bool isRadioPage() const {
     return _page == HomePage::RADIO || _page == HomePage::RADIO2;
   }
@@ -1755,6 +1759,9 @@ public:
 #endif
       return true;
     }
+#if COMPANION_FEATURE_BOOKS
+    if (key == KEY_ENTER && isRadioPage()) { _task->showReader(); return true; }
+#endif
     if (key == KEY_ENTER && (_page == HomePage::RADIO_STATUS
 #if UI_POCKET_GUI
                             || _page == HomePage::STATUS
@@ -2436,7 +2443,7 @@ void UITask::showMessages() {
   setCurrScreen(msg_preview);
 }
 
-#if COMPANION_FEATURE_READER
+#if COMPANION_FEATURE_READER || COMPANION_FEATURE_BOOKS
 void UITask::showReader() {
   if (!_display || isPairingScreenActive()) return;
   if (!_display->isOn()) _display->wake(mesh::ui::DisplayWake::Button);
@@ -2577,7 +2584,7 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text,
     // pairing completes or the pairing display window expires.
     _deferred_msg_preview = true;
   }
-#if COMPANION_FEATURE_READER
+#if COMPANION_FEATURE_READER || COMPANION_FEATURE_BOOKS
   else if (isReaderActive()) {
     // Queue incoming messages without stealing the reader's page.
     _deferred_msg_preview = true;
@@ -2630,7 +2637,7 @@ void UITask::setCurrScreen(UIScreen* c) {
   if (curr == home && c != home) static_cast<HomeScreen*>(home)->flushPocketSettings();
   if (curr != c && _display) _display->forceFullRefresh();
 #endif
-#if COMPANION_FEATURE_READER
+#if COMPANION_FEATURE_READER || COMPANION_FEATURE_BOOKS
   if (isReaderActive() && c != reader
       && !static_cast<ReaderScreen*>(reader)->flush()) {
     showAlert("Bookmark save failed", 1500);
@@ -2721,7 +2728,7 @@ void UITask::servicePairingState() {
       _board->isExternalPowered() || _board->isUsbHostConnected(),
       hasConnection(), isPairingScreenActive())) {
     _next_refresh = millis();
-#if COMPANION_FEATURE_READER
+#if COMPANION_FEATURE_READER || COMPANION_FEATURE_BOOKS
     if (!_display->isOn() && isReaderActive())
       static_cast<ReaderScreen*>(reader)->flush();
 #endif
@@ -2733,7 +2740,7 @@ void UITask::servicePairingState() {
 */
 void UITask::shutdown(bool restart){
   if (!prepareForShutdown()) return;
-#if COMPANION_FEATURE_READER
+#if COMPANION_FEATURE_READER || COMPANION_FEATURE_BOOKS
   if (reader) static_cast<ReaderScreen*>(reader)->flush();
 #endif
 
@@ -2878,7 +2885,7 @@ void UITask::loop() {
     if (_display == NULL) {
       c = handleLongPress(KEY_ENTER);
     } else {
-#if COMPANION_FEATURE_READER
+#if COMPANION_FEATURE_READER || COMPANION_FEATURE_BOOKS
       if (isReaderActive() || (curr == home && static_cast<HomeScreen*>(home)->isRadioPage()))
         c = handleLongPress(KEY_ENTER);
       else
@@ -3006,6 +3013,9 @@ void UITask::loop() {
         case mesh::ui::TouchAction::Select:
           c = checkDisplayOn(KEY_ENTER);
           break;
+        case mesh::ui::TouchAction::Back:
+          c = checkDisplayOn(KEY_CANCEL);
+          break;
         case mesh::ui::TouchAction::SelectLeft:
           c = checkDisplayOn(KEY_UP);
           break;
@@ -3065,7 +3075,7 @@ void UITask::loop() {
 #endif
 
   if (!morse_timing && curr) curr->poll();
-#if COMPANION_FEATURE_READER
+#if COMPANION_FEATURE_READER || COMPANION_FEATURE_BOOKS
   if (!morse_timing && reader && curr != reader) reader->poll();
 #endif
 
@@ -3171,7 +3181,7 @@ void UITask::getTouchControls(mesh::ui::TouchSplitSelector& transport_touch_sele
 #if UI_READER_TOUCH_BAR
     if (curr == msg_preview)
       reader_touch_bar = static_cast<MsgPreviewScreen*>(msg_preview)->readerTouchBar();
-#if COMPANION_FEATURE_READER
+#if COMPANION_FEATURE_READER || COMPANION_FEATURE_BOOKS
     else if (isReaderActive())
       reader_touch_bar = static_cast<ReaderScreen*>(reader)->readerTouchBar();
 #endif
@@ -3200,10 +3210,16 @@ char UITask::handleLongPress(char c) {
   // Exit an incoming message preview even during the startup rescue window.
   // The on-screen reader hint must not unexpectedly enter CLI rescue.
   if (_display != NULL && curr == msg_preview) return c;
-#if COMPANION_FEATURE_READER
+#if COMPANION_FEATURE_READER || COMPANION_FEATURE_BOOKS
   // The radio page's reader gesture, including exit, takes precedence over
   // the global early-boot rescue gesture just like the WiFi setup page.
-  if (_display != NULL && isReaderActive()) { closeReader(); return 0; }
+  if (_display != NULL && isReaderActive()) {
+#if COMPANION_FEATURE_BOOKS
+    return checkDisplayOn(KEY_CANCEL);
+#else
+    closeReader(); return 0;
+#endif
+  }
   if (c == KEY_ENTER && _display != NULL && curr == home
       && static_cast<HomeScreen*>(home)->isRadioPage()) {
     showReader();
@@ -3233,7 +3249,7 @@ char UITask::handleDoubleClick(char c) {
 char UITask::handleMultiClick(char c, bool backwards) {
   MESH_DEBUG_PRINTLN("UITask: %s-click triggered", backwards ? "quadruple" : "triple");
   if (_display != NULL && (curr == msg_preview
-#if COMPANION_FEATURE_READER
+#if COMPANION_FEATURE_READER || COMPANION_FEATURE_BOOKS
       || isReaderActive()
 #endif
 #if UI_POCKET_GUI

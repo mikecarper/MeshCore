@@ -72,11 +72,10 @@ storage repair retries automatically; the command reports an unconfirmed save.
 | Host-backed LoRa mOTA source | WiFi TCP 5001 | Exclusive USB mode or encrypted BLE; RAK4631 Full can additionally cache/serve peer images from optional RAK15002 SD |
 | WiFi Companion/WebConfig | Yes | No - nRF52840 has no WiFi |
 | Hardware serial Companion | On targets with assigned serial pins | On targets with assigned serial pins |
-| Ethernet Companion | On targets with an Ethernet module | On RAK4631 with RAK13800; the RAK15002 combination is explicitly one-at-a-time |
 | LoRa self-update | No | No |
 | Optional self-update | WiFi on existing dual-app layouts; USB on single-app layouts | Bluetooth DFU with a compatible bootloader; USB always supported |
 
-### RAK4631 Full Companion: optional RAK15002 archive and RAK13800 Ethernet
+### RAK4631 Full Companion: Reader and optional RAK15002 archive
 
 To fit its OTA slot, this image keeps its own target name and displays other
 boards' OTA targets by numeric ID. Package matching, caching, serving and
@@ -88,30 +87,11 @@ bootloader installation are unavailable on the Companion, whether or not a
 card is inserted. Check the archive with `ota cache [on|off]`; use
 `get sdcard [free]` for card space.
 
-The optional RAK13800 Ethernet module and RAK15002 share CS26. Ethernet is
-therefore **off by default** in this combined Full image and is controlled only
-for the current boot:
-
-```text
-get eth
-set eth on
-set eth off
-```
-
-Startup and shutdown are asynchronous. `get eth` reports `starting`, `retrying`,
-`online`, `stopping`, or a failure state; accepting `set eth on` does not prove
-a DHCP lease. USB, BLE, and radio service continue while network operations
-wait. After requesting OFF, wait until `get eth` reports `off` before accessing SD.
-An already-entered vendor DHCP or renewal call cannot be cancelled midway;
-OFF keeps the SPI reservation until that call finishes and cleanup is safe.
-
-Remove the SD card and end/cancel active OTA cache, transfer, serve, or host
-folder activity before `set eth on`. The command refuses unsafe states. Turn
-Ethernet off before inserting or accessing a card; an insertion during
-Ethernet use fails closed and still requires `set eth off`. This is not a
-supported hot-swap workflow. The combined RAK15002/Ethernet hardware path has
-not yet been hardware-qualified; see [nRF52 RAK15002 storage](ota_nrf52_qspi.md#optional-rak15002-storage-in-canonical-rak4631-images)
-for the receiver's separate signed-application path and loader prerequisite.
+RAK13800 Ethernet is not included in current RAK4631 Companion builds. Use
+USB or BLE for Companion. This keeps Reader and the optional RAK15002 archive
+in the existing application slot. Reader starts empty and stores books added
+over USB in the secondary user filesystem, separate from the RAK15002 archive.
+RAK4631 Repeater and Room Server Ethernet profiles remain available.
 
 ### Screenless nRF52 spoken button confirmations
 

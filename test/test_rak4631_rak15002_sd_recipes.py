@@ -167,11 +167,8 @@ class Rak4631Rak15002SdRecipeTests(unittest.TestCase):
 
         companion = self.rak["env:" + FULL_COMPANION]
         self.assertIn("${nrf52_rak15002_sd_store.build_flags}", companion["build_flags"])
-        for retained in ("ETHERNET_ENABLED=1", "ETHERNET_USE_RAK13800",
-                         "ETHERNET_CLASS=RAK13800EthernetInterface",
-                         "MESHCORE_REQUIRES_COMPANION_RADIO_FULL=1"):
-            with self.subTest(retained=retained):
-                self.assertIn(retained, companion["build_flags"])
+        self.assertIn("MESHCORE_REQUIRES_COMPANION_RADIO_FULL=1", companion["build_flags"])
+        self.assertNotIn("COMPANION_FEATURE_BOOKS=0", companion["build_flags"])
         self.assertNotIn("OTA_HEAP_CONTEXT", companion["build_flags"])
 
         # Generated room/sensor pairs compile their ordinary RAK4631 role
@@ -190,6 +187,18 @@ class Rak4631Rak15002SdRecipeTests(unittest.TestCase):
             with self.subTest(section=section):
                 self.assertIn(helper,
                               self.rak[section]["lib_deps"])
+
+    def test_ethernet_is_retained_only_by_infrastructure_roles(self):
+        self.assertNotIn("env:RAK_4631_companion_radio_ethernet", self.rak)
+        for suffix in ("usb", "ble", "full"):
+            companion = self.rak[f"env:RAK_4631_companion_radio_{suffix}"]
+            self.assertNotIn("ETHERNET_", companion["build_flags"])
+            self.assertNotIn("helpers/ethernet", companion["build_src_filter"])
+            self.assertNotIn("RAK13800-W5100S", companion["lib_deps"])
+        for role in ("repeater", "room_server"):
+            ethernet = self.rak[f"env:RAK_4631_{role}_ethernet"]
+            self.assertIn("ETHERNET_ENABLED=1", ethernet["build_flags"])
+            self.assertIn("RAK13800-W5100S", ethernet["lib_deps"])
 
     def test_real_pair_mapping_keeps_pinned_sd_dependency_on_compiled_environment(self):
         # Resolve the tracked inventory without invoking PlatformIO, then run

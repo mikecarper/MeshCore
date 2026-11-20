@@ -107,7 +107,7 @@ class UITask : public AbstractUITask {
 #if UI_POCKET_GUI
   mesh::ui::pocket::Settings _pocket_settings;
 #endif
-#if COMPANION_FEATURE_READER
+#if COMPANION_FEATURE_READER || COMPANION_FEATURE_BOOKS
   UIScreen* reader = nullptr;
 #endif
 
@@ -146,7 +146,7 @@ public:
 
   void gotoHomeScreen() { setCurrScreen(home); }
   void showMessages();
-#if COMPANION_FEATURE_READER
+#if COMPANION_FEATURE_READER || COMPANION_FEATURE_BOOKS
   bool isReaderActive() const { return reader && curr == reader; }
   void showReader();
   void closeReader();

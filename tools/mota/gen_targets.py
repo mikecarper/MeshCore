@@ -28,6 +28,8 @@ import motalib as ml
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "src" / "helpers" / "ota" / "OtaTargets.h"
 INTERNAL_BOOTLOADER_TARGETS = ROOT / "tools" / "mota" / "nrf52_internal_bootloader_targets.txt"
+# Keep naming packets and packages produced by earlier published builds.
+RETIRED_TARGETS = {"RAK_4631_companion_radio_ethernet"}
 NAME_DECODE_CHUNK_SIZE = 512
 RAK_FULL_NAME_DECODE_CHUNK_SIZE = 4096
 
@@ -400,7 +402,7 @@ def generate_header(rows):
 
 
 def main():
-    envs = sorted(set(ota_envs(resolved_config())) | set(release_aliases()))
+    envs = sorted(set(ota_envs(resolved_config())) | set(release_aliases()) | RETIRED_TARGETS)
     rows = target_rows(envs)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(generate_header(rows), encoding="utf-8")

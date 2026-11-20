@@ -127,13 +127,6 @@ class Nrf52SizeProfileTest(unittest.TestCase):
         self.assertEqual(result["full"], "1")
         self.assert_preserved_policy(result)
 
-    def test_ethernet_inherits_size_optimizer_without_feature_reductions(self):
-        result = recipe("RAK_4631_companion_radio_ethernet")
-        self.assertEqual(result["repeater"], "0")
-        self.assertEqual(result["full"], "0")
-        self.assertEqual(result["ota_only"], "0")
-        self.assert_preserved_policy(result)
-
     def test_constrained_sensor_ota_uses_real_opt_in_eligibility(self):
         result = recipe("RAK_3401_sensor_lora_ota_no_external_sensors")
         self.assertEqual(result["repeater"], "0")

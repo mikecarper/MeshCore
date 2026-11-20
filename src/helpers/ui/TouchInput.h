@@ -14,6 +14,7 @@ enum class TouchAction : uint8_t {
   SelectRight,
   VerticalPrevious,
   VerticalNext,
+  Back,
 };
 
 struct TouchSplitSelector {
@@ -33,6 +34,7 @@ struct TouchNavigationBar {
   int top = 0;
   int height = 0;
   int exit_height = 0;
+  bool header_back = false;
 };
 
 // Converts one-finger touch samples into actions understood by the
@@ -160,7 +162,8 @@ public:
         return TouchAction::None;
       if (_start_y < navigation_bar->exit_height)
         return _last_y >= 0 && _last_y < navigation_bar->exit_height
-            ? TouchAction::Select : TouchAction::None;
+            ? (navigation_bar->header_back ? TouchAction::Back : TouchAction::Select)
+            : TouchAction::None;
       if (_start_y >= navigation_bar->top
           && _start_y < navigation_bar->top + navigation_bar->height) {
         if (_last_y < navigation_bar->top

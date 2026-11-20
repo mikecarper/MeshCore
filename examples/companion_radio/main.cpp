@@ -1464,6 +1464,12 @@ static void serviceUsbTerminal() {
       mesh::noteUsbConsoleCommand(usb_terminal_line);
       if (!mesh::hasDedicatedUsbLoggingPort())
         mesh::noteUsbLoggingStatsCommand(usb_terminal_line);
+#if COMPANION_FEATURE_BOOKS
+      char reader_reply[160];
+      if (the_mesh.handleUsbReaderCommand(usb_terminal_line, reader_reply, sizeof(reader_reply))) {
+        usbTerminalOutput().println(reader_reply);
+      } else
+#endif
       the_mesh.handleTerminalCommand(usb_terminal_line);
       clearUsbTerminalLine();
 #if MESH_USB_LOGGING_AVAILABLE
@@ -4357,6 +4363,9 @@ void setup() {
   usb_serial_interface.setConnectedCheck([]() { return (bool)Serial; });
 #endif
   interface_manager.addInterface(InterfaceType::USB, &usb_serial_interface);
+#if COMPANION_FEATURE_BOOKS
+  the_mesh.reader_usb_route = &usb_serial_interface;
+#endif
   usb_protocol_initialized = true;
 #if defined(ESP32_PLATFORM) \
     && (!defined(ARDUINO_USB_CDC_ON_BOOT) || !ARDUINO_USB_CDC_ON_BOOT) \

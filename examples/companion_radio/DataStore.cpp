@@ -3,6 +3,7 @@
 #include <initializer_list>
 #include <new>
 #include "DataStore.h"
+#include "BookLibrary.h"
 #include "PrefsStorageLayout.h"
 #if defined(ESP32_PLATFORM)
 #include <helpers/esp32/CpuClockPolicy.h>
@@ -693,6 +694,35 @@ uint32_t DataStore::getStorageTotalKb() const {
 #endif
 }
 
+#if COMPANION_FEATURE_BOOKS
+FILESYSTEM* DataStore::readerFS() const {
+  // nRF52 configuration files must not compete with Reader uploads.
+#if defined(NRF52_PLATFORM)
+  if (_primary_storage_unavailable || _volatile_primary_fs || _secondary_authority_unknown) return nullptr;
+  return _fsExtra;
+#else
+  return _fs == &SPIFFS ? _fs : nullptr;
+#endif
+}
+
+uint32_t DataStore::readerFreeBytes(FILESYSTEM* fs) const {
+  if (!fs || fs != readerFS()) return 0;
+#if defined(NRF52_PLATFORM)
+  const int used = _getLfsUsedBlockCount(fs);
+  if (used < 0) return 0;
+  const auto* cfg = fs->_getFS()->cfg;
+  if (!cfg || unsigned(used) >= cfg->block_count) return 0;
+  const uint32_t free = (cfg->block_count - used) * cfg->block_size;
+  const uint32_t reserve = 24 * 1024 + 4 * cfg->block_size;
+#else
+  const uint32_t total = SPIFFS.totalBytes(), used = SPIFFS.usedBytes();
+  const uint32_t free = used < total ? total - used : 0;
+  const uint32_t reserve = total / 4 + 32 * 1024;
+#endif
+  return free > reserve ? free - reserve : 0;
+}
+#endif
+
 File DataStore::openRead(const char* filename) {
   return openRead(_fs, filename);
 }
@@ -821,6 +851,9 @@ bool DataStore::removeFile(FILESYSTEM* fs, const char* filename) {
 }
 
 bool DataStore::formatFileSystem() {
+#if COMPANION_FEATURE_BOOKS
+  mesh::books::library.abort();
+#endif
 #if defined(NRF52_PLATFORM) && defined(QSPIFLASH)
   // An explicit erase must cover every configured store. A quarantined QSPI
   // chip may still hold authoritative contacts/channels, and its disabled
@@ -925,6 +958,9 @@ bool DataStore::formatFileSystem() {
 }
 
 bool DataStore::repairInternalExtraFS() {
+#if COMPANION_FEATURE_BOOKS
+  mesh::books::library.abort();
+#endif
 #if defined(NRF52_PLATFORM) && defined(EXTRAFS) && !defined(QSPIFLASH)
   // A healthy active ExtraFS must never be erased. Re-running the explicit
   // command is still useful, though: it retries any verified migration which

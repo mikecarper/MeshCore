@@ -626,12 +626,15 @@ int main() {
         ui = (ROOT / "examples/companion_radio/ui-new/UITask.cpp").read_text(encoding="utf-8")
         home = extract_braced(ui, "class HomeScreen")
         short_press = extract_braced(home, "bool handleInput(char c) override")
-        self.assertNotIn("showReader(", short_press)
+        self.assertEqual(short_press.count("showReader("), 1)
+        self.assertIn("#if COMPANION_FEATURE_BOOKS\n"
+                      "    if (key == KEY_ENTER && isRadioPage()) { _task->showReader(); return true; }\n"
+                      "#endif", short_press)
         long_press = extract_braced(ui, "char UITask::handleLongPress(")
         self.assertRegex(long_press, r"if\s*\(c\s*==\s*KEY_ENTER[\s\S]*?isRadioPage\(\)\)\s*\{\s*showReader\(\)")
         self.assertLess(long_press.index("isReaderActive()"), long_press.index("enterCLIRescue()"))
         self.assertLess(long_press.index("isRadioPage()"), long_press.index("enterCLIRescue()"))
-        self.assertIn("#if COMPANION_FEATURE_READER\n#include \"ReaderScreen.h\"", ui)
+        self.assertIn("#elif COMPANION_FEATURE_READER\n#include \"ReaderScreen.h\"", ui)
         self.assertLess(ui.index("#define UI_BUTTON_READER_HINT 1"),
                         ui.index('#include "ReaderScreen.h"'))
         # Queue downloads preserve the current screen unconditionally now;
