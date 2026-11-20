@@ -48,7 +48,7 @@ mesh::LoRaRadioFamily universalLoRaRadioFamily();
 //  - configurable GPS behavior for the two powered SuperIO switch positions
 #if ENV_INCLUDE_GPS
 namespace mesh::muzi {
-enum class GpsSwitchMode : uint8_t { Default, Off, Clock, PowerSave, On, Auto };
+enum class GpsSwitchMode : uint8_t { Off = 1, Clock, PowerSave, On, Auto };
 inline constexpr uint8_t GpsSwitchConfigMarker = 0x80;
 
 inline uint8_t gpsSwitchConfigBits(uint8_t config) {
@@ -56,13 +56,14 @@ inline uint8_t gpsSwitchConfigBits(uint8_t config) {
 }
 
 inline const char* gpsSwitchModeName(GpsSwitchMode mode) {
-  static const char* const names[] = {"default", "off", "clock", "ps", "on", "auto"};
-  return names[static_cast<uint8_t>(mode)];
+  static const char* const names[] = {"off", "clock", "ps", "on", "auto"};
+  return names[static_cast<uint8_t>(mode) - static_cast<uint8_t>(GpsSwitchMode::Off)];
 }
 
 inline GpsSwitchMode gpsSwitchMode(uint8_t config, bool upper) {
   const uint8_t stored = (gpsSwitchConfigBits(config) >> (upper ? 3 : 0)) & 7;
-  if (stored > 0 && stored <= static_cast<uint8_t>(GpsSwitchMode::Auto)) {
+  if (stored >= static_cast<uint8_t>(GpsSwitchMode::Off)
+      && stored <= static_cast<uint8_t>(GpsSwitchMode::Auto)) {
     return static_cast<GpsSwitchMode>(stored);
   }
   return upper ? GpsSwitchMode::Auto : GpsSwitchMode::Off;

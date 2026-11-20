@@ -219,6 +219,11 @@ int main() {
  assert(gpsSwitchMode(GpsSwitchConfigMarker, true)==GpsSwitchMode::Auto);
  assert(gpsSwitchMode(GpsSwitchConfigMarker, false)==GpsSwitchMode::Off);
  assert(gpsSwitchMode(1, false)==GpsSwitchMode::Off); // legacy reserved value
+ const char* names[] = {"off", "clock", "ps", "on", "auto"};
+ for (uint8_t mode=1; mode<=5; ++mode) {
+   assert(strcmp(gpsSwitchModeName(gpsSwitchMode(GpsSwitchConfigMarker | mode, false)),
+                 names[mode-1])==0);
+ }
  LocationProvider gps;
  MuziBaseSensorManager m(gps);
  m.setPowerSavingEnabled(true);

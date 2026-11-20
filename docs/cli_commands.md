@@ -6941,8 +6941,8 @@ position. The physical power-off position cuts board power.
 
 ```text
 get gps.switch
-set gps.switch.on default
-set gps.switch.off default
+set gps.switch.on auto
+set gps.switch.off off
 ```
 
 | Mode | GPS behavior |
@@ -6952,7 +6952,6 @@ set gps.switch.off default
 | `on` | Keep the receiver powered for position and time. |
 | `ps` | Duty-cycle the receiver for position and time. |
 | `clock` | Wake only to sync the clock, then power down. |
-| `default` | Restore the default for that position. |
 
 Both assignments are saved and take effect immediately. In `auto`, changes
 made with `set powersaving on` or `set powersaving off` also take effect
