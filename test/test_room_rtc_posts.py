@@ -40,6 +40,7 @@ class RoomRtcPostsTests(unittest.TestCase):
         built = subprocess.run([shutil.which("g++") or "clang++", "-std=c++17", "-Wall", "-Wextra", "-Werror",
                                 "-Wno-unused-function", "-Wno-unused-parameter", "-Wno-class-memaccess", *sanitized, *flags,
                                 "-DROOM_POSTS_RTC_SLOW_STORAGE=1", "-DESP32_PLATFORM=1",
+                                "-DMESH_ENABLE_FLOOD_PROFILE_POLICY=0",
                                 "-I" + str(directory), "-I" + str(ROOT / "src"),
                                 "-I" + str(ROOT / "test/mocks"), str(path), "-o", str(binary)],
                                text=True, capture_output=True, timeout=60)

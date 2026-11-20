@@ -97,6 +97,18 @@ def esp_fixture(path, modern=False, fragmented=False, internal_length=0x10000):
 
 
 class FirmwareRamTest(unittest.TestCase):
+    def test_esp32_rooms_budget_the_default_rule_table(self):
+        target = "Tbeam_room_server"
+        component = "room_flood_rule_table"
+        active = ram.requirements("ESP32_PLATFORM", {}, target)
+        disabled = ram.requirements("ESP32_PLATFORM", {
+            "MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE": 0,
+        }, target)
+        self.assertEqual(active["components"][component], 31 * 336 + 16)
+        self.assertNotIn(component, disabled["components"])
+        self.assertNotIn(component, ram.requirements(
+            "NRF52_PLATFORM", {}, "RAK_4631_room_server")["components"])
+
     def test_scanner_pool_reservation_is_role_and_feature_scoped(self):
         flags = {"MESH_W12_PRAM_EXPERIMENT": 1}
         for platform, board in (("ESP32_PLATFORM", "meshnology_w12"),

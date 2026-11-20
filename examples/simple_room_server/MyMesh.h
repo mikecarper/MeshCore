@@ -47,6 +47,9 @@
 #include <helpers/RegionMap.h>
 #include "FloodRuleEngine.h"
 #include <helpers/RoutingPolicy.h>
+#if defined(ESP32_PLATFORM)
+#include <helpers/FloodProfilePolicy.h>
+#endif
 #include <RTClib.h>
 #include <target.h>
 
@@ -230,6 +233,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
   NodePrefs _prefs;
   TransportKeyStore key_store;
   RegionMap region_map, temp_map;
+#if defined(ESP32_PLATFORM) && MESH_ENABLE_FLOOD_PROFILE_POLICY
+  mesh::flood_profiles::DeferredFloods* deferred_floods = nullptr;
+#endif
 #if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
   FloodRuleEngine flood_rules;
   uint32_t recv_pkt_rule_match_mask;
@@ -291,6 +297,10 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
   bool saved_radio_apply_pending;
   unsigned long radio_apply_retry_at;
   uint8_t radio_apply_failures;
+#if defined(ESP32_PLATFORM)
+  mesh::RepeaterRadioTiming rx_watchdog_timing;
+  mesh::RxInactivityWatchdog rx_inactivity_watchdog;
+#endif
   int  matching_peer_indexes[MAX_CLIENTS];
 #if defined(WITH_MQTT_NEIGHBORS)
   NeighbourInfo neighbours[MAX_NEIGHBOURS];
@@ -428,6 +438,11 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
   bool addPost(ClientInfo* client, const char* postData);
   bool applySavedRadioParams();
   void servicePendingPrimaryRadioSettings(bool tx_gap = false);
+#if defined(ESP32_PLATFORM)
+  const char* rxWatchdogPauseReason() const;
+  void checkRxInactivityWatchdog();
+  bool handleRxWatchdogCommand(const char* command, char* reply);
+#endif
   bool storePost(const mesh::Identity& author, const char* postData);
   bool snapshotRoomHistory();
   void loadRoomHistory();
@@ -508,6 +523,9 @@ protected:
 
   bool allowPacketForward(const mesh::Packet* packet) override;
   bool allowPacketTransmit(const mesh::Packet* packet) const override;
+#if defined(ESP32_PLATFORM) && MESH_ENABLE_FLOOD_PROFILE_POLICY
+  bool deferredFloodCandidate(const mesh::Packet* packet, uint8_t ingress, bool consume) override;
+#endif
   void onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) override;
   void sendDefaultPasswordWarning(ClientInfo* client, uint32_t sender_timestamp,
                                   uint8_t path_hash_size);

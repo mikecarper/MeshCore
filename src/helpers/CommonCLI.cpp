@@ -4734,7 +4734,12 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
 #endif
   if (strncmp(config, "repeat.trace", 12) == 0
       && (config[12] == 0 || config[12] == ' ' || config[12] == '\t')) {
-    if (strcmp(_callbacks->getRole(), "repeater") != 0) {
+    const char* role = _callbacks->getRole();
+    if (strcmp(role, "repeater") != 0
+#if defined(ESP32_PLATFORM)
+        && strcmp(role, "room_server") != 0
+#endif
+    ) {
       mesh::cli::formatError(reply, 160, MESH_CLI_REPLY_TEXT("repeat.trace is only supported by repeaters", "repeat.trace needs a repeater"));
       return;
     }
@@ -6407,7 +6412,12 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
 #endif
   if (strncmp(config, "repeat.trace", 12) == 0
       && (config[12] == 0 || config[12] == ' ' || config[12] == '\t')) {
-    if (strcmp(_callbacks->getRole(), "repeater") != 0) {
+    const char* role = _callbacks->getRole();
+    if (strcmp(role, "repeater") != 0
+#if defined(ESP32_PLATFORM)
+        && strcmp(role, "room_server") != 0
+#endif
+    ) {
       mesh::cli::formatError(reply, 160, MESH_CLI_REPLY_TEXT("repeat.trace is only supported by repeaters", "repeat.trace needs a repeater"));
     } else if (strcmp(config, "repeat.trace") != 0) {
       mesh::cli::formatError(reply, 160, "usage get repeat.trace");

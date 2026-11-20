@@ -1707,6 +1707,11 @@ bool MyMesh::allowDirectRetry(const mesh::Packet* packet, const uint8_t* next_ho
                               uint8_t next_hop_hash_len) const {
   if (!_cli.batteryAllowsTransmit(packet)) return false;
   if (_cli.morseReply().ownsReply(packet)) return false;
+#if defined(ESP32_PLATFORM)
+  if (_prefs.disable_fwd && _prefs.trace_when_repeat_off != 1 && packet
+      && packet->isRouteDirect() && packet->getPayloadType() == PAYLOAD_TYPE_TRACE
+      && packet->path_len > 0) return false;
+#endif
   (void)packet;
   (void)next_hop_hash;
   (void)next_hop_hash_len;
@@ -1782,23 +1787,48 @@ void MyMesh::onRetryConfigChanged() {
 
 bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   if (!packet || !_cli.batteryAllowsForward(packet->isRouteFlood())) return false;
-  if (_prefs.disable_fwd) return false;
-  if (packet->isRouteFlood()) {
-    if (mesh::isFloodHopLimitExceeded(packet, _prefs.flood_max,
-                                      _prefs.flood_max_unscoped,
-                                      _prefs.flood_max_advert)) {
-      return false;
+#if defined(ESP32_PLATFORM)
+  if (_prefs.disable_fwd && !(_prefs.trace_when_repeat_off == 1
+      && packet->isRouteDirect() && packet->getPayloadType() == PAYLOAD_TYPE_TRACE)) return false;
+#if MESH_ENABLE_FLOOD_PROFILE_POLICY
+  if (!mesh::flood_profiles::allowIngress(packet, _cli.radioProfiles())) {
+    if (packet->getPayloadType() != PAYLOAD_TYPE_OTA) {
+      if (!deferred_floods) deferred_floods = new (std::nothrow) mesh::flood_profiles::DeferredFloods;
+      if (deferred_floods) deferred_floods->remember(packet, _cli.radioProfiles(), millis());
     }
+    return false;
   }
+#endif
+#else
+  if (_prefs.disable_fwd) return false;
+#endif
+  const bool flood = packet->isRouteFlood();
+  if (flood && mesh::isFloodHopLimitExceeded(packet, _prefs.flood_max,
+                                            _prefs.flood_max_unscoped,
+                                            _prefs.flood_max_advert)) {
+    return false;
+  }
+#if defined(ESP32_PLATFORM)
+  if (flood && packet->getPayloadType() == PAYLOAD_TYPE_GRP_DATA
+      && !_prefs.flood_channel_data_enabled
+      && (_prefs.flood_channel_data_max_hops == FLOOD_CHANNEL_HOPS_ALL
+          || packet->getPathHashCount() > _prefs.flood_channel_data_max_hops)) return false;
+#endif
 #if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
   if (flood_rules.shouldBlock(packet, recv_pkt_rule_match_mask,
                               _ms->getMillis())) return false;
-  if (packet->isRouteFlood()) {
-    if (recv_pkt_region == NULL && !recv_pkt_regionless_scope_set) {
+#endif
+  if (flood) {
+    bool scope_allowed = recv_pkt_region != NULL;
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
+    scope_allowed = scope_allowed || recv_pkt_regionless_scope_set;
+#endif
+    if (!scope_allowed) {
       MESH_DEBUG_PRINTLN(
           "allowPacketForward: unknown transport code, or wildcard not allowed for FLOOD packet");
       return false;
     }
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
     if (_prefs.loop_detect != LOOP_DETECT_OFF) {
       const uint8_t* maximums = _prefs.loop_detect == LOOP_DETECT_MINIMAL
           ? ROOM_MAX_LOOP_MINIMAL
@@ -1810,7 +1840,9 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
         return false;
       }
     }
+#endif
   }
+#if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
   flood_rules.commitRates(packet, recv_pkt_rule_match_mask,
                           _ms->getMillis());
 #endif
@@ -1819,9 +1851,23 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
 }
 
 bool MyMesh::allowPacketTransmit(const mesh::Packet* packet) const {
+#if defined(ESP32_PLATFORM)
+  if (!mesh::flood_profiles::allowEgress(packet, _cli.radioProfiles())) return false;
+  // A relayed trace already has an SNR path; a local trace does not.
+  if (_prefs.disable_fwd && _prefs.trace_when_repeat_off != 1 && packet
+      && packet->isRouteDirect() && packet->getPayloadType() == PAYLOAD_TYPE_TRACE
+      && packet->path_len > 0) return false;
+#endif
   return _cli.batteryAllowsTransmit(packet)
       && mesh::Mesh::allowPacketTransmit(packet);
 }
+
+#if defined(ESP32_PLATFORM) && MESH_ENABLE_FLOOD_PROFILE_POLICY
+bool MyMesh::deferredFloodCandidate(const mesh::Packet* packet, uint8_t ingress, bool consume) {
+  return deferred_floods
+      && deferred_floods->match(packet, _cli.radioProfiles(), millis(), ingress, consume);
+}
+#endif
 
 mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
 #if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
@@ -2490,6 +2536,10 @@ void MyMesh::servicePendingPrimaryRadioSettings(bool tx_gap) {
     if (applySavedRadioParams()) {
       set_radio_at = revert_radio_at = 0;
       temp_radio_applied = false;
+#if defined(ESP32_PLATFORM)
+      rx_watchdog_timing.setTempDuration(0);
+      rx_inactivity_watchdog.reset();
+#endif
       saved_radio_apply_pending = false;
       radio_apply_retry_at = 0;
       radio_apply_failures = 0;
@@ -2513,6 +2563,10 @@ void MyMesh::servicePendingPrimaryRadioSettings(bool tx_gap) {
     const uint32_t* applied_timings = apply_rxps ? timings : NULL;
     if (timing_ok && _cli.radioProfiles().applyPrimary(
           pending_freq, pending_bw, pending_sf, pending_cr, true, pending_preamble, applied_timings) == mesh::RadioParamApplyResult::APPLIED) {
+#if defined(ESP32_PLATFORM)
+      rx_watchdog_timing.setTempDuration(uint32_t(revert_radio_at - set_radio_at) / 1000);
+      rx_inactivity_watchdog.reset();
+#endif
       set_radio_at = 0;
       active_cr = pending_cr;
       temp_radio_applied = true;
@@ -2541,6 +2595,62 @@ void MyMesh::servicePendingPrimaryRadioSettings(bool tx_gap) {
     radio_apply_retry_at = futureMillis(nextRadioApplyRetryDelay(radio_apply_failures));
   }
 }
+
+#if defined(ESP32_PLATFORM)
+const char* MyMesh::rxWatchdogPauseReason() const {
+  if (_prefs.disable_fwd) return "repeat off";
+#if defined(MESH_PRIMARY_ESPNOW) && MESH_PRIMARY_ESPNOW
+  if (mesh::wireless::control().blocked(mesh::wireless::EspNow)) return "espnow off";
+#endif
+  // An expired or canceled temporary session may still be waiting for a TX gap.
+  if (temp_radio_applied && revert_radio_at
+      && int32_t(uint32_t(futureMillis(0) - revert_radio_at)) >= 0) return "restoring radio";
+  return nullptr;
+}
+
+void MyMesh::checkRxInactivityWatchdog() {
+  if (rxWatchdogPauseReason()) {
+    rx_inactivity_watchdog.reset();
+    return;
+  }
+  const uint32_t interval = rx_watchdog_timing.watchdogMillis(_prefs.rx_watchdog_enabled);
+  if (rx_inactivity_watchdog.expired(millis(), getLastMeshCoreRecvMillis(), interval)) {
+    MESH_DEBUG_PRINTLN("RX watchdog: no MeshCore packet received, rebooting");
+    rx_inactivity_watchdog.reset();
+    _cli.getBoard()->reboot();
+  }
+}
+
+bool MyMesh::handleRxWatchdogCommand(const char* command, char* reply) {
+  if (strcmp(command, "get rx.watchdog") == 0) {
+    if (const char* reason = rxWatchdogPauseReason()) {
+      snprintf(reply, 160, "> off; rx.watchdog=off (%s)", reason);
+    } else {
+      snprintf(reply, 160, "> %s; rx.watchdog=%s%s",
+               rx_watchdog_timing.watchdogMillis(_prefs.rx_watchdog_enabled) ? "on" : "off",
+               rx_watchdog_timing.watchdogLabel(_prefs.rx_watchdog_enabled),
+               rx_watchdog_timing.isTemporary() ? " (tempradio)" : "");
+    }
+    return true;
+  }
+  if (strncmp(command, "set rx.watchdog ", 16) != 0) return false;
+  const char* value = command + 16;
+  if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+    strcpy(reply, "Err - usage: set rx.watchdog <on|off>");
+    return true;
+  }
+  const uint8_t previous = _prefs.rx_watchdog_enabled;
+  _prefs.rx_watchdog_enabled = strcmp(value, "on") == 0;
+  if (!_cli.saveCommonPrefs()) {
+    _prefs.rx_watchdog_enabled = previous;
+    strcpy(reply, "Error: save unconfirmed; reboot may differ");
+    return true;
+  }
+  rx_inactivity_watchdog.reset();
+  snprintf(reply, 160, "OK - saved %s", value);
+  return true;
+}
+#endif
 
 void MyMesh::onSendComplete(mesh::Packet* packet) {
   mesh::Mesh::onSendComplete(packet);
@@ -2824,7 +2934,12 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
 }
 
 #if ROOM_POSTS_RTC_SLOW_STORAGE
-MyMesh::~MyMesh() { releaseRoomRtcPosts(this); }
+MyMesh::~MyMesh() {
+#if defined(ESP32_PLATFORM) && MESH_ENABLE_FLOOD_PROFILE_POLICY
+  delete deferred_floods;
+#endif
+  releaseRoomRtcPosts(this);
+}
 #endif
 
 void MyMesh::begin(FILESYSTEM *fs) {
@@ -2832,6 +2947,9 @@ void MyMesh::begin(FILESYSTEM *fs) {
   _fs = fs;
   // load persisted prefs
   _cli.loadPrefs(_fs);
+#if defined(ESP32_PLATFORM)
+  _cli.radioProfiles().beginRepeaterFloodPolicy();
+#endif
   _cli.beginManagement(*this, _fs);
 
   acl.load(_fs, self_id);
@@ -4266,12 +4384,15 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
     } else {
       snprintf(reply, MAX_POST_TEXT_LEN, addSystemPost(msg) ? "OK" : "Err - post not retained");
     }
-  } else if (strcmp(command, "set repeat on") == 0) {
-    strcpy(reply, "ERR - repeat now deprecated");
   }
 #if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
   else if (flood_rules.handleCommand(command, reply)) {
-    // handled by the FULL-profile persistent flood rule engine
+    // Handled by the persistent flood rule engine.
+  }
+#endif
+#if defined(ESP32_PLATFORM)
+  else if (handleRxWatchdogCommand(command, reply)) {
+    // Handled by the RX inactivity watchdog.
   }
 #endif
   else if (_clock_sync.handleCommand(command, reply)) {
@@ -4377,6 +4498,9 @@ void MyMesh::loop() {
   }
 
   servicePendingPrimaryRadioSettings();
+#if defined(ESP32_PLATFORM)
+  checkRxInactivityWatchdog();
+#endif
 
 #ifdef WITH_WEBCONFIG
   if (_webconfig) {

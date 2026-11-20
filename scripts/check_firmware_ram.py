@@ -446,7 +446,7 @@ def requirements(platform, defines, target):
                 else:
                     parts["repeater_advert_storage_fallback"] = advert_bytes
     if "room_server" in target.lower() and integer(
-            defines, "MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE", 0):
+            defines, "MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE", int(platform == "ESP32_PLATFORM")):
         # FloodRuleEngine keeps all 31 persisted rules in one startup heap
         # allocation. Its C++ assertion pins Entry to the budgeted 336 bytes.
         parts["room_flood_rule_table"] = 31 * 336 + 16

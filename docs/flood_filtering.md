@@ -167,12 +167,12 @@ get flood.moderation
 
 `flood.rule` is an alias for `flood.filter`, not another table. Generalized
 repeaters normally have 63 forward-rule slots plus scope-rewrite and shared-blacklist
-sections in the same atomic policy file. FULL room servers have 31 forward
+sections in the same atomic policy file. ESP32 room servers have 31 forward
 slots and empty repeater-only sections. Compact target profiles retain their
 separate FPF6-era controls. `flood.moderation` has 16 slots. A new
 repeater FPF7 table starts with `ota all suspend=tempradio` in slot 1 and an
 authenticated `#wardriving hops=3+` radio drop in slot 2, and an authenticated
-`#wardriving hops=all mode=bridge,cross` drop in slot 3. FULL room servers seed
+`#wardriving hops=all mode=bridge,cross` drop in slot 3. ESP32 room servers seed
 only the OTA row; their generalized engine also accepts transport-mode rules. `flood.moderation` starts empty. A row can opt into
 `suspend=tempradio`;
 temporary radio is not synonymous with OTA and can carry normal packet types
@@ -199,7 +199,7 @@ To check the installed image's range without changing anything, send
 range, such as `1-4` or `1-32`. Use `get flood.filter.<n>` to inspect individual
 rows; the compact `get flood.filter` list can be truncated.
 
-On a FULL ESP32 room server, use `get flood.rule` (or `get flood.filter`) for
+On an ESP32 room server, use `get flood.rule` (or `get flood.filter`) for
 the available table. Remote rule changes require room-server administrator
 access. `flood.filter.blacklist*` and `path=blacklist` are repeater-only; use
 the ordered `prefix=` condition on a room server.
@@ -782,7 +782,7 @@ reply size.
 
 ### Shorthand for copying rules
 
-On generalized repeaters and FULL ESP32 room servers, `fr` is a shorter name
+On generalized repeaters and ESP32 room servers, `fr` is a shorter name
 for `flood.rule`. Both forms use the same parser, validation, permissions, and
 saved rows. Short and full field names can be mixed in either command.
 `fr` requires an explicit action, just like `flood.rule`.
@@ -921,7 +921,7 @@ image verifies and commits. Compact FPF6 repeaters retain separate files.
 Deleting the blacklist leaves `path=blacklist` rows in place but dormant until
 IDs are configured again. Path hashes are truncated routing identifiers and
 are not authenticated proof that a particular repeater—or a particular
-person—handled a packet. FULL room servers reject blacklist commands.
+person—handled a packet. ESP32 room servers reject blacklist commands.
 
 On first initialization, flood-filter slot 1 is seeded with:
 
@@ -1031,7 +1031,7 @@ get flood.filter
 
 On a new generalized repeater table, the three factory rules occupy slots
 1 through 3, so these unnumbered commands normally fill slots 4 through 9.
-FULL room servers and compact tables seed only OTA and use slots 2 through 7.
+ESP32 room servers and compact tables seed only OTA and use slots 2 through 7.
 Existing tables may choose different
 free slots. All six rules take effect at the thresholds shown; there are no
 hidden short-hop exceptions. The Control rule allows a flood received with
@@ -1202,7 +1202,7 @@ unrelated administrator settings. Because `flood.filter scope=` derives a
 public hashtag key directly, a filter manager can configure that action without
 region-manager permission; it still cannot edit the region hierarchy.
 
-FULL ESP32 room servers use their existing administrator check for remote
+ESP32 room servers use their existing administrator check for remote
 `fr`, `flood.rule`, and `flood.filter` commands; they do not grant this table through
 permission `5`.
 
@@ -1292,7 +1292,7 @@ attempts. `radio` cannot be combined with `bridge` or `cross` in a single row.
 For transport rules, hop and scope matchers see the packet at that boundary:
 a TX/crossover packet can already contain an appended hop or rewritten scope.
 The built-in rule uses all hops and any scope, so these changes cannot bypass it.
-On FULL room servers, add a transport rule explicitly; their factory table
+On ESP32 room servers, add a transport rule explicitly; their factory table
 still has only the OTA row. Companions and compact FPF6 builds do not expose
 this generalized filter table.
 

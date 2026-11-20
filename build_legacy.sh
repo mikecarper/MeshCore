@@ -3785,7 +3785,7 @@ declare_build_capability_contract() {
   fi
 
   if is_room_server_role_target "$env_name" \
-      && [ "$BUILD_PROFILE_FOR_TARGET" = "full" ]; then
+      && { [ "$env_platform" = "ESP32_PLATFORM" ] || [ "$BUILD_PROFILE_FOR_TARGET" = "full" ]; }; then
     record_build_expectation "room.flood_rule_engine" "flood.rule"
   fi
 

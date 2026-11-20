@@ -24,6 +24,7 @@ HARNESS = r'''
 #include <deque>
 #include <cstring>
 #include <helpers/radiolib/LR2021SideDetectorConfig.h>
+#include <helpers/RepeaterRadioTiming.h>
 // Negative controls must fail without opening a Windows CRT abort dialog.
 #undef assert
 #define assert(condition) do { if (!(condition)) { \
@@ -37,6 +38,16 @@ HARNESS = r'''
 namespace mesh { enum class RadioParamApplyResult { APPLIED, BUSY, FAILED }; }
 using Apply = mesh::RadioParamApplyResult;
 static uint32_t now_ms = 100;
+#if defined(ESP32_PLATFORM)
+static uint32_t millis() { return now_ms; }
+#endif
+#if defined(MESH_PRIMARY_ESPNOW)
+namespace mesh { namespace wireless {
+enum { EspNow };
+struct State { bool off = false; bool blocked(int) const { return off; } };
+State& control() { static State state; return state; }
+}}
+#endif
 template<typename T> T next(std::deque<T>& values, T fallback) {
   if (values.empty()) return fallback;
   T value = values.front(); values.pop_front(); return value;
@@ -111,6 +122,9 @@ struct Prefs {
   uint8_t rx_ps_level = 0, rx_ps_preamble = 32;
   uint32_t rx_ps_rx_us = 1234, rx_ps_sleep_us = 5678;
   uint8_t extra_sf[4] = {10, 0, 0, 0};
+#if defined(ESP32_PLATFORM)
+  uint8_t disable_fwd = 1, rx_watchdog_enabled = 1;
+#endif
 };
 struct Profiles {
   float live_freq = 906.5f, live_bw = 125;
@@ -139,6 +153,13 @@ struct Profiles {
 };
 struct CommonCLI {
   Profiles profiles;
+#if defined(ESP32_PLATFORM)
+  struct Board { unsigned reboots = 0; void reboot() { ++reboots; } } board;
+  bool save_ok = true;
+  unsigned saves = 0;
+  Board* getBoard() { return &board; }
+  bool saveCommonPrefs() { ++saves; return save_ok; }
+#endif
   Profiles& radioProfiles() { return profiles; }
   static bool calculateRxPowerSavingLevel(uint8_t, uint8_t, float,
       uint32_t, uint32_t* rx, uint32_t* sleep) { *rx = 2222; *sleep = 3333; return true; }
@@ -158,13 +179,29 @@ struct @CLASS@ {
   @CLASS@() { now_ms = 100; radio_driver = Driver(); }
   bool hasOutbound() { return outbound; }
   bool millisHasNowPassed(uint32_t at) { return int32_t(now_ms - at) > 0; }
-  uint32_t futureMillis(uint32_t delay) { return now_ms + delay; }
+  uint32_t futureMillis(uint32_t delay) const { return now_ms + delay; }
   uint32_t rxPowerSavingPreambleForParams(uint8_t, float) { return 32; }
   bool applySavedRadioParams();
   void startup() { @STARTUP@ }
   void service(bool tx_gap = false) { @SERVICE@ }
+#if defined(ESP32_PLATFORM)
+  mesh::RepeaterRadioTiming rx_watchdog_timing;
+  mesh::RxInactivityWatchdog rx_inactivity_watchdog;
+  uint32_t last_rx = 0;
+  uint32_t getLastMeshCoreRecvMillis() const { return last_rx; }
+  const char* rxWatchdogPauseReason() const;
+  void checkRxInactivityWatchdog();
+  bool handleRxWatchdogCommand(const char* command, char* reply);
+  void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr,
+                            int timeout_mins, uint16_t preamble);
+  bool scheduleNormalRadio();
+  void tick() { service(); checkRxInactivityWatchdog(); }
+#endif
 };
 @APPLY@
+#if defined(ESP32_PLATFORM)
+@WATCHDOG@
+#endif
 using Node = @CLASS@;
 static void restored(const Node& node) {
   assert(node._cli.profiles.live_freq == node._prefs.freq);
@@ -277,7 +314,88 @@ static void tempRadioRestoration() {
     node.service(); assert(!calls(node) && !node.set_radio_at && !node.revert_radio_at);
   }
 }
+#if defined(ESP32_PLATFORM)
+static void watchdog() {
+  constexpr uint32_t hour = mesh::RepeaterRadioTiming::HOUR_MS;
+  char reply[160] = {};
+  Node node;
+  assert(node.handleRxWatchdogCommand("get rx.watchdog", reply));
+  assert(strstr(reply, "repeat off"));
+  node.tick(); now_ms += 48 * hour; node.tick();
+  assert(!node._cli.board.reboots);
+  node._prefs.disable_fwd = 0;
+  node.tick(); // Enable at a time already beyond the normal timeout.
+  assert(!node._cli.board.reboots);
+  assert(node.handleRxWatchdogCommand("get rx.watchdog", reply));
+  assert(strstr(reply, "24hours"));
+  now_ms += 24 * hour - 1;
+  node.last_rx = now_ms;
+  node.tick();
+  now_ms += 24 * hour - 1;
+  node.tick(); assert(!node._cli.board.reboots);
+  ++now_ms;
+  node.tick(); assert(node._cli.board.reboots == 1);
+
+  node._cli.save_ok = false;
+  assert(node.handleRxWatchdogCommand("set rx.watchdog off", reply));
+  assert(strstr(reply, "save unconfirmed") && node._prefs.rx_watchdog_enabled);
+  node._cli.save_ok = true;
+  assert(node.handleRxWatchdogCommand("set rx.watchdog off", reply));
+  assert(!strcmp(reply, "OK - saved off") && !node._prefs.rx_watchdog_enabled);
+  assert(node.handleRxWatchdogCommand("set rx.watchdog bad", reply));
+  assert(strstr(reply, "usage") && node._cli.saves == 2);
+  assert(!node.handleRxWatchdogCommand("get rx.watchdog.other", reply));
+  node.tick(); now_ms += 24 * hour; node.tick();
+  assert(node._cli.board.reboots == 1);
+
+  // The lease only changes watchdog timing after the radio actually switches.
+  node.applyTempRadioParams(916.5f, 125, 8, 7, 720, 16);
+  assert(node.handleRxWatchdogCommand("get rx.watchdog", reply));
+  assert(!strcmp(reply, "> off; rx.watchdog=off"));
+  now_ms = node.set_radio_at + 1;
+  node.tick();
+  assert(node.handleRxWatchdogCommand("get rx.watchdog", reply));
+  assert(!strcmp(reply, "> on; rx.watchdog=12hours (tempradio)"));
+  // Even a busy radio must not be rebooted at expiry while restoration waits.
+  node.outbound = true;
+  now_ms = node.revert_radio_at; node.tick();
+  ++now_ms; node.tick();
+  assert(node._cli.board.reboots == 1 && node.temp_radio_applied);
+  node.outbound = false; node.tick();
+  assert(!node.temp_radio_applied && !node.rx_watchdog_timing.isTemporary());
+
+  node.applyTempRadioParams(916.5f, 125, 8, 7, 1440, 16);
+  now_ms = node.set_radio_at + 1; node.tick();
+  now_ms += 12 * hour; node.tick();
+  assert(node._cli.board.reboots == 2); // Long leases override saved normal off.
+  assert(node.scheduleNormalRadio());
+  now_ms = node.revert_radio_at + 1; node.tick();
+  assert(node.handleRxWatchdogCommand("set rx.watchdog on", reply));
+
+  node.applyTempRadioParams(916.5f, 125, 8, 7, 180, 16);
+  now_ms = node.set_radio_at + 1; node.tick();
+  assert(node.handleRxWatchdogCommand("get rx.watchdog", reply));
+  assert(strstr(reply, "off (temp<12hours)"));
+  now_ms = node.revert_radio_at + 1; node.tick();
+  assert(node.handleRxWatchdogCommand("get rx.watchdog", reply));
+  assert(strstr(reply, "24hours") && node._cli.board.reboots == 2);
+
+#if defined(MESH_PRIMARY_ESPNOW)
+  mesh::wireless::control().off = true;
+  now_ms += 24 * hour; node.tick();
+  assert(node._cli.board.reboots == 2);
+  assert(node.handleRxWatchdogCommand("get rx.watchdog", reply));
+  assert(strstr(reply, "espnow off"));
+  mesh::wireless::control().off = false;
+  node.tick(); assert(node._cli.board.reboots == 2);
+#endif
+}
+#endif
+
 int main() {
+#if defined(ESP32_PLATFORM)
+  watchdog();
+#endif
 #if defined(USE_LR2021)
   {
     Node node; node.startup();
@@ -383,6 +501,12 @@ def harness(role, mutation=None):
         "@CLASS@": name, "@APPLY@": apply, "@STARTUP@": startup,
         "@SERVICE@": service, "@WRAPPER_METHODS@": methods,
         "@RETRY_DELAY@": body(source, "static uint32_t nextRadioApplyRetryDelay("),
+        "@WATCHDOG@": "\n".join(body(source, signature) for signature in (
+            "const char* MyMesh::rxWatchdogPauseReason(",
+            "void MyMesh::checkRxInactivityWatchdog(",
+            "bool MyMesh::handleRxWatchdogCommand(",
+            "void MyMesh::applyTempRadioParams(", "bool MyMesh::scheduleNormalRadio(",
+        )) if role == "room" else "",
     }
     result = HARNESS
     for marker, value in values.items():
@@ -391,7 +515,7 @@ def harness(role, mutation=None):
 
 
 class RoomSensorRadioRestoreTests(unittest.TestCase):
-    def run_case(self, role, mutation=None, lr2021=False):
+    def run_case(self, role, mutation=None, lr2021=False, defines=()):
         compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
         self.assertIsNotNone(compiler)
         with tempfile.TemporaryDirectory(prefix="room-sensor-radio-restore-") as folder:
@@ -402,6 +526,7 @@ class RoomSensorRadioRestoreTests(unittest.TestCase):
             built = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
                                     f"-DROOM_ROLE={int(role == 'room')}", *flags,
                                     *(["-DUSE_LR2021=1"] if lr2021 else []),
+                                    *[f"-D{macro}=1" for macro in defines],
                                     "-I", str(ROOT / "src"),
                                     str(cpp), "-o", str(binary)],
                                    capture_output=True, text=True, timeout=45)
@@ -415,6 +540,11 @@ class RoomSensorRadioRestoreTests(unittest.TestCase):
 
     def test_production_room_startup_retry_and_temp_restore(self):
         self.run_case("room")
+
+    def test_esp32_room_watchdog_and_temp_radio(self):
+        for defines in (("ESP32_PLATFORM",), ("ESP32_PLATFORM", "MESH_PRIMARY_ESPNOW")):
+            with self.subTest(defines=defines):
+                self.run_case("room", defines=defines)
 
     def test_production_sensor_startup_retry_and_temp_restore(self):
         self.run_case("sensor")

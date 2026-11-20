@@ -95,8 +95,23 @@ int main() {
     assert(saved.bytes == cli.fs.files["/com_prefs"]);
   }
 
-  // Sharing CommonCLI must not expose the setting on other firmware roles.
-  for (const char* role : {"room-server", "sensor", "companion", "observer", "Repeater", ""}) {
+#if defined(ESP32_PLATFORM)
+  cli.callbacks.role = "room_server";
+  cli.set("repeat.trace on", reply);
+  assert(!strcmp(reply, "OK - repeat.trace on (saved)"));
+  assert(cli.fs.files["/com_prefs"][trace_offset] == 1);
+  cli.get("repeat.trace", reply);
+  assert(!strcmp(reply, "> on"));
+  cli.set("repeat.trace off", reply);
+  assert(!strcmp(reply, "OK - repeat.trace off (saved)"));
+#endif
+
+  // Sharing CommonCLI must not expose the setting on unsupported roles.
+  for (const char* role : {
+#if !defined(ESP32_PLATFORM)
+      "room_server",
+#endif
+      "room-server", "sensor", "companion", "observer", "Repeater", ""}) {
     cli.callbacks.role = role;
     const auto before = cli.fs.files["/com_prefs"];
     const uint8_t previous = cli.prefs.trace_when_repeat_off;

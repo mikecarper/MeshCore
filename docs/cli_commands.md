@@ -3645,17 +3645,19 @@ before relying on automatic forwarding limits.
 
 ---
 
-#### Enable or disable the RX inactivity watchdog (Repeater Only)
+#### Enable or disable the RX inactivity watchdog (Repeater and ESP32 Room Server)
 **Usage:**
 - `get rx.watchdog`
 - `set rx.watchdog on`
 - `set rx.watchdog off`
 
-**Default:** `on`, with a 24-hour no-RX timeout in normal mode.
+**Default:** `on`, with a 24-hour no-RX timeout in normal mode. On ESP32 Room
+Servers the watchdog runs only while `repeat on` is active. `repeat off` pauses
+it without changing the saved watchdog preference.
 
 **Notes:**
-- In normal mode, the repeater reboots after 24 hours without a received packet passing MeshCore parsing. Each such reception restarts this timeout; checks use a sliding deadline rather than waiting for another 24-hour checkpoint.
-- While `tempradio` or `tempradioat` is running, windows of at least 12 hours use a 12-hour no-RX timeout. Shorter windows disable this reboot watchdog for the duration of the session. This temporary policy also overrides a saved normal-mode `off` setting.
+- In normal mode, the node reboots after 24 hours without a received packet passing MeshCore parsing. Each such reception restarts this timeout; checks use a sliding deadline rather than waiting for another 24-hour checkpoint.
+- While `tempradio` (or Repeater `tempradioat`) is running, windows of at least 12 hours use a 12-hour no-RX timeout. Shorter windows disable this reboot watchdog for the duration of the session. This temporary policy also overrides a saved normal-mode `off` setting, but never overrides `repeat off` on a Room Server.
 - Startup, a successful temporary-radio activation/replacement, expiry, cancellation, or manually changing this setting starts a fresh observation window. Expiry is processed before the watchdog, so a temporary window ending exactly at its watchdog deadline restores normal timing first.
 - `get rx.watchdog` reports both the effective on/off state and timeout or short-session disabled reason. `set rx.watchdog on|off` saves the normal-mode preference; temporary-session rules remain active until that session ends. Existing saved preferences are retained when upgrading; the new default applies to fresh settings or older preference files without this field.
 - The check uses the last successful MeshCore parse time, recorded before receive delays and routing filters. It does not require the packet to be addressed to this repeater or its encrypted payload to be decrypted; duplicate receptions also count. This checks MeshCore packet structure, not sender authentication.
@@ -4164,13 +4166,15 @@ The pin number is the Arduino pin number used by that target (the normal GPIO nu
 **Parameters:**
   - `state`: `on`|`off`
 
-**Default:** `repeat on`.
+**Default:** `repeat on` for repeaters; `repeat off` for Room Servers.
+
+Room Server repeating is opt-in with `set repeat on`. Updates keep the saved value.
 
 `repeat off` disables relay forwarding, not locally generated traffic or
-configuration replies. Repeaters can separately opt in to the routed-trace
-exception below.
+configuration replies. Repeaters and ESP32 Room Servers can separately opt in
+to the routed-trace exception below.
 
-#### Control flood forwarding by radio (repeater only)
+#### Control flood forwarding by radio (Repeater and ESP32 Room Server)
 
 ```text
 get radio.flood
@@ -4191,7 +4195,7 @@ settings are also checked when a queued packet is transmitted. The Wio E5 Mini
 Repeater reports per-radio flood controls as unsupported; its existing global
 `repeat` setting remains available.
 
-#### Allow routed traces while repeating is disabled (repeater only)
+#### Allow routed traces while repeating is disabled (Repeater and ESP32 Room Server)
 
 ```text
 get repeat.trace
@@ -4201,7 +4205,8 @@ set repeat.trace off
 
 Default: `off`, including upgrades from older preference files. The setting is
 saved and takes effect without reboot. Failed saves leave the active choice
-unchanged. Room Server, Sensor, and Companion do not gain this exception.
+unchanged. This exception is not available on non-ESP32 Room Servers, Sensors,
+or Companions.
 
 To keep ordinary forwarding disabled while allowing routed trace diagnostics:
 
@@ -4760,7 +4765,7 @@ adverts running, set an explicit value in the 60-240 range.
 
 ---
 
-#### Forward flood group data packets on repeaters
+#### Forward flood group data packets (Repeater and ESP32 Room Server)
 **Usage:**
 - `get flood.channel.data`
 - `get flood.channel.data.hops`
@@ -4775,12 +4780,12 @@ adverts running, set an explicit value in the 60-240 range.
 
 **Default:** `flood.channel.data on`; `flood.channel.data.hops h=all`
 
-**Forwarding behavior:** Repeater firmware only. The repeater still receives and
-logs the packet when logging is enabled; this only blocks retransmission.
+**Forwarding behavior:** This only blocks retransmission. The node still
+receives and logs the packet when logging is enabled.
 On generalized repeaters these commands manage an ordinary visible FPF7
 `type=grp_data` drop row. `off` with `all` maps to `hops=all`; `off` with `N`
-maps to `hops=N+1+`. The 240 KB compact FPF6 profiles retain the legacy hard
-gate. Because it is an ordinary FPF7 row, a matching higher-priority `stop`
+maps to `hops=N+1+`. ESP32 Room Servers and the 240 KB compact FPF6 Repeater
+profiles use a hard gate instead. In FPF7, a matching higher-priority `stop`
 rule can exempt traffic from it. The compact `get flood.filter` list marks the
 managed row with `~data`. Flood group text (`GRP_TXT`) is unaffected by this
 setting.
@@ -4822,7 +4827,7 @@ Bridge/cross modes accept drop, rate, priority and stop actions; scope
 rewrites, retry actions and TX timing are rejected.
 These modes cover direct as well as flood packets, in both crossing directions.
 The default authenticates the channel key, avoiding false drops from short
-channel-hash collisions. FULL room servers support explicit transport rules;
+channel-hash collisions. ESP32 room servers support explicit transport rules;
 companions and compact FPF6 profiles do not expose this table.
 
 See [filtering documentation](flood_filtering.md#filter-bridge-and-radio-crossover-traffic)
@@ -5149,12 +5154,12 @@ Generalized rows also accept `sender=`, `text=`, `len=`, `route=`, `prob=`,
 see the parameters and short forms below.
 
 The extended table is available on repeaters with the rule engine enabled and
-on FULL-profile ESP32 room servers. A FULL room server exposes
+on ESP32 room servers, including standard builds that fit the legacy app slot.
+An ESP32 room server exposes
 `fr`, `flood.rule`, and `flood.filter`, has 31 slots, and requires an administrator
 for remote changes. It does not have the repeater's passive path blacklist, so
 `flood.filter.blacklist*` and `path=blacklist` are repeater-only; use the
-ordered `prefix=` match on a room server. Standard room-server profiles do not
-compile this table.
+ordered `prefix=` match on an ESP32 room server.
 
 Capacity depends on the image. Upcoming T096 and T1 repeater LoRa-OTA builds
 provide 32 slots in both Full and reduced sensor profiles (3 factory defaults
@@ -5167,7 +5172,7 @@ permitted slot range; numbered getters show rows without compact-list truncation
 **Parameters:**
 
 - `n`: Forward-rule slot in the build's compiled table (normally `1-63` on
-  generalized repeaters and `1-31` on FULL room servers; memory-constrained
+  generalized repeaters and `1-31` on ESP32 room servers; memory-constrained
   profiles may use fewer, including generalized T096/T1 builds).
 - `mode`: Optional; omitted means `radio`. `bridge` filters bridge admission,
   `cross` filters copies to the other radio profile, and `bridge,cross` covers
@@ -5427,7 +5432,7 @@ Deleting or replacing the last active `retry` row restores the legacy global
 retry eligibility. Firmware that predates the `retry`/`hash:XX` FPF7 extension
 cannot preserve tables containing those rows; remove them before downgrading.
 
-**Default rows:** Repeater firmware and FULL ESP32 room-server firmware seed a
+**Default rows:** Repeater firmware and ESP32 room-server firmware seed a
 new flood-filter table with
 `ota all suspend=tempradio` in slot 1. This blocks repeated LoRa OTA (`0x0C`)
 floods at every received hop unless either temporary radio profile is active. The OTA
@@ -5957,6 +5962,11 @@ limits, the ESP32 `/room` browser page, and versioned article downloads.
 ---
 
 ### Region Management (v1.10.+)
+
+Room Servers support the same region management commands. When repeating is
+enabled, a Room Server forwards floods only in allowed regions (or via `*`
+for unscoped floods). An ESP32 Room Server can also explicitly rewrite the
+scope through its flood rules. Region configuration does not enable repeating.
 
 #### Bulk-load region lists
 **Usage:** 
