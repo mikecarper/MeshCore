@@ -64,8 +64,6 @@ assert.strictEqual(p.recommendedProfiles([full, {...reduced, controls: {...reduc
 console.log("Qualified hardware/transport consolidation, historical files and Full-default/Advanced-Reduced compatibility passed");
 
 for (const [legacy, canonical, controller] of [
-  ["muzi_base_uno_superIO_companion_radio_ble", "muzi_base_uno_companion_radio_full", "sh1107"],
-  ["muzi_base_duo_superIO_companion_radio_ble", "muzi_base_duo_companion_radio_full", "sh1107"],
   ["LilyGo_T-Echo-Lite_non_shell_companion_radio_usb", "LilyGo_T-Echo-Lite_companion_radio_full", "ssd1681"]
 ]) {
   const proof = {platform: "NRF52_PLATFORM", display: true, displayAuto: true, displayController: controller, displaySource: source};
@@ -80,10 +78,10 @@ for (const [legacy, canonical, controller] of [
   assert.deepStrictEqual(restored.unavailable, []);
   const unqualified = {familyTag: family, source, profiles: {[canonical]: {...proof, displaySource: "b".repeat(40)}}};
   assert.strictEqual(p.buildCatalog([release([legacy, canonical])], unqualified).profiles.length, 2);
-  const other = canonical.includes("uno") ? canonical.replace("uno", "duo") : canonical.includes("duo") ? canonical.replace("duo", "uno") : canonical.replace("Lite", "Card");
-  assert.strictEqual(p.buildCatalog([release([legacy, other])], {familyTag: family, source, profiles: {[other]: proof}}).profiles.length, 2, "physical radio/panel families cannot substitute");
+  const other = canonical.replace("Lite", "Card");
+  assert.strictEqual(p.buildCatalog([release([legacy, other])], {familyTag: family, source, profiles: {[other]: proof}}).profiles.length, 2, "physical panel families cannot substitute");
 }
-console.log("Muzi per-radio accessories and T-Echo Lite shell/core folding require exact new display proof");
+console.log("T-Echo Lite shell/core folding requires exact new display proof");
 
 {
   const canonical = "heltec_v4_tft_companion_radio_full_femon";

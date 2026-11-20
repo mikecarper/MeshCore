@@ -28,8 +28,7 @@ def manifest(spec, target):
 class OptionalDisplayProfilesTest(unittest.TestCase):
     def test_nrf52_accessories_require_the_exact_radio_panel_and_packaged_marker(self):
         recipes = Recipes()
-        for target in ("muzi_base_duo_companion_radio_ble", "muzi_base_uno_companion_radio_ble",
-                       "muzi_base_companion_radio_ble",
+        for target in ("muzi_base_companion_radio_ble",
                        "LilyGo_T-Echo-Lite_companion_radio_ble"):
             flags = defines(recipes.value("env:" + target, "build_flags"))
             board = recipes.value("env:" + target, "board")
@@ -48,6 +47,11 @@ class OptionalDisplayProfilesTest(unittest.TestCase):
                 with self.subTest(target=target, change=change), self.assertRaises(ValueError):
                     displays.runtime_metadata({**row, **change}, flags, SOURCE, board)
             self.assertEqual(displays.runtime_metadata({**row, "capabilities": []}, flags, SOURCE, board), {})
+
+        for flavor in ("duo", "uno", "duo_superIO", "uno_superIO"):
+            env = f"env:muzi_base_{flavor}_companion_radio_ble"
+            flags = defines(recipes.value(env, "build_flags"))
+            self.assertIsNone(displays.spec_for_defines(flags, recipes.value(env, "board")))
 
     def test_lite_explicit_compatibility_roles_keep_their_own_display_proof(self):
         recipes = Recipes()
