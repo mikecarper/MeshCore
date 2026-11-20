@@ -39,6 +39,15 @@ inline void w12RecordSleepWake(esp_err_t error, bool radio_wakeup, gpio_num_t pi
 }
 #endif
 #include <esp_pm.h>
+// Only hardware USB Serial/JTAG with tickless idle supports this policy.
+// USB OTG CDC and UART companions keep their existing sleep configuration.
+#if MESH_ESP32_HWCDC_SESSION_GUARD && CONFIG_PM_ENABLE && CONFIG_FREERTOS_USE_TICKLESS_IDLE && \
+    (defined(BLE_PIN_CODE) || defined(ENABLE_USB_INTERFACE))
+#define MESH_HWCDC_AUTO_SLEEP 1
+#include "esp32/UsbAutoLightSleep.h"
+#else
+#define MESH_HWCDC_AUTO_SLEEP 0
+#endif
 #if CONFIG_IDF_TARGET_ESP32
 #include <soc/efuse_reg.h>
 #endif
@@ -75,6 +84,9 @@ protected:
   bool companion_cpu_clock_policy = false;
   bool radio_profile_cpu_clock_policy = false;
   bool applied_profile_cpu_clock_policy = false;
+#if MESH_HWCDC_AUTO_SLEEP
+  mesh::esp32::UsbAutoLightSleep usb_auto_sleep;
+#endif
   bool applied_cpu_clock_valid = false;
   uint16_t requested_cpu_clock_selection = 0;
   bool requested_cpu_clock_powersaving = false;
@@ -145,6 +157,13 @@ public:
   }
 
   void attachDynamicPrefs(KeyValueStore* prefs) { (void)prefs; }  // no-op
+
+#if MESH_HWCDC_AUTO_SLEEP
+  bool usbAutoSleepReady() const { return usb_auto_sleep.ready(); }
+  void idleWithUsbSleepGuard(uint32_t ms) {
+    usb_auto_sleep.idle(ms, isUsbSleepHeld() || inhibit_sleep);
+  }
+#endif
 
   void setCompanionCpuClockPolicy(bool enabled) { companion_cpu_clock_policy = enabled; }
   void setRadioProfileCpuClockPolicy(bool enabled) {
@@ -227,7 +246,9 @@ public:
 #endif
     config.max_freq_mhz = maximum;
     config.min_freq_mhz = minimum;
-#if (defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT) || defined(ENABLE_USB_INTERFACE)
+#if MESH_HWCDC_AUTO_SLEEP
+    config.light_sleep_enable = companion_cpu_clock_policy && powersaving && usb_auto_sleep.prepare();
+#elif (defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT) || defined(ENABLE_USB_INTERFACE)
     config.light_sleep_enable = false;
 #else
     config.light_sleep_enable = companion_cpu_clock_policy && powersaving;

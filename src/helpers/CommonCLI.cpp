@@ -90,6 +90,9 @@
 #include "RadioPresetFile.h"
 #endif
 #include <RTClib.h>
+#if ENV_INCLUDE_GPS == 1
+#include <helpers/GpsCliStatus.h>
+#endif
 #include <ctype.h>
 #include <Utils.h>
 #include <math.h>
@@ -4570,49 +4573,7 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
         strcpy(reply, "error");
       }
     } else if (memcmp(command, "gps", 3) == 0) {
-      LocationProvider * l = _sensors->getLocationProvider();
-      if (l != NULL) {
-        bool enabled = _sensors->isGpsPowered(); // physical rail/enable policy
-        bool fix = l->isValid();       // has fix ?
-        int sats = l->satellitesCount();
-        const char* gps_setting = _sensors->getSettingByKey("gps");
-        bool active = gps_setting != NULL && strcmp(gps_setting, "1") == 0;
-
-        if (!active) {
-          snprintf(reply, 160, "off, %s", enabled ? "powered" : "unpowered");
-        } else if (_prefs->powersaving_enabled && l->getGPSPowerSaving()) { // GPS Power Saving
-          unsigned long now = millis();
-          unsigned long next_off = l->getNextGPSOff();
-          unsigned long deadline = next_off != 0 ? next_off : l->getNextGPSOn();
-          long remaining_ms = deadline == 0 ? 0 : (long)(deadline - now);
-          unsigned long mins = remaining_ms > 0 ? (unsigned long)remaining_ms / 60000UL : 0;
-          if (next_off != 0) {
-            snprintf(reply, 160, "on, %s (powersaving, sleep in %luh %lum), %s, %d sats",
-                     enabled ? "powered" : "unpowered", mins / 60UL, mins % 60UL,
-                     fix ? "fix" : "no fix", sats);
-          } else {
-            snprintf(reply, 160, "on, %s (powersaving, wake in %luh %lum)",
-                     enabled ? "powered" : "unpowered", mins / 60UL, mins % 60UL);
-          }
-
-          // "last sync" from GPS
-          unsigned long last_sync = l->getLastValidTimeSync();
-          size_t used = strlen(reply);
-          if (last_sync == 0) {
-            snprintf(reply + used, 160 - used, ", last sync: none");
-          } else {
-            DateTime dt = DateTime(last_sync);
-            snprintf(reply + used, 160 - used, ", last sync: %02d:%02d - %d/%d/%d UTC",
-                     dt.hour(), dt.minute(), dt.day(), dt.month(), dt.year());
-          }
-        } else { // Normal mode
-          snprintf(reply, 160, "on, %s, %s, %d sats",
-                   enabled ? "powered" : "unpowered",
-                   fix ? "fix" : "no fix", sats);
-        }
-      } else {
-        strcpy(reply, "Can't find GPS");
-      }
+      mesh::gps::formatCliStatus(*_sensors, _prefs->powersaving_enabled, reply, 160);
 #endif
     } else if (strcmp(command, "powersaving on") == 0 || strcmp(command, "powersaving off") == 0) {
       char canonical[24];

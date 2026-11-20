@@ -101,13 +101,42 @@ void GxEPDDisplay::turnOn() {
 #endif
   if (!_isOn) {
     _isOn = true;
+#if MESH_EINK_BACKLIGHT_CONTROLS
+    if (image_retained) forceFullRefresh();
+    image_retained = retain_frame = false;
+#endif
 #if UI_POCKET_GUI
     forceFullRefresh();
 #endif
   }
 }
 
+#if MESH_EINK_BACKLIGHT_CONTROLS
+void GxEPDDisplay::setBacklight(bool on) {
+  if (backlight_on == on) return;
+  backlight_on = on;
+#if defined(DISP_BACKLIGHT)
+  digitalWrite(DISP_BACKLIGHT, on ? HIGH : LOW);
+#elif defined(EXP_PIN_BACKLIGHT)
+  expander.digitalWrite(EXP_PIN_BACKLIGHT, on ? HIGH : LOW);
+#endif
+}
+
+void GxEPDDisplay::turnOffAtTimeout() {
+  if (!retain_frame) { turnOff(); return; }
+  setBacklight(false);
+  display.hibernate();
+  _isOn = false;
+  image_retained = true;
+}
+#endif
+
 void GxEPDDisplay::turnOff() {
+#if MESH_EINK_BACKLIGHT_CONTROLS
+  if (!_init || (!_isOn && !image_retained)) return;
+  setBacklight(false);
+  image_retained = retain_frame = false;
+#endif
 #if UI_POCKET_GUI
   if (!_init || !_isOn) return;
 #endif

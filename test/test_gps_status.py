@@ -15,18 +15,22 @@ class GpsStatusTest(unittest.TestCase):
         compiler = shutil.which("g++") or shutil.which("clang++")
         self.assertIsNotNone(compiler)
         source = (ROOT / "src/helpers/CommonCLI.cpp").read_text()
-        branch = extract_braced(source, 'else if (memcmp(command, "gps", 3) == 0)')
-        branch = branch[branch.index("{"):].replace("#endif", "")
+        self.assertIn("mesh::gps::formatCliStatus(*_sensors", source)
+        companion = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
+        self.assertIn("mesh::gps::formatCliStatus(sensors", companion)
+        helper = extract_braced((ROOT / "src/helpers/GpsCliStatus.h").read_text(),
+                                "inline void formatCliStatus(")
         harness = r'''
 #include <cassert>
 #include <cstdio>
+#include <cstdint>
 #include <cstring>
 unsigned long now = 1000;
 unsigned long millis() { return now; }
 struct DateTime {
   explicit DateTime(unsigned long) {}
-  int hour() { return 12; } int minute() { return 34; }
-  int day() { return 30; } int month() { return 9; } int year() { return 2026; }
+  int hour() const { return 12; } int minute() const { return 34; }
+  int day() const { return 30; } int month() const { return 9; } int year() const { return 2026; }
 };
 struct LocationProvider {
   bool powered = false, fix = false, saving = false;
@@ -49,7 +53,11 @@ struct Sensors {
   const char* getSettingByKey(const char*) { return user; }
 };
 struct Prefs { bool powersaving_enabled = true; };
-void status(Sensors* _sensors, Prefs* _prefs, char* reply) @BRANCH@
+using SensorManager = Sensors;
+@HELPER@
+void status(Sensors* sensors, Prefs* prefs, char* reply) {
+  formatCliStatus(*sensors, prefs->powersaving_enabled, reply, 160);
+}
 int main() {
   LocationProvider gps;
   Sensors sensors{&gps}; Prefs prefs;
@@ -82,6 +90,13 @@ int main() {
   gps.off = now - 1;
   status(&sensors, &prefs, reply);
   assert(strstr(reply, "sleep in 0h 0m"));
+  now = UINT32_MAX - 999;
+  gps.off = 59001;
+  status(&sensors, &prefs, reply);
+  assert(strstr(reply, "sleep in 0h 1m"));
+  char tiny[3] = {'X', 'X', 'Y'};
+  formatCliStatus(sensors, true, tiny, 2);
+  assert(tiny[1] == 0 && tiny[2] == 'Y');
   prefs.powersaving_enabled = false; gps.powered = false;
   status(&sensors, &prefs, reply);
   assert(!strcmp(reply, "on, unpowered, fix, 5 sats"));
@@ -93,7 +108,7 @@ int main() {
   status(&sensors, &prefs, reply);
   assert(!strcmp(reply, "Can't find GPS"));
 }
-'''.replace("@BRANCH@", branch)
+'''.replace("@HELPER@", helper)
         with tempfile.TemporaryDirectory(prefix="meshcore-gps-status-") as directory:
             path = Path(directory)
             (path / "status.cpp").write_text(harness)

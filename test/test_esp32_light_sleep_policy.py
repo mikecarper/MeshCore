@@ -88,6 +88,57 @@ SDK_MODES = (
 
 
 class LightSleepPolicyTest(unittest.TestCase):
+    def test_usb_pm_lock_only_releases_during_bounded_unplugged_idle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            (work / "Arduino.h").write_text("#pragma once\n#include <cstdint>\n")
+            (work / "esp_pm.h").write_text(r"""
+#pragma once
+#include <cassert>
+using esp_pm_lock_handle_t = int*;
+constexpr int ESP_OK = 0, ESP_PM_NO_LIGHT_SLEEP = 2;
+static int holds = 0, creates = 0, deletes = 0, fail = 1, during_delay = -1;
+#define pdMS_TO_TICKS(ms) (ms)
+#define ESP_ERROR_CHECK(error) assert((error) == ESP_OK)
+int esp_pm_lock_create(int kind, int, const char*, int** handle) {
+  assert(kind == ESP_PM_NO_LIGHT_SLEEP); ++creates;
+  if (fail == 1) return -1;
+  *handle = &holds; return ESP_OK;
+}
+int esp_pm_lock_delete(int* handle) { assert(handle == &holds); ++deletes; return ESP_OK; }
+int esp_pm_lock_acquire(int* handle) {
+  assert(handle == &holds && holds == 0);
+  if (fail == 2) return -1;
+  ++holds; return ESP_OK;
+}
+int esp_pm_lock_release(int* handle) {
+  assert(handle == &holds && holds == 1);
+  if (fail == 3) return -1;
+  --holds; return ESP_OK;
+}
+void vTaskDelay(unsigned ms) { assert(ms == 10); during_delay = holds; }
+""")
+            source = work / "usb.cpp"
+            source.write_text(r"""
+#include <helpers/esp32/UsbAutoLightSleep.h>
+int main() {
+  mesh::esp32::UsbAutoLightSleep usb;
+  assert(!usb.prepare() && !usb.ready());
+  fail = 2;
+  assert(!usb.prepare() && !usb.ready() && deletes == 1);
+  fail = 0;
+  assert(usb.prepare() && usb.prepare() && creates == 3 && holds == 1);
+  usb.idle(200, true); assert(during_delay == 1 && holds == 1);
+  usb.idle(10, false); assert(during_delay == 0 && holds == 1);
+  fail = 3;
+  usb.idle(10, false); assert(during_delay == 1 && holds == 1);
+}
+""")
+            binary = work / "usb"
+            subprocess.run([os.environ.get("CXX", "c++"), "-std=c++17", "-I", str(work),
+                            "-I", str(ROOT / "src"), str(source), "-o", str(binary)], check=True)
+            subprocess.run([str(binary)], check=True)
+
     def test_real_guard_across_sdk_and_host_modes(self):
         for flags in SDK_MODES:
             with self.subTest(flags=flags):

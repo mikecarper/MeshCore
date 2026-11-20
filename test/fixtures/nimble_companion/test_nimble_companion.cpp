@@ -242,8 +242,11 @@ static void test_connection_parameters_only_on_current_authenticated_transition(
   auto* server = NimBLEDevice::server.get();
   NimBLEConnInfo info;
   info.handle = 29;
+  uint8_t frame[MAX_FRAME_SIZE];
+  interface.setTimingPowerSaving(true);
   // A callback after the physical link has closed must not request an update.
   server->callbacks->onAuthenticationComplete(info);
+  interface.checkRecvFrame(frame);
   assert(connection_updates.empty() && !interface.isConnected());
   server->connected = true;
   server->callbacks->onConnect(server, info);
@@ -251,28 +254,69 @@ static void test_connection_parameters_only_on_current_authenticated_transition(
   NimBLEConnInfo stale = info;
   stale.handle = 7;
   server->callbacks->onAuthenticationComplete(stale);
+  interface.checkRecvFrame(frame);
   assert(connection_updates.empty() && !interface.isConnected());
   server->callbacks->onAuthenticationComplete(info);
+  interface.checkRecvFrame(frame);
   assert(connection_updates.size() == 1 && interface.isConnected());
   const auto& first = connection_updates[0];
   assert(first.handle == 29 && first.minimum == 12 && first.maximum == 24
          && first.latency == 0 && first.timeout == 400);
   server->callbacks->onAuthenticationComplete(info);
+  interface.checkRecvFrame(frame);
   assert(connection_updates.size() == 1); // No repeated update on the same link.
+  test_millis = UINT32_MAX - 1000;
+  // First request after prolonged silence, then sparse app polls across rollover.
+  interface.checkRecvFrame(frame);
+  assert(connection_updates.size() == 2 && connection_updates.back().minimum == 48
+         && connection_updates.back().maximum == 60 && connection_updates.back().latency == 1);
+  auto* rx = server->service->characteristics[1].get();
+  auto receive = [&]() {
+    const uint8_t command = 1;
+    rx->setValue(&command, 1);
+    rx->callbacks->onWrite(rx, info);
+    assert(interface.checkRecvFrame(frame) == 1);
+  };
+  receive();
+  test_millis += 3000;
+  receive();
+  assert(connection_updates.size() == 2);
+  test_millis += 100;
+  receive();
+  assert(connection_updates.size() == 2);
+  test_millis += 100;
+  receive();
+  assert(connection_updates.size() == 3 && connection_updates.back().minimum == 12);
+  test_millis += 1999;
+  interface.checkRecvFrame(frame);
+  assert(connection_updates.size() == 3);
+  ++test_millis;
+  interface.checkRecvFrame(frame);
+  assert(connection_updates.size() == 4 && connection_updates.back().minimum == 48);
+  interface.setTimingPowerSaving(false);
+  interface.checkRecvFrame(frame);
+  assert(connection_updates.size() == 5 && connection_updates.back().minimum == 12);
+  test_millis += 5000;
+  interface.checkRecvFrame(frame);
+  assert(connection_updates.size() == 5);
   server->connected = false;
   server->callbacks->onDisconnect(server, info, 0);
   server->callbacks->onAuthenticationComplete(info);
-  assert(connection_updates.size() == 1 && !interface.isConnected());
+  interface.checkRecvFrame(frame);
+  assert(connection_updates.size() == 5 && !interface.isConnected());
   NimBLEConnInfo next = info;
   next.handle = 31;
   server->connected = true;
   server->callbacks->onConnect(server, next);
   server->callbacks->onAuthenticationComplete(info); // Prior connection's callback.
-  assert(connection_updates.size() == 1 && !interface.isConnected());
+  interface.checkRecvFrame(frame);
+  assert(connection_updates.size() == 5 && !interface.isConnected());
   server->callbacks->onAuthenticationComplete(next);
-  assert(connection_updates.size() == 2 && connection_updates[1].handle == 31);
+  interface.checkRecvFrame(frame);
+  assert(connection_updates.size() == 6 && connection_updates[5].handle == 31);
   server->callbacks->onAuthenticationComplete(next);
-  assert(connection_updates.size() == 2);
+  interface.checkRecvFrame(frame);
+  assert(connection_updates.size() == 6);
   NimBLEDevice::deinit(true);
 }
 

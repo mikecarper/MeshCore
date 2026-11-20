@@ -21,6 +21,8 @@ the board and firmware profile; use `help` for the commands in your build.
 | Timezone, hours | `get tz.offset`, `set tz.offset <hours>` |
 | Airtime limit | `get dutycycle`, `set dutycycle <percent>` |
 | Receive gain | `get radio.rxgain`, `set radio.rxgain <on/off>` |
+| Device power saving | `get powersaving`, `set powersaving <on/off>` |
+| GPS status, power and clock sync (GPS builds) | `gps`, `gps on`, `gps off`, `gps sync` |
 | Receive power saving | `get radio.rxps`, `get radio.rxps.config` |
 | FEM receive gain | `get radio.fem.rxgain`, `set radio.fem.rxgain <on/off>` |
 | FEM transmit gain | `get radio.fem.txgain`, `set radio.fem.txgain <on/off>` |
@@ -36,6 +38,19 @@ antenna output on amplified boards.
 See [CLI commands](cli_commands.md) for setting ranges and access restrictions,
 and [radio profiles](radio_profiles.md) for radio2, temporary profiles and
 schedules.
+
+## Power saving
+
+On ESP32 Bluetooth Companions, `set powersaving on` requests a 15-30 ms
+connection interval during app sync and 60-75 ms after two seconds of quiet.
+Three closely spaced incoming app frames return the link to fast timing.
+Mesh traffic sent to the phone does not count as app activity. With
+`set powersaving off`, the link stays on the fast profile. The phone chooses the
+actual connection interval.
+
+ESP32 Companions with hardware USB Serial/JTAG and a tickless power-management
+build can use automatic light sleep during short idle periods on battery. A USB
+host or its reconnect grace period holds the device awake.
 
 ## Wi-Fi
 

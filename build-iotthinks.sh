@@ -123,6 +123,7 @@ Heltec_v2_companion_radio_ble_ps \
 Heltec_v3_companion_radio_ble_ps \
 heltec_v4_3_companion_radio_ble_ps_femoff \
 heltec_v4_companion_radio_ble_ps_femon \
+heltec_v4_expansionkit_companion_radio_ble \
 heltec_v4_expansionkit_tft_companion_radio_ble_ps \
 heltec_v4_3_expansionkit_tft_companion_radio_ble_femoff \
 heltec_v4_r8_companion_radio_ble_ps \
@@ -237,3 +238,13 @@ Xiao_S3_WIO_companion_radio_usb
 ./build.sh build-firmware \
 Heltec_t114_sensor \
 t1000e_sensor
+
+# Heltec e-paper boards
+./build.sh build-firmware \
+Heltec_E213_companion_radio_ble \
+Heltec_E213_companion_radio_usb \
+Heltec_E213_repeater \
+Heltec_E213_room_server \
+Heltec_E290_companion_ble \
+Heltec_E290_companion_usb \
+Heltec_E290_room_server

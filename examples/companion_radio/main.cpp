@@ -648,7 +648,9 @@ static bool applyCompanionPowerSaving(bool enabled) {
       && mesh::esp32::cpuclock::automaticDownclockAllowed()
       && !mesh::esp32::cpuclock::profilePerformanceEnabled(the_mesh.isDualRadioActive())
       ? 40 : max_mhz;
-#if (defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT) \
+#if MESH_HWCDC_AUTO_SLEEP
+  const bool automatic_light_sleep = enabled && board.usbAutoSleepReady();
+#elif (defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT) \
     || defined(ENABLE_USB_INTERFACE)
   // Automatic light sleep interrupts native USB CDC and USB companions.
   // Frequency scaling remains active when device power saving is enabled.
@@ -3670,6 +3672,21 @@ public:
 };
 static CompanionWirelessBackend companion_wireless;
 
+#if MESH_HWCDC_AUTO_SLEEP
+static void idleCompanionWithUsbGuard(uint32_t ms) {
+  if (interface_manager.hasPendingIO() || board.isOTAUpdateRunning()
+      || board.isRadioTestActive() || sensors.gpsUsesSerialUart(1)
+#if defined(BLE_PIN_CODE)
+      || bluetooth_interface.isPowerTransitionPending()
+#endif
+  ) {
+    vTaskDelay(pdMS_TO_TICKS(ms));
+    return;
+  }
+  board.idleWithUsbSleepGuard(ms);
+}
+#endif
+
 #if defined(ESP32_PLATFORM) && defined(ENABLE_USB_INTERFACE) \
     && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT \
     && !defined(ETHERNET_ENABLED) && !defined(SERIAL_RX)
@@ -4688,6 +4705,9 @@ void loop() {
 #ifdef ESP32_PLATFORM
   board.servicePowerTestControls(!interface_manager.hasPendingIO());
   serviceCompanionPowerSaving();
+#if defined(BLE_PIN_CODE)
+  bluetooth_interface.setTimingPowerSaving(the_mesh.getNodePrefs()->powersaving_enabled);
+#endif
 #endif
 #if defined(NRF52_PLATFORM)
   if (the_mesh.getNodePrefs()->powersaving_enabled && the_mesh.isDualRadioActive()
@@ -4759,6 +4779,12 @@ void loop() {
     const uint32_t idle_slice_ms = noise_floor_wait && noise_floor_delay_ms < maximum_slice_ms
         ? noise_floor_delay_ms : maximum_slice_ms;
 #if defined(NRF52_PLATFORM)
+#if UI_HAS_EINK_BACKLIGHT_BUTTON
+    // An edge wakes the poller, but debounce, multi-click and lamp expiry
+    // also need a timer when neither the radio nor the button generates IRQs.
+    if (ui_task.needsBacklightPoll() && !the_mesh.isDualRadioActive()) delay(1);
+    else
+#endif
     if (noise_floor_wait) board.sleepMilliseconds(idle_slice_ms);
     else board.sleep(0); // nrf ignores seconds param, sleeps whenever possible
 #elif defined(ESP32_PLATFORM)
@@ -4766,8 +4792,7 @@ void loop() {
 #if defined(ENABLE_USB_INTERFACE) \
     && defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT \
     && !defined(ETHERNET_ENABLED) && !defined(SERIAL_RX)
-    // Automatic light sleep is disabled for native USB, even in a PM-enabled
-    // core. A short timer slice gives idle battery builds real light sleep without
+    // A short timer slice gives idle battery builds explicit light sleep without
     // delaying radio, GPS, button, or newly attached USB work by more than the
     // normal 10 ms loop cadence. can_sleep already proved no USB host is up.
     bool sleep_failed = false;
@@ -4794,7 +4819,11 @@ void loop() {
       }
     }
     if (sleep_failed && !the_mesh.isDualRadioActive()) {
+#if MESH_HWCDC_AUTO_SLEEP
+      idleCompanionWithUsbGuard(idle_slice_ms);
+#else
       vTaskDelay(pdMS_TO_TICKS(idle_slice_ms));
+#endif
     }
 #else
     if (the_mesh.isDualRadioActive()) {
@@ -4805,9 +4834,12 @@ void loop() {
           && mesh::powerdiag::enabled())
         mesh::powerdiag::decision(mask(Reason::DualRadio), millis());
     } else {
-      // PM-enabled cores may use automatic sleep; other connected transports
-      // retain their modem sleep and normal FreeRTOS idle behavior.
+      // The SDK coordinates modem sleep while a wireless driver is active.
+#if MESH_HWCDC_AUTO_SLEEP
+      idleCompanionWithUsbGuard(idle_slice_ms);
+#else
       vTaskDelay(pdMS_TO_TICKS(idle_slice_ms));
+#endif
     }
 #endif
 #elif defined(RP2040_PLATFORM) || defined(STM32_PLATFORM)

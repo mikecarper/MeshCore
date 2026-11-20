@@ -2391,6 +2391,9 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, CompanionNode
   analog_btn.enableQuadrupleClick();
 #endif
 
+#if MESH_EINK_BACKLIGHT_CONTROLS
+  backlight_button.begin();
+#endif
   _node_prefs = node_prefs;
 #if UI_POCKET_GUI
   the_mesh.loadPocketGuiSettings(_pocket_settings);
@@ -2762,7 +2765,11 @@ void UITask::shutdown(bool restart){
   } else {
     // Each driver owns blanking, panel sleep and shared power/bus release.
     auto* screen = _display;
-    if (screen != NULL && screen->isOn()) screen->turnOff();
+    if (screen != NULL && (screen->isOn()
+#if MESH_EINK_BACKLIGHT_CONTROLS
+        || screen->hasRetainedImage()
+#endif
+    )) screen->turnOff();
     // Power off board including radio, display, GPS and components
     _board->powerOff();
   }
@@ -2781,6 +2788,9 @@ bool UITask::isButtonPressed() const {
 }
 
 bool UITask::isButtonGesturePending() const {
+#if MESH_EINK_BACKLIGHT_CONTROLS
+  if (backlight_button.needsPolling()) return true;
+#endif
 #if UI_DEFER_RENDER_DURING_BUTTON_GESTURE && MESH_CUSTOM_PERIPHERALS
   const auto* rotary = mesh::ui::customRotaryInput();
   if (rotary && rotary->isButtonGesturePending()) return true;
@@ -3034,6 +3044,29 @@ void UITask::loop() {
     }
   }
 #endif
+#if MESH_EINK_BACKLIGHT_CONTROLS
+  if (_display) {
+    const uint32_t now = millis();
+    const bool pressed = backlight_button.isPressed();
+    const int event = backlight_button.check();
+    if (pressed && !backlight_pressed && _display->wake(mesh::ui::DisplayWake::Button))
+      _next_refresh = now;
+    backlight_pressed = pressed;
+    if (pressed && _display->isOn()) {
+      backlight_at = now;
+      backlight_timed = true;
+    }
+    if (event == BUTTON_EVENT_DOUBLE_CLICK && _display->isOn()) {
+      _display->forceFullRefresh();
+      _next_refresh = now;
+    } else if (event == BUTTON_EVENT_TRIPLE_CLICK) {
+      _display->dismiss();
+      backlight_timed = false;
+    }
+    if (!_display->isOn() || uint32_t(now - backlight_at) >= 5000) backlight_timed = false;
+    display.setBacklight(backlight_timed);
+  }
+#else
 #if defined(BACKLIGHT_BTN)
   // First-poll state must not collide with a completed poll at timestamp zero.
   enum class BacklightButtonState : uint8_t { Unseen, Released, Pressed };
@@ -3047,6 +3080,8 @@ void UITask::loop() {
     button_state = pressed ? BacklightButtonState::Pressed : BacklightButtonState::Released;
     last_backlight_btn_check = millis();
   }
+#endif
+
 #endif
 
   // A button-wake PIN is a preview, not a modal pairing request. The next
@@ -3113,6 +3148,17 @@ void UITask::loop() {
       }
 #endif
       _display->endFrame();
+#if MESH_EINK_BACKLIGHT_CONTROLS
+      // Use the frame actually painted; a pairing timeout may change curr
+      // before the next paint. Never leave a pairing PIN on a sleeping panel.
+      const bool pin_visible = isPairingScreenActive()
+          || (curr == home && static_cast<HomeScreen*>(home)->hasPairingPin());
+      bool retain = !pin_visible && !(_alert[0] && int32_t(millis() - _alert_expiry) < 0);
+#if defined(THINKNODE_M8) || defined(LILYGO_TECHO)
+      retain = retain && curr == msg_preview;
+#endif
+      display.retainFrameAtTimeout(retain);
+#endif
     }
 #if AUTO_OFF_MILLIS > 0
 #if MOMENTARY_BUTTON_WAKE_HOLD_MS > 0 && defined(PIN_USER_BTN)

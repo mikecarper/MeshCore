@@ -6,6 +6,10 @@
 #include <helpers/SensorManager.h>
 #include <helpers/MultiSerialInterface.h>
 #include <Arduino.h>
+#if MESH_EINK_BACKLIGHT_CONTROLS
+#include <helpers/ui/MomentaryButton.h>
+#define UI_HAS_EINK_BACKLIGHT_BUTTON 1
+#endif
 #include <helpers/sensors/LPPDataHelpers.h>
 #ifdef HAS_TOUCH
   #include <helpers/ui/TouchInput.h>
@@ -53,7 +57,14 @@ class UITask : public AbstractUITask {
   int _msgcount;
   unsigned long ui_started_at;
   uint32_t next_batt_chck;
+#if MESH_EINK_BACKLIGHT_CONTROLS
+  MomentaryButton backlight_button{BACKLIGHT_BTN, 1000, true};
+  bool backlight_pressed = false;
+  bool backlight_timed = false;
+  uint32_t backlight_at = 0;
+#else
   uint32_t last_backlight_btn_check = 0;
+#endif
 #ifdef HAS_TOUCH
   #ifndef TOUCH_CENTER_ZONE_PERCENT
     #define TOUCH_CENTER_ZONE_PERCENT 34
@@ -137,6 +148,9 @@ public:
     ui_started_at = 0;
     curr = NULL;
   }
+#if MESH_EINK_BACKLIGHT_CONTROLS
+  bool needsBacklightPoll() const { return backlight_timed || backlight_button.needsPolling(); }
+#endif
   void begin(DisplayDriver* display, SensorManager* sensors, CompanionNodePrefs* node_prefs);
   void serviceWiFiToggleButton();
   void servicePairingState() override;

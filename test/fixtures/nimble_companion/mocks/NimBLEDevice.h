@@ -97,6 +97,8 @@ struct NimBLEAdvertising {
     active = fake_nimble::failure != "advertise"; return active;
   }
   bool stop() { active = false; return true; }
+  void setMinInterval(uint16_t units) { assert(units == 320); }
+  void setMaxInterval(uint16_t units) { assert(units == 320); }
   void enableScanResponse(bool value) { scan_response = value; }
   void setScanFilter(bool scan, bool connect) { scan_filter = scan; connect_filter = connect; }
   bool setAdvertisementData(const NimBLEAdvertisementData&) { name.clear(); service.clear(); return true; }
@@ -175,6 +177,7 @@ struct NimBLEServer {
   }
 };
 struct NimBLEDevice {
+  static bool setPower(int dbm) { assert(dbm == 3); return true; }
   inline static std::unique_ptr<NimBLEServer> server;
   static void setDeviceCallbacks(NimBLEDeviceCallbacks* cb) { fake_nimble::device_callbacks = cb; }
   static bool init(const std::string& name) {

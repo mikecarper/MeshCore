@@ -1503,6 +1503,12 @@ The 15-minute e-paper default applies to battery and USB profiles on all roles.
 Existing saved timeouts stay unchanged. To use 15 minutes on an existing node,
 set both `display.timeout` and `display.usb.timeout` to `900`; choose a timed
 mode such as `button` or `button-pairing` if the current mode is `on` or `off`.
+On ThinkNode M1 and M5 Companions, a timeout can leave the last page visible
+while the e-paper controller sleeps. T-Echo and ThinkNode M8 retain message
+previews only. Pairing PINs and active alerts clear on timeout. Press the
+backlight button to light the screen for five seconds after release, double-click
+to refresh the panel, or triple-click to dismiss a timed display. Selecting
+display mode `off` clears a retained page.
 An existing observer timeout that differs from its old 60-second default is
 migrated once to both power profiles; an old zero timeout becomes mode `on`.
 

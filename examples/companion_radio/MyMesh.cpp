@@ -42,6 +42,9 @@
 #include <helpers/ui/StartupScreen.h>
 #include "NotificationSettingsFile.h"
 #include "MyMesh.h"
+#if ENV_INCLUDE_GPS == 1
+#include <helpers/GpsCliStatus.h>
+#endif
 #include "RecentAdvertPaths.h"
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN && defined(ESP32) && defined(WIFI_SSID)
 #include <helpers/BrowserOtaCommandPolicy.h>
@@ -4674,8 +4677,24 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
              gps && gps[0] == '1' ? "on" : "off");
     return true;
   }
+  if (strcmp(command, "gps") == 0) {
+    mesh::gps::formatCliStatus(sensors, _prefs.powersaving_enabled, reply, reply_size);
+    return true;
+  }
+  if (strcmp(command, "gps sync") == 0) {
+    auto* provider = sensors.getLocationProvider();
+    if (!provider) mesh::cli::formatError(reply, reply_size, "GPS unavailable");
+    else if (!_prefs.gps_enabled) snprintf(reply, reply_size, "gps is off");
+    else if (!sensors.isGpsTelemetryTransportAvailable()) snprintf(reply, reply_size, "GPS transport unavailable");
+    else {
+      provider->syncTime();
+      snprintf(reply, reply_size, "scheduled");
+    }
+    return true;
+  }
   const char* gps_value = nullptr;
   if (strncmp(command, "set gps ", 8) == 0) gps_value = command + 8;
+  else if (strncmp(command, "gps ", 4) == 0) gps_value = command + 4;
   if (gps_value) {
     if (strcmp(gps_value, "on") != 0 && strcmp(gps_value, "off") != 0) {
       mesh::cli::formatError(reply, reply_size, MESH_CLI_REPLY_TEXT("use set gps on|off", "set gps on|off"));

@@ -47,6 +47,47 @@ class PocketEinkRefreshTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.temporary.cleanup()
 
+    def test_backlight_models_hibernate_and_clear_retained_images(self):
+        source = self.work / "retain.cpp"
+        source.write_text(r"""
+#include "GxEPDDisplay.h"
+int main() {
+  GxEPDDisplay display;
+  auto& prefs = mesh::ui::displayPowerPrefs();
+  prefs.wake_on_boot = true;
+  prefs.battery.seconds = 1;
+  test_ms = UINT32_MAX - 400;
+  assert(display.begin());
+  display.servicePower(false);
+  display.retainFrameAtTimeout(true);
+  test_ms += 999;
+  assert(!display.servicePower(false) && display.isOn());
+  ++test_ms;
+  assert(display.servicePower(false) && !display.isOn() && display.hasRetainedImage());
+  assert(panel::updates(panel::Call::Hibernate) == 1 && panel::updates(panel::Call::Clear) == 0);
+  prefs.battery.mode = mesh::ui::DisplayMode::Off;
+  display.servicePower(false);
+  assert(!display.hasRetainedImage() && panel::updates(panel::Call::Clear) == 1);
+  display.servicePower(false);
+  assert(panel::updates(panel::Call::Clear) == 1);
+  prefs.battery.mode = mesh::ui::DisplayMode::Button;
+  display.servicePower(false);
+  assert(display.wake(mesh::ui::DisplayWake::Button));
+  display.retainFrameAtTimeout(false);
+  test_ms += 1000;
+  assert(display.servicePower(false) && !display.hasRetainedImage());
+  assert(panel::updates(panel::Call::Clear) == 2);
+}
+""")
+        binary = self.work / "retain"
+        subprocess.run([os.environ.get("CXX", "g++"), "-std=c++17",
+                        "-DDISPLAY_CLASS=GxEPDDisplay", "-DBACKLIGHT_BTN=11",
+                        "-DEINK_DISPLAY_MODEL=GxEPD2_213_B74", "-I" + str(self.work),
+                        "-I" + str(FIXTURE), "-I" + str(UI), "-I" + str(ROOT / "src"),
+                        str(source), str(self.work / "GxEPDDisplay.cpp"),
+                        str(UI / "DisplayDriver.cpp"), "-o", str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
+
     def run_case(self, scenario):
         result = subprocess.run([str(self.binary), scenario], capture_output=True,
                                 text=True, timeout=10)

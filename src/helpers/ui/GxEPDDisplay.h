@@ -52,6 +52,11 @@ class GxEPDDisplay : public DisplayDriver {
   int _line_height = 22;
   bool _init = false;
   bool _isOn = false;
+#if MESH_EINK_BACKLIGHT_CONTROLS
+  bool retain_frame = false;
+  bool backlight_on = false;
+  void turnOffAtTimeout() override;
+#endif
 #ifdef MESHCORE_TECHO_LITE_DISPLAY_DETECTION
   bool _probe_complete = false;
   bool _present = false;
@@ -77,6 +82,10 @@ public:
   GxEPDDisplay() : DisplayDriver(kWidth, kHeight), display(GxEPD2_150_BN(DISP_CS, DISP_DC, DISP_RST, DISP_BUSY)) {}
 #endif
 
+#if MESH_EINK_BACKLIGHT_CONTROLS
+  void retainFrameAtTimeout(bool retain) { retain_frame = retain; }
+  void setBacklight(bool on);
+#endif
   bool begin();
 #if UI_POCKET_GUI
   Adafruit_GFX& gfx() { return display; }

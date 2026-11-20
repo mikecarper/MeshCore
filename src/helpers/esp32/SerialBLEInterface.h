@@ -83,7 +83,19 @@ class SerialBLEInterface : public BaseSerialInterface,
   void retireCacheGattHandler();
   void serviceGattCacheRefresh(uint32_t now);
 #endif
-  bool deviceConnected;
+  std::atomic<bool> deviceConnected{false};
+  // The Companion loop owns the timing state. BLE callbacks publish the peer
+  // at connect and only mark the connection usable after authentication.
+  uint32_t timing_session = 0;
+  uint32_t last_app_frame_ms = 0;
+  uint8_t app_burst = 0;
+  bool fast_timing = true;
+  bool timing_power_save = false;
+#if !MESH_BLE_USES_NIMBLE
+  std::atomic<uint8_t> timing_address[6]{};
+  std::atomic<uint32_t> timing_authenticated_session{0};
+#endif
+  void serviceConnectionTiming(uint32_t now, bool received_frame);
   bool oldDeviceConnected;
   bool notifySucceeded;
   std::atomic<bool> notificationsEnabled{false};
@@ -113,7 +125,7 @@ class SerialBLEInterface : public BaseSerialInterface,
   bool _advertisingConfigured = false;
   bool _hasBondedPeer = false;
   mesh::companion::BluetoothPeerIdentity _bondedPeer;
-  uint16_t last_conn_id;
+  std::atomic<uint16_t> last_conn_id{0};
   // Pairing callbacks run on the Bluetooth host task while the Companion task
   // can change the PIN. Publish the new value without racing those callbacks.
   std::atomic<uint32_t> _pin_code{0};
@@ -221,6 +233,8 @@ protected:
 #endif
 
 public:
+  void setTimingPowerSaving(bool enabled) { timing_power_save = enabled; }
+
   SerialBLEInterface() {
     pServer = NULL;
     pService = NULL;

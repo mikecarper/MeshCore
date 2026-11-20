@@ -156,8 +156,14 @@ public:
   void setAccessPermissions(int) {}
 };
 class BLEAdvertisementData { public: void setFlags(int) {} };
+constexpr int ESP_BLE_PWR_TYPE_DEFAULT = 0, ESP_PWR_LVL_P3 = 5;
+inline int esp_ble_tx_power_set(int type, int level) {
+  assert(type == ESP_BLE_PWR_TYPE_DEFAULT && level == ESP_PWR_LVL_P3); return ESP_OK;
+}
 class BLEAdvertising {
 public:
+  void setMinInterval(uint16_t units) { assert(units == 320); }
+  void setMaxInterval(uint16_t units) { assert(units == 320); }
   bool active=false, filtered=false;
   void start() { active=true; }
   void stop() { active=false; }
@@ -229,6 +235,11 @@ public:
 inline BLEAdvertising* fake_advertising=nullptr;
 class BLEServer {
 public:
+  void updateConnParams(esp_bd_addr_t, uint16_t minimum, uint16_t maximum,
+                        uint16_t latency, uint16_t timeout) {
+    assert(maximum == minimum + 12 && timeout == 400);
+    assert((minimum == 12 && latency == 0) || (minimum == 48 && latency == 1));
+  }
   bool connected=false;
   BLEServerCallbacks* callbacks=nullptr;
   BLEServer() { ++fake_bt::servers; }

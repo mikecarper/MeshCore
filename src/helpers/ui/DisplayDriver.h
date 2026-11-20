@@ -22,6 +22,10 @@ class DisplayDriver {
   bool _night_seen = false;
 #endif
 protected:
+#if MESH_EINK_BACKLIGHT_CONTROLS
+  bool image_retained = false;
+  virtual void turnOffAtTimeout() { turnOff(); }
+#endif
   DisplayDriver(int w, int h) { _w = w; _h = h; }
   void setDimensions(int w, int h) { _w = w; _h = h; }
 
@@ -44,6 +48,9 @@ public:
     return glyph <= 6 ? 10 : glyph * 2;
   }
 
+#if MESH_EINK_BACKLIGHT_CONTROLS
+  bool hasRetainedImage() const { return image_retained; }
+#endif
   virtual bool isOn() = 0;
   virtual bool supportsRotation() const { return false; }
   virtual bool setRotationDegrees(uint16_t degrees) {

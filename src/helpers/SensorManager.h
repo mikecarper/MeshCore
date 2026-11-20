@@ -62,9 +62,6 @@ protected:
   void resetGpsTelemetryTransportState();
   bool isGpsTelemetryUserEnabled() const { return gps_user_enabled; }
   bool isTrackerGpsModeEnabled() const { return gps_tracker_enabled; }
-  bool isGpsTelemetryTransportAvailable() const {
-    return gps_transport_available;
-  }
   bool gpsTelemetryReceiverRequired(unsigned long now) const {
     if (gps_tracker_enabled) return gps_acquiring;
     return gps_acquiring || gpsTelemetryHoldActive(now);
@@ -78,6 +75,11 @@ protected:
 #endif
 
 public:
+#if ENV_INCLUDE_GPS
+  bool isGpsTelemetryTransportAvailable() const {
+    return gps_transport_available;
+  }
+#endif
   void applyGpsTimeSyncInterval(uint16_t hours) {
 #if ENV_INCLUDE_GPS
     LocationProvider* location = getLocationProvider();

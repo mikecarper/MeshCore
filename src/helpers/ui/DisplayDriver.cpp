@@ -3,10 +3,26 @@
 #include <Arduino.h>
 
 bool DisplayDriver::servicePower(bool usb_power, bool app_connected, bool pairing) {
-  _power_policy.update(mesh::ui::displayPowerPrefs(), usb_power, app_connected, pairing, millis());
+  const auto& prefs = mesh::ui::displayPowerPrefs();
+  const uint32_t now = millis();
+#if MESH_EINK_BACKLIGHT_CONTROLS
+  const auto mode = (usb_power ? prefs.usb : prefs.battery).mode;
+  const bool timeout = _power_policy.timeoutDue(now) && _notification_power < 0
+      && !pairing && mode != mesh::ui::DisplayMode::Off;
+#endif
+  _power_policy.update(prefs, usb_power, app_connected, pairing, now);
   const bool desired = _notification_power < 0 ? _power_policy.on() : _notification_power != 0;
   bool changed = isOn() != desired;
-  if (changed) { if (desired) turnOn(); else turnOff(); }
+  if (changed) {
+    if (desired) turnOn();
+#if MESH_EINK_BACKLIGHT_CONTROLS
+    else if (timeout) turnOffAtTimeout();
+#endif
+    else turnOff();
+  }
+#if MESH_EINK_BACKLIGHT_CONTROLS
+  else if (image_retained && mode == mesh::ui::DisplayMode::Off) turnOff();
+#endif
 #ifdef MESHCORE_HAS_COLOR_DISPLAY
   const bool night = mesh::ui::displayNightActive();
   if (_night_seen != night) { _night_seen = night; changed = true; }
@@ -23,7 +39,11 @@ bool DisplayDriver::wake(mesh::ui::DisplayWake reason) {
 
 void DisplayDriver::dismiss() {
   _power_policy.dismiss();
-  if (!_power_policy.on() && isOn()) turnOff();
+  bool visible = isOn();
+#if MESH_EINK_BACKLIGHT_CONTROLS
+  visible |= image_retained;
+#endif
+  if (!_power_policy.on() && visible) turnOff();
 }
 
 #if defined(ESP32_PLATFORM) && defined(MESHCORE_HAS_REAL_DISPLAY)

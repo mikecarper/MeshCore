@@ -1,7 +1,7 @@
 """Compile actual guarded backlight polling with original timer initialization.
 
 Both UI paths are fixture-enabled, plus feature-disabled controls. Current
-normal BACKLIGHT_BTN recipes select ui-new; ui-tiny is consistency coverage.
+e-paper recipes also exercise their gesture and timed backlight path.
 Arduino clock/GPIO and display wake are host fakes, not hardware sleep tests.
 """
 from pathlib import Path
@@ -64,6 +64,54 @@ class BacklightPollRolloverTest(unittest.TestCase):
                 self.assertLess(loop.index(block), loop.index('userLedHandler();'))
                 self.assertIn('digitalRead(PIN_BUTTON2) == LOW', block)
                 self.assertIn('_display->wake(mesh::ui::DisplayWake::Button)', block)
+
+    def test_eink_backlight_gestures_and_expiry_across_wrap(self):
+        source = (ROOT / 'examples/companion_radio/ui-new/UITask.cpp').read_text()
+        loop = extract_braced(source, 'void UITask::loop()')
+        branch = loop.split('#if MESH_EINK_BACKLIGHT_CONTROLS', 1)[1].split('#else', 1)[0]
+        harness = r"""
+#include <cassert>
+#include <cstdint>
+namespace mesh { namespace ui { enum class DisplayWake { Button }; } }
+static uint32_t now = UINT32_MAX - 2000;
+uint32_t millis() { return now; }
+enum { NONE, BUTTON_EVENT_DOUBLE_CLICK, BUTTON_EVENT_TRIPLE_CLICK };
+struct Screen {
+  bool on = false, allowed = true, lamp = false;
+  int wakes = 0, refreshes = 0;
+  bool wake(mesh::ui::DisplayWake) { ++wakes; return on = allowed; }
+  bool isOn() const { return on; }
+  void forceFullRefresh() { ++refreshes; }
+  void dismiss() { on = false; }
+  void setBacklight(bool value) { lamp = value; }
+} display;
+struct {
+  bool pressed = false; int event = NONE;
+  bool isPressed() const { return pressed; }
+  int check() { int result = event; event = NONE; return result; }
+} backlight_button;
+Screen* _display = &display;
+bool backlight_pressed = false, backlight_timed = false;
+uint32_t backlight_at = 0, _next_refresh = 0;
+void poll() { @BRANCH@ }
+int main() {
+  poll(); assert(!display.lamp && !display.wakes);
+  backlight_button.pressed = true; poll(); poll(); assert(display.lamp && display.wakes == 1);
+  backlight_button.pressed = false; poll(); now += 4999; poll(); assert(display.lamp);
+  ++now; poll(); assert(!display.lamp && display.on);
+  backlight_button.event = BUTTON_EVENT_DOUBLE_CLICK; poll();
+  assert(display.refreshes == 1 && _next_refresh == now);
+  backlight_button.event = BUTTON_EVENT_TRIPLE_CLICK; poll(); assert(!display.on && !display.lamp);
+  display.allowed = false; backlight_button.pressed = true; poll(); assert(!display.lamp);
+}
+""".replace('@BRANCH@', branch)
+        with tempfile.TemporaryDirectory() as directory:
+            cpp = Path(directory) / 'gestures.cpp'
+            binary = cpp.with_suffix('')
+            cpp.write_text(harness)
+            subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', str(cpp),
+                            '-o', str(binary)], check=True)
+            subprocess.run([str(binary)], check=True)
 
     def test_held_level_wake_regression_is_rejected(self):
         self.run_variants('level-wake', ('held',), 'FAIL held: wakes == expected_wakes')

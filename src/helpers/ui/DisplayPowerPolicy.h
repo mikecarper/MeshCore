@@ -114,6 +114,12 @@ public:
     if (_first_install_active && (_profile.mode == DisplayMode::Off
         || int32_t(now - _first_install_deadline) >= 0)) _first_install_active = false;
   }
+#if MESH_EINK_BACKLIGHT_CONTROLS
+  bool timeoutDue(uint32_t now) const {
+    return (_timed && int32_t(now - _deadline) >= 0)
+        || (_first_install_active && int32_t(now - _first_install_deadline) >= 0);
+  }
+#endif
   bool wake(DisplayWake reason, uint32_t now) {
     if (!_initialized) return false;
     bool allowed = _profile.mode == DisplayMode::On;

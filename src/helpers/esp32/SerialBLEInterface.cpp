@@ -816,7 +816,11 @@ bool SerialBLEInterface::startBluetoothStack(bool clear_bonds) {
 #endif
 #endif
 
-  //BLEDevice::setPower(ESP_PWR_LVL_N8);
+#if defined(MESH_USE_NIMBLE_ARDUINO)
+  BLEDevice::setPower(3);  // NimBLE-Arduino takes dBm.
+#else
+  esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT, ESP_PWR_LVL_P3);
+#endif
 
   // Create the BLE Server
 #if !defined(MESH_USE_NIMBLE_ARDUINO)
@@ -934,6 +938,9 @@ bool SerialBLEInterface::startBluetoothStack(bool clear_bonds) {
   pServer->getAdvertising()->setName(dev_name);
   pServer->getAdvertising()->enableScanResponse(true);
 #endif
+  // Advertising intervals use 0.625 ms units.
+  pServer->getAdvertising()->setMinInterval(320);
+  pServer->getAdvertising()->setMaxInterval(320);
   if (!_advertisingConfigured) {
     pServer->getAdvertising()->addServiceUUID(SERVICE_UUID);
     _advertisingConfigured = true;
@@ -964,17 +971,10 @@ void SerialBLEInterface::onAuthenticationComplete(NimBLEConnInfo& info) {
   if (pServer == NULL || pServer->getConnectedCount() == 0
       || info.getConnHandle() != last_conn_id) return;
   if (info.isEncrypted() && info.isAuthenticated() && info.isBonded()) {
-    const bool first_authentication = !deviceConnected;
     deviceConnected = true;
     mesh::companion::BluetoothPeerIdentity peer;
     bluetoothPeerFromNimbleAddress(*info.getIdAddress().getBase(), peer);
     noteSuccessfulConnection(peer);
-    if (first_authentication) {
-      // Ask once per authenticated link for 15-30 ms connection events. The
-      // central chooses the actual interval; never renegotiate on every send.
-      // Keep peripheral latency zero so active sync does not skip events.
-      pServer->updateConnParams(info.getConnHandle(), 12, 24, 0, 400);
-    }
   } else {
     // An unsuccessful exchange may be transient; retain the saved bond.
     deviceConnected = false;
@@ -1014,6 +1014,7 @@ void SerialBLEInterface::onAuthenticationComplete(ble_gap_conn_desc* desc) {
   const bool success = desc != NULL && desc->sec_state.encrypted &&
                        desc->sec_state.authenticated
                        && desc->sec_state.bonded;
+  if (success && desc->conn_handle != last_conn_id) return;
   if (success) {
     BLE_DEBUG_PRINTLN(" - SecurityCallback - Authentication Success");
     deviceConnected = true;
@@ -1055,6 +1056,13 @@ void SerialBLEInterface::onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl) {
     _cacheAuthenticated.store(cmpl.success, std::memory_order_release);
 #endif
   if (cmpl.success) {
+    // Bluedroid authenticates an address, not a connection handle. A late
+    // callback for the previous peer must not tune a replacement session.
+    const uint32_t generation = _sessionGeneration.load(std::memory_order_acquire);
+    bool same_address = true;
+    for (size_t i = 0; i < sizeof(cmpl.bd_addr); ++i)
+      same_address &= timing_address[i].load(std::memory_order_relaxed) == cmpl.bd_addr[i];
+    if (same_address) timing_authenticated_session.store(generation, std::memory_order_release);
     BLE_DEBUG_PRINTLN(" - SecurityCallback - Authentication Success");
     deviceConnected = true;
     mesh::companion::BluetoothPeerIdentity peer;
@@ -1111,9 +1119,9 @@ void SerialBLEInterface::onConnect(BLEServer* pServer, NimBLEConnInfo& info) {
     pServer->disconnect(last_conn_id);
     return;
   }
+  deviceConnected = false;
   last_conn_id = info.getConnHandle();
   _sessionGeneration.fetch_add(1, std::memory_order_acq_rel);
-  deviceConnected = false;
   oldDeviceConnected = false;
   notifySucceeded = false;
   notificationsEnabled.store(false, std::memory_order_release);
@@ -1139,9 +1147,9 @@ void SerialBLEInterface::onConnect(BLEServer* pServer, ble_gap_conn_desc* desc) 
   }
   BLE_DEBUG_PRINTLN("onConnect(), conn_id=%d, mtu=%d", desc->conn_handle,
                     pServer->getPeerMTU(desc->conn_handle));
+  deviceConnected = false;
   last_conn_id = desc->conn_handle;
   _sessionGeneration.fetch_add(1, std::memory_order_acq_rel);
-  deviceConnected = false;  // becomes usable only after authentication completes
   oldDeviceConnected = false;
   notifySucceeded = false;
   notificationsEnabled.store(false, std::memory_order_release);
@@ -1196,9 +1204,11 @@ void SerialBLEInterface::onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t 
   }
 #endif
   BLE_DEBUG_PRINTLN("onConnect(), conn_id=%d, mtu=%d", param->connect.conn_id, pServer->getPeerMTU(param->connect.conn_id));
+  deviceConnected = false;
+  for (size_t i = 0; i < sizeof(param->connect.remote_bda); ++i)
+    timing_address[i].store(param->connect.remote_bda[i], std::memory_order_relaxed);
   last_conn_id = param->connect.conn_id;
   _sessionGeneration.fetch_add(1, std::memory_order_acq_rel);
-  deviceConnected = false;  // becomes usable only after authentication completes
   oldDeviceConnected = false;
   notifySucceeded = false;
   // BLE callbacks run outside the Arduino loop. FreeRTOS owns the RX queue,
@@ -1245,8 +1255,8 @@ void SerialBLEInterface::onDisconnect(BLEServer* pServer) {
 #endif
   if (!_callbacksEnabled.load(std::memory_order_acquire)) return;
   BLE_DEBUG_PRINTLN("onDisconnect()");
-  _sessionGeneration.fetch_add(1, std::memory_order_acq_rel);
   deviceConnected = false;
+  _sessionGeneration.fetch_add(1, std::memory_order_acq_rel);
   notifySucceeded = false;
   notificationsEnabled.store(false, std::memory_order_release);
   xQueueReset(recv_queue);
@@ -1670,6 +1680,58 @@ bool SerialBLEInterface::isWriteBusy() const {
                                   BLE_WRITE_MIN_INTERVAL);
 }
 
+// ESP BLE intervals use 1.25 ms units and the supervision timeout uses 10 ms.
+void SerialBLEInterface::serviceConnectionTiming(uint32_t now, bool received_frame) {
+  const uint32_t session = _sessionGeneration.load(std::memory_order_acquire);
+  if (!isConnected()) return;
+
+#if !MESH_BLE_USES_NIMBLE
+  if (session != timing_authenticated_session.load(std::memory_order_acquire)) return;
+#endif
+  const bool new_link = timing_session != session;
+  const uint32_t quiet_ms = now - last_app_frame_ms;
+  bool fast = fast_timing;
+  if (new_link || !timing_power_save) {
+    fast = true;
+    app_burst = 0;
+  } else if (received_frame) {
+    if (quiet_ms > 2000) app_burst = 0;
+    if (!fast && ++app_burst >= 3) fast = true;
+  } else if (quiet_ms >= 2000) {
+    fast = false;
+    app_burst = 0;
+  }
+  if (received_frame || new_link) last_app_frame_ms = now;
+  if (!new_link && fast == fast_timing) return;
+
+  const uint16_t minimum = fast ? 12 : 48;  // 15 or 60 ms
+  const uint16_t maximum = minimum + 12;    // Allow a 15 ms negotiation window.
+  const uint16_t latency = fast ? 0 : 1;
+#if MESH_BLE_USES_NIMBLE
+  const uint16_t handle = last_conn_id;
+#else
+  esp_bd_addr_t peer;
+  for (size_t i = 0; i < sizeof(peer); ++i)
+    peer[i] = timing_address[i].load(std::memory_order_relaxed);
+#endif
+  if (!isConnected() || session != _sessionGeneration.load(std::memory_order_acquire)) return;
+  timing_session = session;
+  fast_timing = fast;
+  app_burst = 0;
+#if defined(MESH_USE_NIMBLE_ARDUINO)
+  pServer->updateConnParams(handle, minimum, maximum, latency, 400);
+#elif MESH_BLE_USES_NIMBLE
+  ble_gap_upd_params params{};
+  params.itvl_min = minimum;
+  params.itvl_max = maximum;
+  params.latency = latency;
+  params.supervision_timeout = 400;
+  ble_gap_update_params(handle, &params);
+#else
+  pServer->updateConnParams(peer, minimum, maximum, latency, 400);
+#endif
+}
+
 size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
   return checkRecvFrame(dest, MAX_FRAME_SIZE);
 }
@@ -1685,6 +1747,8 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[], size_t capacity) {
     serviceTxRecovery(now);
     return 0;
   }
+
+  serviceConnectionTiming(now, false);
 
   if (_otaFramingActive && (_otaControlLen || send_queue_len > 0)
       && mesh::bleElapsedAtLeast(now, _last_write, BLE_WRITE_MIN_INTERVAL)) {
@@ -1860,6 +1924,7 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[], size_t capacity) {
   // one-shot replies (including CMD66) to be silently lost by writeFrame().
   if (deviceConnected && !_otaControlLen && hasRequiredReplyCapacity()
       && xQueueReceive(recv_queue, &frame, 0) == pdTRUE) {
+    serviceConnectionTiming(now, true);
     if (_otaFramingActive) {
       const auto result = _otaReceiver->accept(frame.buf, frame.len);
       if (result == mesh::ble_ota::Receiver::Result::Invalid) {
@@ -1884,9 +1949,6 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[], size_t capacity) {
       clearBuffers();
 
       BLE_DEBUG_PRINTLN("SerialBLEInterface -> disconnecting...");
-
-      //pServer->getAdvertising()->setMinInterval(500);
-      //pServer->getAdvertising()->setMaxInterval(1000);
 
       if (advertisingAllowed()) scheduleAdvertisingRestart(now);
     } else {
