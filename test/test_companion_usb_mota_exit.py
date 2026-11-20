@@ -22,6 +22,7 @@ def function(signature):
 
 HARNESS = r'''
 #include <cassert>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 namespace mesh {
@@ -39,8 +40,7 @@ struct OtaContext {
 }
 static bool usb_mota_mode = true, usb_mota_disconnect_armed = true;
 static mesh::UsbMotaEntryOrigin usb_mota_entry_origin = mesh::UsbMotaEntryOrigin::BINARY;
-static char usb_mota_line[32] = "old";
-static size_t usb_mota_line_len = 3;
+static uint8_t usb_mota_stop_matched = 3;
 static bool usb_mota_discard_line = false;
 static bool ascii = false;
 static int drained = 0, folder_off = 0;
@@ -70,9 +70,8 @@ static void enterUsbTerminalMode(bool show_banner) {
 static void prepare(mesh::UsbMotaEntryOrigin origin) {
   usb_mota_mode = usb_mota_disconnect_armed = true;
   usb_mota_entry_origin = origin;
-  usb_mota_line_len = 3;
+  usb_mota_stop_matched = 3;
   usb_mota_discard_line = true;
-  strcpy(usb_mota_line, "old");
   usb_serial_interface.passthrough = true;
   ascii = false;
   drained = folder_off = 0;
@@ -82,7 +81,7 @@ int main() {
   prepare(mesh::UsbMotaEntryOrigin::ASCII);
   leaveUsbMotaMode(true);
   assert(ascii && usb_serial_interface.passthrough);
-  assert(!usb_mota_mode && !usb_mota_disconnect_armed && usb_mota_line_len == 0);
+  assert(!usb_mota_mode && !usb_mota_disconnect_armed && usb_mota_stop_matched == 0);
   assert(!usb_mota_discard_line);
   assert(folder_off == 1 && drained == 1);
   assert(strstr(control_reply, "OK - Terminal mode") != nullptr);

@@ -278,10 +278,15 @@ class RepeaterTraceForwardingTest(unittest.TestCase):
                                             text=True, timeout=10)
                     self.assertEqual(tested.returncode, 0, tested.stdout + tested.stderr)
 
-    def test_repeater_only_override(self):
+    def test_trace_override_on_repeater_and_esp32_room_server(self):
         header = (ROOT / 'examples/simple_repeater/MyMesh.h').read_text(encoding='utf-8')
         self.assertIn('bool allowPacketTransmit(const mesh::Packet* packet) const override;', header)
-        for role in ('simple_room_server', 'simple_sensor', 'companion_radio'):
+        room = (ROOT / 'examples/simple_room_server/MyMesh.cpp').read_text(encoding='utf-8')
+        for name in ('allowPacketTransmit', 'allowDirectRetry', 'allowPacketForward'):
+            gate = extract_braced(room, 'bool MyMesh::' + name + '(')
+            esp32 = gate.split('#if defined(ESP32_PLATFORM)', 1)[1].split('#', 1)[0]
+            self.assertIn('trace_when_repeat_off', esp32)
+        for role in ('simple_sensor', 'companion_radio'):
             for path in (ROOT / 'examples' / role).glob('MyMesh.*'):
                 self.assertNotIn('trace_when_repeat_off', path.read_text(encoding='utf-8'))
 

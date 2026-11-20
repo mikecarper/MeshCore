@@ -16,8 +16,8 @@ SOURCES = {
         '573bff72a760942a55c2e57abb658f5bd2be3f04519ae31db333ffaf669a4e6f',
         '951e34e0a8490a2ee9de1d84ed73bfbef77f173a93c8c67ca485b97c753d544c'),
     'src/helpers/CommonCLI.cpp': (
-        '4e834c41455d1dca4f4f6beb406a49ed475d0a8a8f14bb0edb31ab6aceec7d85',
-        'b7f98051122effe3a59e545edec1f776b53eb874007669c9a280867389863c5d'),
+        '4ff2bd6e75e0697769068f557ea04bad6c26e3edbd55d57e78026bf6aeddb029',
+        '7d03b65da25321c0aa25b7af5424529389f44203784fd684f53f127bfbc80a2b'),
     'src/helpers/ota/OtaCli.cpp': (
         'dbe8f7e6f282942f3edd6be542d8e02acfff47ef86652f9b800e00da074dfcc5',
         '562017187e8ae475c3401beb544aabfd9d5b1abec29f597dedd5cf719670ebb3'),

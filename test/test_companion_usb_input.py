@@ -140,8 +140,7 @@ static mesh::UsbBinaryStartupProbe usb_binary_startup_probe;
 static mesh::UsbAsciiSessionDefault usb_ascii_session_default;
 static bool usb_mota_mode=false,usb_mota_disconnect_armed=false;
 static mesh::UsbMotaEntryOrigin usb_mota_entry_origin=mesh::UsbMotaEntryOrigin::BINARY;
-static char usb_mota_line[32]={};
-static size_t usb_mota_line_len=0;
+static uint8_t usb_mota_stop_matched=0;
 static bool usb_mota_discard_line=false;
 static const char USB_TERMINAL_START_TOKEN[]="+++MESHCORE-TERM-START";
 static const char USB_TERMINAL_STOP_TOKEN[]="+++MESHCORE-TERM-STOP";
@@ -163,7 +162,7 @@ static void reset() {
   usb_serial_interface.setReceiveFrameCheck(acceptUsbBinaryStartupFrame);
   usb_logging_terminal_mode=usb_logging_network_parked=false;
   usb_mota_mode=usb_mota_disconnect_armed=usb_mota_discard_line=false;
-  usb_mota_line_len=0; usb_mota_line[0]=0;
+  usb_mota_stop_matched=0;
   clearUsbTerminalLine(); usb_terminal_discard_line=false;
   g_mock_millis=100;
   enterUsbTerminalMode(false);
@@ -393,15 +392,15 @@ int main() {
     for(unsigned i=0;i<length;++i) input.bytes.push_back('x');
     input.push("ota folder off\r\n"); serviceUsbMota();
     assert(usb_mota_mode && the_mesh.detaches==0);
-    assert(!usb_mota_discard_line && usb_mota_line_len==0);
+    assert(!usb_mota_discard_line && usb_mota_stop_matched==0);
     input.push("ota folder off\r\n"); serviceUsbMota();
     assert(!usb_mota_mode && the_mesh.detaches==1 && the_mesh.terminal);
   }
   // Discard survives arbitrary read boundaries, but reset/entry clear it.
   reset(); leaveUsbTerminalMode(false);
   assert(enterUsbMotaMode(mesh::UsbMotaEntryOrigin::BINARY));
-  input.push("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"); serviceUsbMota();
-  assert(usb_mota_line_len==31 && !usb_mota_discard_line);
+  input.push("ota folder "); serviceUsbMota();
+  assert(usb_mota_stop_matched==11 && !usb_mota_discard_line);
   input.push("xota folder off"); serviceUsbMota();
   assert(usb_mota_discard_line && usb_mota_mode && the_mesh.detaches==0);
   input.push("\n"); serviceUsbMota(); assert(!usb_mota_discard_line);
@@ -429,7 +428,7 @@ int main() {
   reset(); leaveUsbTerminalMode(false);
   assert(enterUsbMotaMode(mesh::UsbMotaEntryOrigin::BINARY));
   input.push("ota folder off"); input.bytes.push_back(0); serviceUsbMota();
-  assert(usb_mota_discard_line && usb_mota_line_len==0 && the_mesh.detaches==0);
+  assert(usb_mota_discard_line && usb_mota_stop_matched==0 && the_mesh.detaches==0);
   input.push("suffix\n"); serviceUsbMota();
   assert(!usb_mota_discard_line && usb_mota_mode && the_mesh.detaches==0);
   input.push("ota folder off\r\n"); serviceUsbMota();

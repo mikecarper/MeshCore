@@ -2,7 +2,7 @@
   "schema": 1,
   "baseline_commit": "8803974f4a86905cc11d50f20435a8f698011b91",
   "original_lines": 2366,
-  "original_sha256": "c681c918c75686fb66d2dac56f6ddfd2eb0a5755305ca33e475dfd9669bea6f0",
+  "original_sha256": "5cdaf8077f156dde75ab8b54ce72a4087646eea40b2b32e7057f5e98aa94997c",
   "suites": [
     "esp32-release",
     "companion-transport",
@@ -61,7 +61,7 @@
       "kind": "function",
       "start_line": 135,
       "end_line": 557,
-      "sha256": "f371c14d04586f44cf6fc0bcfad968fa53d77e40b2dda1bbdc118c54e2e1d6a9"
+      "sha256": "3f1d8073eeb2d203101d7ec38d58c410599d2ecc25e9a68431c26048ef99d49b"
     },
     {
       "id": "metadata",

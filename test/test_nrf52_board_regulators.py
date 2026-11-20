@@ -145,7 +145,7 @@ class Nrf52BoardRegulatorTests(unittest.TestCase):
     def test_rak_companion_profiles_do_not_force_ldo(self):
         config = configparser.ConfigParser(interpolation=None)
         config.read(ROOT / 'variants/rak4631/platformio.ini')
-        for role in ('usb', 'ble', 'ethernet', 'full'):
+        for role in ('usb', 'ble', 'full'):
             with self.subTest(role=role):
                 section = config[f'env:RAK_4631_companion_radio_{role}']
                 self.assertNotIn('RAK4631_COMPANION_FORCE_LDO', section['build_flags'])

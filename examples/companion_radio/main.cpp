@@ -777,8 +777,7 @@ static bool acceptUsbBinaryStartupFrame(uint32_t completed_at) {
 static bool usb_mota_mode = false;
 static mesh::UsbMotaEntryOrigin usb_mota_entry_origin =
     mesh::UsbMotaEntryOrigin::BINARY;
-static char usb_mota_line[32];
-static size_t usb_mota_line_len = 0;
+static uint8_t usb_mota_stop_matched = 0;
 static bool usb_mota_discard_line = false;
 static bool usb_mota_disconnect_armed = false;
 #endif
@@ -945,8 +944,7 @@ static void leaveUsbTerminalMode(bool acknowledge) {
 static void resetUsbMotaMode() {
   mesh::discardUsbTerminalOutput();
   usb_mota_mode = false;
-  usb_mota_line_len = 0;
-  usb_mota_line[0] = 0;
+  usb_mota_stop_matched = 0;
   usb_mota_discard_line = false;
   usb_mota_disconnect_armed = false;
   // A software owner change is not a transport reset. Retain any late binary
@@ -994,8 +992,7 @@ static bool enterUsbMotaMode(mesh::UsbMotaEntryOrigin origin) {
   usb_serial_interface.setPassthroughMode(true);
   usb_mota_mode = true;
   usb_mota_entry_origin = origin;
-  usb_mota_line_len = 0;
-  usb_mota_line[0] = 0;
+  usb_mota_stop_matched = 0;
   usb_mota_discard_line = false;
   usb_mota_disconnect_armed = isUsbTerminalDataConnected();
 #if defined(ESP32) && defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 1 \
@@ -1044,6 +1041,7 @@ static void serviceUsbMota() {
   // Retain its known body boundary before recognizing clean shutdown controls.
   // The static source accessor never allocates/acquires an OTA context here.
   auto& source = mesh::ota::OtaContext::serialFolderSource();
+  static constexpr char stop_command[] = "ota folder off";
   int pending = source.availableControlBytes();
   while (pending-- > 0) {
     int value = source.readControlByte();
@@ -1055,23 +1053,19 @@ static void serviceUsbMota() {
       continue;
     }
     if (c == '\r' || c == '\n') {
-      if (usb_mota_line_len == 0) continue;
-      usb_mota_line[usb_mota_line_len] = 0;
-      bool stop = strcmp(usb_mota_line, "ota folder off") == 0;
-      usb_mota_line_len = 0;
-      usb_mota_line[0] = 0;
+      const bool stop = usb_mota_stop_matched == sizeof(stop_command) - 1;
+      usb_mota_stop_matched = 0;
       if (stop) {
         leaveUsbMotaMode(true);
         return;
       }
       continue;
     }
-    if (c != 0 && usb_mota_line_len < sizeof(usb_mota_line) - 1) {
-      usb_mota_line[usb_mota_line_len++] = c;
-      usb_mota_line[usb_mota_line_len] = 0;
+    if (usb_mota_stop_matched < sizeof(stop_command) - 1
+        && c == stop_command[usb_mota_stop_matched]) {
+      ++usb_mota_stop_matched;
     } else {
-      usb_mota_line_len = 0;
-      usb_mota_line[0] = 0;
+      usb_mota_stop_matched = 0;
       usb_mota_discard_line = true;
     }
   }

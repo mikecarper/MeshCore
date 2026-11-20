@@ -18,7 +18,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "test/build_profile_sections.json"
 RUNNER = ROOT / "test/test_build_profiles.sh"
-BASELINE_SHA256 = "c681c918c75686fb66d2dac56f6ddfd2eb0a5755305ca33e475dfd9669bea6f0"
+BASELINE_SHA256 = "5cdaf8077f156dde75ab8b54ce72a4087646eea40b2b32e7057f5e98aa94997c"
 SUITES = ("esp32-release", "companion-transport", "nrf52-storage")
 
 
