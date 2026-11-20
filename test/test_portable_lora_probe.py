@@ -55,8 +55,10 @@ HARNESS = r'''
 using mesh::LoRaRadioFamily;
 uint32_t g_ADigitalPinMap[48];
 uint32_t clock_ms=0, micros=0;
+uint32_t reset_low_at=0, lr_boot_ms=0, lr_busy_until=0;
 std::array<unsigned,48> states{};
 std::vector<std::array<uint32_t,3>> gpio;
+std::vector<uint32_t> reset_pulses;
 unsigned reset_count=0, current=0, frame_index=0;
 int busy_after_frame=-1;
 bool active=false,busy=false;
@@ -70,12 +72,20 @@ void pinMode(uint32_t pin,uint32_t mode) {
 }
 void digitalWrite(uint32_t pin,uint32_t value) {
   assert(pin<48 && (pin==42 || pin==44));
-  gpio.push_back({1,pin,value});states[pin]=value;
-  if(pin==42 && value==LOW) ++reset_count;
+  gpio.push_back({1,pin,value});
+  if(pin==42 && value==LOW) {
+    ++reset_count;
+    reset_low_at=clock_ms;
+  } else if(pin==42 && reset_count && states[42]==LOW) {
+    reset_pulses.push_back(clock_ms-reset_low_at);
+    lr_busy_until=clock_ms+lr_boot_ms;
+  }
+  states[pin]=value;
 }
-int digitalRead(uint32_t pin){assert(pin==43);return busy?HIGH:LOW;}
+int digitalRead(uint32_t pin){assert(pin==43);return busy || (lr_boot_ms && clock_ms<lr_busy_until)?HIGH:LOW;}
 void SPIClass::beginTransaction(const SPISettings& settings) {
   assert(settings.hz==1000000 && settings.order==MSBFIRST && settings.mode==SPI_MODE0);
+  assert(digitalRead(43)==LOW);
   assert(!active && frame_index<frames.size());active=true;current=0;
 }
 uint8_t SPIClass::transfer(uint8_t out) {
@@ -100,7 +110,8 @@ void lr(uint8_t device=3,uint8_t status=6,uint8_t major=1,uint8_t minor=4) {
 }
 void clear() {
   clock_ms=micros=reset_count=current=frame_index=0;busy_after_frame=-1;
-  active=busy=false;frames.clear();gpio.clear();states.fill(0);
+  reset_low_at=lr_boot_ms=lr_busy_until=0;
+  active=busy=false;frames.clear();gpio.clear();reset_pulses.clear();states.fill(0);
 }
 int main(int argc,char** argv) {
   assert(argc==2);
@@ -115,7 +126,7 @@ int main(int argc,char** argv) {
   } else if(test==1) {
     sx("\xff\xff\xff\xff\xff\xff");lr();lr();
     assert(mesh::probePortableLoRaChip(spi,pins)==LoRaRadioFamily::LR1121);
-    assert(reset_count==2 && frame_index==5 && clock_ms==22);
+    assert(reset_count==2 && frame_index==5 && clock_ms==321);
   } else if(test==2) {
     for(unsigned device:{0,1,2,0xdf,0xff}) {
       clear();sx("\xff\xff\xff\xff\xff\xff");lr(device);
@@ -135,11 +146,11 @@ int main(int argc,char** argv) {
   } else if(test==5) {
     busy=true;
     assert(mesh::probePortableLoRaChip(spi,pins)==LoRaRadioFamily::None);
-    assert(frame_index==0 && reset_count==1 && clock_ms==261);
+    assert(frame_index==0 && reset_count==2 && clock_ms==821);
   } else if(test==6) {
     sx("badbad");frames.push_back({{1,1},{0,0}});busy_after_frame=2;
     assert(mesh::probePortableLoRaChip(spi,pins)==LoRaRadioFamily::None);
-    assert(frame_index==2 && clock_ms==272 && states[44]==HIGH && !active);
+    assert(frame_index==2 && clock_ms==571 && states[44]==HIGH && !active);
   } else if(test==7) {
     for(auto bad:std::vector<mesh::PortableLoRaChipProbePins>{
         {0xffffffffu,42,43},{44,0xffffffffu,43},{44,42,0xffffffffu},
@@ -153,7 +164,7 @@ int main(int argc,char** argv) {
   } else if(test==8) {
     clock_ms=0xfffffff0u;const auto initial=clock_ms;busy=true;
     assert(mesh::probePortableLoRaChip(spi,pins)==LoRaRadioFamily::None);
-    assert(uint32_t(clock_ms-initial)==261 && frame_index==0);
+    assert(uint32_t(clock_ms-initial)==821 && frame_index==0);
   } else if(test==9) {
     mesh::PortableLoRaChipProbeIO io(spi,pins);char a[6];uint8_t b[4];
     assert(!io.readSX126Version(nullptr,6) && !io.readSX126Version(a,5));
@@ -168,6 +179,14 @@ int main(int argc,char** argv) {
     sx("SX1261");sx("badbad");lr(3);lr(2);
     assert(mesh::probePortableLoRaChip(spi,pins)==LoRaRadioFamily::None);
     assert(frame_index==6);
+  } else if(test==12) {
+    // RadioLib documents a typical 273 ms LR11xx reset transition. BUSY
+    // prevents the SX1262 identification read on the first reset attempt.
+    lr_boot_ms=273;
+    lr();lr();
+    assert(mesh::probePortableLoRaChip(spi,pins)==LoRaRadioFamily::LR1121);
+    assert((reset_pulses==std::vector<uint32_t>{1,10}));
+    assert(frame_index==4);
   }
   assert(!active);
   for(auto row:gpio) assert(row[1]==42 || row[1]==43 || row[1]==44);
@@ -219,6 +238,7 @@ class PortableLoRaProbeTest(unittest.TestCase):
     def test_invalid_read_buffers_touch_no_spi(self): self.execute(9)
     def test_sx1268_signature_never_selects_sx1262(self): self.execute(10)
     def test_one_identifier_is_not_enough(self): self.execute(11)
+    def test_lr1121_can_boot_after_the_sx1262_probe_times_out(self): self.execute(12)
 
     def test_rxps_defaults_follow_the_identified_chip_across_translation_units(self):
         compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")

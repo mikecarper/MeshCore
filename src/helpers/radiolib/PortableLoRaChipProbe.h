@@ -29,14 +29,6 @@ class PortableLoRaChipProbeIO {
     return false;
 #endif
   }
-  bool waitReady() {
-    const uint32_t started = now();
-    while (!ready()) {
-      if (uint32_t(now() - started) >= 250) return false;
-      pause(1);
-    }
-    return true;
-  }
   void beginTransaction() {
     spi_.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
     digitalWrite(pins_.nss, LOW);
@@ -55,9 +47,15 @@ class PortableLoRaChipProbeIO {
         && pins_.nss != pins_.reset && pins_.nss != pins_.busy
         && pins_.reset != pins_.busy;
   }
-  uint32_t now() const { return millis(); }
-  void pause(uint32_t ms) { delay(ms); }
-  void reset() {
+  bool waitReady(uint32_t timeout_ms = 250) const {
+    const uint32_t started = millis();
+    while (!ready()) {
+      if (uint32_t(millis() - started) >= timeout_ms) return false;
+      delay(1);
+    }
+    return true;
+  }
+  void reset(uint32_t pulse_ms, uint32_t settle_ms) {
     if (!valid()) return;
     digitalWrite(pins_.nss, HIGH);
     pinMode(pins_.nss, OUTPUT);
@@ -65,9 +63,9 @@ class PortableLoRaChipProbeIO {
     digitalWrite(pins_.reset, HIGH);
     pinMode(pins_.reset, OUTPUT);
     digitalWrite(pins_.reset, LOW);
-    pause(1);
+    delay(pulse_ms);
     digitalWrite(pins_.reset, HIGH);
-    pause(10);
+    delay(settle_ms);
   }
   bool ready() const { return valid() && digitalRead(pins_.busy) == LOW; }
   bool readSX126Version(char* data, size_t length) {

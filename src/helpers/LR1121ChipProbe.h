@@ -7,32 +7,23 @@
 
 namespace mesh {
 
-// IO supplies reset(), ready(), readSX126Version(), readLR1121Version(),
-// now() and pause(). Only reset and identification reads are permitted here;
-// the selected driver's normal begin() owns TCXO, RF routing and calibration.
+// Only reset and identification reads are permitted here. The selected
+// driver's normal begin() owns TCXO, RF routing and calibration.
 template <typename IO>
 LoRaRadioFamily probeSX1262OrLR1121(IO& io, uint32_t timeout_ms = 250) {
-  io.reset();
-  uint32_t started = io.now();
-  while (!io.ready()) {
-    if (uint32_t(io.now() - started) >= timeout_ms) return LoRaRadioFamily::None;
-    io.pause(1);
-  }
+  io.reset(1, 10);
   char signature[6] = {}, confirm[6] = {};
-  if (io.readSX126Version(signature, sizeof(signature))
+  if (io.waitReady(timeout_ms) && io.readSX126Version(signature, sizeof(signature))
       && memcmp(signature, "SX1261", sizeof(signature)) == 0 && io.ready()
       && io.readSX126Version(confirm, sizeof(confirm))
       && memcmp(signature, confirm, sizeof(signature)) == 0)
     return LoRaRadioFamily::SX126x;
 
-  // Reset between command sets. The SX126x read-register opcode is not a
-  // supported LR11xx command, so discard that error before its GetVersion.
-  io.reset();
-  started = io.now();
-  while (!io.ready()) {
-    if (uint32_t(io.now() - started) >= timeout_ms) return LoRaRadioFamily::None;
-    io.pause(1);
-  }
+  // An LR1121 can still be in reset when the SX1262 probe times out. Use
+  // RadioLib's LR11xx reset pulse and settle time before sending GetVersion.
+  // This also clears any error from the SX126x read-register opcode.
+  io.reset(10, 300);
+  if (!io.waitReady(timeout_ms)) return LoRaRadioFamily::None;
   uint8_t version[4] = {}, second[4] = {};
   // RadioLib's GetVersion returns [hardware, device, firmware major, minor].
   // LR1110=1, LR1120=2 and bootloader=0xdf must never select LR1121=3.
