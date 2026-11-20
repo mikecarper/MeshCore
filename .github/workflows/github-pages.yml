@@ -13,19 +13,17 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: github-pages
   cancel-in-progress: false
 
 jobs:
-  github-pages:
+  build:
     runs-on: ubuntu-26.04
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact_id }}
+      artifact-name: github-pages-${{ github.run_attempt }}
     steps:
 
       - name: Checkout Repo
@@ -74,10 +72,47 @@ jobs:
             --cache-dir "$RUNNER_TEMP/meshcore-historical-11801"
 
       - name: Upload Pages artifact
+        id: upload
         uses: actions/upload-pages-artifact@v5
         with:
+          name: github-pages-${{ github.run_attempt }}
           path: ./site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-26.04
+    permissions:
+      actions: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Wait for the uploaded Pages artifact
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAGES_ARTIFACT_ID: ${{ needs.build.outputs.artifact-id }}
+          PAGES_ARTIFACT_NAME: ${{ needs.build.outputs.artifact-name }}
+        run: |
+          # Upload can finish before the artifact appears in run listings.
+          for attempt in {1..12}; do
+            if artifact_id=$(gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+              -f "name=$PAGES_ARTIFACT_NAME" \
+              --jq '.artifacts[] | select(.expired == false) | .id | tostring') \
+              && [[ -n "$PAGES_ARTIFACT_ID" && "$artifact_id" == "$PAGES_ARTIFACT_ID" ]]; then
+              echo "Pages artifact $PAGES_ARTIFACT_NAME ($artifact_id) is available."
+              exit 0
+            fi
+            if [[ "$attempt" -lt 12 ]]; then sleep 5; fi
+          done
+          echo "::error::Pages artifact $PAGES_ARTIFACT_NAME ($PAGES_ARTIFACT_ID) did not become available."
+          exit 1
 
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+        with:
+          artifact_name: ${{ needs.build.outputs.artifact-name }}
