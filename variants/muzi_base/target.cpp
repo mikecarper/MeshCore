@@ -79,6 +79,13 @@ void MuziBaseSensorManager::configureGpsSwitch(uint8_t config) {
   if (_gps_mode != mode) applyGpsSwitchMode(mode);
 }
 
+void MuziBaseSensorManager::setPowerSavingEnabled(bool enabled) {
+  _device_power_saving = enabled;
+  if (_gps_mode == mesh::muzi::GpsSwitchMode::Auto) {
+    EnvironmentSensorManager::setPowerSavingEnabled(enabled);
+  }
+}
+
 void MuziBaseSensorManager::scheduleGpsClockSync() {
   _location->setGPSPowerSaving(true);
   const uint32_t now = millis();
@@ -95,7 +102,9 @@ void MuziBaseSensorManager::applyGpsSwitchMode(mesh::muzi::GpsSwitchMode mode) {
     EnvironmentSensorManager::setSettingValue("gps", "0");
     if (mode == GpsSwitchMode::Off) serviceBasicGpsDiscovery();
   }
-  EnvironmentSensorManager::setPowerSavingEnabled(mode == GpsSwitchMode::PowerSave || isGpsClockOnly());
+  EnvironmentSensorManager::setPowerSavingEnabled(
+      mode == GpsSwitchMode::PowerSave || isGpsClockOnly()
+      || (mode == GpsSwitchMode::Auto && _device_power_saving));
   if (gpsLocationAllowed()) {
     EnvironmentSensorManager::setSettingValue("gps", "1");
   } else if (isGpsClockOnly() && gps_detected) {

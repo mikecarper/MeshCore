@@ -154,6 +154,7 @@ class MuziAccessoryDetectionTest(unittest.TestCase):
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <initializer_list>
 #define ENV_INCLUDE_GPS 1
 #define PIN_GPS_SWITCH 12
 #define INPUT_PULLDOWN 3
@@ -201,31 +202,54 @@ struct EnvironmentSensorManager {
    powered=requested && gps_detected;
    return true;
  }
- virtual void setPowerSavingEnabled(bool enabled) { saving=enabled; }
+ virtual void setPowerSavingEnabled(bool enabled) {
+   if (saving == enabled) return;
+   saving=enabled;
+   if (gps_detected) {
+     _location->setGPSPowerSaving(enabled && requested);
+     if (requested) powered=true;
+   }
+ }
 };
 '''
         harness += classes + methods + r'''
 int main() {
  using namespace mesh::muzi;
- assert(gpsSwitchMode(0, true)==GpsSwitchMode::PowerSave && gpsSwitchMode(0, false)==GpsSwitchMode::Clock);
- assert(gpsSwitchMode(1, false)==GpsSwitchMode::Clock); // legacy reserved value
+ assert(gpsSwitchMode(0, true)==GpsSwitchMode::Auto && gpsSwitchMode(0, false)==GpsSwitchMode::Off);
+ assert(gpsSwitchMode(GpsSwitchConfigMarker, true)==GpsSwitchMode::Auto);
+ assert(gpsSwitchMode(GpsSwitchConfigMarker, false)==GpsSwitchMode::Off);
+ assert(gpsSwitchMode(1, false)==GpsSwitchMode::Off); // legacy reserved value
  LocationProvider gps;
  MuziBaseSensorManager m(gps);
- assert(m.begin() && !m.requested && m.saving && m.probes==1);
- now=1; m.loop(); assert(!m.powered && !m.gps_detected);
- m.present=true; now=2; m.loop(); assert(m.gps_detected && !m.powered && gps.wake_at==2);
- now=3; m.loop(); assert(m.powered && !m.requested && !m.setSettingValue("gps", "1"));
- m.setPowerSavingEnabled(false); assert(m.saving);
- switch_level=HIGH; now=1001; m.loop(); assert(m.powered && m.requested && m.saving);
- m.configureGpsSwitch(GpsSwitchConfigMarker | (uint8_t(GpsSwitchMode::On)<<3) | uint8_t(GpsSwitchMode::Off));
+ m.setPowerSavingEnabled(true);
+ assert(m.begin() && !m.requested && !m.saving && m.probes==0);
+ now=1; m.loop(); assert(!m.powered && !m.gps_detected && !m.setSettingValue("gps", "1"));
+ switch_level=HIGH; now=1001; m.loop();
+ assert(m.probes==1 && m.requested && m.saving && !m.powered);
+ m.present=true; ++now; m.loop(); assert(m.gps_detected && m.powered);
+ m.powered=false; // GPS is in a power-saving sleep window.
+ m.setPowerSavingEnabled(false); assert(m.powered && m.requested && !m.saving);
+ m.setPowerSavingEnabled(true); assert(m.powered && m.requested && m.saving);
+ switch_level=LOW; now=2002; m.loop();
+ assert(!m.powered && !m.requested && !m.saving && gps.wake_at==0);
+
+ m.configureGpsSwitch(GpsSwitchConfigMarker | (uint8_t(GpsSwitchMode::On)<<3)
+                      | uint8_t(GpsSwitchMode::Clock));
+ assert(!m.powered && !m.requested && m.saving && gps.wake_at==now);
+ ++now; m.loop(); assert(m.powered && !m.requested && !m.setSettingValue("gps", "1"));
+ m.configureGpsSwitch(GpsSwitchConfigMarker | (uint8_t(GpsSwitchMode::On)<<3));
+ assert(!m.powered && !m.requested && !m.saving && gps.wake_at==0);
+ switch_level=HIGH; now=3003; m.loop();
  assert(m.powered && m.requested && !m.saving);
- switch_level=LOW; now=2002; m.loop(); assert(!m.powered && !m.requested && gps.wake_at==0);
- LocationProvider cold;
- MuziBaseSensorManager off(cold);
- off.configureGpsSwitch(GpsSwitchConfigMarker | uint8_t(GpsSwitchMode::Off));
- assert(off.begin() && !off.probes);
- switch_level=HIGH; ++now; off.loop(); assert(off.probes==1 && !off.powered);
- m.loop();
+
+ for (bool saving : {false, true}) {
+   LocationProvider cold;
+   MuziBaseSensorManager upper(cold);
+   upper.setPowerSavingEnabled(saving);
+   assert(upper.begin() && upper.probes==1 && upper.requested && upper.saving==saving);
+   upper.present=true; ++now; upper.loop(); assert(upper.powered);
+ }
+
  for(unsigned i=0;i<5;++i) { click=BUTTON_EVENT_CLICK; now+=100; m.loop(); }
  assert(shutdowns==1);
 }

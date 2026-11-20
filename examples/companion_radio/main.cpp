@@ -4420,6 +4420,7 @@ void setup() {
   if (!companion_wifi_requested) wifi_interface.disable();
 #endif
 #if ENV_INCLUDE_GPS == 1 && defined(MUZI_BASE) && defined(PIN_GPS_SWITCH)
+  sensors.setPowerSavingEnabled(the_mesh.getNodePrefs()->powersaving_enabled != 0);
   sensors.configureGpsSwitch(the_mesh.getNodePrefs()->gps_switch_modes);
   // Apply the saved intervals before the hardware switch can schedule a sync.
   the_mesh.applyGpsPrefs(false);
@@ -4430,8 +4431,10 @@ void setup() {
   // Device power saving applies a 10-minute awake, 30-minute sleep GPS cycle.
   if (sensors.getLocationProvider() != NULL) {
     sensors.getLocationProvider()->setPowerSavingProfile(600, 1800);
+#if !defined(MUZI_BASE) || !defined(PIN_GPS_SWITCH)
     sensors.setPowerSavingEnabled(
         the_mesh.getNodePrefs()->powersaving_enabled != 0);
+#endif
   }
 #if !defined(MUZI_BASE) || !defined(PIN_GPS_SWITCH)
   the_mesh.applyGpsPrefs();

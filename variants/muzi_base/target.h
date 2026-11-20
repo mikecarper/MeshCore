@@ -48,7 +48,7 @@ mesh::LoRaRadioFamily universalLoRaRadioFamily();
 //  - configurable GPS behavior for the two powered SuperIO switch positions
 #if ENV_INCLUDE_GPS
 namespace mesh::muzi {
-enum class GpsSwitchMode : uint8_t { Default, Off, Clock, PowerSave, On };
+enum class GpsSwitchMode : uint8_t { Default, Off, Clock, PowerSave, On, Auto };
 inline constexpr uint8_t GpsSwitchConfigMarker = 0x80;
 
 inline uint8_t gpsSwitchConfigBits(uint8_t config) {
@@ -56,16 +56,16 @@ inline uint8_t gpsSwitchConfigBits(uint8_t config) {
 }
 
 inline const char* gpsSwitchModeName(GpsSwitchMode mode) {
-  static const char* const names[] = {"default", "off", "clock", "ps", "on"};
+  static const char* const names[] = {"default", "off", "clock", "ps", "on", "auto"};
   return names[static_cast<uint8_t>(mode)];
 }
 
 inline GpsSwitchMode gpsSwitchMode(uint8_t config, bool upper) {
   const uint8_t stored = (gpsSwitchConfigBits(config) >> (upper ? 3 : 0)) & 7;
-  if (stored > 0 && stored <= static_cast<uint8_t>(GpsSwitchMode::On)) {
+  if (stored > 0 && stored <= static_cast<uint8_t>(GpsSwitchMode::Auto)) {
     return static_cast<GpsSwitchMode>(stored);
   }
-  return upper ? GpsSwitchMode::PowerSave : GpsSwitchMode::Clock;
+  return upper ? GpsSwitchMode::Auto : GpsSwitchMode::Off;
 }
 }
 #endif
@@ -77,20 +77,22 @@ class MuziBaseSensorManager : public EnvironmentSensorManager {
   int _last_gps_sw = -1;
   unsigned long _next_sw_check = 0;
   uint8_t _gps_switch_config = 0;
-  mesh::muzi::GpsSwitchMode _gps_mode = mesh::muzi::GpsSwitchMode::Clock;
+  mesh::muzi::GpsSwitchMode _gps_mode = mesh::muzi::GpsSwitchMode::Off;
+  bool _device_power_saving = false;
   void applyGpsSwitchMode(mesh::muzi::GpsSwitchMode mode);
   void scheduleGpsClockSync();
   bool isGpsClockOnly() const { return _gps_mode == mesh::muzi::GpsSwitchMode::Clock; }
   bool gpsDiscoveryEnabled() const override { return _gps_mode != mesh::muzi::GpsSwitchMode::Off; }
   bool gpsLocationAllowed() const override {
-    return _gps_mode == mesh::muzi::GpsSwitchMode::On || _gps_mode == mesh::muzi::GpsSwitchMode::PowerSave;
+    using mesh::muzi::GpsSwitchMode;
+    return _gps_mode == GpsSwitchMode::On || _gps_mode == GpsSwitchMode::PowerSave
+        || _gps_mode == GpsSwitchMode::Auto;
   }
 #endif
 public:
 #if ENV_INCLUDE_GPS
   MuziBaseSensorManager(LocationProvider& location) : EnvironmentSensorManager(location) {}
-  // The switch owns GPS duty cycling independently of node power saving.
-  void setPowerSavingEnabled(bool) override {}
+  void setPowerSavingEnabled(bool enabled) override;
   bool setSettingValue(const char* name, const char* value) override;
   void configureGpsSwitch(uint8_t config);
 #else

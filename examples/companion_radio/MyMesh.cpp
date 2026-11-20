@@ -4650,7 +4650,7 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     using namespace mesh::muzi;
     const char* value = command + (set_gps_switch_on ? 18 : 19);
     while (*value == ' ' || *value == '\t') ++value;
-    for (uint8_t mode = 0; mode <= static_cast<uint8_t>(GpsSwitchMode::On); ++mode) {
+    for (uint8_t mode = 0; mode <= static_cast<uint8_t>(GpsSwitchMode::Auto); ++mode) {
       if (strcmp(value, gpsSwitchModeName(static_cast<GpsSwitchMode>(mode))) != 0) continue;
       const unsigned shift = set_gps_switch_on ? 3 : 0;
       const uint8_t config = GpsSwitchConfigMarker
@@ -4664,7 +4664,7 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
       }
       return true;
     }
-    mesh::cli::formatError(reply, reply_size, "GPS switch mode must be off, clock, ps, on, or default");
+    mesh::cli::formatError(reply, reply_size, "GPS switch mode must be off, clock, ps, on, auto, or default");
     return true;
   }
 #endif
