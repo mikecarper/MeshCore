@@ -138,6 +138,9 @@ public:
 #endif
   uint8_t tx_media = mesh::RADIO_TX_AUTO;
   uint8_t tx_ssh = mesh::RADIO_TX_AUTO;
+#if defined(MUZI_BASE) && ENV_INCLUDE_GPS == 1
+  uint8_t gps_switch_modes = 0;  // reserved wire byte 79; zero selects both defaults
+#endif
   // Reserved wire byte 36; older writers stored zero here.
   uint8_t usb_logging_always = 0;
   static constexpr uint8_t USB_LOGGING_ALWAYS_WIRE_ON = 0xA1;

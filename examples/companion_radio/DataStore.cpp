@@ -1365,7 +1365,11 @@ bool DataStore::loadPrefsInt(const char *filename,
     readField(&loaded_prefs.advert_loc_policy, sizeof(loaded_prefs.advert_loc_policy));     // 76
     readField(&loaded_prefs.multi_acks, sizeof(loaded_prefs.multi_acks));                   // 77
     readField(&loaded_prefs.path_hash_mode, sizeof(loaded_prefs.path_hash_mode));           // 78
+#if defined(MUZI_BASE) && ENV_INCLUDE_GPS == 1
+    readField(&loaded_prefs.gps_switch_modes, 1);                                            // 79
+#else
     readField(pad, 1);                                                                      // 79
+#endif
     readField(&loaded_prefs.ble_pin, sizeof(loaded_prefs.ble_pin));                         // 80
     readOptionalField(&loaded_prefs.buzzer_quiet,
                       sizeof(loaded_prefs.buzzer_quiet));                                  // 84
@@ -1636,7 +1640,11 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
     success = success && writeField((uint8_t *)&_prefs.advert_loc_policy, sizeof(_prefs.advert_loc_policy)); // 76
     success = success && writeField((uint8_t *)&_prefs.multi_acks, sizeof(_prefs.multi_acks)); // 77
     success = success && writeField((uint8_t *)&_prefs.path_hash_mode, sizeof(_prefs.path_hash_mode)); // 78
+#if defined(MUZI_BASE) && ENV_INCLUDE_GPS == 1
+    success = success && writeField(&_prefs.gps_switch_modes, 1);                       // 79
+#else
     success = success && writeField(pad + 1, 1);                                        // 79
+#endif
     success = success && writeField((uint8_t *)&_prefs.ble_pin, sizeof(_prefs.ble_pin)); // 80
     success = success && writeField((uint8_t *)&_prefs.buzzer_quiet, sizeof(_prefs.buzzer_quiet)); // 84
     success = success && writeField((uint8_t *)&_prefs.gps_enabled, sizeof(_prefs.gps_enabled)); // 85

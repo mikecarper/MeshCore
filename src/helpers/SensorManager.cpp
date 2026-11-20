@@ -8,7 +8,7 @@ static const uint32_t GPS_TRACKER_MAX_ACQUIRE_MS = 120000UL;
 bool SensorManager::getCachedGpsPosition(double& latitude, double& longitude) const {
   latitude = longitude = 0;
 #if ENV_INCLUDE_GPS
-  if (!gpsTelemetryCacheFresh(millis())
+  if (!gpsLocationAllowed() || !gpsTelemetryCacheFresh(millis())
       || !isfinite(gps_cache_lat) || !isfinite(gps_cache_lon)
       || gps_cache_lat < -90.0f || gps_cache_lat > 90.0f
       || gps_cache_lon < -180.0f || gps_cache_lon > 180.0f
@@ -55,7 +55,7 @@ void SensorManager::setTrackerGpsModeEnabled(bool enabled) {
 
 bool SensorManager::beginTrackerGpsAcquisition() {
 #if ENV_INCLUDE_GPS
-  if (!gps_tracker_enabled || !gps_transport_available || !telemetryGpsDetected()) return false;
+  if (!gpsLocationAllowed() || !gps_tracker_enabled || !gps_transport_available || !telemetryGpsDetected()) return false;
   if (gps_acquiring) return true; // A repeated request must not extend its bound.
   gps_tracker_fix_ready = false;
   gps_hold_until = 0;
@@ -82,6 +82,7 @@ bool SensorManager::isTrackerGpsAcquisitionPending() const {
 bool SensorManager::takeTrackerGpsPosition(double& latitude, double& longitude) {
   latitude = longitude = 0;
 #if ENV_INCLUDE_GPS
+  if (!gpsLocationAllowed()) return false;
   const unsigned long now = millis();
   if (gps_tracker_enabled && gps_acquiring
       && static_cast<uint32_t>(now - gps_acquire_started_at) >= GPS_TRACKER_MAX_ACQUIRE_MS)
@@ -206,7 +207,7 @@ void SensorManager::finishGpsTelemetryAcquisition(unsigned long now, bool use_we
 }
 
 bool SensorManager::queryGpsTelemetry(uint8_t requester_permissions, CayenneLPP& telemetry) {
-  if (!(requester_permissions & TELEM_PERM_LOCATION)
+  if (!gpsLocationAllowed() || !(requester_permissions & TELEM_PERM_LOCATION)
       || !telemetryGpsDetected()) return false;
 
   unsigned long now = millis();
@@ -305,6 +306,7 @@ void SensorManager::loopGpsTelemetry(unsigned long now) {
   // Expire the validity bit even while a bridge owns the UART. A stale fix
   // must not become fresh again when the 32-bit millis counter cycles.
   if (gps_cache_valid && !gpsTelemetryCacheFresh(now)) gps_cache_valid = false;
+  if (!gpsLocationAllowed()) return;
   if (gps_tracker_enabled) {
     LocationProvider* location = getLocationProvider();
     if (location != nullptr && location->getGPSPowerSaving()) location->setGPSPowerSaving(false);

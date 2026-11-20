@@ -1476,6 +1476,10 @@ public:
       LocationProvider* nmea = sensors.getLocationProvider();
       char buf[50];
       int y = body_top - 2;
+      const bool gps_powered = sensors.isGPSDetected() && sensors.isGpsPowered();
+#if defined(MUZI_BASE) && defined(PIN_GPS_SWITCH)
+      const char* gps_status = gps_powered ? "gps on" : "gps off";
+#else
       const bool gps_state = _task->getGPSState();
       const char* gps_status = gps_state ? "gps on" : "gps off";
 #ifdef PIN_GPS_SWITCH
@@ -1483,8 +1487,8 @@ public:
         gps_status = gps_state ? "gps off(hw)" : "gps off(sw)";
       }
 #endif
-      const bool clock_sync = nmea != nullptr && sensors.isGPSDetected()
-          && sensors.isGpsPowered() && nmea->waitingTimeSync();
+#endif
+      const bool clock_sync = nmea != nullptr && gps_powered && nmea->waitingTimeSync();
       if (clock_sync) gps_status = "on (clock sync)";
       display.setColor(UIColor::primary_txt);
       display.drawTextEllipsized(0, y, display.width(), gps_status);
@@ -3267,15 +3271,13 @@ void UITask::toggleGPS() {
     int num = _sensors->getNumSettings();
     for (int i = 0; i < num; i++) {
       if (strcmp(_sensors->getSettingName(i), "gps") == 0) {
-        if (strcmp(_sensors->getSettingValue(i), "1") == 0) {
-          _sensors->setSettingValue("gps", "0");
-          _node_prefs->gps_enabled = 0;
-          notify(UIEventType::ack);
-        } else {
-          _sensors->setSettingValue("gps", "1");
-          _node_prefs->gps_enabled = 1;
-          notify(UIEventType::ack);
+        const bool turn_on = strcmp(_sensors->getSettingValue(i), "1") != 0;
+        if (!_sensors->setSettingValue("gps", turn_on ? "1" : "0")) {
+          showAlert("GPS: Unavailable", 800);
+          return;
         }
+        _node_prefs->gps_enabled = turn_on;
+        notify(UIEventType::ack);
         the_mesh.savePrefs();
         showAlert(_node_prefs->gps_enabled ? "GPS: Enabled" : "GPS: Disabled", 800);
         _next_refresh = millis();

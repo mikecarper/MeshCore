@@ -6934,6 +6934,31 @@ timings, or mesh/NTP time synchronization. Location requests can still power GPS
 for a fix, but do not bypass the configured clock-sync interval. Explicit
 `gps sync` remains an immediate acquisition request where that command exists.
 
+#### Configure the Muzi SuperBase GPS switch
+
+Use the Companion command line to assign a GPS mode to each powered switch
+position. The physical power-off position cuts board power.
+
+```text
+get gps.switch
+set gps.switch.on ps
+set gps.switch.off clock
+```
+
+| Mode | GPS behavior |
+| --- | --- |
+| `on` | Keep the receiver powered for position and time. |
+| `ps` | Duty-cycle the receiver for position and time. This is the upper-position default. |
+| `clock` | Wake only to sync the clock, then power down. This is the lower powered-position default. |
+| `off` | Keep the receiver unpowered, including during boot. |
+| `default` | Restore the default for that position. |
+
+Both assignments are saved and take effect immediately. GPS duty cycling on
+these boards follows the switch assignment. Use `set gps.sync.interval` to
+change the clock-sync interval. The display shows `on (clock sync)` during a
+sync and `gps off` while the receiver is unpowered. Clock-only and off modes
+prevent position telemetry from waking the receiver or using its cached fix.
+
 ---
 
 #### Set this node's location based on the GPS coordinates

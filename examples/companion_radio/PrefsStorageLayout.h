@@ -136,7 +136,11 @@ static const void* prefValue(const PrefField& field,
                             const int8_t* timezone = nullptr) {
   if (field.offset == PrefsLat) return &lat;
   if (field.offset == PrefsLon) return &lon;
-  // Byte 36 carries the always-log marker; the separate byte 79 stays zero.
+  // Muzi uses the separate reserved byte 79 for its GPS switch modes.
+#if defined(MUZI_BASE) && ENV_INCLUDE_GPS == 1
+  if (field.offset == PrefsPad && field.length == 1) return &values.gps_switch_modes;
+#endif
+  // Byte 36 carries the always-log marker.
   if (field.offset == PrefsPad) return pad + (field.length == 1);
   const void* value = reinterpret_cast<const uint8_t*>(&values) + field.offset;
   return timezone && value == &values.tz_offset_legacy ? timezone : value;

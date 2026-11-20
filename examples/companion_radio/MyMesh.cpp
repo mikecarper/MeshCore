@@ -4636,6 +4636,38 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
   }
 
 #if ENV_INCLUDE_GPS == 1
+#if defined(MUZI_BASE) && defined(PIN_GPS_SWITCH)
+  if (strcmp(command, "get gps.switch") == 0) {
+    using namespace mesh::muzi;
+    snprintf(reply, reply_size, "> on=%s off=%s",
+             gpsSwitchModeName(gpsSwitchMode(_prefs.gps_switch_modes, true)),
+             gpsSwitchModeName(gpsSwitchMode(_prefs.gps_switch_modes, false)));
+    return true;
+  }
+  const bool set_gps_switch_on = strncmp(command, "set gps.switch.on ", 18) == 0;
+  const bool set_gps_switch_off = strncmp(command, "set gps.switch.off ", 19) == 0;
+  if (set_gps_switch_on || set_gps_switch_off) {
+    using namespace mesh::muzi;
+    const char* value = command + (set_gps_switch_on ? 18 : 19);
+    while (*value == ' ' || *value == '\t') ++value;
+    for (uint8_t mode = 0; mode <= static_cast<uint8_t>(GpsSwitchMode::On); ++mode) {
+      if (strcmp(value, gpsSwitchModeName(static_cast<GpsSwitchMode>(mode))) != 0) continue;
+      const unsigned shift = set_gps_switch_on ? 3 : 0;
+      const uint8_t config = GpsSwitchConfigMarker
+          | (gpsSwitchConfigBits(_prefs.gps_switch_modes) & ~(7 << shift)) | (mode << shift);
+      if (savePreference(_prefs.gps_switch_modes, config)) {
+        sensors.configureGpsSwitch(config);
+        snprintf(reply, reply_size, "OK - GPS switch %s %s", set_gps_switch_on ? "on" : "off",
+                 gpsSwitchModeName(gpsSwitchMode(config, set_gps_switch_on)));
+      } else {
+        mesh::cli::formatError(reply, reply_size, "GPS switch setting could not be saved");
+      }
+      return true;
+    }
+    mesh::cli::formatError(reply, reply_size, "GPS switch mode must be off, clock, ps, on, or default");
+    return true;
+  }
+#endif
   if (strcmp(command, "get gps.sync.interval") == 0) {
     auto* provider = sensors.getLocationProvider();
     if (provider == nullptr) {

@@ -87,6 +87,9 @@ protected:
   bool telemetryGpsActive() const override { return gps_active; }
   void telemetryGpsStart() override { start_gps(); }
   void telemetryGpsStop() override { stop_gps(); }
+#if defined(MUZI_BASE)
+  virtual bool gpsDiscoveryEnabled() const { return true; }
+#endif
   void initBasicGPS();
   #ifdef RAK_BOARD
   void rakGPSInit();

@@ -146,6 +146,9 @@ MESH_COMPANION_HELP_BEGIN
 #endif
     "  set pin <0-999999>\r\n"
     "  powersaving [on|off]\r\n"
+#if defined(MUZI_BASE) && ENV_INCLUDE_GPS == 1
+    "  get gps.switch / set gps.switch.{on|off} <off|clock|ps|on|default>\r\n"
+#endif
 #if MESH_USB_LOGGING_AVAILABLE
     "  get/set usb.logging <on|off|stream> [reboot]\r\n"
     "  get/set usb.debug <on|off>\r\n"

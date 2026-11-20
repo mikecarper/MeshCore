@@ -1385,6 +1385,12 @@ void EnvironmentSensorManager::serviceBasicGpsDiscovery() {
   // A bridge may own Serial1 until it explicitly releases the receiver. Keep
   // its pending probe reserved, but never poll or power it while blocked.
   if (!gps_discovery_pending || gps_serial_transport_blocked) return;
+#if defined(MUZI_BASE)
+  if (!gpsDiscoveryEnabled()) {
+    finishBasicGpsDiscovery(false);
+    return;
+  }
+#endif
 #ifdef ENV_SKIP_GPS_DETECT
   const bool found = true;
 #else
@@ -1398,6 +1404,9 @@ void EnvironmentSensorManager::serviceBasicGpsDiscovery() {
 #endif
 
 void EnvironmentSensorManager::initBasicGPS() {
+#if defined(MUZI_BASE)
+  if (!gpsDiscoveryEnabled()) return;
+#endif
 
   // A repeated discovery pass must not steal a UART which an active bridge
   // already owns. The bridge release path explicitly restores availability.
@@ -1918,7 +1927,7 @@ void EnvironmentSensorManager::loop() {
   if (gps_active) _location->loop();
 
   if ((long)(now - next_gps_update) >= 0) {
-    if (gps_active) {
+    if (gps_active && gpsLocationAllowed()) {
     #ifdef RAK_WISBLOCK_GPS
     if ((i2cGPSFlag || serialGPSFlag) && _location->isValid()) {
       float gps_lat = ((float)_location->getLatitude()) / 1000000.0f;

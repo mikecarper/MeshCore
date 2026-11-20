@@ -60,7 +60,7 @@ struct Display {
 };
 void render(Display& display) {
   const int body_top = 20, row_height = 11;
-  auto* _task = &task;
+  [[maybe_unused]] auto* _task = &task;
   display.text.clear();
   @BRANCH@
 }
@@ -82,14 +82,20 @@ int main() {
   task.enabled = true; switch_state = HIGH;
   render(screen);
   assert(screen.text[0].second == "gps on" && screen.text[1].second == "fix");
+#ifdef MUZI_BASE
+  sensors.powered = false;
+  render(screen);
+  assert(screen.text[0].second == "gps off");
+#endif
 }
 '''.replace("@BRANCH@", source[start:end])
         with tempfile.TemporaryDirectory(prefix="meshcore-gps-display-") as directory:
             path = Path(directory)
             (path / "status.cpp").write_text(harness)
-            subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
-                            str(path / "status.cpp"), "-o", str(path / "status")], check=True)
-            subprocess.run([str(path / "status")], check=True)
+            for flags in ([], ["-DMUZI_BASE=1"]):
+                subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", *flags,
+                                str(path / "status.cpp"), "-o", str(path / "status")], check=True)
+                subprocess.run([str(path / "status")], check=True)
 
     def test_requested_state_is_distinct_from_sleeping_receiver(self):
         compiler = shutil.which("g++") or shutil.which("clang++")

@@ -56,17 +56,53 @@ bool MuziBaseSensorManager::begin() {
   // pulldown prevents that open input from requesting GPS or claiming it is
   // present; the shared manager still requires real UART discovery.
   pinMode(PIN_GPS_SWITCH, INPUT_PULLDOWN);
-  _last_gps_sw = digitalRead(PIN_GPS_SWITCH);   // initial gps state from the switch
+  _last_gps_sw = digitalRead(PIN_GPS_SWITCH);
+  _gps_mode = mesh::muzi::gpsSwitchMode(_gps_switch_config, _last_gps_sw == HIGH);
 #endif
   bool ok = EnvironmentSensorManager::begin();
 #if ENV_INCLUDE_GPS
-  setSettingValue("gps", _last_gps_sw == HIGH ? "1" : "0");
-  if (gps_detected) {
-    if (_last_gps_sw == HIGH) start_gps(); else stop_gps();
-  }
+  applyGpsSwitchMode(_gps_mode);
 #endif
   return ok;
 }
+
+#if ENV_INCLUDE_GPS
+bool MuziBaseSensorManager::setSettingValue(const char* name, const char* value) {
+  if (strcmp(name, "gps") == 0 && !gpsLocationAllowed()) return strcmp(value, "0") == 0;
+  return EnvironmentSensorManager::setSettingValue(name, value);
+}
+
+void MuziBaseSensorManager::configureGpsSwitch(uint8_t config) {
+  _gps_switch_config = config;
+  if (_last_gps_sw < 0) return;
+  const auto mode = mesh::muzi::gpsSwitchMode(config, _last_gps_sw == HIGH);
+  if (_gps_mode != mode) applyGpsSwitchMode(mode);
+}
+
+void MuziBaseSensorManager::scheduleGpsClockSync() {
+  _location->setGPSPowerSaving(true);
+  const uint32_t now = millis();
+  _location->setNextGPSOn(now == 0 ? 1 : now);
+}
+
+void MuziBaseSensorManager::applyGpsSwitchMode(mesh::muzi::GpsSwitchMode mode) {
+  using mesh::muzi::GpsSwitchMode;
+  _gps_mode = mode;
+  if (gpsDiscoveryEnabled() && !gps_detected && !gps_discovery_pending) {
+    initBasicGPS();
+  }
+  if (!gpsLocationAllowed()) {
+    EnvironmentSensorManager::setSettingValue("gps", "0");
+    if (mode == GpsSwitchMode::Off) serviceBasicGpsDiscovery();
+  }
+  EnvironmentSensorManager::setPowerSavingEnabled(mode == GpsSwitchMode::PowerSave || isGpsClockOnly());
+  if (gpsLocationAllowed()) {
+    EnvironmentSensorManager::setSettingValue("gps", "1");
+  } else if (isGpsClockOnly() && gps_detected) {
+    scheduleGpsClockSync();
+  }
+}
+#endif
 
 void MuziBaseSensorManager::loop() {
   // user button: USER_BTN_POWER_OFF_CLICKS quick clicks -> power off
@@ -78,21 +114,20 @@ void MuziBaseSensorManager::loop() {
   }
 #if ENV_INCLUDE_GPS
   unsigned long now = millis();
-  if (now > _next_sw_check) {   // check the mode switch ~once a sec
+  if (static_cast<int32_t>(now - _next_sw_check) >= 0) {
     _next_sw_check = now + 1000;
     int sw = digitalRead(PIN_GPS_SWITCH);
     if (sw != _last_gps_sw) {
       _last_gps_sw = sw;
-      setSettingValue("gps", sw == HIGH ? "1" : "0");
-      // An absent optional receiver must never become active merely because
-      // a switch moved. Discovery owns the pending UART/power transition.
-      if (gps_detected) {
-        if (sw == HIGH) start_gps(); else stop_gps();
-      }
+      applyGpsSwitchMode(mesh::muzi::gpsSwitchMode(_gps_switch_config, sw == HIGH));
     }
   }
+  const bool was_detected = gps_detected;
 #endif
   EnvironmentSensorManager::loop();
+#if ENV_INCLUDE_GPS
+  if (!was_detected && gps_detected && isGpsClockOnly()) scheduleGpsClockSync();
+#endif
 }
 
 #ifdef DISPLAY_CLASS

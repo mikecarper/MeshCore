@@ -50,6 +50,7 @@ class SensorManager {
   void cancelGpsTelemetryDemand(unsigned long now);
 
 protected:
+  virtual bool gpsLocationAllowed() const { return true; }
   virtual bool telemetryGpsDetected() const { return false; }
   virtual bool telemetryGpsActive() const { return false; }
   virtual void telemetryGpsStart() { }

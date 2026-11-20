@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Published field order and sizes, independent of the implementation's emitter
 # and the class's in-memory member order or padding. None represents reserved
-# padding; compact Wio Companion claims the single byte at wire offset 79.
+# padding; compact Wio and Muzi use wire offset 79 on their respective targets.
 WIRE_FIELDS = (
     ('airtime_factor', 4), ('node_name', 32), ('usb_logging_always', 4),
     ('@lat', 8), ('@lon', 8), ('freq', 4), ('sf', 1), ('cr', 1),
@@ -157,6 +157,10 @@ int main() {
     assert(historical[79] == prefs.leds_quiet);
     historical[79] = 0;
 #endif
+#if defined(MUZI_BASE) && ENV_INCLUDE_GPS == 1
+    assert(historical[79] == prefs.gps_switch_modes);
+    historical[79] = 0;
+#endif
     assert(reference.fs.files.at("/new_prefs") == historical);
     ++comparisons;
   }
@@ -175,6 +179,20 @@ int main() {
   original.leds_quiet = 1;
 #endif
   original.lost_reply = 2;
+#if defined(MUZI_BASE) && ENV_INCLUDE_GPS == 1
+  original.gps_switch_modes = 0xA1;
+  {
+    DataStore saved;
+    assert(saved.savePrefs(original, 47.125, -122.25));
+    CompanionNodePrefs reboot;
+    double lat = 0, lon = 0;
+    assert(saved.loadPrefsInt("/new_prefs", reboot, lat, lon));
+    assert(reboot.gps_switch_modes == 0xA1);
+    saved.fs.files["/new_prefs"][79] = 0;
+    assert(saved.loadPrefsInt("/new_prefs", reboot, lat, lon));
+    assert(reboot.gps_switch_modes == 0);
+  }
+#endif
   original.tx_media = mesh::RADIO_TX_SECONDARY;
   original.tx_ssh = mesh::RADIO_TX_OFF;
 #if defined(RAK_4631)
@@ -530,6 +548,9 @@ def field_code(rows, seed=False):
             result.append('#if defined(WIO_E5_MINI_HEADLESS_COMPANION_UI)')
             result.append('fill(&prefs.leds_quiet, sizeof(prefs.leds_quiet));' if seed
                           else 'append(&prefs.leds_quiet, 1);')
+            result.append('#elif defined(MUZI_BASE) && ENV_INCLUDE_GPS == 1')
+            result.append('prefs.gps_switch_modes = 0xA1;' if seed
+                          else 'bytes.push_back(prefs.gps_switch_modes);')
             if not seed:
                 result.append('#else\nbytes.push_back(0);')
             result.append('#endif')
@@ -646,7 +667,8 @@ inline char* utoa(unsigned int value,char* output,int base){
             cpp = work / 'test.cpp'
             cpp.write_text(code + tests)
             for platform in ('STM32_PLATFORM', 'STM32_PLATFORM,WIO_E5_MINI_HEADLESS_COMPANION_UI',
-                             'NRF52_PLATFORM', 'NRF52_PLATFORM,RAK_4631', 'ESP32_PLATFORM',
+                             'NRF52_PLATFORM', 'NRF52_PLATFORM,RAK_4631',
+                             'NRF52_PLATFORM,MUZI_BASE,ENV_INCLUDE_GPS', 'ESP32_PLATFORM',
                              'RP2040_PLATFORM', 'ESP32_PLATFORM,TBEAM_1W',
                              'RP2040_PLATFORM,ENABLE_WIFI_INTERFACE'):
                 with self.subTest(platform=platform):

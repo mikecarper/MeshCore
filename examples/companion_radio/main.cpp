@@ -4419,6 +4419,11 @@ void setup() {
 #if defined(ESP32) && defined(WIFI_SSID)
   if (!companion_wifi_requested) wifi_interface.disable();
 #endif
+#if ENV_INCLUDE_GPS == 1 && defined(MUZI_BASE) && defined(PIN_GPS_SWITCH)
+  sensors.configureGpsSwitch(the_mesh.getNodePrefs()->gps_switch_modes);
+  // Apply the saved intervals before the hardware switch can schedule a sync.
+  the_mesh.applyGpsPrefs(false);
+#endif
   sensors.begin();
 
 #if ENV_INCLUDE_GPS == 1
@@ -4428,10 +4433,7 @@ void setup() {
     sensors.setPowerSavingEnabled(
         the_mesh.getNodePrefs()->powersaving_enabled != 0);
   }
-#if defined(MUZI_BASE) && defined(PIN_GPS_SWITCH)
-  // The Muzi sensor manager already applied the physical switch at startup.
-  the_mesh.applyGpsPrefs(false);
-#else
+#if !defined(MUZI_BASE) || !defined(PIN_GPS_SWITCH)
   the_mesh.applyGpsPrefs();
 #endif
 #endif
