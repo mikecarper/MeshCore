@@ -4428,9 +4428,12 @@ void setup() {
     sensors.setPowerSavingEnabled(
         the_mesh.getNodePrefs()->powersaving_enabled != 0);
   }
-#endif
-#if ENV_INCLUDE_GPS == 1
+#if defined(MUZI_BASE) && defined(PIN_GPS_SWITCH)
+  // The Muzi sensor manager already applied the physical switch at startup.
+  the_mesh.applyGpsPrefs(false);
+#else
   the_mesh.applyGpsPrefs();
+#endif
 #endif
 
 #if CARDPUTER_ADV_UI

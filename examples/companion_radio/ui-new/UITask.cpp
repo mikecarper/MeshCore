@@ -1476,27 +1476,29 @@ public:
       LocationProvider* nmea = sensors.getLocationProvider();
       char buf[50];
       int y = body_top - 2;
-      bool gps_state = _task->getGPSState();
+      const bool gps_state = _task->getGPSState();
+      const char* gps_status = gps_state ? "gps on" : "gps off";
 #ifdef PIN_GPS_SWITCH
-      bool hw_gps_state = digitalRead(PIN_GPS_SWITCH);
-      if (gps_state != hw_gps_state) {
-        strcpy(buf, gps_state ? "gps off(hw)" : "gps off(sw)");
-      } else {
-        strcpy(buf, gps_state ? "gps on" : "gps off");
+      if (gps_state != (digitalRead(PIN_GPS_SWITCH) == HIGH)) {
+        gps_status = gps_state ? "gps off(hw)" : "gps off(sw)";
       }
-#else
-      strcpy(buf, gps_state ? "gps on" : "gps off");
 #endif
+      const bool clock_sync = nmea != nullptr && sensors.isGPSDetected()
+          && sensors.isGpsPowered() && nmea->waitingTimeSync();
+      if (clock_sync) gps_status = "on (clock sync)";
       display.setColor(UIColor::primary_txt);
-      display.drawTextLeftAlign(0, y, buf);
+      display.drawTextEllipsized(0, y, display.width(), gps_status);
       if (nmea == NULL) {
         y += row_height > 12 ? row_height : 12;
         display.setColor(UIColor::secondary_txt);
         display.drawTextLeftAlign(0, y, "Can't access GPS");
       } else {
         display.setColor(UIColor::primary_txt);
-        strcpy(buf, nmea->isValid()?"fix":"no fix");
-        display.drawTextRightAlign(display.width()-1, y, buf);
+        const char* fix = nmea->isValid() ? "fix" : "no fix";
+        if (clock_sync && display.getTextWidth(gps_status) + display.getTextWidth(fix) + 2 > display.width()) {
+          y += row_height > 12 ? row_height : 12;
+        }
+        display.drawTextRightAlign(display.width()-1, y, fix);
         y += row_height > 12 ? row_height : 12;
         display.setColor(UIColor::secondary_txt);
         display.drawTextLeftAlign(0, y, "sat");

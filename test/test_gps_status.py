@@ -11,6 +11,86 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class GpsStatusTest(unittest.TestCase):
+    def test_companion_display_shows_only_active_clock_sync(self):
+        compiler = shutil.which("g++") or shutil.which("clang++")
+        self.assertIsNotNone(compiler)
+        source = (ROOT / "examples/companion_radio/ui-new/UITask.cpp").read_text()
+        start = source.index("LocationProvider* nmea = sensors.getLocationProvider();")
+        end = source.index("\n#endif\n#if UI_SENSORS_PAGE == 1", start)
+        harness = r'''
+#include <cassert>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <utility>
+#include <vector>
+#define PIN_GPS_SWITCH 12
+#define HIGH 1
+int switch_state = 0;
+int digitalRead(int pin) { assert(pin == PIN_GPS_SWITCH); return switch_state; }
+struct LocationProvider {
+  bool pending = true, fix = false;
+  bool waitingTimeSync() const { return pending; }
+  bool isValid() const { return fix; }
+  int satellitesCount() const { return 5; }
+  long getLatitude() const { return 0; }
+  long getLongitude() const { return 0; }
+  long getAltitude() const { return 0; }
+} gps;
+struct {
+  bool detected = true, powered = false;
+  LocationProvider* getLocationProvider() { return &gps; }
+  bool isGPSDetected() const { return detected; }
+  bool isGpsPowered() const { return powered; }
+} sensors;
+struct {
+  bool enabled = false;
+  bool getGPSState() const { return enabled; }
+} task;
+struct UIColor { enum { primary_txt, secondary_txt }; };
+struct Display {
+  int pixels = 128;
+  std::vector<std::pair<int, std::string>> text;
+  int width() const { return pixels; }
+  int getTextWidth(const char* value) const { return int(std::strlen(value)) * 6; }
+  void setColor(int) {}
+  void drawTextLeftAlign(int, int y, const char* value) { text.emplace_back(y, value); }
+  void drawTextRightAlign(int x, int y, const char* value) { drawTextLeftAlign(x, y, value); }
+  void drawTextEllipsized(int x, int y, int, const char* value) { drawTextLeftAlign(x, y, value); }
+};
+void render(Display& display) {
+  const int body_top = 20, row_height = 11;
+  auto* _task = &task;
+  display.text.clear();
+  @BRANCH@
+}
+int main() {
+  Display screen;
+  render(screen);
+  assert(screen.text[0].second == "gps off");
+  sensors.powered = true;
+  render(screen);
+  assert(screen.text[0].second == "on (clock sync)" && screen.text[1].second == "no fix");
+  assert(screen.text[0].first == screen.text[1].first);
+  screen.pixels = 100;
+  render(screen);
+  assert(screen.text[1].first > screen.text[0].first);
+  sensors.detected = false;
+  render(screen);
+  assert(screen.text[0].second == "gps off");
+  sensors.detected = true; gps.pending = false; gps.fix = true;
+  task.enabled = true; switch_state = HIGH;
+  render(screen);
+  assert(screen.text[0].second == "gps on" && screen.text[1].second == "fix");
+}
+'''.replace("@BRANCH@", source[start:end])
+        with tempfile.TemporaryDirectory(prefix="meshcore-gps-display-") as directory:
+            path = Path(directory)
+            (path / "status.cpp").write_text(harness)
+            subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                            str(path / "status.cpp"), "-o", str(path / "status")], check=True)
+            subprocess.run([str(path / "status")], check=True)
+
     def test_requested_state_is_distinct_from_sleeping_receiver(self):
         compiler = shutil.which("g++") or shutil.which("clang++")
         self.assertIsNotNone(compiler)

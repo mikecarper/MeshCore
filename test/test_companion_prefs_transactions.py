@@ -312,6 +312,19 @@ int main() {
     m.expectOriginal();
   }
 #if ENV_INCLUDE_GPS == 1
+  for (bool switch_on : {false, true}) {
+    MyMesh m;
+    sensors.gps = switch_on ? "1" : "0";
+    m._prefs.gps_enabled = !switch_on;
+    m._prefs.gps_interval = 120;
+    m._prefs.gps_sync_interval_hours = 2;
+    m.applyGpsPrefs(false);
+    assert(sensors.gps == (switch_on ? "1" : "0"));
+    assert(sensors.interval == "120" && sensors.gps_sync_hours == 2 && m.saves == 0);
+    m.applyGpsPrefs();
+    assert(sensors.gps == (switch_on ? "0" : "1"));
+    ++checks;
+  }
   for(bool initial:{false,true})for(bool save_ok:{false,true}) {
     MyMesh m;char reply[160]={};m.storage_accepts=save_ok;
     m._prefs.gps_enabled=m.durable.gps_enabled=initial;

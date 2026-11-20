@@ -720,8 +720,10 @@ public:
 
 #if ENV_INCLUDE_GPS == 1
   bool setGpsEnabled(bool enabled);
-  void applyGpsPrefs() {
-    sensors.setSettingValue("gps", _prefs.gps_enabled ? "1" : "0");
+  void applyGpsPrefs(bool apply_saved_state = true) {
+    if (apply_saved_state) {
+      sensors.setSettingValue("gps", _prefs.gps_enabled ? "1" : "0");
+    }
     char interval_str[12];  // Max: 24 hours = 86400 seconds (5 digits + null)
     sprintf(interval_str, "%u", _prefs.gps_interval);
     sensors.setSettingValue("gps_interval", interval_str);
