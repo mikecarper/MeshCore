@@ -66,7 +66,7 @@ class MuziUniversalBuildTests(unittest.TestCase):
                     self.assertNotIn("MESH_RADIO_AUTO_FAMILY", original)
                     self.assertNotIn("MESH_MUZI_QSPI_CAPACITY_GUARD", original)
                     for key, value in original.items():
-                        if key not in replaced:
+                        if key not in replaced and key != "DISPLAY_CLASS":
                             self.assertEqual(shared[key], value, key)
                     for key in ("board", "board_build.ldscript", "board_upload.maximum_size"):
                         self.assertEqual(self.option("env:" + target, key),
@@ -76,6 +76,21 @@ class MuziUniversalBuildTests(unittest.TestCase):
                                    "OFFLINE_QUEUE_SIZE": "256",
                                    "MUZI_BASE_ACCESSORY_AUTODETECT": "1"}.items():
                     self.assertEqual(shared[key], value)
+        for chip, driver in (("uno", "CustomSX1262"), ("duo", "CustomLR1121")):
+            with self.subTest(chip=chip):
+                for transport in ("usb", "ble"):
+                    base = self.flags(f"muzi_base_{chip}_companion_radio_{transport}")
+                    self.assertEqual(base["RADIO_CLASS"], driver)
+                    self.assertEqual(base["DISPLAY_CLASS"], "NullDisplayDriver")
+                    self.assertNotIn("MUZI_BASE_SUPERIO", base)
+                    self.assertNotIn("ENV_INCLUDE_GPS", base)
+                superio = self.flags(f"muzi_base_{chip}_superIO_companion_radio_ble")
+                self.assertEqual(superio["RADIO_CLASS"], driver)
+                self.assertEqual(superio["DISPLAY_CLASS"], "SH1107Display")
+                for flag in ("MUZI_BASE_SUPERIO", "ENV_INCLUDE_GPS", "ENV_SKIP_GPS_DETECT", "UI_HAS_JOYSTICK"):
+                    self.assertEqual(superio[flag], "1")
+                for flag in ("MESH_RADIO_AUTO_FAMILY", "MUZI_BASE_ACCESSORY_AUTODETECT"):
+                    self.assertNotIn(flag, superio)
         for chip in ("uno", "duo"):
             for role in ("repeater", "room_server"):
                 flags = self.flags("muzi_base_" + chip + "_" + role + "_lora_ota")

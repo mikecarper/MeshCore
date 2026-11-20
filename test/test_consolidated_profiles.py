@@ -49,14 +49,6 @@ CASES = (
                 "-DDISPLAY_CLASS=ST7789LCDDisplay"]),
 )
 ACCESSORY_CASES = (
-    dict(base="muzi_base_uno", legacy="muzi_base_uno_superIO", board="muzi_base",
-         marker="muzi_superio", roles=("ble", "full"), flag="MUZI_BASE_ACCESSORY_AUTODETECT",
-         flags=["-DMUZI_BASE=1", "-DMUZI_BASE_ACCESSORY_AUTODETECT=1", "-DDISPLAY_CLASS=SH1107Display",
-                "-DRADIO_CLASS=CustomSX1262", "-DUSE_SX1262=1"]),
-    dict(base="muzi_base_duo", legacy="muzi_base_duo_superIO", board="muzi_base",
-         marker="muzi_superio", roles=("ble", "full"), flag="MUZI_BASE_ACCESSORY_AUTODETECT",
-         flags=["-DMUZI_BASE=1", "-DMUZI_BASE_ACCESSORY_AUTODETECT=1", "-DDISPLAY_CLASS=SH1107Display",
-                "-DRADIO_CLASS=CustomLR1121", "-DUSE_LR1121=1"]),
     dict(base="LilyGo_T-Echo-Lite", legacy="LilyGo_T-Echo-Lite_non_shell", board="t-echo",
          marker="techo_lite", roles=("usb", "ble", "full"), flag="TECHO_LITE_DISPLAY_AUTODETECT",
          flags=["-DLILYGO_TECHO_LITE=1", "-DTECHO_LITE_DISPLAY_AUTODETECT=1",
@@ -164,7 +156,7 @@ class AutoRadioConsolidationTests(unittest.TestCase):
         for prefix, fixed_pattern, roles in consolidated.RADIO_FAMILIES:
             chips = ("SX1262", "SX1276") if prefix == "Tbeam" else (
                 ("sx1262", "sx1276") if prefix == "LilyGo_T3S3" else (
-                    ("uno", "duo") if prefix == "muzi_base" else ("sx1262", "sx1268")))
+                    "sx1262", "sx1268"))
             for chip in chips:
                 for role in roles:
                     target = prefix + "_" + chip + "_" + role
@@ -184,7 +176,7 @@ class AutoRadioConsolidationTests(unittest.TestCase):
             self.assertEqual(consolidated.replacements(case["target"]), [])
 
     def test_configuration_demands_the_fixed_source_driver_and_matching_board(self):
-        for case in RADIO_CASES:
+        for case in RADIO_CASES[:-1]:
             canonical, legacy = "env:" + case["target"], "env:" + case["legacy"]
             source = radio_source_environment(case)
             envs = {canonical: environment(case), legacy: source}
@@ -216,14 +208,14 @@ class AutoRadioConsolidationTests(unittest.TestCase):
                 continue
             with self.subTest(target=target):
                 successor = consolidated.configuration_replacement(target, envs)
-                self.assertTrue(any(name == successor and key in ("autoLoRaRadio", "muziRadioAccessories")
+                self.assertTrue(any(name == successor and key == "autoLoRaRadio"
                                     for name, key in choices), choices)
                 covered.append(target)
         # Keep all currently deployed chip-specific names as exact build inputs.
-        self.assertGreaterEqual(len(covered), 69)
+        self.assertGreaterEqual(len(covered), 59)
 
     def test_generated_full_resolution_preserves_retained_contacts_channels_and_queue(self):
-        for base in (RADIO_CASES[0], RADIO_CASES[1], RADIO_CASES[3], RADIO_CASES[5]):
+        for base in (RADIO_CASES[0], RADIO_CASES[1], RADIO_CASES[3]):
             case = radio_companion(base)
             canonical_base = "env:" + case["target"].replace("_full", "_ble")
             legacy = "env:" + case["legacy"]
@@ -246,7 +238,7 @@ class AutoRadioConsolidationTests(unittest.TestCase):
             self.assertEqual(consolidated.configuration_replacement(case["legacy"], envs), case["target"])
 
     def test_ordinary_omission_needs_matching_source_policy_and_packaged_detector(self):
-        for case in RADIO_CASES:
+        for case in RADIO_CASES[:-1]:
             old, new = radio_records(case)
             before = deepcopy([old, new])
             for order in ([old, new], [new, old]):
@@ -269,7 +261,7 @@ class AutoRadioConsolidationTests(unittest.TestCase):
             self.assertEqual(consolidated.omit_redundant_records([historical, new]), [historical, new])
 
     def test_companion_omission_needs_both_real_full_transports(self):
-        for base in (RADIO_CASES[0], RADIO_CASES[1], RADIO_CASES[3], RADIO_CASES[5]):
+        for base in (RADIO_CASES[0], RADIO_CASES[1], RADIO_CASES[3]):
             case = radio_companion(base)
             old, new = radio_records(case)
             self.assertEqual(consolidated.omit_redundant_records([old, new]), [new])
@@ -299,31 +291,18 @@ class AutoRadioConsolidationTests(unittest.TestCase):
             new["manifest"]["verification"] = []
             self.assertEqual(consolidated.omit_redundant_records([old, new]), [old, new])
 
-    def test_muzi_superio_shared_successor_needs_radio_accessories_and_both_transports(self):
+    def test_muzi_exact_profiles_are_never_replaced_by_the_shared_package(self):
         case = radio_companion(RADIO_CASES[5])
-        case["flags"] += ["-DMUZI_BASE=1", "-DMUZI_BASE_ACCESSORY_AUTODETECT=1", "-DDISPLAY_CLASS=SH1107Display"]
-        for chip, driver in (("uno", "CustomSX1262"), ("duo", "CustomLR1121")):
-            target = "muzi_base_" + chip + "_superIO_companion_radio_full"
-            source = radio_source_environment({**case, "chip": "1262" if chip == "uno" else "LR1121"})
-            self.assertIn("-DRADIO_CLASS=" + driver, source["build_flags"])
-            envs = {"env:" + target: source, "env:" + case["target"]: environment(case)}
-            self.assertEqual(consolidated.configuration_replacement(target, envs), case["target"])
-            for flag in ("MUZI_BASE_ACCESSORY_AUTODETECT", "MESH_RADIO_AUTO_LR1121", "MESH_MUZI_QSPI_CAPACITY_GUARD"):
-                invalid = {**environment(case), "build_flags": case["flags"] + ["-U" + flag]}
-                self.assertIsNone(consolidated.configuration_replacement(
-                    target, {**envs, "env:" + case["target"]: invalid}))
-            old, shared = radio_records({**case, "legacy": target})
-            self.assertEqual(consolidated.omit_redundant_records([old, shared]), [old, shared])
-            display = dict(capability="display.autodetect", present=True, source="packaged application",
-                           evidence="meshcore.capability.display.autodetect.muzi_superio.v1")
-            shared["manifest"]["capabilities"].append("display.autodetect")
-            shared["manifest"]["verification"].append(display)
-            self.assertEqual(consolidated.omit_redundant_records([old, shared]), [shared])
-            for capability in (case["capability"], "display.autodetect", "companion.usb", "companion.bluetooth"):
-                candidate = deepcopy(shared)
-                candidate["manifest"]["verification"] = [row for row in candidate["manifest"]["verification"]
-                                                        if row["capability"] != capability]
-                self.assertEqual(consolidated.omit_redundant_records([old, candidate]), [old, candidate])
+        for chip in ("uno", "duo"):
+            for flavor in (chip, chip + "_superIO"):
+                target = "muzi_base_" + flavor + "_companion_radio_full"
+                fixed, shared = radio_records({**case, "legacy": target})
+                shared["manifest"]["capabilities"].append("display.autodetect")
+                shared["manifest"]["verification"].append(dict(
+                    capability="display.autodetect", present=True, source="packaged application",
+                    evidence="meshcore.capability.display.autodetect.muzi_superio.v1"))
+                self.assertEqual(consolidated.replacements(target), [])
+                self.assertEqual(consolidated.omit_redundant_records([fixed, shared]), [fixed, shared])
 
     def test_muzi_qualification_ota_names_never_resolve_to_a_shared_normal_target(self):
         for chip in ("uno", "duo"):
@@ -358,7 +337,16 @@ for target in muzi_base_repeater muzi_base_room_server; do
 done
 is_known_pio_env muzi_base_companion_radio_full
 ! is_qspi_hardware_qualification_target muzi_base_companion_radio_full
-! is_redundant_bulk_build_target muzi_base_companion_radio_full
+is_redundant_bulk_build_target muzi_base_companion_radio_full
+for flavor in uno duo uno_superIO duo_superIO; do
+  target="muzi_base_${flavor}_companion_radio_full"
+  is_known_pio_env "$target"
+  ! is_redundant_bulk_build_target "$target"
+  case "$flavor" in
+    *_superIO) [ "$(get_pio_build_env "$target")" = "muzi_base_${flavor}_companion_radio_ble" ] ;;
+    *) [ "$(get_pio_build_env "$target")" = "muzi_base_${flavor}_companion_radio_usb" ] ;;
+  esac
+done
 '''
             result = subprocess.run(["bash", "-c", program, "muzi-release", str(config_file)],
                                     cwd=ROOT, capture_output=True, text=True, timeout=60)
@@ -645,17 +633,6 @@ PIO_CONFIG_JSON=@OVERRIDDEN@
                         invalid = {**role_envs, "env:" + canonical_base: changed}
                         with self.subTest(target=target, changed=changed):
                             self.assertIsNone(consolidated.configuration_replacement(target, invalid))
-                if case["base"].startswith("muzi_base_"):
-                    other = next(row for row in ACCESSORY_CASES if row["board"] == "muzi_base"
-                                 and row["base"] != case["base"])
-                    wrong_radio = {**envs, "env:" + canonical_base: dict(board=case["board"], build_flags=other["flags"])}
-                    with self.subTest(target=canonical, wrong_radio=other["base"]):
-                        self.assertIsNone(consolidated.configuration_replacement(
-                            case["legacy"] + "_companion_radio_full", wrong_radio))
-                    other_name = other["base"] + "_companion_radio_" + base_role
-                    different_hardware = {"env:" + other_name: env, "env:" + legacy_base: env}
-                    self.assertIsNone(consolidated.configuration_replacement(
-                        case["legacy"] + "_companion_radio_full", different_hardware))
 
     def test_accessory_full_omission_requires_packaged_display_and_both_linked_transports(self):
         for case in ACCESSORY_CASES:
@@ -689,9 +666,6 @@ PIO_CONFIG_JSON=@OVERRIDDEN@
                                                           for row in canonical["manifest"]["verification"]]))
                 if role == "full":
                     invalid.append(dict(build_profile="standard"))
-                if case["base"].startswith("muzi_base_"):
-                    other = "muzi_base_duo" if case["base"] == "muzi_base_uno" else "muzi_base_uno"
-                    invalid.append(dict(target=other + "_companion_radio_full"))
                 for changed in invalid:
                     candidate = {**canonical, "manifest": {**canonical["manifest"], **changed}}
                     with self.subTest(target=target, changed=changed):

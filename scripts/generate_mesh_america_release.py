@@ -28,6 +28,16 @@ ADDITIONAL_HARDWARE_CARDS = {
         "maker": "m5stack", "name": "M5Stack Cardputer ADV", "type": "esp32"},
     ("nrf52", "ProMicro_m33s"): {
         "maker": "promicro", "name": "ProMicro nRF52 + E22 33 dBm (850-930 MHz)", "type": "nrf52"},
+    ("nrf52", "muzi_base"): {
+        "maker": "muziworks", "name": "Muzi Base (Universal)", "type": "nrf52"},
+    ("nrf52", "muzi_base_uno"): {
+        "maker": "muziworks", "name": "Muzi Works Base Uno", "type": "nrf52"},
+    ("nrf52", "muzi_base_duo"): {
+        "maker": "muziworks", "name": "Muzi Works Base Duo", "type": "nrf52"},
+    ("nrf52", "muzi_base_uno_superIO"): {
+        "maker": "muziworks", "name": "Muzi Works SuperBase Uno", "type": "nrf52"},
+    ("nrf52", "muzi_base_duo_superIO"): {
+        "maker": "muziworks", "name": "Muzi Works SuperBase Duo", "type": "nrf52"},
     ("nrf52", "ProMicro_400m33s"): {
         "maker": "promicro", "name": "ProMicro nRF52 + E22 33 dBm (400 MHz band)", "type": "nrf52"},
     ("nrf52", "Xiao_nrf52_m33s"): {
@@ -50,7 +60,6 @@ HARDWARE_CARD_ALIASES = {
     ("esp32", "Generic_E22"): (("Generic_E22_sx1262", "Generic_E22_sx1268"), "radio.autodetect.sx1262_sx1268"),
     ("esp32", "Generic_E22_m33s"): (("Generic_E22_sx1262", "Generic_E22_sx1268"), "radio.autodetect.sx1262_sx1268"),
     ("esp32", "Tenstar_C3"): (("Tenstar_C3_sx1262", "Tenstar_C3_sx1268"), "radio.autodetect.sx1262_sx1268"),
-    ("nrf52", "muzi_base"): (("muzi_base_uno", "muzi_base_duo"), "radio.autodetect.sx1262_lr1121"),
     ("esp32", "heltec_rc32_without_display"): (("heltec_rc32",), None),
     ("esp32", "heltec_v4_expansionkit"): (("heltec_v4",), None),
     ("nrf52", "ikoka_nano_nrf_400m33s"): (("ikoka_nano_nrf_33dbm",), None),

@@ -542,6 +542,8 @@ for section, options in data:
       LilyGo_T-Echo-Lite_companion_radio_ble
       LilyGo_T_Impulse_Plus_companion_radio_ble
       WioTrackerL1Eink_companion_radio_ble
+      muzi_base_uno_superIO_companion_radio_ble
+      muzi_base_duo_superIO_companion_radio_ble
     )
 
     for env_name in "${qualified_esp32_full_companion_bases[@]}"; do
@@ -6508,12 +6510,12 @@ get_consolidated_hardware_replacement() {
   case "${1,,}" in
     tbeam_sx1262_*|tbeam_sx1276_*|lilygo_t3s3_sx1262_*|lilygo_t3s3_sx1276_*|\
     generic_e22_sx1262_*|generic_e22_sx1268_*|meshadventurer_sx1262_*|meshadventurer_sx1268_*|\
-    tenstar_c3_sx1262_*|tenstar_c3_sx1268_*|muzi_base_uno_*|muzi_base_duo_*|\
+    tenstar_c3_sx1262_*|tenstar_c3_sx1268_*|\
     picow_companion_radio_usb|picow_companion_radio_ble|picow_companion_radio_wifi|\
     heltec_v4_tft_*|heltec_v4_3_tft_*|heltec_v4_expansionkit_*|heltec_v4_3_expansionkit_*|\
     heltec_v4_r8_tft_portrait_repeater_observer_mqtt|heltec_v4_r8_tft_portrait_room_server_observer_mqtt|\
     heltec_v4_r8_tft_kiss_modem|wiotrackerl1eink_kiss_modem|wiotrackerl1eink_companion_radio_*|\
-    muzi_base_duo_superio_companion_radio_*|muzi_base_uno_superio_companion_radio_*|lilygo_t-echo-lite_non_shell_companion_radio_*|\
+    lilygo_t-echo-lite_non_shell_companion_radio_*|\
     heltec_rc32_without_display_*) ;;
     *) return 1 ;;
   esac
@@ -6651,7 +6653,7 @@ is_redundant_bulk_build_target() {
   # source use exact recipes, not the ordinary release/OTA receiver matrix.
   case "${1,,}" in
     profile_switch_*|profile_fixed_*|profile_four_tx_v4_rx|*partition_migrator*|*partition_expander*|*_partition_legacy_seed|\
-    *_legacy_partition_test|*_sim|rak_4631_repeater_rak15002_sd_seeder_only)
+    *_legacy_partition_test|*_sim|rak_4631_repeater_rak15002_sd_seeder_only|muzi_base_companion_radio_full)
       return 0
       ;;
   esac

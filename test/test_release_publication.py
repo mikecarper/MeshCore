@@ -294,6 +294,32 @@ class ReleasePublicationTest(unittest.TestCase):
             self.assertTrue(all('33 dBm amplified' in entry['version'][FAMILY]['notes']
                                 for entry in card['firmware']))
 
+    def test_catalog_replaces_the_duplicated_muzi_package_with_four_exact_cards(self):
+        shared = 'muzi_base_companion_radio_full'
+        targets = {'Base Uno': 'muzi_base_uno_companion_radio_full',
+                   'Base Duo': 'muzi_base_duo_companion_radio_full',
+                   'SuperBase Uno': 'muzi_base_uno_superIO_companion_radio_full',
+                   'SuperBase Duo': 'muzi_base_duo_superIO_companion_radio_full'}
+        catalog = {'maker': {'muziworks': {'name': 'Muzi Works'}}, 'device': [
+            {'name': 'Muzi Works ' + model, 'type': 'nrf52', 'maker': 'muziworks', 'firmware': [
+                {'role': 'companionFull', 'version': {'old': {'files': [
+                    {'name': shared + '-' + FAMILY + '.uf2'}]}}}]}
+            for model in ('Base Uno', 'Base Duo')]}
+        with tempfile.TemporaryDirectory() as temp:
+            records = []
+            for target in targets.values():
+                row, files = self.record(Path(temp) / target, target, 'NRF52_PLATFORM')
+                records.append((row, FAMILY, files))
+            plan = {'version': '1.17.1.9', 'source': SOURCE, 'groups': []}
+            profiles = catalogs.target_profiles({shared, *targets.values()})
+            result = catalogs.generate(catalog, plan, FAMILY, records, profiles, 'mikecarper/MeshCore')
+        self.assertEqual(len(result['device']), 4)
+        for card in result['device']:
+            model = card['name'].removeprefix('Muzi Works ')
+            self.assertEqual(len(card['firmware']), 1)
+            files = card['firmware'][0]['version'][FAMILY]['files']
+            self.assertEqual({catalogs.identity(file['name']) for file in files}, {targets[model]})
+
     def test_catalog_retains_download_only_cards_for_new_sensor_profiles(self):
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)

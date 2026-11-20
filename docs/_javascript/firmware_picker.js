@@ -967,7 +967,7 @@
     ["Meshadventurer", ["Meshadventurer_sx1262", "Meshadventurer_sx1268"]],
     ["Meshadventurer_m33s", []],
     ["Tenstar_C3", ["Tenstar_C3_sx1262", "Tenstar_C3_sx1268"]],
-    ["muzi_base", ["muzi_base_uno", "muzi_base_duo", "muzi_base_uno_superIO", "muzi_base_duo_superIO"], "NRF52_PLATFORM"],
+    ["muzi_base", [], "NRF52_PLATFORM"],
   ];
 
   function autoRadioProfile(profile) {
@@ -997,8 +997,7 @@
     if (radioFamily && candidate.hardware === radioFamily[0] && autoRadioProfile(candidate)) {
       return candidate.feature === profile.feature && candidate.ota === profile.ota &&
         (!profile.sensorProfile || profile.sensorProfile === candidate.sensorProfile) &&
-        (profile.role !== "companion" || isFullCompanion(candidate)) &&
-        (!/^muzi_base_(?:uno|duo)_superIO$/i.test(profile.hardware) || optionalAutoDisplayProfile(candidate));
+        (profile.role !== "companion" || isFullCompanion(candidate));
     }
     if (/^heltec_v4(?:_3)?(?:_expansionkit)?(?:_tft)?$/.test(profile.hardware) &&
         profile.hardware !== "heltec_v4" && unifiedV4DisplayProfile(candidate)) {
@@ -1008,11 +1007,6 @@
     }
     if (/^PicoW_companion_radio_(usb|ble|wifi)$/.test(profile.target)) {
       return combinedPicoCompanion(candidate);
-    }
-    const muzi = /^muzi_base_(uno|duo)_superIO$/i.exec(profile.hardware);
-    if (muzi) {
-      return candidate.hardware.toLowerCase() === "muzi_base_" + muzi[1].toLowerCase() &&
-        isFullCompanion(candidate) && optionalAutoDisplayProfile(candidate);
     }
     if (profile.hardware === "LilyGo_T-Echo-Lite_non_shell") {
       return candidate.hardware === "LilyGo_T-Echo-Lite" && isFullCompanion(candidate) && optionalAutoDisplayProfile(candidate);
@@ -1972,8 +1966,7 @@
       ...RADIO_DETECT_FAMILIES.flatMap(function (family) {
         return family[1].map(function (hardware) {
           return [hardware, family[0], function (profile) {
-            return autoRadioProfile(profile) &&
-              (!/_superIO$/i.test(hardware) || isFullCompanion(profile) && optionalAutoDisplayProfile(profile));
+            return autoRadioProfile(profile);
           }];
         });
       }),
@@ -1986,8 +1979,6 @@
       ["heltec_v4_r8_tft_portrait", "heltec_v4_r8_tft", function (profile) { return ["repeater", "room"].includes(profile.role) && releaseBoundControl(profile, "displayRotation"); }],
       ["heltec_v4_expansionkit_tft", "heltec_v4_tft", function (profile) { return profile.target === "heltec_v4_tft_companion_radio_full_femon" && releaseBoundControl(profile, "tftExpansionCompatible"); }],
       ["heltec_v4_3_expansionkit_tft", "heltec_v4_tft", function (profile) { return profile.target === "heltec_v4_tft_companion_radio_full_femon" && releaseBoundControl(profile, "tftExpansionCompatible"); }],
-      ["muzi_base_uno_superIO", "muzi_base_uno", function (profile) { return isFullCompanion(profile) && optionalAutoDisplayProfile(profile); }],
-      ["muzi_base_duo_superIO", "muzi_base_duo", function (profile) { return isFullCompanion(profile) && optionalAutoDisplayProfile(profile); }],
       ["LilyGo_T-Echo-Lite_non_shell", "LilyGo_T-Echo-Lite", function (profile) { return isFullCompanion(profile) && optionalAutoDisplayProfile(profile); }],
       ["WioTrackerL1Eink", "WioTrackerL1", function (profile) { return unifiedWioL1DisplayProfile(profile) ||
         profile.target === "WioTrackerL1_kiss_modem" && releaseBoundControl(profile, "headlessWioL1Kiss"); }],
@@ -2066,6 +2057,16 @@
   }
 
   function humanizeHardware(value) {
+    const muziLabels = {
+      muzi_base: "Muzi Base (Universal)",
+      muzi_base_uno: "Muzi Base Uno",
+      muzi_base_duo: "Muzi Base Duo",
+      muzi_base_uno_superio: "Muzi SuperBase Uno",
+      muzi_base_duo_superio: "Muzi SuperBase Duo",
+    };
+    if (typeof value === "string" && Object.hasOwn(muziLabels, value.toLowerCase())) {
+      return muziLabels[value.toLowerCase()];
+    }
     return String(value || "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
   }
 

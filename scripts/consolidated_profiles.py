@@ -109,8 +109,6 @@ RADIO_FAMILIES = (
      ("repeater", "repeater_bridge_espnow", "room_server", "kiss_modem", "terminal_chat",
       "companion_radio_usb", "companion_radio_ble", "companion_radio_full")),
     ("Tenstar_C3", r"Tenstar_C3_(sx1262|sx1268)", ("repeater", "repeater_bridge_espnow", "kiss_modem")),
-    ("muzi_base", r"muzi_base_(uno|duo)",
-     ("repeater", "room_server", "companion_radio_usb", "companion_radio_ble", "companion_radio_full")),
 )
 RADIO_CAPACITY_MINIMUMS = {
     "tbeam": dict(MAX_CONTACTS=160, MAX_GROUP_CHANNELS=40, OFFLINE_QUEUE_SIZE=128),
@@ -201,9 +199,6 @@ def unified_v4_replacements(target):
 
 
 def radio_legacy(target):
-    accessory = re.fullmatch(r"muzi_base_(uno|duo)_superio_(companion_radio_(?:usb|ble|full))", target, re.I)
-    if accessory:
-        return "muzi_base", accessory[1].lower(), accessory[2].lower()
     for canonical, prefix, roles in RADIO_FAMILIES:
         found = re.fullmatch(prefix + r"_(" + "|".join(roles) + r")", target, re.I)
         if found:
@@ -216,9 +211,6 @@ def radio_replacements(target):
     if legacy is None:
         return []
     prefix, _, role = legacy
-    if "_superio_" in target.lower():
-        return [("muzi_base_companion_radio_full", "muziRadioAccessories"),
-                ("muzi_base_" + legacy[1] + "_companion_radio_full", "muziAccessories")]
     if role.startswith("companion_radio_") or role == "terminal_chat":
         return [(prefix + "_companion_radio_full", "autoLoRaRadio")]
     choices = [prefix + "_" + role]
@@ -272,28 +264,23 @@ def configuration_replacement(target, envs):
                 return envs["env:" + choice]
         return None
     for candidate, key in replacements(target):
-        radio = key in ("autoLoRaRadio", "muziRadioAccessories")
+        radio = key == "autoLoRaRadio"
         env = environment(candidate, radio or key == "unifiedWioL1Display")
         source_env = environment(target, radio)
         if not env or not source_env or env.get("board") != source_env.get("board"):
             continue
-        if key in ("displayAuto", "muziAccessories", "techoLiteDisplay"):
+        if key in ("displayAuto", "techoLiteDisplay"):
             spec = spec_for_defines(resolved_defines(env.get("build_flags", [])), env.get("board"))
-            expected = {"displayAuto": "rc32", "muziAccessories": "muzi_superio", "techoLiteDisplay": "techo_lite"}[key]
+            expected = {"displayAuto": "rc32", "techoLiteDisplay": "techo_lite"}[key]
             qualified = spec and spec["marker"] == expected and re.fullmatch(spec["targets"], candidate.lower())
         else:
-            qualified = any(spec["key"] == ("autoLoRaRadio" if radio else key)
+            qualified = any(spec["key"] == key
                             for spec in specs_for_config(candidate, env))
-            if key == "muziRadioAccessories":
-                accessory = spec_for_defines(resolved_defines(env.get("build_flags", [])), env.get("board"))
-                qualified = (qualified and accessory and accessory["marker"] == "muzi_superio"
-                             and re.fullmatch(accessory["targets"], candidate.lower()))
         if radio:
             legacy = radio_legacy(target)
             old = resolved_defines(source_env.get("build_flags", []))
             new = resolved_defines(env.get("build_flags", []))
-            expected = {"uno": "CustomSX1262", "duo": "CustomLR1121"}.get(legacy[1],
-                       "CustomSX" + legacy[1][2:])
+            expected = "CustomSX" + legacy[1][2:]
             qualified = (qualified and old.get("RADIO_CLASS") == expected
                          and old.get("WRAPPER_CLASS") == expected + "Wrapper"
                          and old.get("MESH_RADIO_AUTO_FAMILY", "0") == "0")
@@ -325,11 +312,9 @@ def omit_redundant_records(records):
                 and same_sensors(left, right))
 
     def qualified(manifest, key):
-        if key == "muziRadioAccessories":
-            return qualified(manifest, "autoLoRaRadio") and qualified(manifest, "muziAccessories")
-        if key in ("displayAuto", "muziAccessories", "techoLiteDisplay"):
+        if key in ("displayAuto", "techoLiteDisplay"):
             from optional_display_profiles import marker, SPECS as displays
-            expected = {"displayAuto": "rc32", "muziAccessories": "muzi_superio", "techoLiteDisplay": "techo_lite"}[key]
+            expected = {"displayAuto": "rc32", "techoLiteDisplay": "techo_lite"}[key]
             spec = next((s for s in displays if s["marker"] == expected
                          and re.fullmatch(s["targets"], manifest.get("target", "").lower())), None)
             if spec is None:
@@ -386,13 +371,13 @@ def omit_redundant_records(records):
         manifest = record["manifest"]
         alternatives = replacements(manifest["target"])
         if not any(candidate["manifest"]["target"].lower() == target.lower()
-                   and (key not in ("autoLoRaRadio", "muziRadioAccessories", "unifiedWioL1Display",
+                   and (key not in ("autoLoRaRadio", "unifiedWioL1Display",
                                     "headlessR8Kiss", "headlessWioL1Kiss")
                         or radio_successor(manifest, candidate["manifest"], key))
                    and (key != "wm1110CombinedCompanion"
                         or wm1110_successor(manifest, candidate["manifest"]))
                    and (same_policy(manifest, candidate["manifest"])
-                        or key in ("muziAccessories", "techoLiteDisplay", "unifiedWioL1Display",
+                        or key in ("techoLiteDisplay", "unifiedWioL1Display",
                                    "wm1110CombinedCompanion")
                         and candidate["manifest"].get("build_profile") == "full"
                         and manifest["target"].lower().endswith(("_usb", "_ble")))

@@ -193,19 +193,22 @@ int main() {
             result=subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
 
-    def test_recipe_aliases_preserve_radio_and_remove_forced_gps_presence(self):
+    def test_universal_recipe_probes_accessories_and_fixed_recipes_use_known_hardware(self):
         config=configparser.ConfigParser(interpolation=None, inline_comment_prefixes=(";",))
         config.read(ROOT/"variants/muzi_base/platformio.ini")
         common=config["muzi_companion_accessories"]
         self.assertIn("MUZI_BASE_ACCESSORY_AUTODETECT=1", common["build_flags"])
-        self.assertNotIn("ENV_SKIP_GPS_DETECT", (ROOT/"variants/muzi_base/platformio.ini").read_text())
+        self.assertNotIn("ENV_SKIP_GPS_DETECT", common["build_flags"])
+        self.assertNotIn("ENV_SKIP_GPS_DETECT", config["muzi_companion_superio"]["build_flags"])
+        for transport in ("usb", "ble"):
+            section=config[f"env:muzi_base_companion_radio_{transport}"]
+            self.assertIn("${muzi_companion_accessories.build_flags}", section["build_flags"])
+            self.assertIn("${muzi_companion_accessories.build_src_filter}", section["build_src_filter"])
         for radio in ("uno", "duo"):
-            for transport in ("usb", "ble"):
-                section=config[f"env:muzi_base_{radio}_companion_radio_{transport}"]
-                self.assertIn("${muzi_companion_accessories.build_flags}", section["build_flags"])
-                self.assertIn("${muzi_companion_accessories.build_src_filter}", section["build_src_filter"])
-            self.assertEqual(dict(config[f"env:muzi_base_{radio}_superIO_companion_radio_ble"]),
-                             {"extends":f"env:muzi_base_{radio}_companion_radio_ble"})
+            superio = config[f"env:muzi_base_{radio}_superIO_companion_radio_ble"]
+            self.assertEqual(superio["extends"], f"muzi_base_{radio}")
+            self.assertIn("${muzi_companion_superio.build_flags}", superio["build_flags"])
+            self.assertIn("ENV_SKIP_GPS_DETECT", superio["build_flags"])
         self.assertIn("USE_LR1121", config["muzi_base_duo"]["build_flags"])
         self.assertIn("USE_SX1262", config["muzi_base_uno"]["build_flags"])
 

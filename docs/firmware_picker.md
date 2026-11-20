@@ -379,11 +379,13 @@ before replacing an older recommendation. Existing downloads remain available
 through the advanced filename search; changing target names still requires
 the matching local migration rather than a cross-target LoRa update.
 
-Muzi Base Companion also includes the optional SuperIO accessory for its exact
-Uno or Duo radio, and T-Echo Lite Companion detects its e-paper panel. A new
-verified canonical image can therefore replace the matching SuperIO or
-non-shell recommendation. These accessory choices do not change the radio
-hardware selection. See [optional screens](optional_screens.md).
+Choose the exact Muzi model. Base Uno and SuperBase Uno use the SX1262. Base Duo
+and SuperBase Duo use the LR1121. The SuperBase downloads include `superIO` in
+the filename and enable its OLED, GPS, buttons and buzzer. See
+[optional screens](optional_screens.md).
+
+T-Echo Lite Companion detects its e-paper panel. A verified canonical image
+can replace the matching non-shell recommendation.
 
 The [variant consolidation validation](test-results/firmware_variant_consolidation.md)
 records the qualified package hashes, controls checks and pending hardware tests.

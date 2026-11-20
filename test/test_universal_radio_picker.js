@@ -8,7 +8,6 @@ const families = [
   ["Generic_E22", ["sx1262", "sx1268"], ["repeater-full-usb-wifi"]],
   ["Meshadventurer", ["sx1262", "sx1268"], ["repeater-full-usb-wifi", "room_server-full-usb-wifi", "kiss_modem", "companion_radio_full"]],
   ["Tenstar_C3", ["sx1262", "sx1268"], ["repeater-full-usb-wifi", "kiss_modem"]],
-  ["muzi_base", ["uno", "duo"], ["repeater", "room_server", "companion_radio_full"]],
 ];
 function catalog(targets, canonical, changed = {}) {
   const assets = targets.map(target => {
@@ -40,7 +39,7 @@ for (const [board, chips, roles] of families) for (const role of roles) {
     assert.deepStrictEqual(restored.unavailable, []);
   }
   for (const changed of [{autoLoRaRadio: false}, {autoLoRaRadio: 1}, {autoLoRaRadioSource: "b".repeat(40)},
-                         {platform: board === "muzi_base" ? "ESP32_PLATFORM" : "NRF52_PLATFORM"},
+                         {platform: "NRF52_PLATFORM"},
                          {autoLoRaRadioSource: "aaaaaaaa"}]) {
     const unqualified = catalog([...old, canonical], canonical, changed);
     assert.strictEqual(unqualified.profiles.length, 3, "unqualified image cannot hide existing variants");
@@ -55,15 +54,15 @@ for (const [legacy, other] of [
   ["Tenstar_C3_sx1268_repeater", "Tenstar_C3_repeater-full-usb-wifi"],
 ]) assert.strictEqual(catalog([legacy, other], other).profiles.length, 2, "different board, role or policy stays separate");
 const muziFull = "muzi_base_companion_radio_full";
-for (const chip of ["uno", "duo"]) {
-  const legacy = "muzi_base_" + chip + "_superIO_companion_radio_full";
-  const qualified = catalog([legacy, muziFull], muziFull);
-  assert.deepStrictEqual(qualified.profiles.map(profile => profile.target), [muziFull]);
-  for (const changed of [{displayAuto: false}, {display: false}, {displaySource: "b".repeat(40)},
-                         {displayController: "ssd1681"}, {autoLoRaRadio: false}]) {
-    assert.strictEqual(catalog([legacy, muziFull], muziFull, changed).profiles.length, 2,
-      "superIO needs both the real radio and accessory detection proofs");
-  }
+const muziExact = ["uno", "duo", "uno_superIO", "duo_superIO"].map(chip => "muzi_base_" + chip + "_companion_radio_full");
+const muziProfiles = catalog([...muziExact, muziFull], muziFull).profiles;
+assert.deepStrictEqual(new Set(muziProfiles.map(profile => profile.target)), new Set([...muziExact, muziFull]));
+for (const target of muziExact) {
+  const {hardware} = picker.parseTargetProfile(target);
+  const url = "https://example.org/?hardware=" + hardware + "&role=companion";
+  assert.strictEqual(picker.selectionFromUrl(url, muziProfiles).filters.hardware, hardware);
+  const missing = picker.selectionFromUrl(url, muziProfiles.filter(profile => profile.hardware !== hardware));
+  assert(missing.unavailable.length > 0, "an unavailable exact Muzi choice must never redirect to a different package");
 }
 for (const legacy of ["muzi_base_uno_repeater_lora_ota", "muzi_base_duo_room_server_lora_ota"]) {
   assert.strictEqual(catalog([legacy, "muzi_base_repeater"], "muzi_base_repeater").profiles.length, 2,

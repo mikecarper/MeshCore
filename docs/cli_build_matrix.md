@@ -29,7 +29,6 @@ picker use one shared image per role instead of separate chip choices.
 | `Generic_E22_*` | SX1262, SX1268 |
 | `Meshadventurer_*` | SX1262, SX1268 |
 | `Tenstar_C3_*` | SX1262, SX1268 |
-| `muzi_base_*` | SX1262 (Uno), LR1121 (Duo) |
 
 For example:
 
@@ -37,7 +36,6 @@ For example:
 bash build.sh build-firmware Tbeam_companion_radio_full
 bash build.sh build-firmware LilyGo_T3S3_repeater
 bash build.sh build-firmware Generic_E22_repeater
-bash build.sh build-firmware muzi_base_companion_radio_full
 ```
 
 Selection happens after board power is enabled and before saved radio regulator
@@ -60,17 +58,6 @@ settings take precedence. Detection does not identify antenna bands or external
 power amplifiers, so boards with different PA wiring remain separate. Tenstar
 supports its unwired reset pin; a real hardware reset still requires that wire.
 
-Muzi Base selects the Uno or Duo IRQ pin, TCXO voltage and RF switching only
-after identifying the radio. The same Companion detects the optional SuperIO
-display/GPS accessories and the fitted QSPI flash's actual JEDEC capacity.
-It retains 350 contacts, 40 channels and 256 queued messages. The fixed Uno/Duo
-LoRa OTA recipes keep their historical identities and remain hardware
-qualification builds; the shared infrastructure recipes do not add an OTA
-receiver or bypass the release qualification requirement. For now the shared
-Repeater and Room recipes are explicit `pio run` qualification builds, excluded
-from ordinary releases. The shared Full Companion replaces the ordinary
-Uno/Duo USB, BLE and SuperIO choices once its packaged capabilities pass.
-
 The existing `Tbeam_SX1262_*`, `Tbeam_SX1276_*`, and
 `LilyGo_T3S3_sx1262_*`/`sx1276_*` images keep their names and OTA identities.
 A new universal image has its own target identity; it does not bypass existing
@@ -84,6 +71,23 @@ the board's existing expanded dual-OTA layout; install its matching merged
 image when moving from the smaller layout. The universal T3 S3 image reserves
 GPIO21/10 as radio DIO pins instead of driving them as RF switches, and uses no
 OLED reset GPIO.
+
+## Muzi Base and SuperBase
+
+Build the Full Companion target for the installed radio and SuperIO accessory.
+All four targets support USB and Bluetooth.
+
+| Hardware | Radio | Build target |
+| --- | --- | --- |
+| Base Uno | SX1262 | `muzi_base_uno_companion_radio_full` |
+| Base Duo | LR1121 | `muzi_base_duo_companion_radio_full` |
+| SuperBase Uno | SX1262 | `muzi_base_uno_superIO_companion_radio_full` |
+| SuperBase Duo | LR1121 | `muzi_base_duo_superIO_companion_radio_full` |
+
+Install the matching application over USB when switching from the shared
+`muzi_base_companion_radio_full` image. The dedicated SuperBase targets enable
+the OLED supply, GPS, joystick and buzzer. The separate Uno and Duo LoRa OTA
+recipes remain hardware qualification builds.
 
 ## Selecting a build profile
 
