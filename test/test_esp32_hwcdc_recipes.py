@@ -83,7 +83,7 @@ UNCHANGED_COUNTS = {
     ("esp32doit-devkit-v1", "classic_uart"): 38,
     ("esp32s3box", "hwcdc"): 7,
     ("heltec-rc32", "hwcdc"): 22,
-    ("heltec_v4", "hwcdc"): 46,
+    ("heltec_v4", "hwcdc"): 47,
     ("heltec_v4_migrator", "hwcdc"): 1,
     ("heltec_v4_migrator", "uart"): 4,
     ("heltec_v4_r8", "hwcdc"): 25,
@@ -292,7 +292,7 @@ class Esp32HwcdcRecipeTests(unittest.TestCase):
                 self.assertEqual(self.sdk["hwcdc_primary_enabled"](row["env"]),
                                  row["kind"] == "hwcdc")
                 self.assertFalse(self.sdk["native_primary_enabled"](row["env"]))
-        expected = Counter({"hwcdc": 353, "uart": 128, "classic_uart": 88})
+        expected = Counter({"hwcdc": 354, "uart": 128, "classic_uart": 88})
         expected.update(kind for _, _, kind in USB_PARTITION_BRIDGES.values())
         self.assertEqual(counts, expected)
 
