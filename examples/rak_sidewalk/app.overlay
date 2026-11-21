@@ -1,0 +1,10 @@
+#include "../rak_findmy/app.overlay"
+
+&uicr { /delete-property/ gpio-as-nreset; };
+&flash0 {
+  partitions {
+    /delete-node/ partition@d2000;
+    storage_partition: partition@c9000 { label = "storage"; reg = <0xc9000 0x8000>; };
+    mfg_storage: partition@d1000 { label = "mfg_storage"; reg = <0xd1000 0x1000>; };
+  };
+};

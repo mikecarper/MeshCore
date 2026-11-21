@@ -104,6 +104,7 @@ python /path/to/MeshCore/examples/rak_findmy/build.py companion \
 Use `--libdeps /absolute/path/to/RAK_WisMesh_Tag_companion_radio_ble` to reuse
 another RAK build's libraries. The helper checks the reset vector, stack,
 UF2 family, block order and application address range. Use its application
-UF2 to update the Tag. The application starts at `0x26000`, the settings
-partition occupies `0xd2000..0xd3fff`, and `0xd4000` and above is reserved.
+UF2 to update the Tag. The application fits within `0x26000..0xc2fff`.
+The [other locator profiles](../rak_location/README.md) reserve the next
+flash pages through `0xd1fff`. The Apple settings partition occupies `0xd2000..0xd3fff`, and `0xd4000` and above is reserved.
 The SDK and private product data remain external to this repository.

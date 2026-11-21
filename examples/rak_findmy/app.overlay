@@ -24,7 +24,7 @@
     compatible = "fixed-partitions";
     #address-cells = <1>;
     #size-cells = <1>;
-    tag_app: partition@26000 { label = "image-0"; reg = <0x26000 0xac000>; };
+    tag_app: partition@26000 { label = "image-0"; reg = <0x26000 0x9d000>; };
     storage_partition: partition@d2000 { label = "storage"; reg = <0xd2000 0x2000>; };
   };
 };

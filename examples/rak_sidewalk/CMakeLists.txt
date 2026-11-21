@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.20)
+find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
+project(rak_sidewalk)
+if(NOT BOARD STREQUAL "rak4631")
+  message(FATAL_ERROR "Use rak4631/nrf52840 for the RAK WisMesh Tag")
+endif()
+target_sources(app PRIVATE main.c)
+include(../rak_findmy/mesh.cmake)

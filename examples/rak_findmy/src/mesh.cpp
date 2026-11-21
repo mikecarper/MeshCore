@@ -4,7 +4,11 @@
 #include "radio.h"
 #include <zephyr/init.h>
 #include <zephyr/kernel.h>
+#if __has_include(<zephyr/random/random.h>)
+#include <zephyr/random/random.h>
+#else
 #include <zephyr/random/rand32.h>
+#endif
 #include <zephyr/settings/settings.h>
 #include <zephyr/shell/shell.h>
 #include <Packet.h>

@@ -2,14 +2,13 @@
 """Build and verify an application-only UF2 for the RAK WisMesh Tag."""
 import argparse
 from pathlib import Path
-import struct
 import subprocess
 import sys
 
 APP = Path(__file__).resolve().parent
 ROOT = APP.parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
-from check_nrf52_uf2 import check_uf2
+sys.path.insert(0, str(APP.parent / "rak_location"))
+from tracker_uf2 import write_tracker_uf2
 
 
 def main():
@@ -30,18 +29,7 @@ def main():
     ]
     subprocess.run(["west", "build", "-b", "rak4631_nrf52840", "-d", str(build),
                     str(APP), "--", *options], check=True)
-    binary = build / "zephyr/zephyr.bin"
-    image = binary.read_bytes()
-    base, settings = 0x26000, 0xD2000
-    stack, reset = struct.unpack_from("<II", image)
-    if not (0x20000000 < stack <= 0x20040000 and stack % 8 == 0
-            and reset & 1 and base <= (reset & ~1) < base + len(image) <= settings):
-        raise SystemExit("Invalid RAK Tag application vectors or flash bounds")
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run([sys.executable, str(ROOT / "bin/uf2conv/uf2conv.py"), str(binary),
-                    "-c", "-b", hex(base), "-f", "0xADA52840", "-o", str(args.output)], check=True)
-    start, end, blocks = check_uf2(args.output, app_end=settings)
-    print(f"{args.role} UF2 verified, {blocks} blocks at {start:#x}..{end:#x}")
+    write_tracker_uf2(build, args.output)
 
 
 if __name__ == "__main__":
