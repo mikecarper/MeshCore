@@ -350,7 +350,7 @@ int main() {
 
 class SolarXiaoAdapterTests(unittest.TestCase):
     def test_real_transport_and_atomic_settings_boundary(self):
-        from test_regulator_settings import FILESYSTEM
+        from test_solarxiao_carrier import FILESYSTEM_WITH_METADATA
         source = (ROOT / "src/helpers/sensors/SolarXiaoPower.cpp").read_text()
         classes = "\n".join(extract_braced(source, name) + ";" for name in
                             ("class CarrierBus", "class CarrierStore"))
@@ -360,6 +360,7 @@ class SolarXiaoAdapterTests(unittest.TestCase):
 #include "SolarXiaoPowerCore.h"
 #define ATOMIC_FILE_WRITER_IMPLEMENTATION
 #include <helpers/CheckedSettingsFile.h>
+#include <helpers/FilePresence.h>
 using namespace mesh;
 using namespace mesh::solar;
 #define HIGH 1
@@ -378,6 +379,7 @@ struct FakeWire {
 } Wire;
 @CLASSES@
 constexpr const char* CarrierStore::path;
+constexpr const char* CarrierStore::backup;
 int main() {
  CarrierBus bus;uint16_t word=0;
  Wire.rx={0x34,0x12};assert(bus.read(0x68,0x43,word));assert(word==0x1234 && !Wire.stop);
@@ -391,6 +393,9 @@ int main() {
  CarrierStore store;uint8_t image[Settings::IMAGE_SIZE],read[Settings::IMAGE_SIZE];Settings settings;settings.defaults();settings.encode(image);
  assert(!store.available() && !store.exists() && !store.save(image,sizeof(image)));
  MockFS fs;store.fs=&fs;assert(store.available() && !store.exists());
+ fs.fail_stat=true;
+ Controller uncertain(bus,store);uncertain.begin();assert(!uncertain.settingsHealthy());
+ fs.fail_stat=false;
  assert(store.save(image,sizeof(image)) && store.exists() && store.load(read,sizeof(read)));
  assert(!memcmp(image,read,sizeof(image)));const auto baseline=fs.files[CarrierStore::path];
  settings.calibration_user_mask=1;settings.rsnsb_mohm=20;settings.encode(image);
@@ -398,13 +403,15 @@ int main() {
  fs.fail_rename_from="/solar_power.tmp";assert(!store.save(image,sizeof(image)));assert(fs.files[CarrierStore::path]==baseline);fs.fail_rename_from.clear();
  assert(store.save(image,sizeof(image)));assert(store.load(read,sizeof(read)) && !memcmp(image,read,sizeof(image)));
  fs.files[CarrierStore::path].push_back(0);assert(!store.load(read,sizeof(read)));
+ Controller recovered(bus,store);recovered.begin();
+ assert(recovered.settingsHealthy() && recovered.configuration().rsnsb_mohm==20);
  assert(!store.save(image,sizeof(image)-1));
 }
 '''.replace("@CLASSES@", classes)
         with tempfile.TemporaryDirectory(prefix="solarxiao-adapter-test-") as temp:
             directory = Path(temp)
             (directory / "helpers").mkdir()
-            (directory / "helpers/IdentityStore.h").write_text(FILESYSTEM, encoding="ascii")
+            (directory / "helpers/IdentityStore.h").write_text(FILESYSTEM_WITH_METADATA, encoding="ascii")
             cpp = directory / "test.cpp"
             binary = directory / "test"
             cpp.write_text(harness, encoding="ascii")

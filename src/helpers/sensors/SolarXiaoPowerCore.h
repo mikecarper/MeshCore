@@ -19,6 +19,7 @@ public:
   virtual bool available() const = 0;
   virtual bool exists() const = 0;
   virtual bool load(uint8_t* data, size_t size) = 0;
+  virtual bool loadBackup(uint8_t*, size_t) { return false; }
   virtual bool save(const uint8_t* data, size_t size) = 0;
 };
 
@@ -52,7 +53,8 @@ class Controller {
   Store& store;
   Settings settings;
   bool storage_healthy = true;
-  bool apply_ok = true;
+  bool loaded_backup = false;
+  bool apply_ok = false;
   uint8_t last_cells = 0;
   uint32_t next_service = 0;
   bool serviced = false;

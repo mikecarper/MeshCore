@@ -40,23 +40,39 @@ public:
   }
 };
 class CarrierStore : public Store {
+  static constexpr const char* backup="/solar_power.bak";
+  bool saveCopy(const char* name,const uint8_t* data,size_t size) {
+    uint8_t checked[Settings::IMAGE_SIZE];
+    if (storage::readFixedSettingsFile(fs,name,checked,size) && !memcmp(checked,data,size)) return true;
+    AtomicFileWriter writer(fs,name);
+    return writer && writer.write(data,size)==size && writer.commit()
+        && storage::readFixedSettingsFile(fs,name,checked,size) && !memcmp(checked,data,size);
+  }
 public:
   FILESYSTEM* fs=nullptr;
   static constexpr const char* path="/solar_power";
   bool available() const override { return fs!=nullptr; }
-  bool exists() const override { return fs && fs->exists(path); }
+  bool exists() const override {
+    if (!fs) return false;
+    bool present;
+    // Defaults are appropriate only when both names are confirmed absent.
+    return !mesh::filePresence(fs,path,present) || present
+        || !mesh::filePresence(fs,backup,present) || present;
+  }
   bool load(uint8_t* data,size_t size) override {
     return storage::readFixedSettingsFile(fs,path,data,size);
   }
+  bool loadBackup(uint8_t* data,size_t size) override {
+    return storage::readFixedSettingsFile(fs,backup,data,size);
+  }
   bool save(const uint8_t* data,size_t size) override {
-    if (!fs || size!=Settings::IMAGE_SIZE) return false;
-    AtomicFileWriter writer(fs,path);
-    if (!writer || writer.write(data,size)!=size || !writer.commit()) return false;
-    uint8_t checked[Settings::IMAGE_SIZE];
-    return load(checked,size) && !memcmp(checked,data,size);
+    // Keep the acknowledged backup until the new primary is verified.
+    return fs && data && size==Settings::IMAGE_SIZE
+        && saveCopy(path,data,size) && saveCopy(backup,data,size);
   }
 };
 constexpr const char* CarrierStore::path;
+constexpr const char* CarrierStore::backup;
 class SelectionStore : public Store {
 public:
   FILESYSTEM* fs=nullptr;

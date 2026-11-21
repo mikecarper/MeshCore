@@ -256,13 +256,21 @@ requested charge suspension stays in effect if the settings save fails.
 
 ## Saving and actions
 
-Successful settings save an explicit override in a versioned, CRC-protected
-`/solar_power` record, using atomic file replacement plus public-file readback.
+An `OK` save confirms that both `/solar_power` and `/solar_power.bak` contain
+the requested policy. Each copy uses atomic replacement and readback. If power
+fails before the reply, the next boot uses the complete primary record if valid.
+If the primary is missing, unreadable or corrupt, it tries the backup.
+`get mppt saved` reports `source=backup` when that copy was used. The next
+successful settings save restores both copies. An older single-file policy
+remains readable and gains a backup on its next save.
 The board reapplies saved overrides and the channel 2 charge limits after
 restart or charger power loss, with a five-second retry interval. Automatic
 charge transitions only change the live suspend bit and do not write flash.
 JEITA-owned targets are not repeatedly written while JEITA is enabled.
-A failed/corrupt settings file blocks configuration saves and automatic replay.
+If neither copy can be verified and the files are not both confirmed absent,
+the firmware reports `storage=unavailable` and skips charger configuration.
+Use `mppt reload` to retry. A new installation with both files absent uses
+the default voltage limits.
 
 - `mppt reload`: reload saved policy and retry applying it.
 - `mppt forget` removes saved register overrides and keeps calibration and voltage thresholds. Automatic voltage control resumes on the next check.

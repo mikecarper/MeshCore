@@ -306,9 +306,13 @@ bool Settings::decode(const uint8_t image[IMAGE_SIZE]) {
 void Controller::begin() {
   if (started) return;
   started=true; serviced=false; settings.defaults(); storage_healthy=store.available();
-  if (store.exists()) {
+  loaded_backup=false;
+  apply_ok=false;
+  if (storage_healthy && store.exists()) {
     uint8_t image[Settings::IMAGE_SIZE];
-    storage_healthy=store.load(image,sizeof(image)) && settings.decode(image);
+    if (store.load(image,sizeof(image)) && settings.decode(image)) return;
+    loaded_backup=store.loadBackup(image,sizeof(image)) && settings.decode(image);
+    storage_healthy=loaded_backup;
   }
 }
 bool Controller::identify(uint16_t& identity) {
@@ -348,8 +352,8 @@ bool Controller::update(uint8_t reg,uint16_t mask,uint16_t bits) {
 bool Controller::save(const Settings& candidate) {
   if (!candidate.valid() || !storage_healthy || !store.available()) return false;
   uint8_t image[Settings::IMAGE_SIZE]; candidate.encode(image);
-  if (!store.save(image,sizeof(image))) {storage_healthy=false; return false;}
-  settings=candidate; return true;
+  if (!store.save(image,sizeof(image))) {storage_healthy=false; apply_ok=false; return false;}
+  loaded_backup=false; settings=candidate; return true;
 }
 
 void Controller::service(uint32_t now) {
@@ -678,8 +682,9 @@ bool Controller::handle(const char* command,char* reply,size_t capacity,bool loc
   }
   if (!strcmp(key,"saved")) {
     unsigned count=0; for (uint16_t mask:settings.masks) if (mask) ++count;
-    snprintf(reply,capacity,"> storage=%s overrides=%u apply=%s rsnsb=%.3gmOhm rsnsi=%.3gmOhm cal_user=%02X",
-      storage_healthy?"ok":"unavailable",count,apply_ok?"verified":"pending",double(settings.rsnsb_mohm),double(settings.rsnsi_mohm),settings.calibration_user_mask); return true;
+    snprintf(reply,capacity,"> storage=%s overrides=%u apply=%s rsnsb=%.3gmOhm rsnsi=%.3gmOhm cal_user=%02X%s",
+      storage_healthy?"ok":"unavailable",count,apply_ok?"verified":"pending",double(settings.rsnsb_mohm),double(settings.rsnsi_mohm),settings.calibration_user_mask,
+      storage_healthy && loaded_backup?" source=backup":""); return true;
   }
   if (*key && getField(key,reply,capacity)) return true;
   Snapshot s; snapshot(s);

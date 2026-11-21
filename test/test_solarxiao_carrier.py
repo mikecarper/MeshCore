@@ -442,6 +442,51 @@ int main(int argc,char** argv) {
     assert(fs.files["/solar_board"]!=basic);fs.fail_read_path.clear();
     has(cli("set solar.board basic"),"OK");nativeSilent();
     beginSettings(board,&fs,MESH_ENABLE_TELEMETRY_HISTORY);assert(selection.isBasic());nativeSilent();
+  } else if(scenario=="charger-save-recovery") {
+    beginSettings(board,&fs,MESH_ENABLE_TELEMETRY_HISTORY);
+    has(cli("set solar.board mppt"),"OK");
+    const char* primary="/solar_power";
+    const char* backup="/solar_power.bak";
+    auto reboot=[&]() {
+      Wire.charger[0x14]=2; // charger reset, healthy battery below resume threshold
+      Controller boot(transport,persistence);
+      boot.begin();boot.service(0);
+      char status[157];
+      assert(boot.handle("get mppt saved",status,sizeof(status),true));
+      return std::string(status);
+    };
+    has(cli("set mppt charge.enabled off"),"saved");
+    const auto off=fs.files.at(primary);
+    assert(fs.files.at(backup)==off);
+    fs.fail_rename_from="/solar_power.tmp";
+    has(cli("set mppt charge.enabled on"),"Err");
+    assert(fs.files.at(primary)==off && fs.files.at(backup)==off);
+    fs.fail_rename_from.clear();
+    has(reboot(),"storage=ok");assert(Wire.charger[0x14]&0x20);
+    has(cli("mppt reload"),"OK");
+
+    fs.fail_rename_from="/solar_power.bak.tmp";
+    has(cli("set mppt charge.enabled on"),"Err");
+    assert(fs.files.at(primary)!=off && fs.files.at(backup)==off);
+    fs.fail_rename_from.clear();
+    has(reboot(),"storage=ok");assert(!(Wire.charger[0x14]&0x20));
+    // A valid primary wins. A torn, missing or unreadable primary falls back
+    // to the last acknowledged policy; a scratch file is never used.
+    fs.files["/solar_power.tmp"]=fs.files.at(primary);
+    fs.fail_read_path=primary;
+    has(reboot(),"source=backup");assert(Wire.charger[0x14]&0x20);
+    fs.fail_read_path.clear();
+    fs.files[primary].back()^=1;
+    has(reboot(),"source=backup");assert(Wire.charger[0x14]&0x20);
+    fs.remove(primary);
+    has(reboot(),"source=backup");assert(Wire.charger[0x14]&0x20);
+    has(cli("mppt reload"),"OK");
+    has(cli("set mppt charge.enabled off"),"saved");
+    assert(fs.files.at(primary)==off && fs.files.at(backup)==off);
+    assert(reboot().find("source=backup")==std::string::npos);
+    fs.files[primary].resize(7);fs.files[backup].back()^=1;
+    const auto writes=Wire.writes;
+    has(reboot(),"storage=unavailable");assert(Wire.writes==writes);
   } else if(scenario=="metadata-faults") {
     fs.fail_stat=true;
     beginSettings(board,&fs,MESH_ENABLE_TELEMETRY_HISTORY);
@@ -616,6 +661,9 @@ class SolarXiaoCarrierTests(unittest.TestCase):
 
     def test_metadata_errors_require_a_valid_full_record_or_block_native_access(self):
         self.run_scenario("adapter-history", "metadata-faults")
+
+    def test_charger_policy_survives_interrupted_saves_and_lost_or_corrupt_primary(self):
+        self.run_scenario("adapter-history", "charger-save-recovery")
 
     def test_auto_requires_exact_read_only_identity_and_latches_until_reselection(self):
         self.run_scenario("selector", "auto-positive")
