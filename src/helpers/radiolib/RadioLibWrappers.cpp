@@ -3816,7 +3816,18 @@ MC_RADIO_FAST_CODE_ATTR PacketMillis RadioLibWrapper::calcMaxPacketMillis(uint8_
   const uint64_t preamble_guard_us = preamble_us + 4ULL * tsym_us;
 
   // airtime for max packet at current radio settings
-  uint32_t total_us   = _radio->getTimeOnAir(MAX_TRANS_UNIT);
+  const uint32_t total_us = _radio->getTimeOnAir(MAX_TRANS_UNIT);
+  if (!total_us || mesh::isEncodedRadioLibAirtimeError(total_us)) {
+    // LR2021 reads the packet type over SPI. A failed read is returned as
+    // unsigned airtime. Bound a latched header using the configured LoRa SF
+    // and bandwidth, allowing explicit header, CRC, LDRO and CR 4/8.
+    const uint32_t bits = 8 * MAX_TRANS_UNIT + 16 + 20 + (sf <= 6 ? 0 : 8) - 4 * sf;
+    const uint32_t bits_per_block = 4 * (sf - 2);
+    const uint32_t blocks = (bits + bits_per_block - 1) / bits_per_block;
+    const uint64_t payload_us = uint64_t(blocks) * 8 * tsym_us;
+    return {static_cast<uint32_t>((preamble_guard_us + 999) / 1000),
+            static_cast<uint32_t>((payload_us + 999) / 1000)};
+  }
   // airtime for payload only (no preamble, header or SOF)
   const uint32_t fallback_total_us = 4000000UL;
   uint32_t payload_us = total_us > preamble_us

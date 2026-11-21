@@ -844,10 +844,13 @@ int main() {
                         'bool isReceiving()')
         lr1110 = method((ROOT / 'src/helpers/radiolib/CustomLR1110.h').read_text(),
                         'bool isReceiving()')
+        lr2021 = method((ROOT / 'src/helpers/radiolib/CustomLR2021.h').read_text(),
+                        'bool isReceiving()')
         source = r'''
 #include <cassert>
 #include <cstdint>
 #include <initializer_list>
+#include "helpers/radiolib/RadioAirtime.h"
 #define MAX_TRANS_UNIT 255
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
 #define RADIOLIB_SX126X_IRQ_PREAMBLE_DETECTED 4U
@@ -857,10 +860,16 @@ int main() {
 #define RADIOLIB_LR11X0_IRQ_PREAMBLE_DETECTED 16U
 #define RADIOLIB_LR11X0_IRQ_SYNC_WORD_HEADER_VALID 32U
 #define RADIOLIB_LR11X0_IRQ_HEADER_ERR 64U
+#define RADIOLIB_LR2021_IRQ_PREAMBLE_DETECTED 32U
+#define RADIOLIB_LR2021_IRQ_LORA_HEADER_VALID 64U
+#define RADIOLIB_LR2021_IRQ_LORA_HDR_CRC_ERROR 512U
 static uint32_t now_ms;
 uint32_t millis() { return now_ms; }
 struct PacketMillis { uint32_t preambleMillis, payloadMillis; };
-struct Chip { uint32_t getTimeOnAir(int) { return 1000000; } };
+struct Chip {
+  uint32_t airtime_us = 1000000;
+  uint32_t getTimeOnAir(int) { return airtime_us; }
+};
 struct RadioLibWrapper {
   Chip chip;
   Chip* _radio = &chip;
@@ -886,6 +895,11 @@ struct SX1262Receiver : ReceiverState {
 struct LR1110Receiver : ReceiverState {
   using ReceiverState::ReceiverState;
   @LR1110@
+};
+
+struct LR2021Receiver : ReceiverState {
+  using ReceiverState::ReceiverState;
+  @LR2021@
 };
 
 template <typename Receiver>
@@ -977,14 +991,35 @@ int main() {
     checkReceive<LR1110Receiver>(limits, RADIOLIB_LR11X0_IRQ_PREAMBLE_DETECTED,
         RADIOLIB_LR11X0_IRQ_SYNC_WORD_HEADER_VALID, RADIOLIB_LR11X0_IRQ_HEADER_ERR, true);
   }
+  // Failed LR2021 packet-type reads must not turn an incomplete header into
+  // a minutes-long hold. Include both W12 channels and a legitimately slow SF.
+  for (uint32_t invalid : {0U, UINT32_MAX, uint32_t(-705)}) {
+    radio.chip.airtime_us = invalid;
+    for (const Case& c : {
+        Case{7, 62.5f, 5, 32, 99, 1688},
+        Case{7, 250, 5, 32, 25, 422},
+        Case{12, 125, 8, 32, 1582, 13370}}) {
+      const auto limits = radio.calcMaxPacketMillis(c.sf, c.bw, c.cr, c.preamble);
+      assert(limits.preambleMillis == c.hold_ms && limits.payloadMillis == c.payload_ms);
+      LR2021Receiver rx(limits);
+      now_ms = 0xFFFFFFF0U;
+      rx.irq = RADIOLIB_LR2021_IRQ_LORA_HEADER_VALID;
+      assert(rx.isReceiving());
+      now_ms += limits.payloadMillis;
+      assert(rx.isReceiving());
+      ++now_ms;
+      assert(!rx.isReceiving() && rx.irq == 0);
+    }
+  }
 }
 '''
         with tempfile.TemporaryDirectory(prefix='meshcore-preamble-hold-') as tmp:
             cpp, binary = Path(tmp) / 'test.cpp', Path(tmp) / 'test'
             cpp.write_text(source.replace('@TIMING@', timing)
-                           .replace('@SX1262@', sx1262).replace('@LR1110@', lr1110))
+                           .replace('@SX1262@', sx1262).replace('@LR1110@', lr1110)
+                           .replace('@LR2021@', lr2021))
             result = subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-O1',
-                '-Wall', '-Wextra', str(cpp), '-o', str(binary)], capture_output=True, text=True)
+                '-Wall', '-Wextra', '-I', str(ROOT / 'src'), str(cpp), '-o', str(binary)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             result = subprocess.run([str(binary)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
