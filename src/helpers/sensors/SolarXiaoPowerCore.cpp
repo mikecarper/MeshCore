@@ -10,9 +10,13 @@ namespace mesh { namespace solar {
 namespace {
 constexpr uint8_t CHARGER = 0x68;
 constexpr uint8_t MONITOR = 0x40;
+constexpr uint8_t CONFIG = 0x14;
+constexpr uint16_t SUSPEND_CHARGER = 0x20;
+constexpr uint16_t DEFAULT_STOP_MV = 14000;
+constexpr uint16_t DEFAULT_RESUME_MV = 13600;
 enum Kind : uint8_t { Number, Signed, Boolean, Inverted, DieC, InputMa,
   InputMv, BatteryMa, InputCurrentMa, ChargeMa, VinMv, VoutMv, BatteryMv, BsrOhm, CellMv };
-enum Access : uint8_t { Read, Write, Locked };
+enum Access : uint8_t { Read, Write, Locked, Policy };
 struct Field {
   const char* name;
   uint8_t reg;
@@ -101,6 +105,8 @@ const Field fields[] = {
   {"telemetry.valid",0x4a,1,0,Boolean,Read,""},
   {"resistance.questionable",0x4a,2,1,Boolean,Read,""},
   {"dac.input_mv",0x4b,255,0,InputMv,Read,"mV"},
+  {"charge.stop_mv",0,0,0,Number,Policy,"mV"},
+  {"charge.resume_mv",0,0,0,Number,Policy,"mV"},
 };
 constexpr size_t FIELD_COUNT = sizeof(fields) / sizeof(fields[0]);
 
@@ -208,7 +214,7 @@ uint16_t Controller::writableMask(uint8_t reg) {
 }
 bool Controller::readableRegister(uint8_t reg) {
   if (reg==0x19) return true;
-  for (const auto& field:fields) if (field.reg==reg) return true;
+  for (const auto& field:fields) if (field.reg==reg && field.access!=Policy) return true;
   return false;
 }
 const char* Controller::chemistryName(uint8_t value) {
@@ -234,10 +240,12 @@ const char* Controller::stateName(uint16_t state) {
 
 void Settings::defaults() {
   memset(masks,0,sizeof(masks)); memset(values,0,sizeof(values));
+  charge_stop_mv=DEFAULT_STOP_MV; charge_resume_mv=DEFAULT_RESUME_MV;
   rsnsb_mohm=rsnsi_mohm=10;
   ntc_bias_ohm=ntc_r25_ohm=10000; ntc_beta=3490; calibration_user_mask=0;
 }
 bool Settings::valid() const {
+  if (!charge_resume_mv || charge_resume_mv>=charge_stop_mv || charge_stop_mv>14400) return false;
   const float calibration[]={rsnsb_mohm,rsnsi_mohm,ntc_bias_ohm,ntc_r25_ohm,ntc_beta};
   const float minimum[]={0.1f,0.1f,100,100,1000};
   const float maximum[]={1000,1000,1000000,1000000,10000};
@@ -264,6 +272,11 @@ void Settings::encode(uint8_t image[IMAGE_SIZE]) const {
   for (unsigned i=0;i<REG_COUNT;++i) {
     put16(image+offset,masks[i]); put16(image+offset+2,values[i]); offset+=4;
   }
+  // Register zero has no writable fields. Keep v1 for ordinary overrides and
+  // reuse its four reserved bytes in v2 for custom pack thresholds.
+  if (charge_stop_mv!=DEFAULT_STOP_MV || charge_resume_mv!=DEFAULT_RESUME_MV) {
+    image[4]=2; put16(image+8,charge_stop_mv); put16(image+10,charge_resume_mv);
+  }
   const float calibration[]={rsnsb_mohm,rsnsi_mohm,ntc_bias_ohm,ntc_r25_ohm,ntc_beta};
   for (float value:calibration) {
     static_assert(sizeof(float)==4,"Settings require IEEE binary32");
@@ -272,12 +285,16 @@ void Settings::encode(uint8_t image[IMAGE_SIZE]) const {
   put32(image+IMAGE_SIZE-4,crc(image,IMAGE_SIZE-4));
 }
 bool Settings::decode(const uint8_t image[IMAGE_SIZE]) {
-  if (memcmp(image,"SXPW",4) || image[4]!=1 || image[5]!=6 || image[7]
+  if (memcmp(image,"SXPW",4) || (image[4]!=1 && image[4]!=2) || image[5]!=6 || image[7]
       || get32(image+IMAGE_SIZE-4)!=crc(image,IMAGE_SIZE-4)) return false;
   Settings candidate; candidate.defaults(); candidate.calibration_user_mask=image[6];
   size_t offset=8;
   for (unsigned i=0;i<REG_COUNT;++i) {
     candidate.masks[i]=get16(image+offset); candidate.values[i]=get16(image+offset+2); offset+=4;
+  }
+  if (image[4]==2) {
+    candidate.charge_stop_mv=candidate.masks[0]; candidate.charge_resume_mv=candidate.values[0];
+    candidate.masks[0]=candidate.values[0]=0;
   }
   float* calibration[]={&candidate.rsnsb_mohm,&candidate.rsnsi_mohm,&candidate.ntc_bias_ohm,
                         &candidate.ntc_r25_ohm,&candidate.ntc_beta};
@@ -342,11 +359,13 @@ void Controller::service(uint32_t now) {
   uint16_t identity;
   if (!identify(identity)) {apply_ok=false; return;}
   apply_ok=true;
-  if (!storage_healthy) return;
-  if (((identity>>8)&15)!=6 || ((identity&15) && (identity&15)!=4)) {apply_ok=false; return;}
-  // Restore an explicit suspend before other settings; explicit resume is last.
-  if ((settings.masks[0x14]&0x20) && (settings.values[0x14]&0x20)
-      && !update(0x14,0x20,0x20)) {apply_ok=false; return;}
+  if (!storage_healthy) {apply_ok=false; return;}
+  if (((identity>>8)&15)!=6 || (last_cells && last_cells!=4)) {apply_ok=false; return;}
+  // Suspend first. Only release after replaying the other charger settings.
+  const bool manual_off=(settings.values[CONFIG]&SUSPEND_CHARGER)!=0;
+  if (manual_off) voltage_hold=true;
+  const bool suspend=manual_off || holdForVoltage();
+  if (suspend && !update(CONFIG,SUSPEND_CHARGER,SUSPEND_CHARGER)) {apply_ok=false; return;}
   uint16_t start,end;
   if (settings.masks[16] || settings.masks[17]) {
     if (!bus.read(CHARGER,16,start) || !bus.read(CHARGER,17,end)) {apply_ok=false; return;}
@@ -368,18 +387,35 @@ void Controller::service(uint32_t now) {
     if (reg==16 || reg==17) continue;
     if (reg==0x29 || (jeita && (reg==0x1a || reg==0x1b))) continue;
     uint16_t mask=settings.masks[reg];
-    if (reg==0x14) mask&=~0x20;
+    if (reg==CONFIG) mask&=~SUSPEND_CHARGER;
     if (mask && !update(reg,mask,settings.values[reg]&mask)) {apply_ok=false; return;}
   }
-  if (settings.masks[0x14]&0x20)
-    apply_ok=update(0x14,0x20,settings.values[0x14]&0x20);
+  if (!suspend) apply_ok=update(CONFIG,SUSPEND_CHARGER,0);
+}
+
+bool Controller::readMonitorVoltage(uint16_t& raw) {
+  uint16_t manufacturer,device;
+  return bus.read(MONITOR,0xfe,manufacturer) && manufacturer==0x5449
+      && bus.read(MONITOR,0xff,device) && (device&0xfff0)==0x2270
+      && bus.read(MONITOR,2,raw);
+}
+
+bool Controller::holdForVoltage() {
+  uint16_t raw;
+  if (!readMonitorVoltage(raw) || !raw) {
+    voltage_hold=true;
+    return true;
+  }
+  // INA260 bus voltage is 1.25 mV/count. Compare in quarter-millivolts.
+  const uint32_t measured=uint32_t(raw)*5;
+  if (measured>=uint32_t(settings.charge_stop_mv)*4) voltage_hold=true;
+  else if (measured<=uint32_t(settings.charge_resume_mv)*4) voltage_hold=false;
+  return voltage_hold;
 }
 
 bool Controller::readMonitor(float& volts,float& amps,float& watts) {
-  uint16_t manufacturer,device,v,i,p;
-  if (!bus.read(MONITOR,0xfe,manufacturer) || !bus.read(MONITOR,0xff,device)
-      || manufacturer!=0x5449 || (device&0xfff0)!=0x2270
-      || !bus.read(MONITOR,2,v) || !bus.read(MONITOR,1,i) || !bus.read(MONITOR,3,p)) return false;
+  uint16_t v,i,p;
+  if (!readMonitorVoltage(v) || !bus.read(MONITOR,1,i) || !bus.read(MONITOR,3,p)) return false;
   volts=v*0.00125f; amps=static_cast<int16_t>(i)*0.00125f; watts=p*0.01f;
   return true;
 }
@@ -421,6 +457,19 @@ bool Controller::snapshot(Snapshot& result) {
 }
 
 bool Controller::setField(const char* key,const char* value,char* reply,size_t capacity) {
+  const bool stop=!strcmp(key,"charge.stop_mv");
+  if (stop || !strcmp(key,"charge.resume_mv")) {
+    unsigned mv;
+    Settings candidate=settings;
+    if (!integer(value,14400,mv) || !mv) {snprintf(reply,capacity,"Err - expected 1..14400 mV"); return true;}
+    (stop ? candidate.charge_stop_mv : candidate.charge_resume_mv)=mv;
+    if (!candidate.valid()) {snprintf(reply,capacity,"Err - charge.resume_mv must be below charge.stop_mv"); return true;}
+    if (!verifyWritableIdentity(reply,capacity)) return true;
+    if (!save(candidate)) {snprintf(reply,capacity,"Err - settings save unconfirmed; use mppt reload"); return true;}
+    serviced=false;
+    snprintf(reply,capacity,"OK - %s=%u mV saved",key,mv);
+    return true;
+  }
   const char* calibration[]={"cal.rsnsb_mohm","cal.rsnsi_mohm","cal.ntc_bias_ohm","cal.ntc_r25_ohm","cal.ntc_beta"};
   for (unsigned i=0;i<5;++i) if (!strcmp(key,calibration[i])) {
     double parsed;
@@ -472,21 +521,46 @@ bool Controller::setField(const char* key,const char* value,char* reply,size_t c
   candidate.masks[field->reg]|=field->mask;
   candidate.values[field->reg]=(candidate.values[field->reg]&~field->mask)|bits;
   if (!candidate.valid()) {snprintf(reply,capacity,"Err - setting conflicts with saved policy; use mppt forget"); return true;}
+  // Save the operator's preference separately from the effective suspend bit.
+  const bool charge_enable=field->reg==CONFIG && field->mask==SUSPEND_CHARGER;
+  const bool auto_requested=charge_enable && !bits;
+  if (charge_enable) {
+    if (auto_requested && last_cells && last_cells!=4) {
+      snprintf(reply,capacity,"Err - automatic charging requires a 4S carrier"); return true;
+    }
+    if (!auto_requested) voltage_hold=true;
+    else if (holdForVoltage()) bits=SUSPEND_CHARGER;
+  }
   if (!update(field->reg,field->mask,bits)) {
+    if (charge_enable && bits) {
+      snprintf(reply,capacity,"Err - charger suspend unconfirmed"); return true;
+    }
     const bool restored=update(field->reg,field->mask,before&field->mask);
     snprintf(reply,capacity,"Err - write/readback failed; rollback=%s",restored?"verified":"unconfirmed"); return true;
   }
   if (!save(candidate)) {
+    if (charge_enable && bits) {
+      snprintf(reply,capacity,"Err - save unconfirmed; charger held off; use mppt reload"); return true;
+    }
     const bool restored=update(field->reg,field->mask,before&field->mask);
     snprintf(reply,capacity,"Err - save unconfirmed; live rollback=%s; use mppt reload",restored?"verified":"unconfirmed"); return true;
   }
   apply_ok=true;
+  if (auto_requested) {
+    snprintf(reply,capacity,"OK - automatic charging enabled; charger %s",bits?"held off":"enabled");
+    return true;
+  }
   snprintf(reply,capacity,"OK - %s=%.6g %s saved, readback verified",key,
            decode(*field,bits,settings,identity&15),field->unit);
   return true;
 }
 
 bool Controller::getField(const char* key,char* reply,size_t capacity) {
+  const bool stop=!strcmp(key,"charge.stop_mv");
+  if (stop || !strcmp(key,"charge.resume_mv")) {
+    snprintf(reply,capacity,"> %s=%u mV",key,stop?settings.charge_stop_mv:settings.charge_resume_mv);
+    return true;
+  }
   const char* calibration[]={"cal.rsnsb_mohm","cal.rsnsi_mohm","cal.ntc_bias_ohm","cal.ntc_r25_ohm","cal.ntc_beta"};
   const float values[]={settings.rsnsb_mohm,settings.rsnsi_mohm,settings.ntc_bias_ohm,settings.ntc_r25_ohm,settings.ntc_beta};
   for (unsigned i=0;i<5;++i) if (!strcmp(key,calibration[i])) {
@@ -592,7 +666,7 @@ bool Controller::handle(const char* command,char* reply,size_t capacity,bool loc
     size_t used=snprintf(reply,capacity,"> page=%u ",page);
     for (size_t i=start;i<FIELD_COUNT && i<start+3 && used<capacity;++i)
       used+=snprintf(reply+used,capacity-used,"%s[%s]%s",fields[i].name,
-         fields[i].access==Write?"rw":fields[i].access==Locked?"locked":"ro",i+1<start+3?" ":"");
+         fields[i].access==Locked?"locked":fields[i].access==Read?"ro":"rw",i+1<start+3?" ":"");
     return true;
   }
   if (!strncmp(key,"raw ",4)) {

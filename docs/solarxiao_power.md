@@ -118,10 +118,9 @@ recovers selection. With an unavailable filesystem, the selection cannot be
 saved and native access remains blocked.
 
 When auto verifies MPPT or a manual MPPT selection re-enables native access,
-the firmware reloads any retained `/solar_power` charger overrides. Changing the
-carrier does not erase those overrides, change RF/PA settings, modify battery
-protection, or write charger defaults. The INA260 identity verifies the monitor;
-LTC4162 chemistry and cell-count checks still independently guard charger writes.
+the firmware reloads the saved charger policy and starts checking channel 2.
+The INA260 identity verifies the monitor. The LTC4162 chemistry and cell-count
+checks independently guard charger writes.
 
 Radio target and role selection remain separate from the power profile:
 
@@ -205,12 +204,29 @@ resistance and an open/disconnected NTC return unavailable in the summaries.
 
 ## Settings on the 4S FST carrier
 
+The 12 V MPPT carrier uses the INA260 battery voltage on I²C channel 2.
+By default, it **stops charging at 14.0 V** and **allows charging again at
+13.6 V**. Between those voltages it keeps its previous decision. On startup
+inside that band, or after a missing or zero reading, it holds charging off
+until it reads 13.6 V or lower. The repeater stays powered.
+
+The firmware checks every five seconds while awake and the charger must have
+SOLAR/VIN power to accept the command. The hardware charger and BMS keep
+their own limits. To check the thresholds and the live charger enable bit:
+
+```text
+get mppt charge.stop_mv
+get mppt charge.resume_mv
+get mppt charge.enabled
+```
+
 Use `set mppt <field> <value>`. Booleans accept `on` or `off` only.
 
 | Fields | Behavior |
 | --- | --- |
 | `mppt.enabled` | Enable automatic solar maximum power tracking. |
-| `charge.enabled` | Suspend/resume charging; does not disconnect the battery or system output. |
+| `charge.enabled` | `off` keeps charging suspended across reboots. `on` returns control to the voltage limits. |
+| `charge.stop_mv`, `charge.resume_mv` | Whole-pack thresholds in millivolts. Resume must be positive and below stop. Maximum stop is 14400 mV. |
 | `telemetry.force`, `telemetry.fast` | Force the charger ADC on, or use fast telemetry. These affect power consumption. |
 | `input.limit_ma` | Input current limit; rounds down to the hardware step, never above the request; maximum request 3200 mA. |
 | `input.minimum_mv` | Manual input-voltage floor; MPPT must be off. Rounds up in 140.625 mV steps, maximum request 35000 mV. |
@@ -229,22 +245,22 @@ charging still uses the fixed outer temperature limits when JEITA is off.
 
 All configuration writes require a fresh FST identity and a live cell count of
 4 or unknown. Other variants remain readable but cannot receive this board's
-saved settings. Every setting uses a masked register update and verifies
-readback before success. Unrelated bits are preserved; one-shot BSR is not
-replayed by configuration writes. A failed write/save attempts to restore the
-previous field and reports whether rollback was verified.
+saved settings. Charger register writes use a mask and verify readback. A
+failed write or save normally attempts to restore the previous field. A
+requested charge suspension stays in effect if the settings save fails.
 
 ## Saving and actions
 
 Successful settings save an explicit override in a versioned, CRC-protected
 `/solar_power` record, using atomic file replacement plus public-file readback.
-The board reapplies only saved overrides after restart or charger power loss,
-with a five-second retry interval. It does not write default settings on first
-boot. JEITA-owned targets are not repeatedly written while JEITA is enabled.
+The board reapplies saved overrides and the channel 2 charge limits after
+restart or charger power loss, with a five-second retry interval. Automatic
+charge transitions only change the live suspend bit and do not write flash.
+JEITA-owned targets are not repeatedly written while JEITA is enabled.
 A failed/corrupt settings file blocks configuration saves and automatic replay.
 
 - `mppt reload`: reload saved policy and retry applying it.
-- `mppt forget`: remove saved register overrides; keep calibration and live chip settings.
+- `mppt forget` removes saved register overrides and keeps calibration and voltage thresholds. Automatic voltage control resumes on the next check.
 - `mppt reset`: local USB only; reset saved policy/calibration to reference values,
   including recovery from a corrupt record. Live charger registers are unchanged.
 - `mppt bsr run`: request one battery-resistance measurement; not saved.

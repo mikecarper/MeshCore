@@ -91,6 +91,53 @@ int main(int argc,char** argv) {
     bus.ina[0xff]=0x227f;c.snapshot(s);assert(s.monitor);
     bus.ina[0xff]=0x2260;c.snapshot(s);assert(!s.monitor);
     assert(bus.writes.empty() && store.saves==0);
+  } else if(test=="voltage-cutoff") {
+    has(cli(c,"get mppt charge.stop_mv"),"14000 mV");
+    has(cli(c,"get mppt charge.resume_mv"),"13600 mV");
+    const unsigned stop=11200, resume=10880; // INA260 counts, 1.25 mV each
+    auto sample=[&](unsigned raw,unsigned now,bool held) {
+      bus.ina[2]=raw; c.service(now);
+      assert(bus.r[0x14]==(held?0x8022:0x8002));
+    };
+    bus.r[0x14]=0x8002;
+    sample(resume+1,0,true); // cold boot in the band
+    sample(resume,5000,false);
+    sample(stop-1,10000,false);
+    sample(stop,15000,true);
+    sample(resume+1,20000,true);
+    sample(resume,25000,false);
+    bus.read_fail=2;sample(resume,30000,true);
+    bus.read_fail=-1;sample(resume+1,35000,true);
+    sample(0,40000,true);sample(resume,45000,false);
+    bus.ina[0xff]=0x2260;sample(resume,50000,true);
+    assert(store.saves==0);
+    bus.ina[0xff]=0x2270;
+    bus.ina[2]=stop;
+    has(cli(c,"set mppt charge.enabled on"),"held off");
+    assert(store.bytes[4]==1 && (bus.r[0x14]&0x20));
+    bus.r[0x14]=0x8002; // charger power cycle with a saved enable
+    sample(stop,55000,true);
+    has(cli(c,"set mppt charge.enabled off"),"OK");
+    sample(resume,60000,true);
+    Controller fresh(bus,store);fresh.begin();fresh.service(0);
+    assert(bus.r[0x14]&0x20);
+    has(cli(fresh,"set mppt charge.enabled on"),"charger enabled");
+    assert(!(bus.r[0x14]&0x20));
+    has(cli(fresh,"set mppt charge.stop_mv 13600"),"Err");
+    has(cli(fresh,"set mppt charge.resume_mv 14001"),"Err");
+    has(cli(fresh,"set mppt charge.stop_mv 14500"),"Err");
+    has(cli(fresh,"set mppt charge.stop_mv 13800"),"saved");
+    assert(store.bytes[4]==2);
+    has(cli(fresh,"set mppt charge.resume_mv 13200"),"saved");
+    Controller custom(bus,store);custom.begin();
+    has(cli(custom,"get mppt charge.resume_mv"),"13200 mV");
+    bus.ina[2]=11040;custom.service(0);assert(bus.r[0x14]&0x20);
+    bus.r[0x43]=0x06b0; // a suspended FST may report unknown cells
+    bus.ina[2]=10560;custom.service(5000);assert(!(bus.r[0x14]&0x20));
+    bus.ina[2]=11200;bus.ignore_write=true;
+    custom.service(10000);assert(!custom.settingsApplied());
+    bus.ignore_write=false;custom.service(15000);assert(bus.r[0x14]&0x20);
+    bus.r[0x43]=0x0404;bus.ina[2]=10560;custom.service(20000);assert(bus.r[0x14]&0x20);
   } else if(test=="defaults-identity") {
     c.service(0);c.service(5000);assert(bus.writes.empty());
     for(unsigned id: {0x0101u,0x0404u,0x0603u,0x0704u,0x0f04u}) {
@@ -218,7 +265,7 @@ class SolarXiaoPowerTests(unittest.TestCase):
             "-o", str(cls.binary)], check=True, capture_output=True, text=True, timeout=30)
 
     def test_shipping_core(self):
-        for scenario in ("readings", "defaults-identity", "locks-ranges", "rounding-rmw",
+        for scenario in ("readings", "voltage-cutoff", "defaults-identity", "locks-ranges", "rounding-rmw",
                          "persistence-order", "faults", "record-validation", "actions-parser"):
             with self.subTest(scenario=scenario):
                 result = subprocess.run([str(self.binary), scenario], capture_output=True,

@@ -75,6 +75,7 @@ HISTORY_HARNESS = r'''
 #include <helpers/IdentityStore.h>
 #include <helpers/SensorManager.h>
 #include <helpers/TelemetryHistory.h>
+#include <helpers/TelemetryDailyExtremaCLI.h>
 #include <helpers/ExternalVoltageHistory.h>
 #include <helpers/NoiseFloorHistory.h>
 #include <helpers/ClientACLResponse.h>

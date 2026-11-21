@@ -27,6 +27,7 @@ struct Settings {
   static constexpr size_t IMAGE_SIZE = 224;
   uint16_t masks[REG_COUNT];
   uint16_t values[REG_COUNT];
+  uint16_t charge_stop_mv, charge_resume_mv;
   // Reference schematic values, configurable for other carrier revisions.
   float rsnsb_mohm, rsnsi_mohm, ntc_bias_ohm, ntc_r25_ohm, ntc_beta;
   uint8_t calibration_user_mask;
@@ -56,8 +57,11 @@ class Controller {
   uint32_t next_service = 0;
   bool serviced = false;
   bool started = false;
+  bool voltage_hold = true;
 
   bool identify(uint16_t& identity);
+  bool readMonitorVoltage(uint16_t& raw);
+  bool holdForVoltage();
   bool verifyWritableIdentity(char* reply, size_t capacity);
   bool update(uint8_t reg, uint16_t mask, uint16_t bits);
   bool save(const Settings& candidate);
