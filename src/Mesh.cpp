@@ -349,7 +349,8 @@ void Mesh::onDirectOtaRadioSendComplete(const uint8_t* bytes, size_t length,
 #endif
 #endif
 
-void Mesh::begin() {
+void Mesh::begin(bool cold_boot) {
+  _cold_boot_repeat_hold = cold_boot && _ms->getMillis() < REPEAT_STARTUP_MS;
   resetOtaForwardCache();
   if (auto* limiter = getFloodAdvertLimiter()) limiter->reset();
   _active_direct_retry_count = 0;
@@ -386,6 +387,8 @@ void Mesh::begin() {
 }
 
 void Mesh::loop() {
+  // Clear once, even on a quiet mesh, so millis() wrapping cannot rearm it.
+  if (_cold_boot_repeat_hold && _ms->getMillis() >= REPEAT_STARTUP_MS) _cold_boot_repeat_hold = false;
   const auto* p = _radio->profiles();
   if (p && (_retry_radio_generations[0] != p->generation[0]
       || _retry_radio_generations[1] != p->generation[1] || _retry_cross_mode != p->cross)) {
@@ -669,6 +672,7 @@ void __attribute__((noinline)) Mesh::serviceLoopMaintenance() {
 }
 
 bool Mesh::allowPacketTransmit(const Packet* packet) const {
+  if (_cold_boot_repeat_hold && packet && packet->forwarded) return false;
 #if defined(ENABLE_OTA) && !defined(OTA_SEEDER_ONLY)
   // Once the apply drain limit expires, let the active TX finish but decline
   // new work. Otherwise a continuous queue can either prevent reboot forever
@@ -1201,7 +1205,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
         onTraceRecv(pkt, trace_tag, auth_code, flags, pkt->path, &pkt->payload[i], len);
       } else if (hash_size > 0 && offset + hash_size <= len
           && self_id.isHashMatch(&pkt->payload[i + offset], hash_size)
-          && allowPacketForward(pkt) && !_tables->wasSeen(pkt)) {
+          && canForwardPacket(pkt) && !_tables->wasSeen(pkt)) {
         _tables->markSeen(pkt);
         pkt->forwarded = true;
         // append SNR (Not hash!)
@@ -1259,7 +1263,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
           return ACTION_RELEASE;
         }
       }
-      if (allowPacketForward(pkt)) {
+      if (canForwardPacket(pkt)) {
         pkt->forwarded = true;
         const uint32_t d = getDirectRetransmitDelay(pkt);
         if (pkt->getPayloadType() == PAYLOAD_TYPE_MULTIPART) {
@@ -1593,7 +1597,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
 #endif
           && (n + 1) * pkt->getPathHashSize() <= MAX_PATH_SIZE
           && (primary_ota || _mgr->getFreeCount() > OTA_FWD_MIN_FREE)
-          && allowPacketForward(pkt) && allowOtaForwardRetry(pkt)) {
+          && canForwardPacket(pkt) && allowOtaForwardRetry(pkt)) {
         pkt->forwarded = true;
         rememberOtaForward(pkt);  // record incoming hop count, before appending ourselves
         self_id.copyHashTo(&pkt->path[n * pkt->getPathHashSize()], pkt->getPathHashSize());
@@ -1650,7 +1654,7 @@ DispatcherAction Mesh::routeRecvPacket(Packet* packet) {
         return ACTION_RELEASE;
       }
     }
-    if (!allowPacketForward(packet)) return ACTION_RELEASE;
+    if (!canForwardPacket(packet)) return ACTION_RELEASE;
     packet->forwarded = true;
     if (limiter) limiter->commit(packet->payload, hash, now);
     // append this node's hash to 'path'

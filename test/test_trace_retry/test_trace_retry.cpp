@@ -85,12 +85,13 @@ public:
   bool rejectFloods = false;
 
   TraceTestMesh(mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng,
-                mesh::RTCClock& rtc, mesh::PacketManager& mgr, mesh::MeshTables& tables)
+                mesh::RTCClock& rtc, mesh::PacketManager& mgr, mesh::MeshTables& tables,
+                bool cold_boot = false)
     : mesh::Mesh(radio, ms, rng, rtc, mgr, tables) {
     // Every firmware role begins the mesh before RX/TX. Helpers which invoke
     // receivePacket() directly need that same retry/timer initialization;
     // otherwise stack-allocated fixtures read indeterminate retry-slot flags.
-    mesh::Mesh::begin();
+    mesh::Mesh::begin(cold_boot);
   }
 
   uint8_t airtimeFactor(const mesh::Packet* packet) const {
@@ -1116,6 +1117,33 @@ TEST(MeshReceiveHooks, GroupPacketIsObservedWhenForwardingIsDisabled) {
   ASSERT_FALSE(node.forwardFloods);
   node.receivePacket(&packet);
   EXPECT_TRUE(node.groupPacketObserved);
+}
+
+TEST(MeshReceiveHooks, OnlyRelaysWaitFor45SecondsFromPowerOn) {
+  for (bool cold : {true, false}) {
+    TraceTestClock clock;
+    clock.now = 3500; // time already spent in board setup
+    TraceTestRTC rtc;
+    TraceTestRNG rng;
+    TraceTestRadio radio;
+    ForwardingTestTables tables;
+    StaticPoolPacketManager manager(12);
+    TraceTestMesh node(radio, clock, rng, rtc, manager, tables, cold);
+    node.forwardFloods = true;
+    for (uint32_t now : {3500u, 44999u, 45000u, UINT32_MAX, 0u}) {
+      clock.now = now;
+      node.loop();
+      auto packet = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);
+      const bool allowed = !cold || now >= 45000 || now == 0;
+      EXPECT_TRUE(node.canTransmit(&packet));  // own reply
+      EXPECT_EQ(node.routePacket(&packet) != ACTION_RELEASE, allowed);
+      packet.forwarded = true; // bridge or queued retry
+      EXPECT_EQ(node.canTransmit(&packet), allowed);
+    }
+    node.forwardFloods = false;
+    auto packet = makeFloodPacket(PAYLOAD_TYPE_GRP_TXT);
+    EXPECT_EQ(node.routePacket(&packet), ACTION_RELEASE);
+  }
 }
 
 TEST(MeshReceiveHooks, FloodTraceAndControlAreNeverForwarded) {

@@ -28,8 +28,7 @@ HARNESS = r'''
 #define LOOP_DETECT_STRICT 3
 #define FLOOD_CHANNEL_HOPS_ALL 255
 const uint8_t max_loop_minimal[] = {1}, max_loop_moderate[] = {2}, max_loop_strict[] = {3};
-uint32_t now_ms = 0;
-uint32_t millis() { return now_ms; }
+uint32_t millis() { return 0; }
 namespace mesh {
 @CONSTRUCTOR@
 namespace flood_profiles {
@@ -59,15 +58,6 @@ struct SimpleMeshTables {
   }
 };
 struct MyMesh : mesh::Mesh {
-#if MESH_SOLARXIAO_POWER
-  struct Board {
-    uint32_t reason = 1;
-    uint32_t getResetReason() const { return reason; }
-  } board;
-  uint64_t uptime_millis = 0;
-  uint32_t last_millis = 0;
-  bool waitingToRepeatAfterColdBoot() const;
-#endif
   mesh::flood_profiles::DeferredFloods* deferred_floods_ = nullptr;
   struct CLI {
     struct Profiles {} profiles;
@@ -114,37 +104,6 @@ struct MyMesh : mesh::Mesh {
 int main() {
   MyMesh node;
   mesh::Packet p;
-#if MESH_SOLARXIAO_POWER
-  node._prefs.disable_fwd = 0;
-  node.board.reason = 0;
-  for (auto route : {ROUTE_TYPE_FLOOD, ROUTE_TYPE_DIRECT}) {
-    p.header = route | (PAYLOAD_TYPE_TXT_MSG << PH_TYPE_SHIFT);
-    for (uint32_t when : {0u, 44999u, 45000u}) {
-      now_ms = when;
-      assert(node.allowPacketForward(&p) == (when >= 45000));
-      p.forwarded = true;
-      assert(node.allowPacketTransmit(&p) == (when >= 45000));
-      p.forwarded = false; // the repeater's own reply
-      assert(node.allowPacketTransmit(&p));
-    }
-  }
-  node._prefs.disable_fwd = 1;
-  assert(!node.allowPacketForward(&p));
-  node._prefs.trace_when_repeat_off = 1;
-  p.header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_TRACE << PH_TYPE_SHIFT);
-  now_ms = 100;
-  assert(!node.allowPacketForward(&p));
-  node.uptime_millis = (uint64_t(1) << 32) + now_ms;
-  node.last_millis = now_ms;
-  assert(node.allowPacketForward(&p));
-  node.last_millis = 0;
-  node.uptime_millis = 0;
-  for (uint32_t reason : {1u, 2u, 4u}) { // reset pin, watchdog, software
-    node.board.reason = reason;
-    assert(node.allowPacketForward(&p));
-  }
-  node._prefs.trace_when_repeat_off = 0;
-#endif
   // Admission is an exact opt-in, not a general forwarding bypass. Test every
   // route/type and invalid stored values with the actual header accessors.
   for (uint8_t pref : {uint8_t(0), uint8_t(1), uint8_t(2), uint8_t(255)}) {
@@ -313,8 +272,6 @@ class RepeaterTraceForwardingTest(unittest.TestCase):
             'bool MyMesh::allowPacketForward(',
             'bool MyMesh::allowPacketTransmit(',
             'bool MyMesh::allowDirectRetry('))
-        methods += '\n#if MESH_SOLARXIAO_POWER\n' + extract_braced(
-            source, 'bool MyMesh::waitingToRepeatAfterColdBoot(') + '\n#endif'
         packet_source = (ROOT / 'src/Packet.cpp').read_text(encoding='utf-8')
         code = HARNESS.replace('@METHODS@', methods).replace(
             '@CONSTRUCTOR@', extract_braced(packet_source, 'Packet::Packet()'))
@@ -333,7 +290,6 @@ class RepeaterTraceForwardingTest(unittest.TestCase):
                         '-Wno-unused-parameter',
                         f'-DMESH_ENABLE_MORSE_RX={morse_rx}',
                         f'-DMESH_ENABLE_TELEMETRY_HISTORY={history}',
-                        f'-DMESH_SOLARXIAO_POWER={int(not portable and history)}',
                         '-DMESH_ENABLE_FLOOD_GROUP_MODERATION=1', '-DMESH_ENABLE_CLOCK_SYNC=1',
                         *(['-DPORTABLE_MQTT_OBSERVER=1'] if portable else []), *flags,
                         '-I' + str(work), '-I' + str(ROOT / 'test/mocks'),

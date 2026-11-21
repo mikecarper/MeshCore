@@ -29,10 +29,11 @@ OtaContext* ota_context_if_active() { return active; }
 void ota_reboot_to_apply() { ++applications; }
 void ota_reboot_to_bootloader_update() { ++bootloaders; }
 }
-struct Packet { uint8_t getPayloadType() const { return 0; } };
+struct Packet { bool forwarded=false; uint8_t getPayloadType() const { return 0; } };
 struct Clock { uint32_t now=0; uint32_t getMillis() const { return now; } };
 struct Manager { int queued=0; int getOutboundTotal() const { return queued; } };
 struct Mesh {
+  bool _cold_boot_repeat_hold=false;
   Clock clock; Clock* _ms=&clock;
   Manager manager; Manager* _mgr=&manager;
   Packet* outbound=nullptr;

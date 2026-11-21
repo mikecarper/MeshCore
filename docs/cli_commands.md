@@ -4174,6 +4174,11 @@ The pin number is the Arduino pin number used by that target (the normal GPIO nu
 
 **Default:** `repeat on` for repeaters; `repeat off` for Room Servers.
 
+All repeat-capable boards wait until 45 seconds after a cold boot before
+relaying LoRa packets. During that window they can receive messages and send
+their own traffic, including admin replies. At 45 seconds the saved repeat
+setting applies. Software and watchdog resets skip the wait.
+
 Room Server repeating is opt-in with `set repeat on`. Updates keep the saved value.
 
 `repeat off` disables relay forwarding, not locally generated traffic or

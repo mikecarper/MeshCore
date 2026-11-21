@@ -1,4 +1,5 @@
 #pragma once
+#include "helpers/ColdBoot.h"
 
 #include <Dispatcher.h>
 #include <helpers/ota/OtaTiming.h>
@@ -82,6 +83,11 @@ public:
  *     and provides virtual methods for sub-classes on handling incoming, and also preparing outbound Packets.
 */
 class Mesh : public Dispatcher {
+  static constexpr uint32_t REPEAT_STARTUP_MS = 45000;
+  bool _cold_boot_repeat_hold = false;
+  bool canForwardPacket(const Packet* packet) {
+    return !_cold_boot_repeat_hold && allowPacketForward(packet);
+  }
   struct DirectRetryEntry {
     Packet* packet;
     Packet* trigger_packet;
@@ -250,6 +256,7 @@ class Mesh : public Dispatcher {
   DispatcherAction forwardMultipartDirect(Packet* pkt, uint32_t delay_millis);
 
 protected:
+  bool waitingToRepeatAfterColdBoot() const { return _cold_boot_repeat_hold; }
   static bool isTelemetryHistoryPayload(const Packet* packet);
 
   // Roles with lazily persisted state can veto an OTA reset until that state
@@ -666,7 +673,7 @@ protected:
   MeshTables* getTables() const { return _tables; }
 
 public:
-  void begin();
+  void begin(bool cold_boot = wasColdBoot());
   void loop();
 
 #if MESH_ENABLE_TX_BEACONS

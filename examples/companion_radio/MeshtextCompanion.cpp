@@ -533,7 +533,7 @@ void MyMesh::maybeRebroadcastMeshtext(const ChannelDetails& channel, const uint8
                                      size_t length) {
   // Called only after successful text decryption/parsing and local admission.
   // Never forward unknown channels, opaque frames, DMs, NodeInfo or GPS.
-  if (!_mt_rebroadcast || !_mt_active || !bytes || length <= mesh::mt::HeaderSize
+  if (waitingToRepeatAfterColdBoot() || !_mt_rebroadcast || !_mt_active || !bytes || length <= mesh::mt::HeaderSize
       || length > mesh::mt::MaxFrameSize || !(bytes[12] & 7)
       || (bytes[12] >> 5) < (bytes[12] & 7) || bytes[14] != 0) return;
   const auto* profiles = _radio->profiles();

@@ -96,6 +96,8 @@ struct StrHelper {
 };
 class MyMesh : public BaseChatMesh {
 public:
+  bool cold_boot_hold = false;
+  bool waitingToRepeatAfterColdBoot() const { return cold_boot_hold; }
   MemoryFS fs; Clock clock; MtRadio radio; mesh::Radio* _radio=&radio;
   mesh::RadioProfileCLI _radio_profiles;
   struct {
@@ -1786,6 +1788,9 @@ static void rebroadcastTiming() {
   Preferences::reset();MyMesh off;active(off);
   assert(receiveFrame(off,relay_short,sizeof(relay_short)));off.advance(100000);
   assert(!pendingRelay(off) && off.offline.size()==1);assertUntouched(off);
+  Preferences::reset();MyMesh cold;active(cold);enableRelay(cold);cold.cold_boot_hold=true;
+  assert(receiveFrame(cold,relay_short,sizeof(relay_short)));
+  assert(!pendingRelay(cold) && cold.offline.size()==1);assertUntouched(cold);
   for(uint32_t jitter:{0U,200U}) {
     Preferences::reset();MyMesh node;active(node);enableRelay(node);node.random.jitter=jitter;
     const auto packet=node._mt_packet_id;
