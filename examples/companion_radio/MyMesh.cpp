@@ -6865,7 +6865,7 @@ void MyMesh::cancelSerialOperationsForRoute(BaseSerialInterface* route) {
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
   cancelDirectOtaForRoute(route);
 #endif
-  _delayed_replies.forgetLoginRoute(route);
+  _delayed_replies.forgetRequestRoute(route);
   if (private_key_backup_route == route) {
     private_key_backup_route = NULL;
     private_key_backup_deadline = 0;
@@ -7255,7 +7255,11 @@ void MyMesh::handleCmdFrame(size_t len) {
   }
 #endif
 
-  servicePendingSerialReply();
+  // A telemetry retry checks its existing reply before ordinary servicing
+  // can deliver it and release the slot without acknowledging the retry.
+  const bool remote_telemetry = cmd_frame[0] == CMD_SEND_TELEMETRY_REQ
+      && len >= 4 + PUB_KEY_SIZE;
+  if (!remote_telemetry) servicePendingSerialReply();
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
   if (handleDirectOtaFrame(len)) return;
 #endif
@@ -7267,8 +7271,6 @@ void MyMesh::handleCmdFrame(size_t len) {
       || (cmd_frame[0] == CMD_SEND_PATH_DISCOVERY_REQ
           && len >= 2 + PUB_KEY_SIZE
           && (!COMPANION_FEATURE_DIRECT_OTA_ADMIN || cmd_frame[1] == 0))
-      || (cmd_frame[0] == CMD_SEND_TELEMETRY_REQ
-          && len >= 4 + PUB_KEY_SIZE)
       || (cmd_frame[0] == CMD_SEND_BINARY_REQ
           && len >= 2 + PUB_KEY_SIZE);
   if (starts_long_lived_request && hasPendingReqs()) {
@@ -8161,7 +8163,10 @@ void MyMesh::handleCmdFrame(size_t len) {
     uint8_t *pub_key = &cmd_frame[4];
     ContactInfo *recipient = lookupContactByPubKey(pub_key, PUB_KEY_SIZE);
     if (recipient) {
-      if (!beginPendingRequest(mesh::CompanionDelayedReplies::Telemetry, *recipient)) {
+      BaseSerialInterface* route = _serial->captureReplyRoute();
+      if (_delayed_replies.retryTelemetry(pub_key, route, _serial, _ms->getMillis())) return;
+      if (_delayed_replies.hasDeferredLogin()
+          || !beginPendingRequest(mesh::CompanionDelayedReplies::Telemetry, *recipient)) {
         writeErrFrame(ERR_CODE_BAD_STATE);
         return;
       }
@@ -8215,6 +8220,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     }
   } else if (cmd_frame[0] == CMD_LOGOUT && len >= 1 + PUB_KEY_SIZE) {
     uint8_t *pub_key = &cmd_frame[1];
+    _delayed_replies.forgetTelemetry(pub_key, _ms->getMillis());
     if (_delayed_replies.hasDeferredLogin()
         && _delayed_replies.deferred_login.route == _serial->captureReplyRoute()
         && !memcmp(_delayed_replies.deferred_login.peer, pub_key, PUB_KEY_SIZE)) {

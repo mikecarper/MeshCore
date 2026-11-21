@@ -3,6 +3,10 @@
 
 namespace mesh {
 
+// The stock app adds three seconds to SENT's estimate for legacy telemetry.
+static constexpr uint32_t TELEMETRY_APP_EXTRA_MS = 3000;
+static constexpr uint32_t TELEMETRY_CACHE_MS = 10000;
+
 // Keep complete member initialization shared, not expanded into a large owner.
 #if defined(__GNUC__) && !defined(__clang__)
 __attribute__((noinline, noclone))
@@ -31,6 +35,7 @@ void CompanionDelayedReplies::reset(Reply& reply) {
   reply.frame_len = 0;
   reply.sent_pending = false;
   reply.repeat_login = false;
+  reply.repeat_sent = false;
 }
 
 uint32_t CompanionDelayedReplies::radioBudget(const Reply& reply) {
@@ -92,17 +97,33 @@ bool CompanionDelayedReplies::service(Reply& reply,
   if (reply.terminal) return due(now, reply.radio_deadline);
   if (serial == nullptr || !serial->isReplyRouteAvailable(reply.route)
       || expired(reply, now)) return true;
-  if (reply.sent_pending) {
+  if (reply.sent_pending || reply.repeat_sent) {
+    // Re-acknowledge a retry with the existing tag and remaining wait. Only
+    // the first SENT admission starts the radio window.
+    uint32_t timeout = reply.timeout;
+    if (!reply.sent_pending) {
+      const uint32_t deadline = reply.phase == AwaitRadio ? reply.radio_deadline : reply.delivery_deadline;
+      timeout = deadline - now;
+    }
     uint8_t sent[10];
     sent[0] = 6;  // RESP_CODE_SENT, unchanged Companion wire format.
     sent[1] = reply.flood ? 1 : 0;
     memcpy(sent + 2, &reply.tag, 4);
-    memcpy(sent + 6, &reply.timeout, 4);
+    memcpy(sent + 6, &timeout, 4);
     if (serial->writeFrameToRoute(reply.route, sent, sizeof(sent)) != sizeof(sent)) {
       return false;
     }
-    reply.sent_pending = false;
-    reply.radio_deadline = now + radioBudget(reply);
+    if (reply.sent_pending) {
+      reply.sent_pending = false;
+      reply.radio_deadline = now + radioBudget(reply);
+    }
+    if (reply.kind == Telemetry) {
+      // Bound the estimate the same way as the radio deadline at wraparound.
+      const uint32_t maximum = 0x7FFFFFFFU - TELEMETRY_APP_EXTRA_MS;
+      reply.client_deadline = now + (timeout > maximum ? maximum : timeout)
+          + TELEMETRY_APP_EXTRA_MS;
+    }
+    reply.repeat_sent = false;
   }
   const bool admitted = reply.phase == AwaitAdmission
       && serial->writeFrameToRoute(reply.route, reply.frame, reply.frame_len)
@@ -117,9 +138,10 @@ void CompanionDelayedReplies::clearCompletedLogin() {
   completed_login_history = NO_HISTORY;
 }
 
-void CompanionDelayedReplies::forgetLoginRoute(BaseSerialInterface* route) {
+void CompanionDelayedReplies::forgetRequestRoute(BaseSerialInterface* route) {
   if (completed_login_route == route) clearCompletedLogin();
   if (deferred_login.route == route) clearDeferredLogin();
+  if (telemetry_cache.route == route) telemetry_cache.route = nullptr;
 }
 
 bool CompanionDelayedReplies::loginReady(uint32_t now) const {
@@ -204,6 +226,7 @@ bool CompanionDelayedReplies::reserveRequest(Kind kind, const uint8_t peer[32],
     }
   }
   if (free == NO_HISTORY) return false;
+  if (kind == Login) forgetTelemetry(peer, now);
   RequestGuard& held = requests[free];
   memcpy(held.peer, peer, 32);
   held.tag = 0;
@@ -332,6 +355,16 @@ bool CompanionDelayedReplies::blocksResponse(const uint8_t peer[32],
 
 bool CompanionDelayedReplies::storeRequest(const uint8_t* frame, size_t len, uint32_t now) {
   if (!store(request, frame, len, now)) return false;
+  if (request.kind == Telemetry && request.history < HISTORY_SIZE && !request.terminal) {
+    telemetry_cache.route = request.route;
+    telemetry_cache.tag = request.tag;
+    telemetry_cache.until = now + TELEMETRY_CACHE_MS;
+    telemetry_cache.len = len;
+    telemetry_cache.flood = request.flood;
+    telemetry_cache.retryable = false;
+    memcpy(telemetry_cache.peer, requestPeer(), sizeof(telemetry_cache.peer));
+    memcpy(telemetry_cache.frame, frame, len);
+  }
   // Keep the active login credential until final admission so queue pressure,
   // expiry or disconnect cannot turn a buffered reply into a completed login.
   return true;
@@ -343,8 +376,16 @@ void CompanionDelayedReplies::serviceRequest(BaseSerialInterface* serial, uint32
       && (serial == nullptr || !serial->isReplyRouteAvailable(completed_login_route))) {
     clearCompletedLogin();
   }
+  if (telemetry_cache.route != nullptr && (due(now, telemetry_cache.until)
+      || serial == nullptr || !serial->isReplyRouteAvailable(telemetry_cache.route))) {
+    telemetry_cache.route = nullptr;
+  }
   bool delivered = false;
   if (service(request, serial, now, &delivered)) {
+    if (request.kind == Telemetry && request.history < HISTORY_SIZE
+        && !request.sent_pending && matchesTelemetryCache(requestPeer(), request.route, now)) {
+      telemetry_cache.retryable = !delivered || due(now, request.client_deadline);
+    }
     // 0x85 is PUSH_CODE_LOGIN_SUCCESS in the unchanged Companion protocol.
     // SENT admission and terminal output do not establish this host context.
     if (delivered && request.kind == Login && !request.terminal
@@ -358,6 +399,63 @@ void CompanionDelayedReplies::serviceRequest(BaseSerialInterface* serial, uint32
     }
     retireRequest(now);
   }
+}
+
+bool CompanionDelayedReplies::matchesTelemetryCache(const uint8_t peer[32],
+    BaseSerialInterface* route, uint32_t now) const {
+  return route != nullptr && telemetry_cache.route == route
+      && !due(now, telemetry_cache.until)
+      && memcmp(telemetry_cache.peer, peer, sizeof(telemetry_cache.peer)) == 0;
+}
+
+bool CompanionDelayedReplies::retryTelemetry(const uint8_t peer[32], BaseSerialInterface* route,
+    BaseSerialInterface* serial, uint32_t now) {
+  if (route == nullptr || serial == nullptr || !serial->isReplyRouteAvailable(route)) return false;
+  const bool cached = matchesTelemetryCache(peer, route, now);
+  if (request.phase >= AwaitRadio && request.kind == Telemetry && request.route == route
+      && !expired(request, now)
+      && (request.history == NO_HISTORY ? cached : requestMatches(peer, request.tag))) {
+    if (cached && !hasDeferredLogin() && request.phase == AwaitRadio && !request.sent_pending
+        && due(now, request.client_deadline)) {
+      // The latest over-the-air request missed the app's deadline. A recent
+      // sample can satisfy the retry while the old radio tag is retired.
+      retireRequest(now);
+      telemetry_cache.retryable = true;
+    } else {
+      request.repeat_sent = !request.sent_pending;
+      serviceRequest(serial, now);
+      return true;
+    }
+  } else {
+    serviceRequest(serial, now);
+  }
+  if (hasRequest() || hasDeferredLogin() || !telemetry_cache.retryable
+      || !matchesTelemetryCache(peer, route, now)) return false;
+
+  // Admit SENT and the legacy telemetry push in order, using the same bounded
+  // transport queue as a fresh reply. A replay does not renew the sample age.
+  request.kind = Telemetry;
+  request.route = route;
+  request.tag = telemetry_cache.tag;
+  request.terminal = false;
+  arm(request, telemetry_cache.until - now, telemetry_cache.flood, now);
+  request.frame_len = telemetry_cache.len;
+  memcpy(request.frame, telemetry_cache.frame, request.frame_len);
+  request.sent_deadline = request.delivery_deadline = telemetry_cache.until;
+  request.phase = AwaitAdmission;
+  telemetry_cache.retryable = false;
+  serviceRequest(serial, now);
+  return true;
+}
+
+void CompanionDelayedReplies::forgetTelemetry(const uint8_t peer[32], uint32_t now) {
+  const bool cached_peer = telemetry_cache.route != nullptr
+      && memcmp(telemetry_cache.peer, peer, sizeof(telemetry_cache.peer)) == 0;
+  if (request.kind == Telemetry
+      && (request.history == NO_HISTORY ? cached_peer : requestMatches(peer, request.tag))) {
+    retireRequest(now);
+  }
+  if (cached_peer) telemetry_cache.route = nullptr;
 }
 
 uint8_t CompanionDelayedReplies::reserveTrace(uint32_t tag, uint32_t auth, uint32_t now) {

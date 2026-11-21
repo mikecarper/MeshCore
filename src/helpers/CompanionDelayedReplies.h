@@ -27,12 +27,13 @@ public:
     uint32_t tag = 0, auth = 0;
     uint32_t timeout = 0, radio_deadline = 0;
     uint32_t sent_deadline = 0, delivery_deadline = 0;
+    uint32_t client_deadline = 0;
     uint16_t frame_len = 0;
     Kind kind = None;
     Phase phase = Empty;
     uint8_t history = NO_HISTORY;
     bool terminal = false, sent_pending = false, flood = false;
-    bool repeat_login = false;
+    bool repeat_login = false, repeat_sent = false;
     uint8_t frame[MAX_FRAME_SIZE] = {};
   };
 
@@ -58,6 +59,14 @@ private:
   };
   RequestGuard requests[HISTORY_SIZE] = {};
   TraceGuard traces[HISTORY_SIZE] = {};
+  struct TelemetryCache {
+    BaseSerialInterface* route = nullptr;
+    uint32_t tag = 0, until = 0;
+    uint16_t len = 0;
+    bool flood = false, retryable = false;
+    uint8_t peer[32] = {};
+    uint8_t frame[MAX_FRAME_SIZE] = {};
+  } telemetry_cache;
   // The effective wire password stays in volatile RAM only. A delivered
   // success permits reopening the same login on the same live host route
   // during its bounded history window. Never persist these credentials.
@@ -84,6 +93,8 @@ private:
                                BaseSerialInterface* route, uint32_t now) const;
   bool matchesActiveLogin(const uint8_t peer[32], const char* password,
                            BaseSerialInterface* route, uint32_t now) const;
+  bool matchesTelemetryCache(const uint8_t peer[32], BaseSerialInterface* route,
+                             uint32_t now) const;
   void prune(uint32_t now);
 
 public:
@@ -91,7 +102,7 @@ public:
   bool reserveRequest(Kind kind, const uint8_t peer[32],
                       BaseSerialInterface* route, bool terminal, uint32_t now,
                       const char* password = nullptr);
-  void forgetLoginRoute(BaseSerialInterface* route);
+  void forgetRequestRoute(BaseSerialInterface* route);
   bool loginReady(uint32_t now) const;
   void noteLoginSent(uint32_t now);
   bool queueLogin(const uint8_t peer[32], const char* password,
@@ -111,6 +122,9 @@ public:
   bool blocksResponse(const uint8_t peer[32], uint32_t tag, uint32_t now) const;
   bool storeRequest(const uint8_t* frame, size_t len, uint32_t now);
   void serviceRequest(BaseSerialInterface* serial, uint32_t now);
+  bool retryTelemetry(const uint8_t peer[32], BaseSerialInterface* route,
+                      BaseSerialInterface* serial, uint32_t now);
+  void forgetTelemetry(const uint8_t peer[32], uint32_t now);
 
   // Terminal TRACE reserves the same tuple history without taking the Binary
   // slot. A live reservation is never evicted to make room for another host.

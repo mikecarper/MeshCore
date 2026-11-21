@@ -520,6 +520,123 @@ static void testReservedHistorySurvivesIdle(bool request_service, uint32_t start
 
 int main() {
   unsigned checks = 0;
+  for (bool tcp : {false, true}) {
+    Fixture f(tcp);
+    const auto& pending = f.mesh._delayed_replies.request;
+    f.command(Tracker::Telemetry);
+    f.drain();
+    const uint32_t tag = pending.tag, radio_deadline = pending.radio_deadline;
+    g_mock_millis += pending.timeout + 3000;
+    const size_t retry_start = f.wire().size();
+    f.usb_stream.write_capacity = 0;
+    if (f.socket) f.socket->write_limit = 0;
+    assert(f.fill() == 4);
+    for (unsigned i = 0; i < 12; ++i) f.command(Tracker::Telemetry);
+    assert(f.mesh.transmissions == 1 && pending.radio_deadline == radio_deadline);
+    reply(f, Tracker::Telemetry, nullptr, tag);
+    f.drain();
+    const Bytes retry(f.wire().begin() + retry_start, f.wire().end());
+    assertSentBeforeFinal(retry, Tracker::Telemetry, tag);
+    assert(count(retry, RESP_CODE_SENT) == 1 && count(retry, RESP_CODE_ERR) == 0);
+    f.command(Tracker::Telemetry);
+    assert(f.mesh.transmissions == 2 && pending.tag != tag);
+    ++checks;
+  }
+  for (uint32_t age : {9999U, 10000U}) {
+    Fixture f;
+    const auto& pending = f.mesh._delayed_replies.request;
+    g_mock_millis = 0xffffe000U;
+    f.command(Tracker::Telemetry);
+    const uint32_t tag = pending.tag;
+    g_mock_millis += pending.timeout + 3000;
+    reply(f, Tracker::Telemetry, nullptr, tag, 0x71);
+    f.drain();
+    const Bytes first = frameWith(f.wire(), PUSH_CODE_TELEMETRY_RESPONSE);
+    assert(first.size() > 8 && first[8] == 0x71);
+    const size_t retry_start = f.wire().size();
+    g_mock_millis += age;
+    f.command(Tracker::Telemetry);
+    f.drain();
+    const Bytes retry(f.wire().begin() + retry_start, f.wire().end());
+    assert(count(retry, RESP_CODE_ERR) == 0);
+    if (age < 10000) {
+      assert(f.mesh.transmissions == 1 && pending.phase == Tracker::Empty);
+      assertSentBeforeFinal(retry, Tracker::Telemetry, tag);
+      assert(frameWith(retry, PUSH_CODE_TELEMETRY_RESPONSE) == first);
+      f.command(Tracker::Telemetry);
+    } else {
+      assert(count(retry, PUSH_CODE_TELEMETRY_RESPONSE) == 0);
+    }
+    assert(f.mesh.transmissions == 2 && pending.tag != tag);
+    ++checks;
+  }
+  for (bool radio_expired : {false, true}) {
+    Fixture f;
+    const auto& pending = f.mesh._delayed_replies.request;
+    f.mesh.recipient.out_path_len = 0;
+    f.mesh.direct_timeout = 500;
+    f.command(Tracker::Telemetry);
+    const uint32_t first_tag = pending.tag;
+    reply(f, Tracker::Telemetry, nullptr, first_tag, 0x72);
+    f.drain();
+    const size_t retry_start = f.wire().size();
+    f.command(Tracker::Telemetry);
+    assert(f.mesh.transmissions == 2);
+    const uint32_t second_tag = pending.tag;
+    g_mock_millis = radio_expired ? pending.radio_deadline
+                                 : g_mock_millis + pending.timeout + 3000;
+    f.command(Tracker::Telemetry);
+    f.drain();
+    const Bytes retry(f.wire().begin() + retry_start, f.wire().end());
+    assert(f.mesh.transmissions == 2 && pending.phase == Tracker::Empty);
+    assert(count(retry, RESP_CODE_ERR) == 0);
+    assert(frameWith(retry, PUSH_CODE_TELEMETRY_RESPONSE).at(8) == 0x72);
+    f.command(Tracker::Telemetry);
+    reply(f, Tracker::Telemetry, nullptr, second_tag);
+    assert(f.mesh.transmissions == 3 && pending.phase == Tracker::AwaitRadio);
+    ++checks;
+  }
+  {
+    Fixture f;
+    const auto& pending = f.mesh._delayed_replies.request;
+    f.command(Tracker::Telemetry);
+    const uint32_t expired_tag = pending.tag;
+    g_mock_millis = pending.radio_deadline;
+    f.command(Tracker::Telemetry);
+    reply(f, Tracker::Telemetry, nullptr, expired_tag);
+    f.drain();
+    assert(f.mesh.transmissions == 2 && pending.tag != expired_tag);
+    assert(pending.phase == Tracker::AwaitRadio && count(f.wire(), RESP_CODE_ERR) == 0);
+    assert(count(f.wire(), PUSH_CODE_TELEMETRY_RESPONSE) == 0);
+    ++checks;
+  }
+  for (unsigned reason = 0; reason < 4; ++reason) {
+    Fixture f;
+    const auto& pending = f.mesh._delayed_replies.request;
+    f.command(Tracker::Telemetry);
+    g_mock_millis += pending.timeout + 3000;
+    reply(f, Tracker::Telemetry, nullptr, pending.tag);
+    f.drain();
+    const size_t retry_start = f.wire().size();
+    if (reason == 0) {
+      f.otherRequest();
+    } else if (reason == 1) {
+      f.mesh.recipient.id.pub_key[31] ^= 0x40;  // Same six-byte app prefix.
+    } else if (reason == 2) {
+      f.mesh.cancelSerialOperationsForRoute(f.owner);
+    } else {
+      f.mesh.cmd_frame[0] = CMD_LOGOUT;
+      memcpy(f.mesh.cmd_frame + 1, f.mesh.recipient.id.pub_key, 32);
+      f.mesh.handleRequestFrame(33);
+    }
+    f.command(Tracker::Telemetry);
+    f.drain();
+    const Bytes retry(f.wire().begin() + retry_start, f.wire().end());
+    assert(f.mesh.transmissions == 2 && pending.phase == Tracker::AwaitRadio);
+    assert(count(retry, PUSH_CODE_TELEMETRY_RESPONSE) == 0);
+    assert(count(f.other_stream.output, PUSH_CODE_TELEMETRY_RESPONSE) == 0);
+    ++checks;
+  }
   // An unreplaced trace retains the longer radio window even after the app's
   // advertised estimate, allowing a late result to remain useful.
   for (bool tcp : {false, true}) for (uint32_t start : {100U, 0xfffffff0U})
