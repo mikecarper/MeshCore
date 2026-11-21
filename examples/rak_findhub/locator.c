@@ -2,7 +2,12 @@
 // Run its cooperative initialization while allowing the USB/LoRa application
 // to continue after a board or provisioning failure.
 #define main nordic_locator_sample_main
+#ifdef RAK_NATIVE_PINGS
+#include "native_pings.h"
+#include "rak_locator_main.inc"
+#else
 #include "locator_tag/src/main.c"
+#endif
 #undef main
 
 int rak_findhub_start(void)

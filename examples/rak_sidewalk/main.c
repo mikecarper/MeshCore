@@ -150,6 +150,10 @@ static int start(void)
     return 0;
 }
 
+#ifdef RAK_NATIVE_PINGS
+bool rak_sidewalk_running(void) { return atomic_get(&running) != 0; }
+#endif
+
 static int status_cmd(const struct shell *sh, size_t argc, char **argv)
 {
     k_mutex_lock(&stage_lock, K_FOREVER);
@@ -206,7 +210,9 @@ int main(void)
 
     int err = start();
     atomic_set(&last_error, err);
+#ifndef RAK_NATIVE_PINGS
     tag_mesh_start();
+#endif
     if (err)
         return 0;
 

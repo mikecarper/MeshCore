@@ -214,6 +214,12 @@ iPhone enrollment. The build and bench instructions cover both tracker roles.
 
 Experimental RAK Sidewalk and Google Find Hub images are also available in both
 tracker roles. The Sidewalk profile adds gateway location to the collar's LoRa
-GPS checks. The Google profile supports Android item-finding tests. Each image
-enables one commercial network and stores its own configuration.
+GPS checks. The Google profile supports Android item-finding tests. Each
+individual image enables one commercial network and stores its own configuration.
 [Build and test the RAK location profiles](https://github.com/mikecarper/MeshCore/tree/keymindCascade/examples/rak_location)
+
+For all three native presence beacons on one RAK WisMesh Tag, choose the
+combined Sensor or USB tracker Companion build. It enables Apple Find My (A),
+Android Find Hub (B) and Sidewalk presence (C) by default. After provisioning,
+`finder ping` shows which services are currently advertising.
+[Combined RAK firmware and bench test](https://github.com/mikecarper/MeshCore/tree/keymindCascade/examples/rak_location/native_pings)

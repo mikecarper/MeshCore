@@ -1,9 +1,15 @@
 # RAK three-library controller test
 
-These Sensor and USB tracker Companion images link the Apple Find My, Google
-Find Hub and Amazon Sidewalk SDKs into one nRF52840 executable per role. The
+The default Sensor and USB tracker Companion controller-test images link the
+Apple Find My, Google Find Hub and Amazon Sidewalk SDKs into one nRF52840
+executable per role. The
 firmware starts MeshCore and Bluetooth. The three finder applications are
 present for the size measurement and stay idle during this controller test.
+
+For the firmware that starts all three native services on the same tag, use
+the `--native-pings` build. Use a separate tag for the controller test because
+its application can overwrite the combined firmware's settings partition.
+[Combined native pings](../native_pings/README.md)
 
 ## Test on a RAK WisMesh Tag
 
@@ -31,9 +37,10 @@ present for the size measurement and stay idle during this controller test.
 | B | `RAK-B-Android` | Google Find Hub | `findhub status` |
 | C | `RAK-C-Sidewalk` | Amazon Sidewalk | `sidewalk status` |
 
-The combined image runs local beacons. To test a real finder service, flash
-the Sensor or USB Companion UF2 for its letter and provision that profile.
-The [native profile guide](../README.md) covers enrollment and sightings.
+The default controller test broadcasts the three local names above. The
+[individual network profiles](../README.md) and the
+[combined native build](../native_pings/README.md) include the enrollment and
+sighting instructions for those images.
 
 The build allocates `0xc1000..0xc2fff` to the bench MeshCore and Bluetooth
 settings. The USB firmware update preserves the individual profiles' settings
@@ -72,14 +79,3 @@ ZEPHYR_TOOLCHAIN_VARIANT=host west build --no-sysbuild -b native_sim/native/64 \
   -d /tmp/rak-ids examples/rak_location/controller_test/tests
 python examples/rak_location/controller_test/tests/scan.py /tmp/rak-ids/zephyr/zephyr.exe
 ```
-
-## What remains for live sightings
-
-The stock integrations all select local Bluetooth identity slot 1. They
-also manage Bluetooth startup, ownership settings, and callbacks separately.
-Allocating advertising sets alone does not integrate these behaviors or
-verify pairing, ringing, separated-accessory alerts, or location reports.
-The Apple build requires an authorized product plan and per-device credentials
-for live enrollment. Google specifies one active finder network per accessory.
-[Google switchable protocol guidelines](https://developers.google.com/nearby/fast-pair/specifications/extensions/fmdn#switchable-protocol-guidelines)
-and [Apple Find My accessory program](https://developer.apple.com/find-my/).

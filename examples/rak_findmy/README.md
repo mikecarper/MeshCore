@@ -5,8 +5,11 @@ a direct MeshCore dog check on the same WisMesh Tag. The sensor sends fresh GPS
 fixes to its owner. The tracker companion can also receive a configured
 collar's checks and answer with a saved lost status. Both have a USB console.
 The ordinary Keymind Cascade Sensor, USB Companion and BLE Companion retain
-their full MeshCore roles. They use a different Bluetooth stack. Only the two
-Find My test builds here include the native accessory service.
+their full MeshCore roles. They use a different Bluetooth stack. The combined
+tracker firmware also includes this Find My service alongside Android Find Hub
+and Sidewalk. Its
+Apple provisioning address differs from the standalone address below.
+[Combined tracker setup](../rak_location/native_pings/README.md)
 
 ## First bench test
 

@@ -12,20 +12,37 @@
 #include "app_factory_reset.h"
 #include "app_ui.h"
 #include "app_ui_priv.h"
+#ifdef RAK_NATIVE_PINGS
+#include "native_pings.h"
+#endif
 
 extern int rak_findhub_start(void);
 extern int tag_battery_mv(void);
 extern void tag_mesh_start(void);
 extern bool tag_motion_present(void);
+#ifdef RAK_NATIVE_PINGS
+#define tag_motion_start rak_android_motion_start
+#define tag_motion_detected rak_android_motion_detected
+#define tag_motion_stop rak_android_motion_stop
+#define set_buzzer rak_android_buzzer
+#else
 extern void tag_motion_start(void);
 extern bool tag_motion_detected(void);
 extern void tag_motion_stop(void);
+#endif
 
 static const struct adc_dt_spec battery = ADC_DT_SPEC_GET(DT_PATH(zephyr_user));
 static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_NODELABEL(tag_button), gpios);
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_NODELABEL(blue_led), gpios);
 static const struct gpio_dt_spec mode_led = GPIO_DT_SPEC_GET(DT_NODELABEL(green_led), gpios);
 static const struct pwm_dt_spec buzzer = PWM_DT_SPEC_GET(DT_NODELABEL(tag_buzzer));
+#ifndef RAK_NATIVE_PINGS
+static int set_buzzer(bool active)
+{
+    return pwm_set_pulse_dt(&buzzer, active ? buzzer.period / 2 : 0);
+}
+#endif
+
 static struct gpio_callback button_callback;
 static atomic_t states;
 static atomic_t startup_err = ATOMIC_INIT(-EINPROGRESS);
@@ -34,14 +51,20 @@ int app_ui_state_change_indicate(enum app_ui_state state, bool active)
 {
     int err = 0;
     if (state == APP_UI_STATE_RINGING)
-        err = pwm_set_pulse_dt(&buzzer, active ? buzzer.period / 2 : 0);
+        err = set_buzzer(active);
     else if (state == APP_UI_STATE_FP_ADV)
         err = gpio_pin_set_dt(&led, active);
     if (!err) {
         atomic_set_bit_to(&states, state, active);
-        if (state == APP_UI_STATE_RECOVERY_MODE || state == APP_UI_STATE_ID_MODE)
-            err = gpio_pin_set_dt(&mode_led, atomic_test_bit(&states, APP_UI_STATE_RECOVERY_MODE) ||
-                                  atomic_test_bit(&states, APP_UI_STATE_ID_MODE));
+        if (state == APP_UI_STATE_RECOVERY_MODE || state == APP_UI_STATE_ID_MODE) {
+            bool indicating = atomic_test_bit(&states, APP_UI_STATE_RECOVERY_MODE) ||
+                              atomic_test_bit(&states, APP_UI_STATE_ID_MODE);
+#ifdef RAK_NATIVE_PINGS
+            err = rak_android_indicator(indicating);
+#else
+            err = gpio_pin_set_dt(&mode_led, indicating);
+#endif
+        }
     }
     return err;
 }
@@ -95,12 +118,17 @@ int app_ui_init(void)
         !gpio_is_ready_dt(&mode_led) || !pwm_is_ready_dt(&buzzer))
         return -ENODEV;
     int err = gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
+#ifdef RAK_NATIVE_PINGS
+    if (!err)
+        err = rak_board_prepare();
+#else
     if (!err)
         err = gpio_pin_configure_dt(&mode_led, GPIO_OUTPUT_INACTIVE);
     if (!err)
-        err = pwm_set_pulse_dt(&buzzer, 0);
-    if (!err)
         err = gpio_pin_configure_dt(&button, GPIO_INPUT);
+#endif
+    if (!err)
+        err = set_buzzer(false);
     if (!err) {
         gpio_init_callback(&button_callback, button_edge, BIT(button.pin));
         err = gpio_add_callback(button.port, &button_callback);
@@ -188,6 +216,8 @@ int main(void)
     if (!err)
         err = rak_findhub_start();
     atomic_set(&startup_err, err);
+#ifndef RAK_NATIVE_PINGS
     tag_mesh_start();
+#endif
     return 0;
 }

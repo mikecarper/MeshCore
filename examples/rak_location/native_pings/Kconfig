@@ -1,0 +1,2 @@
+rsource "../../rak_sidewalk/Kconfig.proximity"
+source "$(ZEPHYR_BASE)/../nrf/samples/bluetooth/fast_pair/locator_tag/Kconfig"

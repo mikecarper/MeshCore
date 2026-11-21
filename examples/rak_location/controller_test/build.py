@@ -46,16 +46,24 @@ def main():
     parser.add_argument("--build-dir", type=Path, required=True, help="Build workspace for this role")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--libdeps", type=Path, help="RAK Sensor PlatformIO library directory")
+    parser.add_argument("--native-pings", action="store_true", help="Run the three native SDKs together")
+    parser.add_argument("--product-plan", type=Path, help="Apple product plan C source for native pings")
     args = parser.parse_args()
+    if args.product_plan and not args.native_pings:
+        parser.error("--product-plan requires --native-pings")
     build = args.build_dir.resolve()
     sdk = build / "sdk-findmy-v242-port"
     prepare_sdk(args.findmy_sdk, sdk)
     libdeps = args.libdeps or APP.parents[2] / ".pio/libdeps/RAK_WisMesh_Tag_sensor"
-    firmware = build / "firmware"
+    firmware = build / ("native-firmware" if args.native_pings else "firmware")
+    options = ["-DRAK_NATIVE_PINGS=" + ("ON" if args.native_pings else "OFF")]
+    if args.native_pings:
+        options.append("-DRAK_FINDMY_PRODUCT_PLAN=" +
+                       (str(args.product_plan.resolve()) if args.product_plan else ""))
     subprocess.run(["west", "build", "--no-sysbuild", "-b", "rak4631/nrf52840", "-d", str(firmware),
                     str(APP), "--", "-DRAK_TAG_ROLE=" + args.role, "-DZEPHYR_EXTRA_MODULES=" + str(sdk),
-                    "-DMESHCORE_TAG_LIBDEPS=" + str(libdeps.resolve())], check=True)
-    write_tracker_uf2(firmware, args.output, app_limit=0xc1000)
+                    "-DMESHCORE_TAG_LIBDEPS=" + str(libdeps.resolve()), *options], check=True)
+    write_tracker_uf2(firmware, args.output, app_limit=0xb9000 if args.native_pings else 0xc1000)
 
 
 if __name__ == "__main__":

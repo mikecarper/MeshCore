@@ -1,5 +1,12 @@
 # RAK WisMesh Tag location test firmware
 
+For one RAK WisMesh Tag to send Apple Find My, Android Find Hub and Amazon
+Sidewalk presence pings together, use the **combined native pings** Sensor or
+USB tracker Companion build. Each service has a separate Bluetooth identity.
+[Combined firmware, setup and USB commands](native_pings/README.md)
+
+## Individual network images
+
 Use **Sidewalk Sensor** for a collar bench test. The tag uses GPS and LoRa for
 encrypted Keymind Cascade checks. It can also request an independent approximate
 position from a nearby Amazon Sidewalk Bluetooth gateway with Community Finding
@@ -19,7 +26,7 @@ provides the full Sensor and Companion interfaces.
 | C · Amazon Sidewalk presence | `dog status` and `sidewalk status` | A registered AWS Sidewalk device, a participating gateway and AWS proximity events enabled |
 | C · Amazon Sidewalk gateway location | `dog status` and `sidewalk status` | An AWS Sidewalk device and credentials, positioning enabled with a destination, and a participating gateway |
 
-Each image runs one commercial network. Changing a Bluetooth address does
+Each image in the table runs one commercial network. Changing a Bluetooth address does
 not enroll an accessory. Before switching a paired item to a different network,
 remove it from the original owner's app and complete that service's reset or
 deregistration. Google specifies one active finding network per device.

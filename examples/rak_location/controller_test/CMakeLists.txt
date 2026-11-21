@@ -6,6 +6,12 @@ set(sid "${examples}/rak_sidewalk")
 set(locator "$ENV{ZEPHYR_BASE}/../nrf/samples/bluetooth/fast_pair/locator_tag")
 set(KCONFIG_ROOT "${locator}/Kconfig")
 set(CONF_FILE "${locator}/configuration/prj.conf;${hub}/prj.conf;${sid}/prj.conf;${CMAKE_CURRENT_SOURCE_DIR}/prj.conf")
+set(native "${CMAKE_CURRENT_SOURCE_DIR}/../native_pings")
+if(RAK_NATIVE_PINGS)
+  set(KCONFIG_ROOT "${native}/Kconfig")
+  list(APPEND CONF_FILE "${native}/pings.conf")
+  set(DTC_OVERLAY_FILE "${native}/app.overlay")
+endif()
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(rak_locator_controller_test)
 
@@ -16,8 +22,13 @@ endif()
 set_source_files_properties("${fmn}/src/main.c" PROPERTIES COMPILE_DEFINITIONS "main=apple_entry")
 set_source_files_properties("${hub}/main.c" PROPERTIES COMPILE_DEFINITIONS "main=findhub_entry")
 set_source_files_properties("${sid}/main.c" PROPERTIES COMPILE_DEFINITIONS "main=sidewalk_entry")
-target_sources(app PRIVATE main.c controller.c
-  "${fmn}/src/main.c" "${fmn}/src/plan.c" "${fmn}/src/unprovisioned.c" "${fmn}/src/motion.cpp"
+if(RAK_NATIVE_PINGS)
+  include("${native}/native.cmake")
+else()
+  target_sources(app PRIVATE main.c controller.c "${fmn}/src/unprovisioned.c")
+endif()
+target_sources(app PRIVATE
+  "${fmn}/src/main.c" "${fmn}/src/plan.c" "${fmn}/src/motion.cpp"
   "${hub}/main.c" "${hub}/locator.c" "${sid}/main.c"
   "${locator}/src/ring.c" "${locator}/src/factory_reset.c" "${locator}/src/ui/common.c")
 target_include_directories(app PRIVATE "${locator}/.." "${locator}/include" "${locator}/src/ui")

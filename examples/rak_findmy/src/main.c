@@ -1,6 +1,12 @@
 #include <errno.h>
 #include <string.h>
 #include <fmna.h>
+#ifdef RAK_NATIVE_PINGS
+#include "native_pings.h"
+#define APPLE_BT_ID RAK_APPLE_ID
+#else
+#define APPLE_BT_ID 1
+#endif
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/gpio.h>
@@ -15,13 +21,27 @@
 extern bool tag_has_product_plan(void);
 extern void tag_mesh_start(void);
 extern bool tag_motion_present(void);
+#ifdef RAK_NATIVE_PINGS
+#define tag_motion_start rak_apple_motion_start
+#define tag_motion_detected rak_apple_motion_detected
+#define tag_motion_stop rak_apple_motion_stop
+#define set_buzzer rak_apple_buzzer
+#else
 extern void tag_motion_start(void);
 extern bool tag_motion_detected(void);
 extern void tag_motion_stop(void);
+#endif
 
 static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_NODELABEL(tag_button), gpios);
 static const struct gpio_dt_spec green = GPIO_DT_SPEC_GET(DT_NODELABEL(green_led), gpios);
 static const struct pwm_dt_spec buzzer = PWM_DT_SPEC_GET(DT_NODELABEL(tag_buzzer));
+#ifndef RAK_NATIVE_PINGS
+static int set_buzzer(bool active)
+{
+    return pwm_set_pulse_dt(&buzzer, active ? buzzer.period / 2 : 0);
+}
+#endif
+
 static const struct adc_dt_spec battery = ADC_DT_SPEC_GET(DT_PATH(zephyr_user));
 
 static atomic_t hardware_ready, paired, pairing, uuid_present, token_present;
@@ -54,7 +74,7 @@ static void finish_sound(struct k_work *work)
         if (left > 0) {
             k_work_reschedule(&sound_timer, K_MSEC(left));
         } else {
-            pwm_set_pulse_dt(&buzzer, 0);
+            set_buzzer(false);
             sound_deadline = 0;
             bool report = notify_sound_end;
             notify_sound_end = false;
@@ -71,7 +91,7 @@ static int play_sound(bool network)
     k_mutex_lock(&buzzer_lock, K_FOREVER);
     int err = 0;
     if (!network && notify_sound_end) err = -EBUSY;
-    else if ((err = pwm_set_pulse_dt(&buzzer, buzzer.period / 2)) == 0) {
+    else if ((err = set_buzzer(true)) == 0) {
         notify_sound_end = network;
         int duration_ms = network ? 5000 : 500;
         sound_deadline = k_uptime_get() + duration_ms;
@@ -97,7 +117,7 @@ static void sound_stop(void)
     sound_deadline = 0;
     notify_sound_end = false;
     k_work_cancel_delayable(&sound_timer);
-    pwm_set_pulse_dt(&buzzer, 0);
+    set_buzzer(false);
     k_mutex_unlock(&buzzer_lock);
 }
 
@@ -105,7 +125,11 @@ static void state_changed(bool is_paired)
 {
     atomic_set(&paired, is_paired);
     if (is_paired) atomic_clear(&pairing);
+#ifdef RAK_NATIVE_PINGS
+    rak_apple_indicator(is_paired);
+#else
     gpio_pin_set_dt(&green, is_paired);
+#endif
 }
 
 static void pairing_exited(void) { atomic_clear(&pairing); }
@@ -135,22 +159,26 @@ static int provisioned(const char *key, size_t len, settings_read_cb read,
 
 static int start_accessory(int mv)
 {
+#ifdef RAK_NATIVE_PINGS
+    int err = rak_host_ready();
+#else
     int err = bt_enable(NULL);
     if (!err) err = settings_load();
+#endif
     if (!err) err = settings_load_subtree_direct("fmna/provisioning", provisioned, NULL);
     if (err) return err;
     if (!tag_has_product_plan() || !atomic_get(&uuid_present)
         || !atomic_get(&token_present)) return -ENODATA;
     size_t count = 0;
     bt_id_get(NULL, &count);
-    if (count < 2) {
+    if (count <= APPLE_BT_ID) {
         int id = bt_id_create(NULL, NULL);
-        if (id != 1) return id < 0 ? id : -EINVAL;
+        if (id != APPLE_BT_ID) return id < 0 ? id : -EINVAL;
     }
     err = fmna_sound_cb_register(&sounds);
     if (!err) err = fmna_motion_detection_cb_register(&motion);
     const struct fmna_enable_param params = {
-        .bt_id = 1, .init_battery_level = battery_percent(mv),
+        .bt_id = APPLE_BT_ID, .init_battery_level = battery_percent(mv),
         .use_default_factory_settings = false
     };
     return err ? err : fmna_enable(&params, &events);
@@ -213,8 +241,12 @@ int main(void)
     int err = 0;
     if (!gpio_is_ready_dt(&green) || !gpio_is_ready_dt(&button)
         || !device_is_ready(buzzer.dev) || !device_is_ready(battery.dev)) err = -ENODEV;
+#ifdef RAK_NATIVE_PINGS
+    if (!err) err = rak_board_prepare();
+#else
     if (!err) err = gpio_pin_configure_dt(&green, GPIO_OUTPUT_INACTIVE);
     if (!err) err = gpio_pin_configure_dt(&button, GPIO_INPUT);
+#endif
     if (!err) err = adc_channel_setup_dt(&battery);
     int mv = err ? err : tag_battery_mv();
     if (mv < 0) { atomic_set(&last_error, mv); return mv; }
@@ -222,7 +254,11 @@ int main(void)
     if (!tag_motion_present()) err = -ENODEV;
     if (!err) err = start_accessory(mv);
     atomic_set(&last_error, err);
+#ifndef RAK_NATIVE_PINGS
     tag_mesh_start();
+#else
+    if (err) return err;
+#endif
     // Only a deliberate press after boot opens the pairing window.
     bool released = false;
     unsigned down_ticks = 0;
