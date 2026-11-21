@@ -10,12 +10,24 @@ present for the size measurement and stay idle during this controller test.
 1. Double-reset a bench tag with its stock S140 6.1.1 UF2 bootloader and copy
    the appropriate controller-test UF2 to the bootloader drive.
 2. Open the tag's USB console and run `dog status` to confirm the role.
-3. Run `locator capacity` twice. The command asks the physical controller how
+3. Run `locator ids start`. In a nearby BLE scanner, look for **RAK-TX-A**,
+   **RAK-TX-B** and **RAK-TX-C**. The controller keeps all three beacons
+   active and interleaves their transmissions. Each uses ordinary,
+   nonconnectable Bluetooth advertisements and its own random-static address.
+4. Run `locator ids status` to see each name, address and on/off state.
+   Run `locator ids stop` to stop all three. A scanner may cache old results,
+   so check for fresh packets. After a reboot, the beacons start off.
+   Running `locator ids start` again reuses the saved addresses.
+5. With the beacons stopped, run `locator capacity` twice. The command asks the physical controller how
    many advertising sets it supports, tries to allocate three concurrently,
    reports the count, and releases them. For example, a result ending in
    `allocated 3 of 3 idle advertising sets` on both runs confirms that the
    slots are available and reusable on that unit. This check sends no finder
    advertisements and uses no account credentials.
+
+The three names identify local test beacons. Apple Find My, Google Find Hub
+and Amazon Sidewalk stay idle while these beacons run. A local scan verifies
+the radio behavior. A network sighting requires a provisioned finder profile.
 
 The build allocates `0xc1000..0xc2fff` to the bench MeshCore and Bluetooth
 settings. The USB firmware update preserves the individual profiles' settings
@@ -38,6 +50,20 @@ already installed, or pass `--libdeps` as in the other locator builds.
 python examples/rak_location/controller_test/build.py sensor \
   --findmy-sdk /work/sdk-find-my --build-dir /work/rak-controller-sensor \
   --output /work/RAK_controller_sensor.uf2
+```
+
+## Scanner regression
+
+On Linux with the same Zephyr workspace, build the native test application.
+It runs the same shell commands and Bluetooth host code as the firmware.
+The Python test uses Bumble 0.0.236 and Python 3.11 or newer. A separate
+simulated scanner checks three names and addresses, repeated starts and
+stops, and address persistence across two boots with shared simulated flash.
+
+```sh
+ZEPHYR_TOOLCHAIN_VARIANT=host west build --no-sysbuild -b native_sim/native/64 \
+  -d /tmp/rak-ids examples/rak_location/controller_test/tests
+python examples/rak_location/controller_test/tests/scan.py /tmp/rak-ids/zephyr/zephyr.exe
 ```
 
 ## What remains for live sightings

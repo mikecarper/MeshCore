@@ -146,5 +146,6 @@ python examples/rak_location/tests/blank_boot.py sidewalk /work/rak-sidewalk-sen
 ```
 
 The [three-library controller test](controller_test/README.md) links all three
-SDKs into one RAK image per role. Its USB command measures the Bluetooth
-controller's advertising-set capacity independently of network enrollment.
+SDKs into one RAK image per role. Run `locator ids start` to broadcast three
+named BLE beacons concurrently, each with its own address. Use
+`locator ids status` to inspect them and `locator ids stop` to stop them.

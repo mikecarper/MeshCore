@@ -16,7 +16,7 @@ endif()
 set_source_files_properties("${fmn}/src/main.c" PROPERTIES COMPILE_DEFINITIONS "main=apple_entry")
 set_source_files_properties("${hub}/main.c" PROPERTIES COMPILE_DEFINITIONS "main=findhub_entry")
 set_source_files_properties("${sid}/main.c" PROPERTIES COMPILE_DEFINITIONS "main=sidewalk_entry")
-target_sources(app PRIVATE main.c
+target_sources(app PRIVATE main.c controller.c
   "${fmn}/src/main.c" "${fmn}/src/plan.c" "${fmn}/src/unprovisioned.c" "${fmn}/src/motion.cpp"
   "${hub}/main.c" "${hub}/locator.c" "${sid}/main.c"
   "${locator}/src/ring.c" "${locator}/src/factory_reset.c" "${locator}/src/ui/common.c")
