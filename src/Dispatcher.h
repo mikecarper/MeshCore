@@ -719,6 +719,7 @@ class Dispatcher {
   uint32_t outbound_restore_retry_at = 0;
   uint32_t outbound_restore_recovery_at = 0;
   void updateTxBudget();
+  bool deferForTxBudget(uint32_t required_ms);
 #if MESH_OTA_PACKET_PACING
   void noteOtaTransmit(uint8_t profile, uint32_t generation, uint32_t airtime,
                        uint32_t now);

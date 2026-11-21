@@ -89,9 +89,8 @@ struct Driver {
  virtual RadioLibTime_t calculateTimeOnAir(ModemType_t,DataRate_t,PacketConfig_t,size_t) {
    calls.emplace_back("fullairtime");return 4242;
  }
- // The specialization deliberately inherits this vendor tuple packing. Keep
- // its CR normalization in the adapter so tests exercise virtual dispatch.
- RadioLibTime_t getTimeOnAir(size_t len) {
+ // Full-driver control for the builds that retain the vendor implementation.
+ virtual RadioLibTime_t getTimeOnAir(size_t len) {
    toa_len=len;
    if(getPacketType()!=RADIOLIB_SX126X_PACKET_TYPE_LORA) return RadioLibTime_t(RADIOLIB_ERR_WRONG_MODEM);
    if(fixed_airtime) return airtime_us;
@@ -121,8 +120,13 @@ struct Concrete : Driver {
 };
 static_assert(std::is_same<decltype(&Concrete::transmitDirect),decltype(&Driver::transmitDirect)>::value,
               "CW must remain the inherited pinned driver method");
-static_assert(std::is_same<decltype(&Concrete::getTimeOnAir),decltype(&Driver::getTimeOnAir)>::value,
-              "The vendor airtime tuple and CR normalization remain inherited");
+struct BlockingDriver : Concrete {
+ RadioLibTime_t calculateTimeOnAir(ModemType_t modem, DataRate_t rate, PacketConfig_t packet, size_t len) override {
+   toa_len=len;
+   if (fixed_airtime) return airtime_us;
+   return Concrete::calculateTimeOnAir(modem,rate,packet,len);
+ }
+};
 
 // Independent symbol-count oracle. The explicit modulo reproduces the pinned
 // driver's 32-bit multiplication even on hosts with 64-bit unsigned long.
@@ -146,9 +150,21 @@ void checkAirtime(bool trimmed) {
    for(size_t len : {0U,1U,7U,8U,12U,253U,255U}) for(unsigned bits=0;bits<8;++bits) {
     dr.lora={sf,bw,cr};pc.lora={preamble,bool(bits&1),bool(bits&2),bool(bits&4)};
     assert(api->calculateTimeOnAir(RADIOLIB_MODEM_LORA,dr,pc,len)==airtimeOracle(dr,pc,len));
+    if (len==12) {
+      d.spreadingFactor=sf;d.bandwidthKhz=bw;d.codingRate=cr-4;d.preambleLengthLoRa=preamble;
+      d.headerType=pc.lora.implicitHeader;d.crcTypeLoRa=pc.lora.crcEnabled;d.ldrOptimize=pc.lora.ldrOptimize;
+      d.calls.clear();
+      assert(api->getTimeOnAir(len)==airtimeOracle(dr,pc,len));
+    }
    }
  for(auto modem : {RADIOLIB_MODEM_FSK,RADIOLIB_MODEM_LRFHSS,RADIOLIB_MODEM_NONE})
    assert(api->calculateTimeOnAir(modem,dr,pc,12)==RadioLibTime_t(RADIOLIB_ERR_WRONG_MODEM));
+ for(uint8_t modem : {0,2,3,255}) {
+   d.modem=modem;d.calls.clear();
+   assert(d.getTimeOnAir(12)==RadioLibTime_t(RADIOLIB_ERR_WRONG_MODEM));
+   assert(d.calls==std::vector<std::string>{"packettype"});
+ }
+ d.modem=RADIOLIB_SX126X_PACKET_TYPE_LORA;d.headerType=0;d.crcTypeLoRa=1;d.ldrOptimize=0;
  for(uint8_t raw_cr=0;raw_cr<=7;++raw_cr) {
    d.codingRate=raw_cr;d.spreadingFactor=7;d.bandwidthKhz=125;d.preambleLengthLoRa=16;
    dr.lora={7,125,uint8_t(raw_cr<5?raw_cr+4:raw_cr==7?8:raw_cr)};
@@ -161,19 +177,19 @@ void checkAirtime(bool trimmed) {
 void checkBlocking(bool trimmed,bool faults) {
  const uint8_t bytes[]={11,12};
  if(!trimmed) {
-   Concrete d;Driver* api=&d;assert(api->transmit(bytes,2,7)==0);
+   BlockingDriver d;Driver* api=&d;assert(api->transmit(bytes,2,7)==0);
    assert(d.calls==std::vector<std::string>{"fulltransmit"});return;
  }
  if(!faults) {
    for(RadioLibTime_t start : {0U,std::numeric_limits<uint32_t>::max()-4}) {
-     Concrete d;d.fixed_airtime=true;d.module.clock.now=start;d.module.clock.irq_after_polls=9;
+     BlockingDriver d;d.fixed_airtime=true;d.module.clock.now=start;d.module.clock.irq_after_polls=9;
      Driver* api=&d;assert(api->transmit(bytes,2,7)==0);
      assert(d.calls==std::vector<std::string>({"standby","packettype","starttx","packettype","finish"}));
      assert(d.toa_len==2&&d.sent_len==2&&d.sent_data==bytes&&d.sent_addr==7);
      assert(d.module.clock.yields==10&&d.module.clock.polls==10);
    }
    for(uint8_t cr : {0,4,5,7}) for(uint8_t crc : {0,1}) for(size_t len : {0U,7U,8U,253U,254U,255U,256U}) {
-     Concrete d;d.codingRate=cr;d.crcTypeLoRa=crc;d.fixed_airtime=true;
+     BlockingDriver d;d.codingRate=cr;d.crcTypeLoRa=crc;d.fixed_airtime=true;
      const int16_t expected=cr>4&&len<8?RADIOLIB_ERR_PACKET_TOO_SHORT:
        (len>255||(cr>4&&crc==1&&len>253)?RADIOLIB_ERR_PACKET_TOO_LONG:0);
      assert(d.transmit(bytes,len,0)==expected);
@@ -182,24 +198,24 @@ void checkBlocking(bool trimmed,bool faults) {
    }
    return;
  }
- Concrete standby;standby.fail_at=0;
+ BlockingDriver standby;standby.fail_at=0;
  assert(standby.transmit(bytes,2)==standby.failure&&standby.calls==std::vector<std::string>{"standby"});
  for (RadioLibTime_t invalid : {0U, uint32_t(RADIOLIB_ERR_WRONG_MODEM), uint32_t(-705)}) {
-   Concrete d; d.fixed_airtime=true; d.airtime_us=invalid;
+   BlockingDriver d; d.fixed_airtime=true; d.airtime_us=invalid;
    assert(d.transmit(bytes,2)==(invalid ? int16_t(invalid) : RADIOLIB_ERR_UNKNOWN));
    assert(d.calls==std::vector<std::string>({"standby","packettype"}) && d.module.clock.yields==0);
  }
  // This valid estimate used to wrap when multiplied by five.
- Concrete slow; slow.fixed_airtime=true; slow.airtime_us=900000000U;
+ BlockingDriver slow; slow.fixed_airtime=true; slow.airtime_us=900000000U;
  slow.module.clock.tick=1000000; slow.module.clock.irq_after_polls=2;
  assert(slow.transmit(bytes,2)==0 && slow.module.clock.yields==3);
- Concrete start;start.fixed_airtime=true;start.start_rc=-710;
+ BlockingDriver start;start.fixed_airtime=true;start.start_rc=-710;
  assert(start.transmit(bytes,2)==-710);
  assert(start.calls==std::vector<std::string>({"standby","packettype","starttx"})&&start.module.clock.yields==0);
- Concrete finish;finish.fixed_airtime=true;finish.finish_rc=-711;
+ BlockingDriver finish;finish.fixed_airtime=true;finish.finish_rc=-711;
  assert(finish.transmit(bytes,2)==-711&&finish.calls.back()=="finish");
  for(RadioLibTime_t begin : {0U,std::numeric_limits<uint32_t>::max()-4}) for(int16_t finish_rc : {0,-712}) {
-   Concrete timeout;timeout.fixed_airtime=true;timeout.finish_rc=finish_rc;
+   BlockingDriver timeout;timeout.fixed_airtime=true;timeout.finish_rc=finish_rc;
    timeout.module.clock.now=begin;timeout.module.clock.irq_after_polls=10;
    assert(timeout.transmit(bytes,2)==RADIOLIB_ERR_TX_TIMEOUT);
    assert(timeout.calls==std::vector<std::string>({"standby","packettype","starttx","packettype","finish"}));

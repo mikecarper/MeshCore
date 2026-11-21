@@ -165,6 +165,13 @@ void Dispatcher::updateTxBudget() {
   }
 }
 
+bool Dispatcher::deferForTxBudget(uint32_t required_ms) {
+  if (tx_budget_ms >= required_ms) return false;
+  const float duty_cycle = 1.0f / (1.0f + getAirtimeBudgetFactor());
+  next_tx_time = futureMillis((unsigned long)((required_ms - tx_budget_ms) / duty_cycle));
+  return true;
+}
+
 bool Dispatcher::restoreOutboundTxOverrides() {
   if (!outbound_restore_cr) return true;
   const uint32_t now = _ms->getMillis();
@@ -503,10 +510,7 @@ void Dispatcher::finishForeignRadioFrame(bool success, bool account_airtime) {
     }
     updateTxBudget();
     tx_budget_ms = elapsed >= tx_budget_ms ? 0 : tx_budget_ms - elapsed;
-    if (tx_budget_ms < MIN_TX_BUDGET_RESERVE_MS) {
-      const float duty_cycle = 1.0f / (1.0f + getAirtimeBudgetFactor());
-      next_tx_time = futureMillis((unsigned long)((MIN_TX_BUDGET_RESERVE_MS - tx_budget_ms) / duty_cycle));
-    } else next_tx_time = _ms->getMillis();
+    if (!deferForTxBudget(MIN_TX_BUDGET_RESERVE_MS)) next_tx_time = _ms->getMillis();
   }
   if (success && _radio->profiles()) ++_radio->profiles()->tx_packets[foreign_radio_profile];
 #if MESH_ENABLE_OTA_KISS_DIRECT
@@ -594,11 +598,7 @@ bool Dispatcher::checkForeignRadioSend() {
   const uint32_t airtime = validRadioAirtime(
       _radio->getProfileAirtime(foreign_radio_profile, foreign_radio_length));
   if (!airtime) { finishForeignRadioFrame(false, false); return false; }
-  if (tx_budget_ms < airtime / MIN_TX_BUDGET_AIRTIME_DIV) {
-    const float duty_cycle = 1.0f / (1.0f + getAirtimeBudgetFactor());
-    next_tx_time = futureMillis((unsigned long)((airtime / MIN_TX_BUDGET_AIRTIME_DIV - tx_budget_ms) / duty_cycle));
-    return false;
-  }
+  if (deferForTxBudget(airtime / MIN_TX_BUDGET_AIRTIME_DIV)) return false;
   if (!millisHasNowPassed(next_tx_time)) return false;
   const auto prepared = _radio->prepareTransmitProfile(foreign_radio_profile);
   if (prepared == RadioParamApplyResult::BUSY) {
@@ -1156,13 +1156,7 @@ void Dispatcher::loop() {
         tx_budget_ms -= t;
       }
 
-      if (tx_budget_ms < MIN_TX_BUDGET_RESERVE_MS) {
-        float duty_cycle = 1.0f / (1.0f + getAirtimeBudgetFactor());
-        unsigned long needed = MIN_TX_BUDGET_RESERVE_MS - tx_budget_ms;
-        next_tx_time = futureMillis((unsigned long)(needed / duty_cycle));
-      } else {
-        next_tx_time = _ms->getMillis();
-      }
+      if (!deferForTxBudget(MIN_TX_BUDGET_RESERVE_MS)) next_tx_time = _ms->getMillis();
 
       _radio->onSendFinished();
       // RX can occur entirely between two loop observations during a TX
@@ -1788,12 +1782,7 @@ void Dispatcher::checkSend() {
     est_airtime = validRadioAirtime(_radio->getProfileAirtime(
         pending->radio_profile, pending->getRawLength(), pending->tx_cr));
   }
-  if (tx_budget_ms < est_airtime / MIN_TX_BUDGET_AIRTIME_DIV) {
-    float duty_cycle = 1.0f / (1.0f + getAirtimeBudgetFactor());
-    unsigned long needed = est_airtime / MIN_TX_BUDGET_AIRTIME_DIV - tx_budget_ms;
-    next_tx_time = futureMillis((unsigned long)(needed / duty_cycle));
-    return;
-  }
+  if (deferForTxBudget(est_airtime / MIN_TX_BUDGET_AIRTIME_DIV)) return;
   
   if (!millisHasNowPassed(next_tx_time)) return;
 

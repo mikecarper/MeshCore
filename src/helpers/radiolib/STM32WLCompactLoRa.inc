@@ -13,9 +13,25 @@
     int16_t setDataShaping(uint8_t) override { return RADIOLIB_ERR_UNSUPPORTED; }
     int16_t setEncoding(uint8_t) override { return RADIOLIB_ERR_UNSUPPORTED; }
 
-    // RadioLib's inherited getTimeOnAir still packs and normalizes the cached
-    // LoRa tuple. Keep the pinned integer calculation, including its uint32_t
-    // product and rounding, without retaining the unexposed modem formulas.
+    // This driver supports LoRa packets only. Preserve the pinned SX126x
+    // tuple and modem check without linking the FSK/LR-FHSS tuple builders.
+    RadioLibTime_t getTimeOnAir(size_t len) override {
+      if (getPacketType() != RADIOLIB_SX126X_PACKET_TYPE_LORA) return RADIOLIB_ERR_WRONG_MODEM;
+      uint8_t cr = codingRate;
+      if (cr < 5) cr += 4;
+      else if (cr == 7) ++cr;
+      DataRate_t rate = {};
+      rate.lora.spreadingFactor = spreadingFactor;
+      rate.lora.bandwidth = bandwidthKhz;
+      rate.lora.codingRate = cr;
+      PacketConfig_t packet = {};
+      packet.lora.preambleLength = preambleLengthLoRa;
+      packet.lora.crcEnabled = bool(crcTypeLoRa);
+      packet.lora.implicitHeader = headerType == RADIOLIB_SX126X_LORA_HEADER_IMPLICIT;
+      packet.lora.ldrOptimize = bool(ldrOptimize);
+      return calculateTimeOnAir(RADIOLIB_MODEM_LORA, rate, packet, len);
+    }
+
     RadioLibTime_t calculateTimeOnAir(ModemType_t modem,DataRate_t dr,PacketConfig_t pc,size_t len) override {
       if(modem!=RADIOLIB_MODEM_LORA) return RADIOLIB_ERR_WRONG_MODEM;
       uint32_t symbolLength_us=((uint32_t)(1000*10)<<dr.lora.spreadingFactor)/(dr.lora.bandwidth*10);
