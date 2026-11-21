@@ -7398,7 +7398,17 @@ void MyMesh::handleCmdFrame(size_t len) {
     MESH_DEBUG_PRINTLN("App %s connected", app_name);
 
     BaseSerialInterface* app_route = _serial->captureReplyRoute();
-    cancelSerialResponseStream(app_route);
+    bool new_session = true;
+#if defined(ESP32_PLATFORM) && defined(BLE_PIN_CODE)
+    // The settings screen also uses APP_START to read SELF_INFO. A refresh
+    // on the same BLE connection must let an ongoing GET_CONTACTS reach END.
+    if (companionIsBluetoothRoute(app_route)) {
+      const uint32_t generation = app_route->sessionGeneration();
+      new_session = generation == 0 || generation != _ble_app_generation;
+      _ble_app_generation = generation;
+    }
+#endif
+    if (new_session) cancelSerialResponseStream(app_route);
     cancelSerialOperationsForRoute(app_route);
     int i = 0;
     out_frame[i++] = RESP_CODE_SELF_INFO;
@@ -7435,7 +7445,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     i += tlen;
     _serial->writeFrame(out_frame, i);
 #if defined(BLE_PIN_CODE)
-    scheduleCommonBlePinWarning(app_route);
+    if (new_session) scheduleCommonBlePinWarning(app_route);
 #endif
   } else if (mesh::companion::isRunCliFrame(cmd_frame[0], len)) { // V14+
     int i = 1;

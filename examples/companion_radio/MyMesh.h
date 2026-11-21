@@ -1075,6 +1075,9 @@ private:
   uint8_t _common_ble_pin_warning_pushes = 0;
   uint32_t _common_ble_pin_warning_last_push = 0;
   BaseSerialInterface* _common_ble_pin_warning_route = nullptr;
+#if defined(ESP32_PLATFORM)
+  uint32_t _ble_app_generation = 0;
+#endif
 #endif
   bool _iter_started;
   bool _iter_start_pending;

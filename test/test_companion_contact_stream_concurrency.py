@@ -75,6 +75,8 @@ struct ContactsIterator {
 };
 struct Ble : BaseSerialInterface {
   bool enabled=false, connected=true;
+  uint32_t generation=1;
+  uint32_t sessionGeneration() const override {return generation;}
   unsigned last_write=0, capacity=4;
   std::deque<std::vector<uint8_t>> input, pending;
   std::vector<std::vector<uint8_t>> delivered;
@@ -97,7 +99,10 @@ struct Ble : BaseSerialInterface {
     memcpy(dest,frame.data(),frame.size()); return frame.size();
   }
 };
+static BaseSerialInterface* bluetooth_route=nullptr;
+bool companionIsBluetoothRoute(BaseSerialInterface* route) {return route==bluetooth_route;}
 struct MyMesh {
+  uint32_t _ble_app_generation=0;
   BaseSerialInterface* _serial=nullptr;
   struct Clock { unsigned getMillis() const {return millis();} } clock, *_ms=&clock;
   struct Store { bool hasIncompleteContactLoad() const {return false;} } store, *_store=&store;
@@ -159,6 +164,7 @@ struct Fixture {
   bool drain_usb=true;
   Fixture() {
     g_mock_millis=100;
+    bluetooth_route=&ble;
     usb.begin(stream); usb.enableFlowControl(true);
     assert(manager.addInterface(InterfaceType::Bluetooth,&ble));
     assert(manager.addInterface(InterfaceType::USB,&usb)); manager.enable();
@@ -322,6 +328,18 @@ static void recovered_stream_still_obeys_owner_disconnect_and_cancel() {
 }
 
 int main() {
+  // Settings reads interleave APP_START with an existing contacts download.
+  for (bool reconnect : {false, true}) {
+    Fixture f;
+    const std::vector<uint8_t> self_info={CMD_APP_START,1,0,0,0,0,0,0};
+    f.ble.input.push_back(self_info); f.step(); f.run(100);
+    f.startBle(); f.run(250);
+    if (reconnect) f.ble.generation+=2;
+    f.ble.input.push_back(self_info); f.step(); f.finish();
+    assert(count(f.ble.delivered,RESP_CODE_SELF_INFO)==2);
+    if (reconnect) assert(count(f.ble.delivered,RESP_CODE_END_OF_CONTACTS)==0);
+    else assertBleSnapshot(f);
+  }
   recovery_keeps_ble_owner_and_restarts_under_backpressure();
   recovery_keeps_usb_owner_including_an_empty_reload();
   recovered_stream_still_obeys_owner_disconnect_and_cancel();
@@ -448,7 +466,7 @@ class ContactStreamConcurrencyTests(unittest.TestCase):
             result = subprocess.run([
                 compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
                 '-Wno-unused-parameter', '-Wno-sign-compare',
-                f'-DMESH_CONTACT_CACHE={cache}',
+                f'-DMESH_CONTACT_CACHE={cache}', '-DESP32_PLATFORM', '-DBLE_PIN_CODE=123456',
                 *sanitizers,
                 f'-I{ROOT / "test/mocks"}', f'-I{ROOT / "src"}', '-x', 'c++', '-',
                 str(ROOT / 'src/helpers/ArduinoSerialInterface.cpp'), '-o', str(binary),
