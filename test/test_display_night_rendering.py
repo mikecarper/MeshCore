@@ -84,6 +84,8 @@ struct ST7735Display {
                     inspect = 'canvas'
                 elif driver == 'ST7789LCDDisplay':
                     harness = r'''
+// Mirror ST7789LCDDisplay.h when compiling the extracted methods with a fake panel.
+#define MESHCORE_BUFFERED_SPI_DISPLAY 1
 struct ST7789LCDDisplay {
   Canvas display, canvas; Canvas* _canvas=&canvas;
   bool buffered=false, _isOn=true, _frame_active=false; ColorVal _color=0;
