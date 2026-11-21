@@ -1520,7 +1520,7 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
 #endif
 #ifdef WITH_MQTT_BRIDGE
   // MQTT bridge: always feed RX packets - bridge decides based on mqtt.rx setting
-  if (_prefs.bridge_enabled && bridge && bridge->isRunning()) bridge->onPacketReceived(pkt);
+  if (_prefs.bridge_enabled && bridge && bridge->isRunning()) bridge->onPacketReceived(pkt, score);
 #endif
 #ifdef WITH_ESPNOW_BRIDGE
   if (_prefs.bridge_pkt_src == 1 && espnow_bridge.isRunning()) {

@@ -28,17 +28,29 @@ size_t heap_caps_get_free_size(int){++heap_queries;return dma_free;}
 size_t heap_caps_get_largest_free_block(int){++heap_queries;return dma_largest;}
 struct Esp { size_t size=8000000; size_t getPsramSize(){return size;}
   size_t getMaxAllocHeap(){++heap_queries;return dma_largest;} } ESP;
-namespace mesh { struct Packet { uint8_t getPayloadType(){return 7;}
-  uint8_t writeTo(uint8_t*){return 2;} }; }
+namespace mesh { struct Packet {
+  uint8_t profile, payload;
+  float snr; int16_t rssi;
+  uint8_t getPayloadType(){return 7;}
+  float getSNR()const{return snr;}
+  int16_t getRSSI()const{return rssi;}
+  uint8_t writeTo(uint8_t* dest){dest[0]=7;dest[1]=payload;return 2;}
+}; }
+static constexpr int MAX_TRANS_UNIT=255;
+struct Published { uint8_t profile, payload; bool tx; float snr,rssi,score; } report;
 static int builds=0;
 namespace MQTTMessageBuilder {
 constexpr size_t WIRE_SCRATCH_SIZE=255;
 bool canSerializePacket(mesh::Packet*,size_t){return true;}
-template<typename... Args> int buildPacketJSONFromRaw(Args...){++builds;return 1;}
+int buildPacketJSONFromRaw(int&,const uint8_t* bytes,int len,mesh::Packet* packet,bool tx,
+    const char*,const char*,float snr,float rssi,float score,int,char*,size_t){
+  assert(len>=2);
+  report={packet->profile,bytes[len-1],tx,snr,rssi,score};
+  ++builds;return 1;
+}
 template<typename... Args> int buildPacketJSON(Args...){++builds;return 1;}
 template<typename... Args> int buildRawJSON(Args...){++builds;return 1;}
 }
-struct Radio {float packetScore(float,int){return 0;}};
 struct Client {int calls=0,result=0;uint32_t ack=0;
   uint32_t getPublishAck(){return ack;}
   int publish(const char*,uint8_t,bool,const char*,int,bool){++calls;return result;}
@@ -57,22 +69,26 @@ struct MQTTBridge {
   char scratch[2048]{},*_json_scratch_buffer=scratch;
   int _json_scratch_doc=0;
   char _device_id[65]="ABC",_origin[32]="test";int _timezone=0;
-  uint8_t* _last_raw_data=nullptr;int _last_raw_len=0;
-  unsigned long _last_raw_timestamp=0;float _last_snr=0,_last_rssi=0;
-  Radio* _radio=nullptr;uint8_t eligible=1;
+  QUEUED_PACKET
+  bool _initialized=true, _staged_raw_valid=false;
+  uint8_t _staged_raw[MAX_TRANS_UNIT]{}, _staged_raw_len=0;
+  float _staged_snr=0, _staged_rssi=0;
+  uint8_t eligible=1;
   uint8_t eligiblePacketSlots(uint8_t,int){return eligible;}
   void refreshOriginFromPrefs(){}
   bool buildTopicForSlot(int,int,char*topic,size_t){strcpy(topic,"topic");return true;}
   void updateSlotTransportDiag(int,uint32_t){}
   bool hasPublishHeadroom(size_t=0,size_t=0,uint8_t=0);
   bool publishToSlot(int,const char*,const char*,size_t,bool=false,uint8_t=0);
-  bool publishPacket(mesh::Packet*,bool,bool&,const uint8_t*=nullptr,int=0,float=0,float=0);
+  void storeRawRadioData(const uint8_t*,int,float,float);
+  void capturePacket(QueuedPacket&,mesh::Packet*,bool,float);
+  bool publishPacket(QueuedPacket&,bool&);
   bool publishRaw(mesh::Packet*,bool,bool&);
 };
-'''.replace('const uint8_t*=', 'const uint8_t* =')
+'''.replace('QUEUED_PACKET', method('src/helpers/bridges/MQTTBridge.h', 'struct QueuedPacket {') + ';')
 
 MAIN = r'''
-int main(){
+void testPublishAdmission(){
   using namespace MQTTPublishAdmission;
   Heap heap;heap.psram=true;heap.dma_free=15348;heap.dma_largest=9716;
   assert(!canPublish(heap)); // Exact screenshot: preserve the DMA reserve.
@@ -98,8 +114,10 @@ int main(){
   assert(!state.needsSample(50)&&state.needsSample(5000));
 
   MQTTBridge bridge;Client client;bridge._slots[0].client=&client;
-  mesh::Packet packet;bool eligible=false;
-  assert(!bridge.publishPacket(&packet,false,eligible)&&eligible);
+  mesh::Packet packet{};bool eligible=false;
+  MQTTBridge::QueuedPacket queued;
+  bridge.capturePacket(queued,&packet,false,0.125f);
+  assert(!bridge.publishPacket(queued,eligible)&&eligible);
   assert(!bridge.publishRaw(&packet,false,eligible)&&eligible);
   assert(!bridge.publishToSlot(0,"status","{}",2,true,1));
   assert(builds==0&&client.calls==0&&bridge._skipped_publishes==3);
@@ -107,7 +125,7 @@ int main(){
   assert(bridge._slots[0].transport_health.recovery_reason==
          MQTTTransportHealth::RecoveryReason::None);
   dma_free=19833;clock_ms=5000;
-  assert(bridge.publishPacket(&packet,false,eligible));
+  assert(bridge.publishPacket(queued,eligible));
   assert(bridge.publishRaw(&packet,false,eligible));
   assert(bridge.publishToSlot(0,"status","{}",2,true,1));
   assert(builds==2&&client.calls==3&&heap_queries==4);
@@ -116,6 +134,52 @@ int main(){
   client.result=-1;
   assert(!bridge.publishToSlot(0,"raw","{}",2,false,0));
   assert(!bridge._publish_memory.sampled); // Recheck after a real SDK failure.
+
+}
+
+void testQueuedRadioProfiles(){
+  MQTTBridge bridge;Client client;bridge._slots[0].client=&client;
+  bool eligible=false;
+  mesh::Packet radio2{1,0x22,-7.5f,-109};
+  uint8_t captured[]={7,0x22};
+  MQTTBridge::QueuedPacket r2,r1,tx;
+  bridge.storeRawRadioData(captured,sizeof(captured),-7.5f,-109.5f);
+  bridge.capturePacket(r2,&radio2,false,0.25f);
+
+  // The dispatcher reuses its packet and radio buffer when R1 receives.
+  radio2={0,0x11,2.5f,-81};
+  captured[1]=0x11;
+  bridge.capturePacket(r1,&radio2,false,0.875f); // No raw capture for this RX.
+  assert(r1.has_raw_data && r1.raw_data[1]==0x11);
+  client.result=-1;
+  assert(!bridge.publishPacket(r2,eligible)&&eligible); // Transient broker failure.
+  client.result=0;
+  bridge._slots[0].transport_health.recovered(); // Broker reconnected.
+  assert(bridge.publishPacket(r1,eligible));
+  assert(report.profile==0 && report.payload==0x11 && report.score==0.875f);
+  assert(report.snr==2.5f && report.rssi==-81 && !report.tx);
+  assert(bridge.publishPacket(r2,eligible)); // Retry after publishing R1.
+  assert(report.profile==1 && report.payload==0x22 && report.score==0.25f);
+  assert(report.snr==-7.5f && report.rssi==-109.5f && !report.tx);
+  assert(bridge.publishPacket(r1,eligible)); // A preceding R2 capture cannot leak into R1.
+  assert(report.profile==0 && report.payload==0x11 && report.score==0.875f);
+
+  bridge.capturePacket(tx,&radio2,true,NAN);
+  assert(bridge.publishPacket(tx,eligible)&&report.tx&&std::isnan(report.score));
+  uint8_t full[MAX_TRANS_UNIT]{};
+  bridge.storeRawRadioData(full,sizeof(full),-2,-80);
+  bridge.capturePacket(r2,&radio2,false,0.5f);
+  assert(r2.has_raw_data && r2.raw_len==sizeof(full));
+  bridge.storeRawRadioData(captured,sizeof(captured),-2,-80);
+  bridge.storeRawRadioData(full,sizeof(full)+1,-2,-80);
+  assert(!bridge._staged_raw_valid);
+  bridge.capturePacket(r1,&radio2,false,0.5f);
+  assert(r1.has_raw_data && r1.raw_data[1]==0x11);
+}
+
+int main(){
+  testPublishAdmission();
+  testQueuedRadioProfiles();
 }
 '''
 
@@ -126,6 +190,7 @@ class MqttPublishAdmissionTests(unittest.TestCase):
         self.assertIsNotNone(compiler)
         source = HARNESS + '\n'.join(method(BRIDGE, signature) for signature in (
             'bool MQTTBridge::hasPublishHeadroom(', 'bool MQTTBridge::publishToSlot(',
+            'void MQTTBridge::capturePacket(', 'void MQTTBridge::storeRawRadioData(',
             'bool MQTTBridge::publishPacket(', 'bool MQTTBridge::publishRaw(')) + MAIN
         with tempfile.TemporaryDirectory() as directory:
             path, binary = Path(directory)/'publish.cpp', Path(directory)/'publish'

@@ -65,34 +65,34 @@ struct MQTTBridge {
   unsigned _filtered_packets=0, _bad_sig_adverts=0, queued=0;
   bool shouldQueuePacketType(unsigned, bool& filtered) { filtered=!type_allowed; return type_allowed; }
   bool allowsPacket(mesh::Packet*) { return scope_allowed; }
-  void queuePacket(mesh::Packet*,bool tx){assert(!tx);++queued;}
-  void onPacketReceived(mesh::Packet*);
+  void queuePacket(mesh::Packet*,bool tx,float score){assert(!tx && score==0.75f);++queued;}
+  void onPacketReceived(mesh::Packet*, float score);
 };
 ''' + method + r'''
 int main() {
   MQTTBridge bridge; mesh::Packet packet;
   for(unsigned i=0;i<sizeof(packet.payload);++i) packet.payload[i]=uint8_t(i);
   // Default off preserves the observer's existing publish-as-heard behavior.
-  valid_signature=false; bridge.onPacketReceived(&packet);
+  valid_signature=false; bridge.onPacketReceived(&packet,0.75f);
   assert(bridge.queued==1 && verifies==0 && bridge._bad_sig_adverts==0);
   bridge.obs.mqtt_advert_verify=true;
-  bridge.onPacketReceived(&packet);
+  bridge.onPacketReceived(&packet,0.75f);
   assert(bridge.queued==1 && verifies==1 && bridge._bad_sig_adverts==1);
   valid_signature=true; packet.payload_len=132;
-  bridge.onPacketReceived(&packet);
+  bridge.onPacketReceived(&packet,0.75f);
   assert(bridge.queued==2 && verifies==2);
   // Valid signed prefixes cannot bless an appended unsigned byte.
   for(int size : {99,133,184}) {
-    packet.payload_len=size; bridge.onPacketReceived(&packet);
+    packet.payload_len=size; bridge.onPacketReceived(&packet,0.75f);
     assert(bridge.queued==2 && verifies==2);
   }
   assert(bridge._bad_sig_adverts==4);
-  packet.type=PAYLOAD_TYPE_TEXT; bridge.onPacketReceived(&packet);
+  packet.type=PAYLOAD_TYPE_TEXT; bridge.onPacketReceived(&packet,0.75f);
   assert(bridge.queued==3 && verifies==2);
   packet.type=PAYLOAD_TYPE_ADVERT; packet.payload_len=100;
-  bridge.scope_allowed=false; bridge.onPacketReceived(&packet);
+  bridge.scope_allowed=false; bridge.onPacketReceived(&packet,0.75f);
   assert(bridge.queued==3 && verifies==2 && bridge._filtered_packets==1);
-  bridge.scope_allowed=true; bridge.type_allowed=false; bridge.onPacketReceived(&packet);
+  bridge.scope_allowed=true; bridge.type_allowed=false; bridge.onPacketReceived(&packet,0.75f);
   assert(bridge.queued==3 && verifies==2 && bridge._filtered_packets==2);
 }
 ''')

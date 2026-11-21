@@ -939,9 +939,9 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
 }
 
 #if defined(WITH_MQTT_BRIDGE) && defined(ESP32_PLATFORM) && defined(WIFI_SSID)
-void MyMesh::logRx(mesh::Packet* packet, int, float) {
+void MyMesh::logRx(mesh::Packet* packet, int, float score) {
   if (_mqtt_bridge && _mqtt_bridge->isRunning()) {
-    _mqtt_bridge->onPacketReceived(packet);
+    _mqtt_bridge->onPacketReceived(packet, score);
   }
 }
 

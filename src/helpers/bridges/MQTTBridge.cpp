@@ -909,10 +909,6 @@ MQTTBridge::MQTTBridge(const MQTTNodeInfo& node_info, MQTTPrefs *obs,
       _timezone_storage(TimeChangeRule{"UTC", Last, Sun, Mar, 0, 0}, TimeChangeRule{"UTC", Last, Sun, Mar, 0, 0}),
       _timezone(&_timezone_storage),
 #if defined(BOARD_HAS_PSRAM)
-      _last_raw_data(nullptr),
-#endif
-      _last_raw_len(0), _last_snr(0), _last_rssi(0), _last_raw_timestamp(0),
-#if defined(BOARD_HAS_PSRAM)
       _json_scratch_buffer(nullptr),
 #endif
       _identity(identity),
@@ -1019,27 +1015,15 @@ MQTTBridge::MQTTBridge(const MQTTNodeInfo& node_info, MQTTPrefs *obs,
 #endif
   #endif
 
-  // Non-PSRAM boards keep the raw cache inline for the bridge lifetime.
-  // PSRAM boards allocate their runtime buffers in begin(), after PSRAM has
-  // been probed/initialized, and release them in end().
-  #if !defined(BOARD_HAS_PSRAM)
-  memset(_last_raw_data, 0, sizeof(_last_raw_data));
-  #endif
   // The shared JSON document needs no setup here: its pools are allocated lazily on
   // the first publish through _json_allocator and released by releaseRuntimeBuffers().
 }
 
 void MQTTBridge::allocateRuntimeBuffers() {
   #if defined(BOARD_HAS_PSRAM)
-  // Keep each allocation independent. A nullptr is deliberately retained on
-  // failure: status/packet publish paths already use stack fallbacks, and the
-  // next begin() will retry only the missing buffer.
-  _last_raw_data = static_cast<uint8_t*>(MQTTRuntimeBufferLifecycle::allocateIfMissing(
-      _last_raw_data, LAST_RAW_DATA_SIZE, psram_malloc));
   _json_scratch_buffer = static_cast<char*>(MQTTRuntimeBufferLifecycle::allocateIfMissing(
       _json_scratch_buffer, PUBLISH_JSON_BUFFER_SIZE, psram_malloc));
-  MQTT_DEBUG_PRINTLN("Runtime buffers: raw=%s json=%s",
-      _last_raw_data ? "PSRAM" : "unavailable",
+  MQTT_DEBUG_PRINTLN("Runtime JSON buffer: %s",
       _json_scratch_buffer ? "PSRAM" : "stack fallback");
   #endif
 
@@ -1049,8 +1033,6 @@ void MQTTBridge::allocateRuntimeBuffers() {
 
 void MQTTBridge::releaseRuntimeBuffers() {
   #if defined(BOARD_HAS_PSRAM)
-  _last_raw_data = static_cast<uint8_t*>(MQTTRuntimeBufferLifecycle::release(
-      _last_raw_data, psram_free));
   _json_scratch_buffer = static_cast<char*>(MQTTRuntimeBufferLifecycle::release(
       _json_scratch_buffer, psram_free));
   #endif
@@ -1067,13 +1049,6 @@ void MQTTBridge::releaseRuntimeBuffers() {
   _neighbors_publish_len = 0;
   _neighbors_publish_pending.store(false, std::memory_order_release);
 #endif
-
-  // Never pair a newly allocated raw buffer with metadata from a prior bridge
-  // run. This also makes non-PSRAM restarts discard their stale raw cache.
-  _last_raw_len = 0;
-  _last_snr = 0;
-  _last_rssi = 0;
-  _last_raw_timestamp = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -3665,7 +3640,7 @@ void MQTTBridge::loop() {
 // Packet handling
 // ---------------------------------------------------------------------------
 
-void MQTTBridge::onPacketReceived(mesh::Packet *packet) {
+void MQTTBridge::onPacketReceived(mesh::Packet* packet, float score) {
   if (!_initialized || _stop_requested.load(std::memory_order_acquire)
       || !_obs->mqtt_packets_enabled || !_obs->mqtt_rx_enabled) return;
 
@@ -3699,7 +3674,7 @@ void MQTTBridge::onPacketReceived(mesh::Packet *packet) {
   }
 
   // Queue packet for transmission
-  queuePacket(packet, false);
+  queuePacket(packet, false, score);
 }
 
 void MQTTBridge::sendPacket(mesh::Packet *packet) {
@@ -3728,7 +3703,7 @@ void MQTTBridge::sendPacket(mesh::Packet *packet) {
   }
 
   // Queue packet for transmission
-  queuePacket(packet, true);
+  queuePacket(packet, true, NAN);
 }
 
 void MQTTBridge::processPacketQueue() {
@@ -3808,22 +3783,8 @@ void MQTTBridge::processPacketQueue() {
       break;
     }
 
-    // Update Core 0-owned last-raw-data for publishStatus() - no mutex needed since
-    // _last_raw_data is now written only here (Core 0) and read only by publishStatus() (Core 0).
-    if (!queued.is_tx && queued.has_raw_data && _last_raw_data) {
-      memcpy(_last_raw_data, queued.raw_data, queued.raw_len);
-      _last_raw_len       = queued.raw_len;
-      _last_snr           = queued.snr;
-      _last_rssi          = queued.rssi;
-      _last_raw_timestamp = millis();
-    }
-
     bool packet_eligible = false;
-    bool packet_published = publishPacket(&queued.packet_copy, queued.is_tx,
-                                          packet_eligible,
-                                          queued.has_raw_data ? queued.raw_data : nullptr,
-                                          queued.has_raw_data ? queued.raw_len  : 0,
-                                          queued.snr, queued.rssi);
+    bool packet_published = publishPacket(queued, packet_eligible);
     taskYIELD();  // allow higher-priority tasks to run between packet publishes
 
     // Publish raw if enabled (live from prefs so `set mqtt.raw` applies without
@@ -3945,20 +3906,8 @@ void MQTTBridge::processPacketQueue() {
       break;
     }
 
-    if (!queued.is_tx && queued.has_raw_data && _last_raw_data) {
-      memcpy(_last_raw_data, queued.raw_data, queued.raw_len);
-      _last_raw_len       = queued.raw_len;
-      _last_snr           = queued.snr;
-      _last_rssi          = queued.rssi;
-      _last_raw_timestamp = millis();
-    }
-
     bool packet_eligible = false;
-    bool packet_published = publishPacket(&queued.packet_copy, queued.is_tx,
-                                          packet_eligible,
-                                          queued.has_raw_data ? queued.raw_data : nullptr,
-                                          queued.has_raw_data ? queued.raw_len  : 0,
-                                          queued.snr, queued.rssi);
+    bool packet_published = publishPacket(queued, packet_eligible);
     // No taskYIELD() on non-ESP32 platforms (non-FreeRTOS, cooperative scheduling not needed)
 
     // Live from prefs so `set mqtt.raw` applies without a bridge restart.
@@ -4107,7 +4056,6 @@ bool MQTTBridge::publishStatus(uint8_t slot_mask) {
   refreshOriginFromPrefs();
 
   // Reuse pre-allocated buffer to avoid heap alloc/free churn under memory pressure.
-  // _json_scratch_buffer and _last_raw_data are both Core 0-owned; no mutex needed.
   #if defined(BOARD_HAS_PSRAM)
   char fallback_status_buffer[STATUS_JSON_BUFFER_SIZE];
   char* json_buffer = (_json_scratch_buffer != nullptr) ? _json_scratch_buffer : fallback_status_buffer;
@@ -4199,12 +4147,9 @@ bool MQTTBridge::publishStatus(uint8_t slot_mask) {
   return all_accepted;
 }
 
-bool MQTTBridge::publishPacket(mesh::Packet* packet, bool is_tx,
-                                bool& has_eligible_target,
-                                const uint8_t* raw_data, int raw_len,
-                                float snr, float rssi) {
-  has_eligible_target = false;
-  if (!packet) return false;
+bool MQTTBridge::publishPacket(QueuedPacket& queued, bool& has_eligible_target) {
+  mesh::Packet* packet = &queued.packet_copy;
+  const bool is_tx = queued.is_tx;
 
   const uint8_t packet_type = packet->getPayloadType();
   const uint8_t eligible_slots = eligiblePacketSlots(packet_type, MSG_PACKETS);
@@ -4240,50 +4185,19 @@ bool MQTTBridge::publishPacket(mesh::Packet* packet, bool is_tx,
   strncpy(origin_id, _device_id, sizeof(origin_id) - 1);
   origin_id[sizeof(origin_id) - 1] = '\0';
 
-  // Firmware rebroadcast "score" for this packet - only meaningful for RX packets
-  // (depends on receive SNR). Recomputed here exactly as Dispatcher::checkRecv() does,
-  // via the radio's packetScore(snr, len); NaN signals "omit" (tx, or no radio).
-  // buildPacketMessage scales it x1000 to match the integer in the serial RX log.
-
   // Build packet message using raw radio data if provided
   int len;
-  if (raw_data && raw_len > 0) {
-    float score = (_radio && !is_tx) ? _radio->packetScore(snr, raw_len) : NAN;
+  if (queued.has_raw_data) {
     len = MQTTMessageBuilder::buildPacketJSONFromRaw(
       _json_scratch_doc,
-      raw_data, raw_len, packet, is_tx, _origin, origin_id,
-      snr, rssi, score, _timezone, active_buffer, active_buffer_size
-    );
-  } else if (!is_tx && _last_raw_data && _last_raw_len > 0 && (millis() - _last_raw_timestamp) < 1000) {
-    float score = _radio ? _radio->packetScore(_last_snr, _last_raw_len) : NAN;
-    len = MQTTMessageBuilder::buildPacketJSONFromRaw(
-      _json_scratch_doc,
-      _last_raw_data, _last_raw_len, packet, is_tx, _origin, origin_id,
-      _last_snr, _last_rssi, score, _timezone, active_buffer, active_buffer_size
+      queued.raw_data, queued.raw_len, packet, is_tx, _origin, origin_id,
+      queued.snr, queued.rssi, queued.score, _timezone, active_buffer, active_buffer_size
     );
   } else {
-    // Reconstruct wire-format bytes from packet (same as MQTTMessageBuilder::packetToHex).
-    // Reached when the queued item carried no captured raw frame, so the "raw" hex field
-    // is re-serialized rather than dropped. Guarded on the packet's own length fields
-    // as well as the destination, for the reasons in canSerializePacket().
-    uint8_t reconstructed[MQTTMessageBuilder::WIRE_SCRATCH_SIZE];
-    uint8_t rlen = 0;
-    if (MQTTMessageBuilder::canSerializePacket(packet, sizeof(reconstructed))) {
-      rlen = packet->writeTo(reconstructed);
-    }
-    if (rlen > 0) {
-      float score = (_radio && !is_tx) ? _radio->packetScore(snr, rlen) : NAN;
-      len = MQTTMessageBuilder::buildPacketJSONFromRaw(
-        _json_scratch_doc,
-        reconstructed, rlen, packet, is_tx, _origin, origin_id,
-        snr, rssi, score, _timezone, active_buffer, active_buffer_size
-      );
-    } else {
-      len = MQTTMessageBuilder::buildPacketJSON(
-        _json_scratch_doc,
-        packet, is_tx, _origin, origin_id, _timezone, active_buffer, active_buffer_size
-      );
-    }
+    len = MQTTMessageBuilder::buildPacketJSON(
+      _json_scratch_doc,
+      packet, is_tx, _origin, origin_id, _timezone, active_buffer, active_buffer_size
+    );
   }
 
   if (len > 0) {
@@ -4451,7 +4365,33 @@ bool MQTTBridge::publishNeighbors() {
 // Queue management
 // ---------------------------------------------------------------------------
 
-void MQTTBridge::queuePacket(mesh::Packet* packet, bool is_tx) {
+void MQTTBridge::capturePacket(QueuedPacket& queued, mesh::Packet* packet, bool is_tx, float score) {
+  memset(&queued, 0, sizeof(QueuedPacket));
+
+  queued.packet_copy = *packet;  // full value copy - safe from Dispatcher free
+  queued.timestamp = millis();
+  queued.is_tx = is_tx;
+  queued.score = score;
+  queued.snr = is_tx ? 0.0f : packet->getSNR();
+  queued.rssi = is_tx ? 0.0f : packet->getRSSI();
+
+  // Consume staged raw data (written by storeRawRadioData() on Core 1, same call sequence).
+  // No mutex needed - both sites run on Core 1 before xQueueSend() crosses the core boundary.
+  if (!is_tx && _staged_raw_valid) {
+    memcpy(queued.raw_data, _staged_raw, _staged_raw_len);
+    queued.raw_len      = _staged_raw_len;
+    queued.has_raw_data = true;
+    queued.snr          = _staged_snr;
+    queued.rssi         = _staged_rssi;
+    _staged_raw_valid   = false;  // consumed; cleared before xQueueSend
+  } else if (MQTTMessageBuilder::canSerializePacket(packet, sizeof(queued.raw_data))) {
+    // TX and RX without a raw capture can both use this packet's wire format.
+    queued.raw_len = packet->writeTo(queued.raw_data);
+    queued.has_raw_data = queued.raw_len > 0;
+  }
+}
+
+void MQTTBridge::queuePacket(mesh::Packet* packet, bool is_tx, float score) {
   if (!_initialized || _stop_requested.load(std::memory_order_acquire)) return;
   #ifdef ESP_PLATFORM
   // Use FreeRTOS queue for thread-safe operation
@@ -4460,34 +4400,7 @@ void MQTTBridge::queuePacket(mesh::Packet* packet, bool is_tx) {
   }
 
   QueuedPacket queued;
-  memset(&queued, 0, sizeof(QueuedPacket));
-
-  queued.packet_copy = *packet;  // full value copy - safe from Dispatcher free
-  queued.timestamp = millis();
-  queued.is_tx = is_tx;
-  queued.snr = 0.0f;
-  queued.rssi = 0.0f;
-
-  // Consume staged raw data (written by storeRawRadioData() on Core 1, same call sequence).
-  // No mutex needed - both sites run on Core 1 before xQueueSend() crosses the core boundary.
-  if (!is_tx && _staged_raw_valid) {
-    if (_staged_raw_len <= (int)sizeof(queued.raw_data)) {
-      memcpy(queued.raw_data, _staged_raw, _staged_raw_len);
-      queued.raw_len    = (uint8_t)_staged_raw_len;
-      queued.has_raw_data = true;
-    }
-    queued.snr          = _staged_snr;
-    queued.rssi         = _staged_rssi;
-    _staged_raw_valid   = false;  // consumed; cleared before xQueueSend
-  } else if (is_tx) {
-    // For TX packets, snapshot the exact serialized wire bytes at enqueue time so
-    // publishPacket() can use the direct raw-data path (not reconstruction fallback).
-    uint8_t tx_len = packet->writeTo(queued.raw_data);
-    if (tx_len > 0) {
-      queued.raw_len = tx_len;
-      queued.has_raw_data = true;
-    }
-  }
+  capturePacket(queued, packet, is_tx, score);
 
   // Try to send to queue (non-blocking)
   if (xQueueSend(_packet_queue_handle, &queued, 0) != pdTRUE) {
@@ -4528,31 +4441,7 @@ void MQTTBridge::queuePacket(mesh::Packet* packet, bool is_tx) {
   }
 
   QueuedPacket& queued = _packet_queue[_queue_tail];
-  memset(&queued, 0, sizeof(QueuedPacket));
-
-  queued.packet_copy = *packet;  // full value copy - safe from Dispatcher free
-  queued.timestamp = millis();
-  queued.is_tx = is_tx;
-  queued.snr = 0.0f;
-  queued.rssi = 0.0f;
-
-  if (!is_tx && _staged_raw_valid) {
-    if (_staged_raw_len <= (int)sizeof(queued.raw_data)) {
-      memcpy(queued.raw_data, _staged_raw, _staged_raw_len);
-      queued.raw_len    = (uint8_t)_staged_raw_len;
-      queued.has_raw_data = true;
-    }
-    queued.snr          = _staged_snr;
-    queued.rssi         = _staged_rssi;
-    _staged_raw_valid   = false;
-  } else if (is_tx) {
-    // Mirror ESP32 path: persist serialized TX bytes directly in queue entry.
-    uint8_t tx_len = packet->writeTo(queued.raw_data);
-    if (tx_len > 0) {
-      queued.raw_len = tx_len;
-      queued.has_raw_data = true;
-    }
-  }
+  capturePacket(queued, packet, is_tx, score);
 
   _queue_tail = (_queue_tail + 1) % MAX_QUEUE_SIZE;
   _queue_count++;
@@ -4583,7 +4472,8 @@ void MQTTBridge::storeRawRadioData(const uint8_t* raw_data, int len, float snr, 
   if (!_initialized || _stop_requested.load(std::memory_order_acquire)) return;
   // Writes into the Core 1-only staging area. No mutex needed: this function and
   // queuePacket() are both called from Core 1 in guaranteed sequence for each packet.
-  if (len > 0 && len <= (int)LAST_RAW_DATA_SIZE) {
+  _staged_raw_valid = false;
+  if (raw_data && len > 0 && len <= (int)sizeof(_staged_raw)) {
     memcpy(_staged_raw, raw_data, len);
     _staged_raw_len   = len;
     _staged_snr       = snr;

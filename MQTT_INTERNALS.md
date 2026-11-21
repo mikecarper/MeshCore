@@ -148,8 +148,9 @@ reconnection per slot.
   `Packet::calculatePacketHash()` -- SHA256 over the payload type and payload (plus
   `path_len` for TRACE), truncated to `MAX_HASH_SIZE`. It is the same value the dispatcher
   uses, so uplinked hashes match the mesh.
-- `score` is recomputed at publish time from the packet's SNR and length via the radio's
-  `packetScore()`, so it matches the value the firmware used on receive.
+- For each received packet, the observer queues its radio profile, the dispatcher's
+  receive-time score, and its wire bytes. If a raw capture is unavailable, the observer
+  serializes the same packet at enqueue time. A retry uses that entry again.
 - Timezone: the JChristensen/Timezone object (`_timezone_storage`, inline since the
   memory-defrag work) is kept current from `timezone_string` via `setRules()`, but
   `formatIsoTimestampForMqtt()` explicitly ignores it -- every published timestamp, time,

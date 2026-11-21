@@ -200,9 +200,10 @@ private:
     bool is_tx;
     float snr;
     float rssi;
+    float score;  // Dispatcher score at reception, before the radio can retune.
     // Raw radio bytes embedded at enqueue time (Core 1), never shared across cores.
     // On non-PSRAM boards the queue is smaller (6 items) to offset the per-item cost.
-    uint8_t raw_data[256];
+    uint8_t raw_data[MAX_TRANS_UNIT];
     uint8_t raw_len;
     bool has_raw_data;
   };
@@ -211,7 +212,6 @@ private:
   static const int MAX_QUEUE_SIZE = 50;
   #else
   // Reduced from 10: raw_data[256] adds ~256 bytes/item; 6x543 ~ 3.3 KB vs old 10x282 ~ 2.8 KB.
-  // Net increase is <500 bytes; _last_raw_data (256 bytes) is eliminated to offset further.
   static const int MAX_QUEUE_SIZE = 6;
   #endif
 
@@ -334,26 +334,12 @@ private:
 
   // Core 1-only staging: written by storeRawRadioData(), consumed by queuePacket().
   // No mutex needed - both call sites run on Core 1 in guaranteed sequence.
-  static const size_t LAST_RAW_DATA_SIZE = 256;
-  uint8_t _staged_raw[LAST_RAW_DATA_SIZE];
-  int     _staged_raw_len   = 0;
+  static_assert(MAX_TRANS_UNIT <= UINT8_MAX, "MQTT frame lengths must fit one byte");
+  uint8_t _staged_raw[MAX_TRANS_UNIT];
+  uint8_t _staged_raw_len   = 0;
   float   _staged_snr       = 0.0f;
   float   _staged_rssi      = 0.0f;
   bool    _staged_raw_valid = false;
-
-  // Core 0-owned copy of the most recent raw data - written only by processPacketQueue()
-  // on Core 0, read only by publishStatus() on Core 0. No mutex required.
-  // On PSRAM boards: heap pointer into PSRAM. On non-PSRAM: inline array in class object.
-  static const size_t LAST_RAW_DATA_SIZE_MEMBER = 256;  // mirrors LAST_RAW_DATA_SIZE
-  #if defined(BOARD_HAS_PSRAM)
-  uint8_t* _last_raw_data;
-  #else
-  uint8_t  _last_raw_data[LAST_RAW_DATA_SIZE_MEMBER];
-  #endif
-  int _last_raw_len;
-  float _last_snr;
-  float _last_rssi;
-  unsigned long _last_raw_timestamp;
 
   // One JSON serialization buffer shared by every publish path - packet, raw, and
   // status all serialize on the bridge task (Core 0), so they are never in flight at
@@ -545,9 +531,7 @@ private:
   bool waitUnlessStopping(uint32_t delay_ms);
   bool initializeWiFiInTask();  // False while an AP owns the shared driver.
   #endif
-  bool publishPacket(mesh::Packet* packet, bool is_tx, bool& has_eligible_target,
-                     const uint8_t* raw_data = nullptr, int raw_len = 0,
-                     float snr = 0.0f, float rssi = 0.0f);
+  bool publishPacket(QueuedPacket& queued, bool& has_eligible_target);
   bool publishRaw(mesh::Packet* packet, bool is_tx, bool& has_eligible_target);
   const MQTTRadio2Info* radio2StatusInfo(MQTTRadio2Info& out, char* radio, size_t radio_size) const;
 #if defined(WITH_MQTT_NEIGHBORS)
@@ -555,7 +539,8 @@ private:
   // neighbors topic. Runs on the MQTT task (Core 0) only.
   bool publishNeighbors();
 #endif
-  void queuePacket(mesh::Packet* packet, bool is_tx);
+  void capturePacket(QueuedPacket& queued, mesh::Packet* packet, bool is_tx, float score);
+  void queuePacket(mesh::Packet* packet, bool is_tx, float score);
   void dequeuePacket();
   bool isAnySlotConnected();
   void refreshNTP();  // Start a lightweight scheduled NTP refresh (non-blocking)
@@ -640,7 +625,8 @@ public:
   bool isStopping() const { return _lifecycle.isStopInProgress(); }
   bool isRunning() const override { return _initialized; }
   void loop() override;
-  void onPacketReceived(mesh::Packet *packet) override;
+  void onPacketReceived(mesh::Packet* packet) override { onPacketReceived(packet, NAN); }
+  void onPacketReceived(mesh::Packet* packet, float score);
   void sendPacket(mesh::Packet *packet) override;
 
   /**

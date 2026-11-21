@@ -1391,9 +1391,8 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
 #endif
 
 #ifdef WITH_MQTT_BRIDGE
-  if (_prefs.bridge_enabled) {
-    // Store raw radio data for MQTT messages
-    if (mqtt_bridge) mqtt_bridge->storeRawRadioData(raw, len, snr, rssi);
+  if (mqtt_bridge && mqtt_bridge->isRunning()) {
+    mqtt_bridge->storeRawRadioData(raw, len, snr, rssi);
   }
 #endif
 }
@@ -1412,7 +1411,7 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
 #endif
 #ifdef WITH_MQTT_BRIDGE
   // MQTT bridge: always feed RX packets - bridge decides based on mqtt.rx setting
-  if (mqtt_bridge && mqtt_bridge->isRunning()) mqtt_bridge->onPacketReceived(pkt);
+  if (mqtt_bridge && mqtt_bridge->isRunning()) mqtt_bridge->onPacketReceived(pkt, score);
 #elif defined(WITH_BRIDGE)
   // Non-MQTT bridge: use bridge.source setting
   AbstractBridge* active_bridge = activeBridge();
