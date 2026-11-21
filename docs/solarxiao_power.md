@@ -12,6 +12,11 @@ saved-policy reset require local USB. Commands do not change RF settings.
 
 ## Automatic detection and manual overrides
 
+SolarXiao repeaters wait until 45 seconds after a cold boot before relaying
+LoRa packets. They can receive traffic, answer admin requests and check the
+charger during that time. At 45 seconds the saved repeat setting applies.
+Software resets and watchdog resets skip the delay.
+
 There are three power profiles: `auto`, `basic` and `mppt`. Base and Advanced
 share `basic` because their onboard power telemetry and software controls are
 the same; their different analog charger designs require no different driver.

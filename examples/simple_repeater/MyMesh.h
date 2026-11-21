@@ -1197,6 +1197,9 @@ protected:
   }
 
   bool allowPacketForward(const mesh::Packet* packet) override;
+#if defined(MESH_SOLARXIAO_POWER) && MESH_SOLARXIAO_POWER
+  bool waitingToRepeatAfterColdBoot() const;
+#endif
 #if MESH_ENABLE_FLOOD_PROFILE_POLICY
   bool deferredFloodCandidate(const mesh::Packet* packet, uint8_t ingress, bool consume) override;
 #endif

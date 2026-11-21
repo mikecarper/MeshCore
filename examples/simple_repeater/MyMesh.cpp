@@ -1203,8 +1203,21 @@ bool MyMesh::floodChannelDataHopApplies(const mesh::Packet* packet) const {
   return max_hops == FLOOD_CHANNEL_HOPS_ALL || packet->getPathHashCount() > max_hops;
 }
 
+#if defined(MESH_SOLARXIAO_POWER) && MESH_SOLARXIAO_POWER
+bool MyMesh::waitingToRepeatAfterColdBoot() const {
+  constexpr uint32_t delay_ms = 45000;
+  // Include setup time. The extended uptime keeps millis() rollover from
+  // starting a second hold on a node that has been running for weeks.
+  return uptime_millis < delay_ms && board.getResetReason() == 0
+      && uptime_millis + uint32_t(millis() - last_millis) < delay_ms;
+}
+#endif
+
 bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   if (!packet) return false;
+#if defined(MESH_SOLARXIAO_POWER) && MESH_SOLARXIAO_POWER
+  if (waitingToRepeatAfterColdBoot()) return false;
+#endif
   if (!_cli.batteryAllowsForward(packet->isRouteFlood())) return false;
   if (_prefs.disable_fwd && !(_prefs.trace_when_repeat_off == 1 && packet
       && packet->isRouteDirect() && packet->getPayloadType() == PAYLOAD_TYPE_TRACE)) return false;
@@ -1303,6 +1316,9 @@ bool MyMesh::deferredFloodCandidate(const mesh::Packet* packet, uint8_t ingress,
 #endif
 
 bool MyMesh::allowPacketTransmit(const mesh::Packet* packet) const {
+#if defined(MESH_SOLARXIAO_POWER) && MESH_SOLARXIAO_POWER
+  if (packet && packet->forwarded && waitingToRepeatAfterColdBoot()) return false;
+#endif
   if (!_cli.batteryAllowsTransmit(packet)) return false;
   // Enforce on the final transmit profile too, including cross-profile copies
   // already queued before a setting changed. Local replies stay available.
