@@ -21,8 +21,12 @@ def main():
     parser.add_argument("--libdeps", type=Path, help="RAK Sensor PlatformIO library directory")
     parser.add_argument("--sdk", type=Path, help="Find My SDK v2.4.2 module (A only)")
     parser.add_argument("--product-plan", type=Path, help="Private Find My product plan C file (A only)")
+    parser.add_argument("--proximity", action="store_true",
+                        help="C only: broadcast Sidewalk presence without requesting location uplinks")
     args = parser.parse_args()
     network = SLOTS.get(args.network, args.network)
+    if args.proximity and network != "sidewalk":
+        parser.error("--proximity applies only to C (Sidewalk)")
     if network == "findmy":
         if not args.sdk:
             parser.error("A (Find My) requires --sdk pointing to the Find My SDK v2.4.2 module")
@@ -38,9 +42,12 @@ def main():
         parser.error("--sdk and --product-plan apply only to A (Find My)")
     libdeps = args.libdeps or EXAMPLES.parent / ".pio/libdeps/RAK_WisMesh_Tag_sensor"
     build = args.build_dir.resolve()
+    options = []
+    if network == "sidewalk":
+        options.append("-DCONFIG_RAK_SIDEWALK_PROXIMITY=" + ("y" if args.proximity else "n"))
     subprocess.run(["west", "build", "--no-sysbuild", "-b", "rak4631/nrf52840", "-d", str(build),
                     str(EXAMPLES / ("rak_" + network)), "--", "-DRAK_TAG_ROLE=" + args.role,
-                    "-DMESHCORE_TAG_LIBDEPS=" + str(libdeps.resolve())], check=True)
+                    "-DMESHCORE_TAG_LIBDEPS=" + str(libdeps.resolve()), *options], check=True)
     write_tracker_uf2(build, args.output)
 
 

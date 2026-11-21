@@ -128,20 +128,24 @@ static int start(void)
     err = sid_init(&config, &handle);
     if (err)
         return err;
-    set_stage("location init");
-    err = sid_location_init(handle, &location);
-    if (!err) {
-        set_stage("BLE start");
-        err = sid_start(handle, SID_LINK_TYPE_1);
-        if (err)
-            sid_location_deinit(handle);
+    if (!IS_ENABLED(CONFIG_RAK_SIDEWALK_PROXIMITY)) {
+        set_stage("location init");
+        err = sid_location_init(handle, &location);
+        if (err) {
+            sid_deinit(handle);
+            return err;
+        }
     }
+    set_stage("BLE start");
+    err = sid_start(handle, SID_LINK_TYPE_1);
     if (err) {
+        if (!IS_ENABLED(CONFIG_RAK_SIDEWALK_PROXIMITY))
+            sid_location_deinit(handle);
         sid_deinit(handle);
         return err;
     }
     set_stage("running");
-    atomic_set(&location_active, 1);
+    atomic_set(&location_active, !IS_ENABLED(CONFIG_RAK_SIDEWALK_PROXIMITY));
     atomic_set(&running, 1);
     return 0;
 }
@@ -149,15 +153,25 @@ static int start(void)
 static int status_cmd(const struct shell *sh, size_t argc, char **argv)
 {
     k_mutex_lock(&stage_lock, K_FOREVER);
-    shell_print(sh, "%s; registered=%ld cloud_ble=%ld gateway_location=%ld pending=%ld sent=%ld last_error=%ld",
-                stage, (long)atomic_get(&registered), (long)atomic_get(&cloud),
-                (long)atomic_get(&gateway_location), (long)atomic_get(&pending), (long)atomic_get(&sent), (long)atomic_get(&last_error));
+    if (IS_ENABLED(CONFIG_RAK_SIDEWALK_PROXIMITY)) {
+        shell_print(sh, "mode=proximity %s registered=%ld cloud_ble=%ld last_error=%ld",
+                    stage, (long)atomic_get(&registered), (long)atomic_get(&cloud),
+                    (long)atomic_get(&last_error));
+    } else {
+        shell_print(sh, "%s; registered=%ld cloud_ble=%ld gateway_location=%ld pending=%ld sent=%ld last_error=%ld",
+                    stage, (long)atomic_get(&registered), (long)atomic_get(&cloud),
+                    (long)atomic_get(&gateway_location), (long)atomic_get(&pending), (long)atomic_get(&sent), (long)atomic_get(&last_error));
+    }
     k_mutex_unlock(&stage_lock);
     return 0;
 }
 
 static int request_cmd(const struct shell *sh, size_t argc, char **argv)
 {
+    if (IS_ENABLED(CONFIG_RAK_SIDEWALK_PROXIMITY)) {
+        shell_error(sh, "This proximity image sends presence beacons. Use the location image for gateway requests.");
+        return -ENOTSUP;
+    }
     bool locate = !strcmp(argv[0], "locate");
     if (!atomic_get(&running) || (locate && (!atomic_get(&registered) || !atomic_get(&cloud)))) {
         shell_error(sh, "Check sidewalk status. Location needs a registered tag and an active cloud BLE link.");
@@ -198,13 +212,19 @@ int main(void)
 
     int64_t next_connect = 0, next_location = 0, pending_deadline = 0;
     for (;;) {
-        int64_t now = k_uptime_get();
         err = sid_process(handle);
         if (err)
             atomic_set(&last_error, err);
         if (atomic_get(&reboot_request))
             sys_reboot(SYS_REBOOT_COLD);
 
+        if (IS_ENABLED(CONFIG_RAK_SIDEWALK_PROXIMITY)) {
+            // The SDK owns BLE advertising, registration and clock maintenance.
+            k_sem_take(&wake, K_FOREVER);
+            continue;
+        }
+
+        int64_t now = k_uptime_get();
         bool force_connect = atomic_clear(&connect_request);
         if (force_connect || (!atomic_get(&cloud) && now >= next_connect)) {
             err = sid_ble_bcn_connection_request(handle, true);

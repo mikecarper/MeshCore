@@ -1,0 +1,9 @@
+mainmenu "RAK Sidewalk tracker"
+
+config RAK_SIDEWALK_PROXIMITY
+    bool "Use native Sidewalk presence beacons without application connection or location requests"
+    help
+      Run the Sidewalk BLE stack and process its events. Gateway location
+      uploads and application-initiated connections are disabled in this image.
+
+source "Kconfig.zephyr"

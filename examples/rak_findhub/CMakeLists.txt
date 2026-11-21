@@ -14,3 +14,4 @@ target_include_directories(app PRIVATE "${fp_sample}/.." "${fp_sample}/include" 
 zephyr_linker_sources(SECTIONS "${fp_src}/factory_reset_callbacks.ld")
 zephyr_linker_sources(DATA_SECTIONS "${fp_src}/ui/request_listener.ld")
 include(../rak_findmy/mesh.cmake)
+include(../rak_location/ping_monitor.cmake)

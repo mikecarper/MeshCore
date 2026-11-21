@@ -20,3 +20,4 @@ endif()
 
 include(mesh.cmake)
 include(nordic_sdk.cmake)
+include(../rak_location/ping_monitor.cmake)

@@ -16,13 +16,46 @@ provides the full Sensor and Companion interfaces.
 | --- | --- | --- |
 | A · Apple Find My | `dog status` and `tag status` | A product plan and the individual accessory's Apple-issued credentials. See the [iPhone setup guide](../rak_findmy/README.md). |
 | B · Android / Google Find Hub | `dog status` and `findhub status` | Your registered Find Hub-capable Google model and a compatible Android phone configured for that model |
-| C · Amazon Sidewalk | `dog status` and `sidewalk status` | An AWS Sidewalk device and credentials, positioning enabled with a destination, and a participating gateway |
+| C · Amazon Sidewalk presence | `dog status` and `sidewalk status` | A registered AWS Sidewalk device, a participating gateway and AWS proximity events enabled |
+| C · Amazon Sidewalk gateway location | `dog status` and `sidewalk status` | An AWS Sidewalk device and credentials, positioning enabled with a destination, and a participating gateway |
 
 Each image runs one commercial network. Changing a Bluetooth address does
 not enroll an accessory. Before switching a paired item to a different network,
 remove it from the original owner's app and complete that service's reset or
 deregistration. Google specifies one active finding network per device.
 [Google switchable protocol guidelines](https://developers.google.com/nearby/fast-pair/specifications/extensions/fmdn#switchable-protocol-guidelines)
+
+## Test one-way sightings
+
+For a Sidewalk last-seen timestamp, flash **C presence** and provision the tag
+with its own AWS manufacturing data as described below. In AWS IoT Wireless,
+enable proximity events for the registered wireless device. In the AWS IoT
+MQTT test client, subscribe to the following topic after replacing the final
+placeholder with its wireless device ID.
+
+```text
+$aws/iotwireless/events/proximity/+/sidewalk/wireless_devices/wireless_device_id/<WirelessDeviceId>
+```
+
+Open the USB console and run `sidewalk status` to check for `mode=proximity`
+and `registered=1`. Bring the tag near a participating gateway. AWS filters
+received beacons on a ten-minute interval. A `beacon_discovered` event with
+your device ID and a timestamp confirms a sighting. These events contain no
+coordinates. The Sidewalk task sleeps between SDK events and makes no
+connection or location requests. The Sidewalk stack can still exchange traffic
+for registration or clock maintenance.
+[AWS proximity events](https://docs.aws.amazon.com/iot-wireless/latest/developerguide/iot-sidewalk-proximity-events.html)
+and [Sidewalk Bluetooth behavior](https://docs.sidewalk.amazon/specifications/sidewalk-protocol-spec/ble-protocol-stack/amazon-sidewalk-ble-protocol-stack.html)
+
+On any individual A, B or C build, run `finder ping` in the USB console.
+`payload_updates` counts matching advertising payloads accepted by the tag's
+Bluetooth host. `advertising_starts` counts successful starts with one of
+those payloads. The controller repeats each advertisement on its own, so these
+counters can stay steady while the radio continues to transmit. Apple counts
+separated-mode frames after enrollment. Android counts Find Hub frames after
+provisioning. Sidewalk counts its service and manufacturer data together,
+including enrollment beacons. Check the owner's Find My or Find Hub app, or
+the AWS event above, to confirm a network sighting.
 
 ## First test with an unprovisioned tag
 
@@ -119,6 +152,8 @@ RadioLib, Crypto and MicroNMEA dependencies, or pass their directory
 using `--libdeps`. Use a separate build directory for each network and role.
 
 ```sh
+python /path/to/MeshCore/examples/rak_location/build.py C sensor --proximity \
+  --build-dir /work/rak-presence-sensor --output /work/RAK_C_presence_sensor.uf2
 python /path/to/MeshCore/examples/rak_location/build.py sidewalk sensor \
   --build-dir /work/rak-sidewalk-sensor --output /work/RAK_Sidewalk_sensor.uf2
 python /path/to/MeshCore/examples/rak_location/build.py findhub companion \
@@ -143,6 +178,15 @@ MeshCore worker is scheduled with both blank and unreadable storage.
 
 ```sh
 python examples/rak_location/tests/blank_boot.py sidewalk /work/rak-sidewalk-sensor/zephyr/zephyr.elf
+```
+
+Run the advertising-counter regression for any native build and the
+event-loop regression for a C presence build. The tests execute the firmware
+in an ARM emulator with simulated Bluetooth and Sidewalk SDK responses.
+
+```sh
+python examples/rak_location/tests/native_pings.py C /work/rak-presence-sensor/zephyr/zephyr.elf
+python examples/rak_location/tests/sidewalk_presence.py /work/rak-presence-sensor/zephyr/zephyr.elf
 ```
 
 The [three-library controller test](controller_test/README.md) links all three
