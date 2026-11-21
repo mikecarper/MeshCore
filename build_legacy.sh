@@ -4917,13 +4917,6 @@ apply_companion_radio_full_profile() {
       ;;
   esac
 
-  # Keep queue capacity and free ordinary heap for transport and telemetry retries.
-  case "${env_name,,}" in
-    tbeam_companion_radio_full|heltec_v2_companion_radio_full)
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=4"
-      ;;
-  esac
-
   case "${env_name,,}" in
     nibble_screen_connect_companion_radio_full_|nibble_zero_connect_companion_radio_full_)
       # The source workspace borrows idle queue slots under the same guarded
@@ -4938,6 +4931,8 @@ apply_companion_radio_full_profile() {
   # avoiding the larger retained Packet representation. This recovers static
   # DRAM without reducing either the queue or the required heap margin.
   case "${env_name,,}" in
+    heltec_v2_companion_radio_full|\
+    tbeam_companion_radio_full|\
     heltec_wireless_paper_companion_radio_full|\
     heltec_wireless_tracker_companion_radio_full|\
     lilygo_tlora_v2_1_1_6_companion_radio_full|\
