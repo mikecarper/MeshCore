@@ -1,7 +1,22 @@
 #pragma once
 
-// Board opt-in: keep the short retune path resident instead of refetching it
-// from flash after application/UI/network work has displaced the I-cache.
+// The ARM linker scripts collect these input sections in initialized
+// RAM, which the core copies from flash before setup(). Use separate sections
+// so the linker can discard unused functions. This is task-context code.
+#if defined(ESP32_PLATFORM)
+#define MC_RADIO_RETUNE_ATTR(name) __attribute__((section(".iram1.radio_" #name), noinline))
+#elif defined(NRF52_PLATFORM)
+#define MC_RADIO_RETUNE_ATTR(name) __attribute__((section(".data.radio_" #name), noinline))
+#elif defined(STM32_PLATFORM)
+#define MC_RADIO_RETUNE_ATTR(name) __attribute__((section(".RamFunc.radio_" #name), noinline))
+#elif defined(RP2040_PLATFORM)
+#define MC_RADIO_RETUNE_ATTR(name) __attribute__((section(".time_critical.radio_" #name), noinline))
+#else
+#define MC_RADIO_RETUNE_ATTR(name)
+#endif
+
+// ESP32 builds with additional instruction RAM can also keep chip-specific
+// helpers resident.
 // This is code placement only, not permission to call the driver in an ISR or
 // with flash disabled: its unannotated RadioLib/SDK callees can still use flash.
 #ifndef MC_ESP32_RADIO_FAST_CODE
@@ -15,4 +30,12 @@
 #define MC_RADIO_FAST_CODE_ATTR IRAM_ATTR __attribute__((noinline))
 #else
 #define MC_RADIO_FAST_CODE_ATTR
+#endif
+
+// Size-limited images spend their RAM on the chip parameter writes. The
+// default places the switching controller and receive restart in RAM.
+#if defined(MC_RADIO_RETUNE_DRIVER_ONLY) && MC_RADIO_RETUNE_DRIVER_ONLY
+#define MC_RADIO_SWITCH_CONTROL(name)
+#else
+#define MC_RADIO_SWITCH_CONTROL(name) MC_RADIO_RETUNE_ATTR(name)
 #endif

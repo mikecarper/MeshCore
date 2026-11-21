@@ -5,6 +5,7 @@ on:
     branches: [main, dev]
     paths:
       - 'src/**'
+      - 'test/check_radio_retune_ram.py'
       - 'include/**'
       - 'lib/**'
       - 'examples/**'
@@ -22,6 +23,7 @@ on:
     branches: [main, dev]
     paths:
       - 'src/**'
+      - 'test/check_radio_retune_ram.py'
       - 'include/**'
       - 'lib/**'
       - 'examples/**'
@@ -77,3 +79,6 @@ jobs:
 
       - name: Build ${{ matrix.environment }}
         run: bash tools/ci/pio_retry.sh run -e ${{ matrix.environment }}
+
+      - name: Verify radio switching code in RAM
+        run: python test/check_radio_retune_ram.py .pio/build/${{ matrix.environment }}/firmware.elf

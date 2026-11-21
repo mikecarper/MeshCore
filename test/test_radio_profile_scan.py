@@ -103,6 +103,7 @@ struct RadioLibWrapper {
   void endReconfigure(bool);
   void setProfileStandbyWarm(bool);
   void serviceProfileScan();
+  bool programProfile(const mesh::RadioProfileParams&, uint16_t);
   mesh::RadioParamApplyResult tuneProfile(uint8_t);
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t);
   mesh::RadioParamApplyResult prepareTransmitProfile(uint8_t, bool);
@@ -441,6 +442,11 @@ int main() {
   }
 }
 '''
+
+# All scan fixtures use the same production profile programming.
+HARNESS = HARNESS.replace("@METHODS@", "inline " + method(
+    (ROOT / "src/helpers/radiolib/RadioLibWrappers.cpp").read_text(),
+    "bool RadioLibWrapper::programProfile(") + "\n@METHODS@")
 
 class ProfileScanTest(unittest.TestCase):
     def test_production_scan_and_transitions(self):

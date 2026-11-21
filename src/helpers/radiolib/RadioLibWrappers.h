@@ -270,6 +270,7 @@ protected:
 #if MESH_ENABLE_MORSE_RX
   bool serviceMorseRx();
 #endif
+  bool programProfile(const mesh::RadioProfileParams& p, uint16_t preamble);
   mesh::RadioParamApplyResult tuneProfile(uint8_t profile);
   void serviceProfileScan();
 

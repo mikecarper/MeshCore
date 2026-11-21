@@ -141,6 +141,7 @@ struct Chip : LR2021 {
  int startReceiveMode(){return chip.startReceive();}
  void endReconfigure(bool);
  void serviceProfileScan();
+ bool programProfile(const mesh::RadioProfileParams&, uint16_t);
  mesh::RadioParamApplyResult tuneProfile(uint8_t);
  '''
  source=source.replace('struct RadioLibWrapper {','struct RadioLibWrapper {'+fields)
@@ -148,7 +149,7 @@ struct Chip : LR2021 {
  assert old in source;source=source.replace(old,'void startRecv();')
  source+='\n'+'\n'.join(method(src,sig)for sig in (
   'void RadioLibWrapper::startRecv(', 'void RadioLibWrapper::endReconfigure(',
-  'mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(',
+  'bool RadioLibWrapper::programProfile(', 'mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(',
   'void RadioLibWrapper::serviceProfileScan('))
  if family=='CustomLR1110':
   source=source.replace('SX1262ProfileSwitchState _profileSwitch','LR1110ProfileSwitchState _profileSwitch')

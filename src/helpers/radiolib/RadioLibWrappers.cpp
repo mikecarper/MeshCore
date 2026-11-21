@@ -463,7 +463,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::trySetTxPower(int8_t dbm) {
   return status == RADIOLIB_ERR_NONE ? Result::APPLIED : Result::FAILED;
 }
 
-MC_RADIO_FAST_CODE_ATTR uint8_t RadioLibWrapper::beginReconfigure() {
+MC_RADIO_SWITCH_CONTROL(begin_reconfigure) uint8_t RadioLibWrapper::beginReconfigure() {
 #if MESH_WARM_RX_REFRESH
   if(_rxps_pulse.pending) return 2;
 #endif
@@ -606,7 +606,7 @@ MC_RADIO_FAST_CODE_ATTR uint8_t RadioLibWrapper::beginReconfigure() {
   return resume_rx;
 }
 
-MC_RADIO_FAST_CODE_ATTR void RadioLibWrapper::endReconfigure(bool resume_rx) {
+MC_RADIO_SWITCH_CONTROL(end_reconfigure) void RadioLibWrapper::endReconfigure(bool resume_rx) {
   if (resume_rx) startRecv();
 }
 
@@ -878,7 +878,20 @@ bool RadioLibWrapper::validateProfile(const mesh::RadioProfileParams& p) const {
 #endif
 }
 
-MC_RADIO_FAST_CODE_ATTR mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
+MC_RADIO_RETUNE_ATTR(program_profile) bool RadioLibWrapper::programProfile(
+    const mesh::RadioProfileParams& p, uint16_t preamble) {
+  _physical_preamble = preamble;
+  if (!applyParams(p.freq, p.bw, p.sf, p.cr)) return false;
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE || MESH_ENABLE_HOST_KISS
+  // Changing only the protocol still changes the sync word. Conversely a
+  // failed write must not publish the new generation or cached wire format.
+  if ((_physical_protocol != p.protocol || _profile_refresh_required) && !applyProtocol(p.protocol)) return false;
+  _physical_protocol = p.protocol;
+#endif
+  return true;
+}
+
+MC_RADIO_SWITCH_CONTROL(tune_profile) mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
 #if MESH_ENABLE_TX_BEACONS
   if (_beacon_owned && !_beacon_restoring) return mesh::RadioParamApplyResult::BUSY;
 #endif
@@ -946,16 +959,7 @@ MC_RADIO_FAST_CODE_ATTR mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile
 #if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE || MESH_ENABLE_HOST_KISS
   const auto old_protocol = _physical_protocol;
 #endif
-  _physical_preamble = preamble;
-  bool applied = applyParams(p.freq, p.bw, p.sf, p.cr);
-#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE || MESH_ENABLE_HOST_KISS
-  // Changing only the protocol still changes the sync word. Conversely a
-  // failed write must not publish the new generation or cached wire format.
-  if (applied && (_physical_protocol != p.protocol || _profile_refresh_required)) {
-    applied = applyProtocol(p.protocol);
-  }
-  if (applied) _physical_protocol = p.protocol;
-#endif
+  bool applied = programProfile(p, preamble);
   if (applied) {
     cacheParams(p.freq, p.bw, p.sf, p.cr);
     _active_profile = profile;
@@ -2997,7 +3001,7 @@ void RadioLibWrapper::loop() {
   }
 }
 
-MC_RADIO_FAST_CODE_ATTR void RadioLibWrapper::startRecv() {
+MC_RADIO_SWITCH_CONTROL(start_recv) void RadioLibWrapper::startRecv() {
 #if MESH_WARM_RX_REFRESH
   if(_rxps_pulse.owns()) return;
 #endif
