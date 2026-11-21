@@ -104,15 +104,16 @@ public:
   }
   int16_t getPacketType(uint8_t* type) {*type=modem;return type_result;}
   int16_t getRxFifoLevel(uint16_t* size) {*size=fifo;return fifo_result;}
-  size_t getPacketLength() {return 4;}
+  virtual size_t getPacketLength(bool=true) {return 4;}
   int16_t clearRxFifo() {++clears;fifo=0;return 0;}
-  int16_t readData(uint8_t*,size_t) {++reads;sequence.push_back(4);return read_result;}
+  int16_t readData(uint8_t*,size_t) {getPacketLength();++reads;sequence.push_back(4);return read_result;}
 };
 class CustomLR2021:public LR2021 {
   mesh::lr2021::XoscTrimSelection _xosc_trim;
   int32_t _last_frequency_error_hz=0;
   float _last_frequency_error_mhz=0;
   uint32_t _last_frequency_error_at=0;
+  uint16_t _reported_rx_length=0;
   bool _last_frequency_error_valid=false;
 public:
 @METHODS@
@@ -323,7 +324,7 @@ class LR2021CalibrationTests(unittest.TestCase):
                       "int16_t applyXoscTrim(uint8_t a, uint8_t b)", "int16_t restoreXoscTrim()",
                       "int16_t readPacketFrequencyErrorHz(int32_t& value)",
                       "void formatFrequencyError(char* reply, size_t capacity) const",
-                      "int16_t readData(uint8_t* data, size_t len) override"]
+                      "size_t getPacketLength(", "int16_t readData(uint8_t* data, size_t len) override"]
         methods = "\n".join(method(source, signature).replace(" override", "") for signature in signatures)
         for flags in [("-DLR2021_TCXO_VOLTAGE=0",), ("-DLR2021_TCXO_VOLTAGE=1",), ()]:
             with self.subTest(flags=flags):

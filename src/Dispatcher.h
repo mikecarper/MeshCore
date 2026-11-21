@@ -248,7 +248,7 @@ public:
   virtual void onReceiveProcessed() { }
 
   /**
-   * \returns  estimated transmit air-time needed for packet of 'len_bytes', in milliseconds.
+   * \returns  estimated transmit air-time needed for packet of 'len_bytes', in milliseconds, or zero if unavailable.
   */
   virtual uint32_t getEstAirtimeFor(int len_bytes) = 0;
 

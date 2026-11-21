@@ -38,7 +38,7 @@ static_assert(ota::OTA_SPEED_DEFAULT == 1.0f, "Fixed packet pacing requires the 
 #define MIN_CAD_FAIL_MAX_DURATION_MS     500UL
 #define RADIO_PREPARE_BUSY_GRACE_MS      8000UL
 
-static uint32_t validPrepareBusyAirtime(uint32_t airtime) {
+static uint32_t validRadioAirtime(uint32_t airtime) {
   // RadioLib estimates originate as 32-bit microseconds. An impossible or
   // error-sentinel estimate must not retain a failed packet for days.
   return airtime <= UINT32_MAX / 1000 ? airtime : 0;
@@ -240,7 +240,6 @@ bool Dispatcher::startOutboundTransmit() {
   memcpy(&raw[len], outbound->payload, outbound->payload_len);
   len += outbound->payload_len;
 
-  uint32_t max_airtime = _radio->getEstAirtimeFor(len) * 3 / 2;
   outbound_restore_cr = 0;
   uint8_t default_cr = getDefaultTxCodingRate();
   if (_radio->profiles()) default_cr = _radio->profiles()->params(outbound->radio_profile).cr;
@@ -249,11 +248,22 @@ bool Dispatcher::startOutboundTransmit() {
       && outbound->tx_cr != default_cr) {
     if (_radio->setCodingRate(outbound->tx_cr)) {
       outbound_restore_cr = default_cr;
-      max_airtime = _radio->getEstAirtimeFor(len) * 3 / 2;
     } else {
       MESH_DEBUG_PRINTLN("%s Dispatcher::startOutboundTransmit(): WARN: failed to set packet CR%d",
                          getLogDateTime(), (uint32_t)outbound->tx_cr);
     }
+  }
+  // Cached estimates can still describe the default CR after a packet-level
+  // override. A missing estimate would interrupt TX on the next tick.
+  const uint32_t airtime = validRadioAirtime(outbound_restore_cr
+      ? _radio->getProfileAirtime(outbound->radio_profile, len, outbound->tx_cr)
+      : _radio->getEstAirtimeFor(len));
+  if (!airtime) {
+#if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
+    lab_last_start_block = PreTransmitBlock::Error;
+#endif
+    restoreOutboundTxOverrides();
+    return false;
   }
   outbound_start = _ms->getMillis();
   if (!_radio->startSendRaw(raw, len)) {
@@ -265,7 +275,7 @@ bool Dispatcher::startOutboundTransmit() {
     restoreOutboundTxOverrides();
     return false;
   }
-  outbound_expiry = futureMillis(max_airtime);
+  outbound_expiry = futureMillis(airtime * 3 / 2);
 
 #if MESH_PACKET_LOGGING
   if (isUsbPacketLoggingAllowed()) {
@@ -581,7 +591,7 @@ bool Dispatcher::checkForeignRadioSend() {
   }
   if (foreign_radio_retry_at && (int32_t)(now - foreign_radio_retry_at) < 0) return false;
   updateTxBudget();
-  const uint32_t airtime = validPrepareBusyAirtime(
+  const uint32_t airtime = validRadioAirtime(
       _radio->getProfileAirtime(foreign_radio_profile, foreign_radio_length));
   if (!airtime) { finishForeignRadioFrame(false, false); return false; }
   if (tx_budget_ms < airtime / MIN_TX_BUDGET_AIRTIME_DIV) {
@@ -593,8 +603,8 @@ bool Dispatcher::checkForeignRadioSend() {
   const auto prepared = _radio->prepareTransmitProfile(foreign_radio_profile);
   if (prepared == RadioParamApplyResult::BUSY) {
     if (!foreign_radio_prepare_deadline) {
-      uint32_t maximum = validPrepareBusyAirtime(_radio->getProfileAirtime(0, MAX_TRANS_UNIT));
-      const uint32_t other = validPrepareBusyAirtime(_radio->getProfileAirtime(1, MAX_TRANS_UNIT));
+      uint32_t maximum = validRadioAirtime(_radio->getProfileAirtime(0, MAX_TRANS_UNIT));
+      const uint32_t other = validRadioAirtime(_radio->getProfileAirtime(1, MAX_TRANS_UNIT));
       if (other > maximum) maximum = other;
       foreign_radio_prepare_deadline = now + maximum * 3 / 2 + RADIO_PREPARE_BUSY_GRACE_MS;
       if (!foreign_radio_prepare_deadline) foreign_radio_prepare_deadline = 1;
@@ -1083,9 +1093,9 @@ void Dispatcher::loop() {
           // A frame already being received may legitimately own either scan
           // profile. Allow its longest full-packet airtime plus recovery grace.
           // This timer covers only prepare BUSY, not ordinary CAD backoff.
-          uint32_t airtime = validPrepareBusyAirtime(_radio->getProfileAirtime(0, MAX_TRANS_UNIT));
+          uint32_t airtime = validRadioAirtime(_radio->getProfileAirtime(0, MAX_TRANS_UNIT));
           if (isDualRadioActive()) {
-            const uint32_t other = validPrepareBusyAirtime(_radio->getProfileAirtime(1, MAX_TRANS_UNIT));
+            const uint32_t other = validRadioAirtime(_radio->getProfileAirtime(1, MAX_TRANS_UNIT));
             if (other > airtime) airtime = other;
           }
           const uint32_t timeout = airtime * 3 / 2 + RADIO_PREPARE_BUSY_GRACE_MS;
@@ -1771,9 +1781,13 @@ void Dispatcher::checkSend() {
   }
   updateTxBudget();
   
-  uint32_t est_airtime = pending && _radio->profiles()
+  uint32_t est_airtime = validRadioAirtime(pending && _radio->profiles()
       ? _radio->getProfileAirtime(pending->radio_profile, MAX_TRANS_UNIT)
-      : _radio->getEstAirtimeFor(MAX_TRANS_UNIT);
+      : _radio->getEstAirtimeFor(MAX_TRANS_UNIT));
+  if (!est_airtime && pending) {
+    est_airtime = validRadioAirtime(_radio->getProfileAirtime(
+        pending->radio_profile, pending->getRawLength(), pending->tx_cr));
+  }
   if (tx_budget_ms < est_airtime / MIN_TX_BUDGET_AIRTIME_DIV) {
     float duty_cycle = 1.0f / (1.0f + getAirtimeBudgetFactor());
     unsigned long needed = est_airtime / MIN_TX_BUDGET_AIRTIME_DIV - tx_budget_ms;

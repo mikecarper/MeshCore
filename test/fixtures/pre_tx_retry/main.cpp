@@ -24,7 +24,8 @@ class Radio : public mesh::Radio {
   void clearPreTransmitBlock() override {block=mesh::PreTransmitBlock::None;}
   mesh::PreTransmitBlock takePreTransmitBlock() override {auto b=block;block=mesh::PreTransmitBlock::None;return b;}
   int recvRaw(uint8_t*,int) override{return 0;}
-  uint32_t getEstAirtimeFor(int) override{return 1;}
+  uint32_t packet_airtime=1;
+  uint32_t getEstAirtimeFor(int len) override{return len==MAX_TRANS_UNIT ? 1 : packet_airtime;}
   float packetScore(float,int) override{return 0;}
   bool isInRecvMode() const override{return true;}
   bool startSendRaw(const uint8_t* raw,int len) override {
@@ -52,6 +53,11 @@ struct Fixture {
  void loop(uint32_t t){c.now=t;d.loop();}
 };
 int main(){
+ {Fixture f;f.r.packet_airtime=0;f.r.outcomes={Radio::Success};
+  auto* packet=f.queue(12,1);f.loop(101);
+  assert(!f.r.calls && f.m.getOutboundTotal()==1 && packet->w12_pre_tx_deadline==30101);
+  f.r.packet_airtime=1;f.loop(302);assert(f.r.calls==1);
+  f.loop(303);assert(f.d.complete==1 && !f.d.failed);}
  {Fixture f;f.r.outcomes={Radio::Busy,Radio::Success,Radio::Success};auto*low=f.queue(11,4);
   f.loop(101);assert(f.r.calls==1 && f.m.getOutboundTotal()==1 && !f.d.failed && low->w12_pre_tx_deadline==30101);
   f.queue(22,0);f.loop(102);assert(f.r.calls==2 && f.r.ids[1]==22);f.loop(103);assert(f.d.complete==1);

@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <initializer_list>
 #include <helpers/radiolib/ESP32RadioTrace.h>
 
 using namespace mesh::radiotrace;
@@ -92,6 +93,11 @@ static void transmitBounds() {
   t.irq(&radio, Base + 500010, Base + 500020, 0, 1);
   t.transmitFinish(&radio, Base + 500030, true);
   assert(t.tx[1].flags == MissingBound); // old TX cannot donate its lower bound
+  for (uint32_t error : {0U, uint32_t(-705)}) {
+    Trace fault; begin(fault);
+    fault.transmitPrepare(&radio, Base + 10, 1, 101, error);
+    assert(fault.tx[0].toa_us == NoTime && (fault.tx[0].flags & Invalid));
+  }
 }
 
 static void spiFailure() {

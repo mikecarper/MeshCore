@@ -15,7 +15,15 @@ class TestRadio : public mesh::Radio {
   bool in_rx = true, complete = false, fail_first_start = false;
   unsigned starts = 0, transmitted = 0, finished = 0, recoveries = 0;
   int recvRaw(uint8_t*, int) override { return 0; }
-  uint32_t getEstAirtimeFor(int) override { return 100; }
+  uint32_t packet_airtime = 100, maximum_airtime = 100;
+  bool use_profile_rate = false;
+  uint8_t coding_rate = 5;
+  uint32_t getEstAirtimeFor(int len) override { return len == MAX_TRANS_UNIT ? maximum_airtime : packet_airtime; }
+  uint32_t getProfileAirtime(uint8_t, int len, uint8_t cr=0) override {
+    if (use_profile_rate && cr == 8) return 200;
+    return getEstAirtimeFor(len);
+  }
+  bool setCodingRate(uint8_t cr) override { coding_rate = cr; return true; }
   float packetScore(float, int) override { return 0; }
   bool startSendRaw(const uint8_t*, int) override {
     ++starts;
@@ -38,6 +46,7 @@ class TestRadio : public mesh::Radio {
 class TestDispatcher : public mesh::Dispatcher {
  public:
   unsigned failures = 0, completions = 0;
+  uint8_t getDefaultTxCodingRate() const override { return 5; }
   TestDispatcher(TestRadio& radio, TestClock& clock, StaticPoolPacketManager& manager)
       : Dispatcher(radio, clock, manager) {}
   mesh::DispatcherAction onRecvPacket(mesh::Packet*) override { return ACTION_RELEASE; }
@@ -52,7 +61,7 @@ struct Fixture {
   TestDispatcher dispatcher{radio, clock, manager};
   Fixture() { dispatcher.begin(); }
   void loopAt(unsigned long now) { clock.now = now; dispatcher.loop(); }
-  void queue(uint8_t route, uint8_t policy) {
+  void queue(uint8_t route, uint8_t policy, uint8_t cr = 0) {
     mesh::Packet* packet = dispatcher.obtainNewPacket();
     assert(packet);
     packet->header = route | (PAYLOAD_TYPE_REQ << PH_TYPE_SHIFT);
@@ -60,6 +69,7 @@ struct Fixture {
     for (unsigned i = 0; i < packet->payload_len; ++i) packet->payload[i] = i;
     packet->transport_codes[0] = packet->transport_codes[1] = 0;
     packet->flood_retry_policy = policy;
+    packet->tx_cr = cr;
     assert(dispatcher.sendPacket(packet, 0));
   }
   void expectRetired(unsigned failures, unsigned completions) {
@@ -136,6 +146,48 @@ int main() {
       lostTxDone(route, policy, false);
       failedStart(route, policy);
     }
+  }
+  for (uint32_t invalid : {0U, UINT32_MAX}) {
+    for (bool repaired : {false, true}) {
+      Fixture f;
+      f.radio.packet_airtime = invalid;
+      f.queue(ROUTE_TYPE_DIRECT, mesh::FLOOD_RETRY_POLICY_DEFAULT, 8);
+      f.loopAt(1001);
+      assert(f.radio.starts == 0 && f.radio.coding_rate == 5);
+      if (repaired) f.radio.packet_airtime = 100;
+      f.loopAt(1202);
+      assert(f.radio.starts == unsigned(repaired));
+      if (repaired) {
+        assert(f.radio.coding_rate == 8);
+        f.radio.complete = true;
+        f.loopAt(1250);
+      }
+      f.expectRetired(!repaired, repaired);
+      assert(f.radio.recoveries == 0 && f.radio.coding_rate == 5);
+    }
+  }
+  // A cached default-CR estimate can be shorter than the on-air override.
+  {
+    Fixture f;
+    f.radio.use_profile_rate = true;
+    f.queue(ROUTE_TYPE_DIRECT, mesh::FLOOD_RETRY_POLICY_DEFAULT, 8);
+    f.loopAt(1001);
+    f.loopAt(1190);
+    assert(f.radio.coding_rate == 8 && !f.radio.recoveries);
+    f.radio.complete = true;
+    f.loopAt(1201);
+    f.expectRetired(0, 1);
+  }
+  // An impossible maximum must not put a healthy shorter packet to sleep.
+  {
+    Fixture f;
+    f.radio.maximum_airtime = UINT32_MAX;
+    f.queue(ROUTE_TYPE_DIRECT, mesh::FLOOD_RETRY_POLICY_DEFAULT);
+    f.loopAt(1001);
+    assert(f.radio.starts == 1);
+    f.radio.complete = true;
+    f.loopAt(1050);
+    f.expectRetired(0, 1);
   }
   // Denied floods still get the ordinary successful-send completion hook.
   Fixture f;

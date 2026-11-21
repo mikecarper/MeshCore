@@ -89,7 +89,7 @@ class LR2021PacketFrequencyTests(unittest.TestCase):
             "int16_t readPacketFrequencyErrorHz(int32_t& value)",
             "void formatFrequencyError(char* reply, size_t capacity) const",
             "bool lastPacketFrequency(mesh::lr2021::PacketFrequencyObservation& out) const",
-            "int16_t readData(uint8_t* data, size_t len) override",
+            "size_t getPacketLength(", "int16_t readData(uint8_t* data, size_t len) override",
         ]
         methods = "\n".join(method(source, s).replace(" override", "") for s in signatures)
         driver = DRIVER.replace("#include <helpers/radiolib/LR2021CalibrationPolicy.h>",

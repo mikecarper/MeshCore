@@ -223,6 +223,8 @@ class CustomLR2021:public LR2021 {
   int16_t restoreXoscTrim() { return 0; } // No calibration override in this RF-switch fixture.
 public:
   using LR2021::LR2021;
+  uint32_t _activityAt=100;
+  bool _headerSeen=true;
   uint32_t _rf_switch_pins[Module::RFSWITCH_MAX_PINS]={};
   const Module::RfSwitchMode_t* _rf_switch_table=nullptr;
 #if LR2021_TX_PREARM_MS > 0
@@ -349,6 +351,7 @@ int main(int argc,char** argv) {
     assert(radio.function_calls==0);
     assert(radio.standby()==0);noBias(radio);
     assert(radio.startReceive()==0 && radio.chip_mode==LR2021::MODE_RX);
+    assert(radio._activityAt==0 && !radio._headerSeen);
     assert(!radio.level(9) && radio.level(11));
   } else if(test=="hf") {
     radio.freqMHz=2440;

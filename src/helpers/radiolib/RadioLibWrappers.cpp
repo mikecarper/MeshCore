@@ -3540,7 +3540,9 @@ uint32_t RadioLibWrapper::getEstAirtimeFor(int len_bytes) {
         (unsigned long)airtime_us);
     return 0;
   }
-  return airtime_us / 1000;
+  // Preserve a positive estimate even for a sub-millisecond frame. The error
+  // window above leaves room for rounding up without overflowing.
+  return (airtime_us + 999) / 1000;
 }
 
 #if defined(MESH_HIL_TX_FREQ_MHZ)

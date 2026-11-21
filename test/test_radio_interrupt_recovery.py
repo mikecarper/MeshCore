@@ -110,7 +110,11 @@ struct LR2021 {
    assert(stopped && "LR2021 RX must stop before metadata/FIFO snapshots");
 #endif
  }
- int getPacketLength(){assertStoppedSnapshot();return packet_length;}
+ unsigned length_reads=0; int later_length=-1;
+ virtual size_t getPacketLength(bool=true){
+   assertStoppedSnapshot();++length_reads;
+   return later_length>=0 && length_reads>1 ? later_length : packet_length;
+ }
  float getSNR(){assertStoppedSnapshot();return 7;}
  float getRSSI(){assertStoppedSnapshot();return -90;}
  int getRxFifoLevel(uint16_t* output){assertStoppedSnapshot();*output=fifo;return fifo_status;}
@@ -122,6 +126,10 @@ struct LR2021 {
    // able to modify the FIFO while those destructive operations run.
    assert(stopped);
 #endif
+   // The pinned LR2021 reader asks the virtual length getter again, even
+   // when its caller supplied a nonzero length.
+   const size_t reported=getPacketLength();
+   if(!len || reported<len) len=reported;
    memset(output,0xa5,len);fifo=0;
 #if defined(ESP32_PLATFORM)
    // Actual FIFO service clears RX_DONE; the level then falls. A delayed
@@ -144,6 +152,7 @@ struct Chip : LR2021 {
  int32_t _last_frequency_error_hz=0;
  uint32_t _last_frequency_error_at=0;
  bool _last_frequency_error_valid=false;
+ uint16_t _reported_rx_length=0;
  struct MeasurementHal {uint32_t millis(){return ::millis();}} measurement_hal;
  struct MeasurementModule {MeasurementHal* hal;} measurement_mod{&measurement_hal};
  MeasurementModule* mod=&measurement_mod;
@@ -326,7 +335,7 @@ int main(){
         methods = "\n".join(method(wrapper, f"{kind} RadioLibWrapper::{name}(")
                             for kind, name in names)
         lr_methods = "\n".join(method(custom, signature) for signature in
-                               ("int16_t readData(", "bool isReceiving()", "int16_t startReceive()"))
+                               ("size_t getPacketLength(", "int16_t readData(", "bool isReceiving()", "int16_t startReceive()"))
         if sx126x:
             # Keep the selected production activity timers and IRQ decisions.
             # Only SPI/FIFO transport and the destructive RX rearm are mocked.
@@ -839,6 +848,22 @@ int main(){
  assert(chip.readData(bytes,0)==0&&chip.reads==1);
  chip.packet_length=0;chip.fifo=0;
  assert(chip.readData(bytes,0)==RADIOLIB_ERR_PACKET_TOO_SHORT&&chip.reads==1);
+}
+''', ["-DUSE_LR2021=1"])
+
+    def test_lr2021_second_length_read_must_match_before_delivery(self):
+        compile_run(self.source() + r'''
+int main(){
+ for(int later:{0,2,6}){
+   CustomLR2021Wrapper w;assert(w.registerInterruptAction());uint8_t bytes[8]={};
+   w.chip.later_length=later;w.chip.callback();
+   assert(w.recvRaw(bytes,sizeof(bytes))==0 && !w.n_recv && w.n_recv_errors==1);
+   assert(bytes[4]==0 && w.chip.length_reads==2 && w.state==STATE_RX);
+   w.chip.later_length=-1;w.chip.rx_status=1;w.chip.fifo=w.chip.packet_length=3;
+   w.chip.callback();
+   assert(w.recvRaw(bytes,sizeof(bytes))==3 && w.n_recv==1);
+   for(int i=0;i<3;++i) assert(bytes[i]==0xa5);
+ }
 }
 ''', ["-DUSE_LR2021=1"])
 

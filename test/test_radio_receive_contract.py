@@ -840,6 +840,7 @@ int main() {
     def test_preamble_margin_and_receive_deadlines(self):
         radio_source = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()
         timing = method(radio_source, 'PacketMillis RadioLibWrapper::calcMaxPacketMillis(')
+        estimate = method(radio_source, 'uint32_t RadioLibWrapper::getEstAirtimeFor(')
         sx1262 = method((ROOT / 'src/helpers/radiolib/CustomSX1262.h').read_text(),
                         'bool isReceiving()')
         lr1110 = method((ROOT / 'src/helpers/radiolib/CustomLR1110.h').read_text(),
@@ -874,8 +875,10 @@ struct RadioLibWrapper {
   Chip chip;
   Chip* _radio = &chip;
   PacketMillis calcMaxPacketMillis(uint8_t, float, uint8_t, uint16_t);
+  uint32_t getEstAirtimeFor(int);
 };
 @TIMING@
+@ESTIMATE@
 struct ReceiverState {
   uint32_t _preambleMillis, _maxPayloadMillis;
   uint32_t _activityAt = 0, irq = 0;
@@ -961,6 +964,13 @@ void checkReceive(PacketMillis limits, uint32_t preamble, uint32_t header,
 }
 int main() {
   RadioLibWrapper radio;
+  for (uint32_t us : {0U, 1U, 999U, 1000U, 1001U, UINT32_MAX - 4096U,
+                       uint32_t(-705), UINT32_MAX}) {
+    radio.chip.airtime_us = us;
+    const uint32_t expected = us > UINT32_MAX - 4096U ? 0U : (uint64_t(us) + 999) / 1000;
+    assert(radio.getEstAirtimeFor(20) == expected);
+  }
+  radio.chip.airtime_us = 1000000;
   struct Case {
     uint8_t sf;
     float bw;
@@ -1015,7 +1025,7 @@ int main() {
 '''
         with tempfile.TemporaryDirectory(prefix='meshcore-preamble-hold-') as tmp:
             cpp, binary = Path(tmp) / 'test.cpp', Path(tmp) / 'test'
-            cpp.write_text(source.replace('@TIMING@', timing)
+            cpp.write_text(source.replace('@TIMING@', timing).replace('@ESTIMATE@', estimate)
                            .replace('@SX1262@', sx1262).replace('@LR1110@', lr1110)
                            .replace('@LR2021@', lr2021))
             result = subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-O1',

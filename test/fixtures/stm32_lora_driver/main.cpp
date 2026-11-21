@@ -6,6 +6,7 @@
 #include <type_traits>
 #include <cmath>
 #include <limits>
+#include <helpers/radiolib/RadioAirtime.h>
 #define RADIOLIB_ERR_NONE 0
 #define RADIOLIB_ERR_UNSUPPORTED -2
 #define RADIOLIB_ERR_UNKNOWN -3
@@ -183,6 +184,15 @@ void checkBlocking(bool trimmed,bool faults) {
  }
  Concrete standby;standby.fail_at=0;
  assert(standby.transmit(bytes,2)==standby.failure&&standby.calls==std::vector<std::string>{"standby"});
+ for (RadioLibTime_t invalid : {0U, uint32_t(RADIOLIB_ERR_WRONG_MODEM), uint32_t(-705)}) {
+   Concrete d; d.fixed_airtime=true; d.airtime_us=invalid;
+   assert(d.transmit(bytes,2)==(invalid ? int16_t(invalid) : RADIOLIB_ERR_UNKNOWN));
+   assert(d.calls==std::vector<std::string>({"standby","packettype"}) && d.module.clock.yields==0);
+ }
+ // This valid estimate used to wrap when multiplied by five.
+ Concrete slow; slow.fixed_airtime=true; slow.airtime_us=900000000U;
+ slow.module.clock.tick=1000000; slow.module.clock.irq_after_polls=2;
+ assert(slow.transmit(bytes,2)==0 && slow.module.clock.yields==3);
  Concrete start;start.fixed_airtime=true;start.start_rc=-710;
  assert(start.transmit(bytes,2)==-710);
  assert(start.calls==std::vector<std::string>({"standby","packettype","starttx"})&&start.module.clock.yields==0);

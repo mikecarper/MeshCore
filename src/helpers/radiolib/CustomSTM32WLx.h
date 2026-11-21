@@ -2,6 +2,7 @@
 
 #include <RadioLib.h>
 #include "SX126xStatus.h"
+#include "RadioAirtime.h"
 #include <helpers/RadioAGCConfig.h>
 #include <helpers/MorseRx.h>
 #include <math.h>

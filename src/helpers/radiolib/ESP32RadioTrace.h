@@ -5,6 +5,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "RadioAirtime.h"
 
 namespace mesh {
 namespace radiotrace {
@@ -297,6 +298,10 @@ public:
     _sending = static_cast<uint16_t>(tx_count++);
     tx[_sending] = {hash, NoTime, NoTime, NoTime, NoTime, NoTime,
                     toa, length, _profile, NotConfirmed, spi_errors};
+    if (!toa || isEncodedRadioLibAirtimeError(toa)) {
+      tx[_sending].toa_us = NoTime;
+      tx[_sending].flags |= Invalid;
+    }
     _tx_lo_valid = _tx_done = false;
   }
   void transmitLaunch(const void* phy, uint64_t before, uint64_t after,

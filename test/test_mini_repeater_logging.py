@@ -97,6 +97,7 @@ struct Radio {
   }
   Profiles* profiles() { return &settings; }
   uint32_t getEstAirtimeFor(int) { return 10; }
+  uint32_t getProfileAirtime(uint8_t, int len, uint8_t) { return getEstAirtimeFor(len); }
   bool setCodingRate(uint8_t) { return true; }
   bool startSendRaw(const uint8_t* bytes, int length) {
     ++sends;
@@ -447,7 +448,8 @@ class MiniRepeaterLoggingTest(unittest.TestCase):
         program = program.replace("@BUCKET_MASK_METHOD@",
             body(repeater, "static uint8_t floodRetryBucketMask("))
         program = program.replace("@PACKET_METHODS@", packet_methods).replace(
-            "@TX_METHOD@", body(dispatcher, "bool Dispatcher::startOutboundTransmit()"))
+            "@TX_METHOD@", body(dispatcher, "static uint32_t validRadioAirtime(") + "\n"
+            + body(dispatcher, "bool Dispatcher::startOutboundTransmit()"))
         program = program.replace("@RX_METHOD@", body(repeater, "void MyMesh::logRxRaw("))
         header = (ROOT / "examples/simple_repeater/MyMesh.h").read_text()
         program = program.replace("@INLINE_CALLBACKS@", "\n".join(body(header, signature) for signature in (

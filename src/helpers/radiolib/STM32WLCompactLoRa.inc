@@ -44,7 +44,10 @@
           return RADIOLIB_ERR_PACKET_TOO_LONG;
       }
       if(len>RADIOLIB_SX126X_MAX_PACKET_LENGTH) return RADIOLIB_ERR_PACKET_TOO_LONG;
-      const RadioLibTime_t timeout=5+(getTimeOnAir(len)*5)/1000;
+      const uint32_t airtime_us = getTimeOnAir(len);
+      if (mesh::isEncodedRadioLibAirtimeError(airtime_us)) return static_cast<int16_t>(airtime_us);
+      if (!airtime_us) return RADIOLIB_ERR_UNKNOWN;
+      const RadioLibTime_t timeout = 5 + airtime_us / 200; // five times airtime in ms
       rc=startTransmit(data,len,addr);if(rc) return rc;
       // Retain the normal LoRa transaction sequence, even though the modem
       // value no longer selects an unexposed frequency-hopping branch.

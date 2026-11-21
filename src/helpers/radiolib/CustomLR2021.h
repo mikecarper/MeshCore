@@ -52,6 +52,7 @@ class CustomLR2021 : public LR2021 {
   uint32_t _activityAt = 0;
   bool _headerSeen = false;
   bool _rx_boosted = false;
+  uint16_t _reported_rx_length = 0;
   mesh::lr2021::XoscTrimSelection _xosc_trim;
   int32_t _last_frequency_error_hz = 0;
   float _last_frequency_error_mhz = 0;
@@ -576,6 +577,10 @@ class CustomLR2021 : public LR2021 {
       #endif
         this->mod->setRfSwitchState(rfSwitchRxMode());
         state = this->setRx(this->rxTimeout);
+        if (state == RADIOLIB_ERR_NONE) {
+          _activityAt = 0;
+          _headerSeen = false;
+        }
       } else if (transmitting) {
       #if LR2021_TX_PREARM_MS > 0
         state = prepareTxRfSwitch();
@@ -696,6 +701,10 @@ class CustomLR2021 : public LR2021 {
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
       if (rc!=RADIOLIB_ERR_NONE) mesh::w12pram::spiTrace().active=false;
 #endif
+      if (rc == RADIOLIB_ERR_NONE) {
+        _activityAt = 0;
+        _headerSeen = false;
+      }
       return rc;
     }
 #endif // MESH_LR2021_RXPS_AVAILABLE
@@ -713,6 +722,11 @@ class CustomLR2021 : public LR2021 {
       }
     }
 #endif
+
+    size_t getPacketLength(bool update = true) override {
+      _reported_rx_length = LR2021::getPacketLength(update);
+      return _reported_rx_length;
+    }
 
     int16_t readData(uint8_t* data, size_t len) override {
 #if defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM
@@ -739,7 +753,14 @@ class CustomLR2021 : public LR2021 {
       const bool measured = readPacketFrequencyErrorHz(frequency_error_hz) == RADIOLIB_ERR_NONE;
 #endif
       const float measured_frequency = freqMHz;
-      const int16_t result = LR2021::readData(data, len);
+      // RadioLib re-reads length before copying. A failed SPI query can
+      // report zero while readData still succeeds and clears the FIFO.
+      // Cap the copy even for len=0 callers and verify the count it used.
+      _reported_rx_length = 0;
+      const int16_t result = LR2021::readData(data, expected);
+      if (result == RADIOLIB_ERR_NONE && _reported_rx_length != expected) {
+        return RADIOLIB_ERR_PACKET_TOO_SHORT;
+      }
       if (result == RADIOLIB_ERR_NONE && measured) {
         _last_frequency_error_hz = frequency_error_hz;
         _last_frequency_error_mhz = measured_frequency;

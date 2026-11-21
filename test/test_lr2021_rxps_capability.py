@@ -101,6 +101,7 @@ constexpr int RADIOLIB_LR2021_RX_TIMEOUT_INF=0xFFFFFF;
 constexpr int RADIOLIB_RADIO_MODE_RX=1, RADIOLIB_LR2021_CMD_SET_RX_DUTY_CYCLE=0x0210;
 struct RadioModeConfig_t { struct { uint32_t timeout=0, irqFlags=0, irqMask=0; } receive; };
 struct Driver {
+  uint32_t _activityAt=99; bool _headerSeen=true;
   int calls=0; uint8_t bytes[7]={};
   int stageMode(int, RadioModeConfig_t*) { return 0; }
   int SPIcommand(int, bool, uint8_t* data, size_t n) { ++calls; for (size_t i=0;i<n;++i) bytes[i]=data[i]; return 0; }
