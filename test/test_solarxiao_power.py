@@ -349,6 +349,54 @@ int main() {
 
 
 class SolarXiaoAdapterTests(unittest.TestCase):
+    def test_master_returns_on_stuck_i2c_and_can_use_the_bus_again(self):
+        harness = r'''#include <cassert>
+#include <cstdint>
+#include <initializer_list>
+constexpr unsigned TWIM_ENABLE_ENABLE_Disabled=0, TWIM_ENABLE_ENABLE_Enabled=6;
+struct NRF_TWIM_Type {
+  volatile uint32_t EVENTS_STOPPED=0, TASKS_RESUME=0, TASKS_STOP=0, ENABLE=6;
+  volatile uint32_t EVENTS_RXSTARTED=0, EVENTS_TXSTARTED=0, EVENTS_LASTRX=0, EVENTS_LASTTX=0;
+  volatile uint32_t EVENTS_SUSPENDED=0, EVENTS_ERROR=0, ERRORSRC=0;
+} bus;
+unsigned polls=0, stop_polls=0;
+bool stuck_stop=true;
+void delayMicroseconds(unsigned us) {
+  if (us==5) {++stop_polls; if (!stuck_stop) bus.EVENTS_STOPPED=1;}
+  else {assert(us==2); ++polls;}
+}
+#include <helpers/nrf52/SolarXiaoWireTimeout.h>
+int main() {
+  for (bool stuck : {true, false}) {
+    stuck_stop=stuck; polls=stop_polls=0;
+    mesh::solar::WireWait transfer;
+    bus.EVENTS_ERROR=1;
+    assert(transfer.wait(&bus,bus.EVENTS_TXSTARTED,true)); // let Wire handle a NACK
+    // STOP must complete even if ERROR is set: the two events are distinct.
+    assert(!transfer.wait(&bus,bus.EVENTS_STOPPED,false));
+    assert(polls==25000 && stop_polls==(stuck?200u:1u));
+    assert(bus.TASKS_RESUME && bus.TASKS_STOP && bus.ENABLE==6);
+    assert(!bus.EVENTS_ERROR && !bus.EVENTS_STOPPED);
+    mesh::solar::WireWait retry;
+    bus.EVENTS_LASTRX=1;
+    assert(retry.wait(&bus,bus.EVENTS_LASTRX,true));
+  }
+}
+'''
+        with tempfile.TemporaryDirectory() as temp:
+            binary = Path(temp) / "wire-wait"
+            subprocess.run([os.environ.get("CXX") or "g++", "-std=c++11",
+                            "-I", str(ROOT / "src"), "-x", "c++",
+                            "-", "-o", str(binary)], input=harness, text=True, check=True)
+            subprocess.run([str(binary)], check=True, timeout=5)
+
+    def test_boot_checks_charger_before_radio_for_both_roles(self):
+        for role in ("simple_repeater", "simple_room_server"):
+            main = (ROOT / "examples" / role / "main.cpp").read_text()
+            setup = extract_braced(main, "void setup()")
+            self.assertLess(setup.index("mesh::solar::beginSettings("), setup.index("mesh::solar::service()"))
+            self.assertLess(setup.index("mesh::solar::service()"), setup.index("while (!radio_init())"))
+
     def test_real_transport_and_atomic_settings_boundary(self):
         from test_solarxiao_carrier import FILESYSTEM_WITH_METADATA
         source = (ROOT / "src/helpers/sensors/SolarXiaoPower.cpp").read_text()

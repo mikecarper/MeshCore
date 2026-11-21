@@ -410,7 +410,9 @@ void periodic() {@PERIODIC@}
 int main() {
   Store fs;
   for(bool volatile_store:{false,true}) {
+    order.clear();
     initialize(&fs,volatile_store);
+    assert(order==(MESH_SOLARXIAO_POWER ? std::vector<int>{2} : std::vector<int>{}));
     assert(reg_begin==solar_begin || !MESH_SOLARXIAO_POWER);
     if(MESH_SOLARXIAO_POWER) {
       assert(selected==(volatile_store?nullptr:&fs));
@@ -420,7 +422,7 @@ int main() {
     assert(order==std::vector<int>(MESH_SOLARXIAO_POWER?std::initializer_list<int>{1,2,3}:std::initializer_list<int>{1,3}));
   }
   assert(reg_begin==2 && reg_service==2 && board_loops==2);
-  assert(solar_begin==2*MESH_SOLARXIAO_POWER && solar_service==2*MESH_SOLARXIAO_POWER);
+  assert(solar_begin==2*MESH_SOLARXIAO_POWER && solar_service==4*MESH_SOLARXIAO_POWER);
 }
 '''.replace("@HISTORY@", history).replace("@SETTINGS@", settings).replace("@PERIODIC@", periodic)
         directory = Path(self.temp.name)

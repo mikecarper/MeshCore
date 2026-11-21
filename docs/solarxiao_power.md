@@ -38,7 +38,8 @@ Auto mode checks the INA260 manufacturer's ID (`0xfe = 0x5449`) and device ID
 (`0xff & 0xfff0 = 0x2270`) at carrier address `0x40`. An address ACK alone is not
 enough: another device such as INA219 can share that address. Detection only
 reads identity registers; it does not configure/reset either chip. The first
-probe occurs in the loop after initialization, then retries every five seconds
+probe runs after the settings filesystem is available, before radio startup.
+The firmware then retries every five seconds
 until a valid identity is found. A positive result identifies MPPT for these
 carrier designs and is retained until reboot or a new board selection.
 Temporary communication loss does not relabel a previously detected MPPT.
@@ -214,6 +215,11 @@ By default, it **stops charging at 14.0 V** and **allows charging again at
 13.6 V**. Between those voltages it keeps its previous decision. On startup
 inside that band, or after a missing or zero reading, it holds charging off
 until it reads 13.6 V or lower. The repeater stays powered.
+
+After power returns, the firmware checks the saved policy and channel 2 before
+radio initialization. If the BMS cuts power again before the processor gets
+that far, software cannot control the charger during that interval. A stalled
+I²C transaction returns an error so the radio loop can continue.
 
 The firmware checks every five seconds while awake and the charger must have
 SOLAR/VIN power to accept the command. The hardware charger and BMS keep
