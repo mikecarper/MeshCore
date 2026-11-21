@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import runpy
 import shlex
+import signal
 import shutil
 import subprocess
 import tempfile
@@ -21,6 +22,31 @@ from test_serial_wifi_sessions import SANITIZER_FLAGS
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKED_CLI_HOOK = 'pre:scripts/stm32_companion_packed_cli.py'
+
+
+class CompactAssertionTest(unittest.TestCase):
+    def test_assertion_writes_the_complete_newlib_diagnostic_and_aborts(self):
+        fixture = r"""
+#include <sys/resource.h>
+extern "C" void __assert_func(const char*, int, const char*, const char*);
+int main(int argc, char** argv) {
+  struct rlimit no_core = {0, 0};
+  setrlimit(RLIMIT_CORE, &no_core);
+  __assert_func(argv[1], 12345, argc > 2 ? argv[2] : nullptr, "ptr != 0");
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / "assertion"
+            subprocess.run(["c++", "-std=c++11", "-DSTM32_PLATFORM=1", "-DMESH_STM32_COMPACT_ASSERT=1",
+                            str(ROOT / "src/helpers/stm32/CompanionAssert.cpp"), "-x", "c++",
+                            "-", "-o", str(binary)], input=fixture, text=True, check=True)
+            filename = "device/" + "long-path/" * 100 + "source.c"
+            for args in ([], ["allocate"]):
+                with self.subTest(function=args):
+                    run = subprocess.run([str(binary), filename, *args], capture_output=True, text=True)
+                    suffix = ", function: allocate" if args else ""
+                    self.assertEqual(run.stderr, f'assertion "ptr != 0" failed: file "{filename}", line 12345{suffix}\n')
+                    self.assertEqual(run.returncode, -signal.SIGABRT)
 
 
 class CompactSTM32WLCompanionAgcTest(unittest.TestCase):

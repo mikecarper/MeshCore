@@ -516,6 +516,8 @@ for section, options in data:
       LilyGo_TETH_Elite_sx1262_companion_radio_ble
       LilyGo_T3S3_sx1262_companion_radio_ble
       LilyGo_TDeck_companion_radio_ble
+      LilyGo_TLoRa_Pager_SX1262_companion_radio_ble
+      LilyGo_TLoRa_Pager_LR1121_companion_radio_ble
       Ebyte_EoRa-S3_companion_radio_ble
       Tbeam_SX1262_companion_radio_ble
       Tbeam_SX1276_companion_radio_ble
@@ -4912,6 +4914,13 @@ apply_companion_radio_full_profile() {
         record_build_reduction \
           "companion.capacity limited to 100 contacts, 8 channels, and 16 queued frames by measured internal DRAM"
       fi
+      ;;
+  esac
+
+  # Keep queue capacity and free ordinary heap for transport and telemetry retries.
+  case "${env_name,,}" in
+    tbeam_companion_radio_full|heltec_v2_companion_radio_full)
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=4"
       ;;
   esac
 

@@ -26,26 +26,27 @@
 #include <stdlib.h>
 #include <string.h>
 #include <type_traits>
-#if defined(MESHADVENTURER) && defined(CONFIG_IDF_TARGET_ESP32) && \
-    defined(COMPANION_RADIO_FULL) && defined(MESH_NOTIFY_RTC_SETTINGS) && \
-    MESH_NOTIFY_RTC_SETTINGS && COMPANION_RTC_FAST_OFFLINE_FRAMES == 0 && \
+#if defined(CONFIG_IDF_TARGET_ESP32) && defined(COMPANION_RADIO_FULL) && \
+    ((defined(MESHADVENTURER) && MESH_NOTIFY_RTC_SETTINGS) || \
+     (defined(TBEAM_SX1262) && MESH_RADIO_AUTO_FAMILY) || defined(HELTEC_LORA_V2)) && \
+    COMPANION_RTC_FAST_OFFLINE_FRAMES == 0 && \
     COMPANION_RTC_SLOW_OFFLINE_FRAMES == 4
-#define COMPANION_RTC_CLASSIC_MESHADVENTURER 1
+#define COMPANION_RTC_CLASSIC_SLOW 1
 #else
-#define COMPANION_RTC_CLASSIC_MESHADVENTURER 0
+#define COMPANION_RTC_CLASSIC_SLOW 0
 #endif
-#if !defined(COMPANION_RADIO_FULL) && !COMPANION_RTC_CLASSIC_MESHADVENTURER
+#if !defined(COMPANION_RADIO_FULL) && !COMPANION_RTC_CLASSIC_SLOW
 #error "RTC offline frames require a qualified ESP32 Companion recipe"
 #endif
 #if !defined(CONFIG_IDF_TARGET_ESP32C3) && !defined(CONFIG_IDF_TARGET_ESP32S3) && \
-    !COMPANION_RTC_CLASSIC_MESHADVENTURER
+    !COMPANION_RTC_CLASSIC_SLOW
 #error "RTC offline frames require a qualified ESP32 memory layout"
 #endif
 #if COMPANION_RTC_FAST_OFFLINE_FRAMES && !CONFIG_ESP_SYSTEM_ALLOW_RTC_FAST_MEM_AS_HEAP
 #error "RTC offline frames require the qualified byte-accessible retained RTC configuration"
 #endif
 #if COMPANION_RTC_SLOW_OFFLINE_FRAMES && !defined(CONFIG_IDF_TARGET_ESP32S3) && \
-    !COMPANION_RTC_CLASSIC_MESHADVENTURER
+    !COMPANION_RTC_CLASSIC_SLOW
 #error "The RTC SLOW offline-frame bank requires a qualified board"
 #endif
 // Shared OTA retains only CPU-owned message frames in these same banks.

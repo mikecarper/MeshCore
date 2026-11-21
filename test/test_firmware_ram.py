@@ -346,6 +346,7 @@ struct Panel {
   unsigned logBufferSize=0,logBufferFilled=0,logBufferLine=0,logBufferMaxLines=0;
   uint8_t* buffer=nullptr; uint8_t* buffer_back=nullptr; uint8_t* logBuffer=nullptr;
   unsigned BufferOffset=0,_spiSettings=0;
+  void (*_serviceRadio)() = nullptr;
   Bus bus; Bus* _spi=&bus;
   Panel(int*,uint8_t,uint8_t,uint8_t,OLEDDISPLAY_GEOMETRY g,uint16_t w,uint16_t h,
         int=-1,int=-1,int=-1) { setGeometry(g,w,h); }
