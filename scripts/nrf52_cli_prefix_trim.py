@@ -13,8 +13,8 @@ import re
 
 SOURCES = {
     'examples/simple_repeater/MyMesh.cpp': (
-        '2503c4a9c333d7b1511532642f33c226c75056c671d531928828db68187b3190',
-        'a0065cea48b30973a73d019a5dfb4f6bd519f5d68773624be95bd1c49b3260bc'),
+        '3051797ce92f5af23523efddc05485754193d9ae054327d220a44d5179dc01bb',
+        '5e1403a0a77c14ebcd03cc176c6ea28baa300e9642e6b2c5aafdc606ea1371df'),
     'src/helpers/CommonCLI.cpp': (
         '4ff2bd6e75e0697769068f557ea04bad6c26e3edbd55d57e78026bf6aeddb029',
         '7d03b65da25321c0aa25b7af5424529389f44203784fd684f53f127bfbc80a2b'),

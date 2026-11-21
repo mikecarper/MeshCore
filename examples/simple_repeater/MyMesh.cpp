@@ -1471,7 +1471,7 @@ void MyMesh::logTx(mesh::Packet *pkt, int len) {
       entry.status = ND_PENDING;
       neighbor_discover_queried_count++;
       neighbor_discover_request = NULL;
-      neighbor_discover_until = futureMillis(neighborDiscoverQueryTimeoutMs());
+      neighbor_discover_until = futureMillis(neighborDiscoverQueryTimeoutMs(pkt->radio_profile));
     }
   }
 #endif
@@ -14592,10 +14592,10 @@ bool MyMesh::cancelNeighborDiscoverRequest() {
 // This timer starts after the request finishes transmitting. Allow the server
 // delay, the responder's full CAD deferral window plus one maximum retry
 // overshoot, and airtime for one priority-0 packet ahead of the response plus
-// the response itself. The radio estimate scales with SF, bandwidth, coding
-// rate, and preamble.
-uint32_t MyMesh::neighborDiscoverQueryTimeoutMs() const {
-  uint32_t response_airtime = _radio->getEstAirtimeFor(MAX_PACKET_PAYLOAD + 2);
+// the response itself. RX scanning can already have resumed on another
+// profile when logTx runs. The peer replies on the request's profile.
+uint32_t MyMesh::neighborDiscoverQueryTimeoutMs(uint8_t request_profile) const {
+  const uint32_t response_airtime = _radio->getProfileAirtime(request_profile, MAX_PACKET_PAYLOAD + 2);
   return SERVER_RESPONSE_DELAY + getCADFailMaxDuration() + 360UL
     + response_airtime * 2UL;
 }
@@ -14986,8 +14986,8 @@ void MyMesh::loopNeighborDiscover() {
       completeNeighborDiscoverEntry();
       return;
     }
-    if (isCurrentOutbound(neighbor_discover_request)) {
-      neighbor_discover_until = futureMillis(neighborDiscoverQueryTimeoutMs());
+    if (neighbor_discover_request && isCurrentOutbound(neighbor_discover_request)) {
+      neighbor_discover_until = futureMillis(neighborDiscoverQueryTimeoutMs(neighbor_discover_request->radio_profile));
       return;
     }
     neighbor_discover_request = NULL;  // packet manager already shed it

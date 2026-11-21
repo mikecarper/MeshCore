@@ -361,7 +361,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
   void sendNodeDiscoverReq();
   mesh::Packet* sendAnonRegionsReq(const mesh::Identity& target, uint32_t& tag);
   bool cancelNeighborDiscoverRequest();
-  uint32_t neighborDiscoverQueryTimeoutMs() const;
+  uint32_t neighborDiscoverQueryTimeoutMs(uint8_t request_profile) const;
   bool completeNeighborDiscoverEntry();
   void resetNeighborDiscoverJsonBudget();
   bool neighborDiscoverReady(char* reply);

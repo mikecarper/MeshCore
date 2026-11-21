@@ -34,13 +34,23 @@ struct LocalIdentity : Identity {
     for(size_t i=0;i<32;++i) out[i]=uint8_t(other.pub_key[i]^0xA5);
   }
 };
-struct Packet {};
+struct Packet { uint8_t radio_profile=0; };
 struct Utils {
   static void toHex(char* out, const uint8_t* key, size_t size) {
     for (size_t i=0;i<size;++i) snprintf(out+2*i,3,"%02x",key[i]);
   }
 };
 }
+constexpr int MAX_PACKET_PAYLOAD=184;
+constexpr uint32_t SERVER_RESPONSE_DELAY=300;
+struct TestRadio {
+  uint8_t active=0;
+  uint32_t getProfileAirtime(uint8_t profile,int bytes) const {
+    assert(bytes==MAX_PACKET_PAYLOAD+2 && profile<2);
+    return profile==0 ? 800 : 50;
+  }
+  uint32_t getEstAirtimeFor(int bytes) const { return getProfileAirtime(active,bytes); }
+};
 struct MQTTBridge {
 @BRIDGE_CONSTANTS@
   std::string last_json;
@@ -133,9 +143,20 @@ template<class Mesh> std::string runPass(Mesh& m,int count,int result,size_t sco
     assert(++steps<1024);
     auto& entry=m.neighbor_discover_metadata[m.neighbor_discover_next];
     if(entry.status==Mesh::ND_QUEUED) {
-      // The real TX hook starts the reply timeout, not queue admission.
+      // The scanner is on the other profile by the time the TX hook runs.
+      m.packet.radio_profile=m.neighbor_discover_next%2;
+      m.radio.active=1-m.packet.radio_profile;
+      const auto airtime=m.packet.radio_profile==0 ? 800U : 50U;
+      const auto deadline=futureMillis(SERVER_RESPONSE_DELAY+4000+360+2*airtime);
+      m.in_flight=&m.packet;
+      m.loopNeighborDiscover(); // Queue deadline expires while TX owns the packet.
+      assert(entry.status==Mesh::ND_QUEUED && m.neighbor_discover_until==deadline);
+      m.in_flight=nullptr;
       if(result==Mesh::ND_SEND_FAILED) m.markFailed();
-      else m.markTransmitted();
+      else {
+        m.markTransmitted();
+        assert(entry.status==Mesh::ND_PENDING && m.neighbor_discover_until==deadline);
+      }
       if(result==Mesh::ND_RESPONDED) {
         std::vector<uint8_t> response(8+scope,'x');
         memcpy(response.data(),&entry.tag,4);

@@ -188,9 +188,13 @@ int main() {
   ACL acl; GuestLogin guest_login; int matching_peer_indexes[MAX_CLIENTS] = {};
   static const int NEIGHBOR_DISCOVER_PEER_BASE=1000;
   Clock* getRTCClock() { return &clock; }
-  uint32_t neighborDiscoverQueryTimeoutMs() const { return 100; }
+  TestRadio radio;
+  TestRadio* _radio=&radio;
+  uint32_t getCADFailMaxDuration() const { return 4000; }
+  uint32_t neighborDiscoverQueryTimeoutMs(uint8_t request_profile) const;
   bool cancelNeighborDiscoverRequest() { return false; }
-  bool isCurrentOutbound(mesh::Packet*) { return false; }
+  mesh::Packet* in_flight=nullptr;
+  bool isCurrentOutbound(mesh::Packet* query) { return in_flight==query; }
   bool neighborDiscoverReady(char*) { return true; }
   mesh::Packet* sendAnonRegionsReq(const mesh::Identity&,uint32_t& tag) {
     ++requested; tag=uint32_t(requested); return admit ? &packet : nullptr;
@@ -234,7 +238,7 @@ int main() {
             "bool MyMesh::startNeighborDiscover(", "void MyMesh::loopNeighborDiscover()",
             "void MyMesh::finishNeighborDiscover()", "bool MyMesh::completeNeighborDiscoverEntry()",
             "bool MyMesh::handleNeighborDiscoverResponse(", "int MyMesh::searchPeersByHash(",
-            "void MyMesh::getPeerSharedSecret("))
+            "void MyMesh::getPeerSharedSecret(", "uint32_t MyMesh::neighborDiscoverQueryTimeoutMs("))
         methods = methods.replace("mqtt_bridge", "bridge")
         helpers = "\n".join(extract_braced(source, signature) for signature in (
             "static bool neighborHeardAgeUsable(", "static bool neighborPublishEntryComesBefore("))
