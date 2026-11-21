@@ -639,6 +639,8 @@ def test_measured_full_companion_promotions_are_exact_and_bounded():
         "LilyGo_TETH_Elite_sx1262_companion_radio_ble",
         "LilyGo_T3S3_sx1262_companion_radio_ble",
         "LilyGo_TDeck_companion_radio_ble",
+        "LilyGo_TLoRa_Pager_SX1262_companion_radio_ble",
+        "LilyGo_TLoRa_Pager_LR1121_companion_radio_ble",
         "Ebyte_EoRa-S3_companion_radio_ble",
         "Tbeam_SX1262_companion_radio_ble",
         "Tbeam_SX1276_companion_radio_ble",
