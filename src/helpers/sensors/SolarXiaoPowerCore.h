@@ -60,6 +60,9 @@ class Controller {
   bool serviced = false;
   bool started = false;
   bool voltage_hold = true;
+  bool trial_off = false;
+  uint32_t trial_started = 0;
+  uint32_t trial_last_check = 0;
 
   bool identify(uint16_t& identity);
   bool readMonitorVoltage(uint16_t& raw);
@@ -67,7 +70,7 @@ class Controller {
   bool verifyWritableIdentity(char* reply, size_t capacity);
   bool update(uint8_t reg, uint16_t mask, uint16_t bits);
   bool save(const Settings& candidate);
-  bool setField(const char* key, const char* value, char* reply, size_t capacity);
+  bool setField(const char* key, const char* value, char* reply, size_t capacity, bool local, uint32_t now);
   bool getField(const char* key, char* reply, size_t capacity);
   bool action(const char* arguments, bool local, char* reply, size_t capacity);
 
@@ -80,7 +83,7 @@ public:
   void service(uint32_t now);
   bool snapshot(Snapshot& result);
   bool readMonitor(float& volts, float& amps, float& watts);
-  bool handle(const char* command, char* reply, size_t capacity, bool local);
+  bool handle(const char* command, char* reply, size_t capacity, bool local, uint32_t now=0);
   const Settings& configuration() const { return settings; }
   bool settingsHealthy() const { return storage_healthy; }
   bool settingsApplied() const { return apply_ok; }

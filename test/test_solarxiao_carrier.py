@@ -455,7 +455,10 @@ int main(int argc,char** argv) {
       assert(boot.handle("get mppt saved",status,sizeof(status),true));
       return std::string(status);
     };
-    has(cli("set mppt charge.enabled off"),"saved");
+    Wire.charger[0x34]=64;
+    has(cli("set mppt charge.enabled off"),"checking 45s");
+    for (int i=0;i<9;++i) {now_ms+=5000;service();}
+    has(cli("get mppt saved"),"charge=off");
     const auto off=fs.files.at(primary);
     assert(fs.files.at(backup)==off);
     fs.fail_rename_from="/solar_power.tmp";

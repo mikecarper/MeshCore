@@ -214,12 +214,15 @@ The 12 V MPPT carrier uses the INA260 battery voltage on I²C channel 2.
 By default, it **stops charging at 14.0 V** and **allows charging again at
 13.6 V**. Between those voltages it keeps its previous decision. On startup
 inside that band, or after a missing or zero reading, it holds charging off
-until it reads 13.6 V or lower. The repeater stays powered.
+until it reads 13.6 V or lower. Channel 2 measures the whole pack. An
+individual cell can trip the battery BMS below the pack cutoff.
 
 After power returns, the firmware checks the saved policy and channel 2 before
 radio initialization. If the BMS cuts power again before the processor gets
 that far, software cannot control the charger during that interval. A stalled
-I²C transaction returns an error so the radio loop can continue.
+I²C transaction returns an error so the radio loop can continue. The repeater
+needs a supply that can carry its load while the BMS is open and charging is
+suspended. The earlier USB-powered bench test did not exercise that condition.
 
 The firmware checks every five seconds while awake and the charger must have
 SOLAR/VIN power to accept the command. The hardware charger and BMS keep
@@ -236,7 +239,7 @@ Use `set mppt <field> <value>`. Booleans accept `on` or `off` only.
 | Fields | Behavior |
 | --- | --- |
 | `mppt.enabled` | Enable automatic solar maximum power tracking. |
-| `charge.enabled` | `off` keeps charging suspended across reboots. `on` returns control to the voltage limits. |
+| `charge.enabled` | `off` requests a persistent suspension. `on` returns control to the voltage limits. |
 | `charge.stop_mv`, `charge.resume_mv` | Whole-pack thresholds in millivolts. Resume must be positive and below stop. Maximum stop is 14400 mV. |
 | `telemetry.force`, `telemetry.fast` | Force the charger ADC on, or use fast telemetry. These affect power consumption. |
 | `input.limit_ma` | Input current limit; rounds down to the hardware step, never above the request; maximum request 3200 mA. |
@@ -259,6 +262,17 @@ All configuration writes require a fresh FST identity and a live cell count of
 saved settings. Charger register writes use a mask and verify readback. A
 failed write or save normally attempts to restore the previous field. A
 requested charge suspension stays in effect if the settings save fails.
+
+For a new remote `set mppt charge.enabled off`, the firmware checks the
+charger's battery status before suspending. A missing, shorted, or still
+undetected battery rejects the command. With a usable status, the repeater
+suspends charging immediately and keeps the request in RAM for 45 seconds.
+`get mppt saved` reports `charge=trial` during this period and `charge=off`
+after the live suspend bit and the flash save have been verified. A repeater
+reset, loss of charger communication, or loss of the live suspend bit during
+the trial leaves the previous saved policy in place. A charger that disappears
+at dusk therefore cannot confirm a new permanent shutdown. USB commands and
+previously saved overrides retain their existing behavior.
 
 ## Saving and actions
 

@@ -62,10 +62,10 @@ struct FakeStore : Store {
     bytes.assign(data,data+n);return true;
   }
 };
-std::string cli(Controller& c,const char* cmd,bool local=true) {
+std::string cli(Controller& c,const char* cmd,bool local=true,uint32_t now=0) {
   struct Guard {char a[3]; char reply[157]; char z[3];} g;
   memset(&g,0x5a,sizeof(g));
-  assert(c.handle(cmd,g.reply,sizeof(g.reply),local));
+  assert(c.handle(cmd,g.reply,sizeof(g.reply),local,now));
   assert(g.a[0]==0x5a && g.a[2]==0x5a && g.z[0]==0x5a && g.z[2]==0x5a);
   assert(memchr(g.reply,0,sizeof(g.reply)));
   return g.reply;
@@ -138,6 +138,47 @@ int main(int argc,char** argv) {
     custom.service(10000);assert(!custom.settingsApplied());
     bus.ignore_write=false;custom.service(15000);assert(bus.r[0x14]&0x20);
     bus.r[0x43]=0x0404;bus.ina[2]=10560;custom.service(20000);assert(bus.r[0x14]&0x20);
+  } else if(test=="remote-off-recovery") {
+    const char* off="set mppt charge.enabled off";
+    for (uint16_t state : {0, 1, 2, 2048, 4096}) {
+      bus.r[0x34]=state;
+      has(cli(c,off,false),"not applied");
+      assert(store.saves==0 && bus.writes.empty());
+    }
+    bus.r[0x34]=64;
+    has(cli(c,off,false),"checking 45s");
+    assert((bus.r[0x14]&0x20) && store.saves==0);
+    Controller reboot(bus,store);reboot.begin();reboot.service(0);
+    assert(!(bus.r[0x14]&0x20)); // healthy pack below resume, no saved off
+    has(cli(reboot,off,false,1000),"checking 45s");
+    bus.online=false;reboot.service(5000); // solar I2C disappears at dusk
+    has(cli(reboot,"get mppt saved"),"charge=auto");
+    bus.online=true;reboot.service(65000);
+    assert(store.saves==0 && !(bus.r[0x14]&0x20));
+    has(cli(reboot,off,false,66000),"checking 45s");
+    bus.r[0x14]=2;reboot.service(70000); // charger-only power cycle
+    has(cli(reboot,"get mppt saved"),"charge=auto");
+    has(cli(reboot,off,false,71000),"checking 45s");
+    has(cli(reboot,"set mppt charge.enabled on",false,73000),"automatic");
+    reboot.service(130000);has(cli(reboot,"get mppt saved"),"charge=auto");
+    const int saves=store.saves;
+    Controller stable(bus,store);stable.begin();
+    const uint32_t start=UINT32_MAX-15000u;
+    has(cli(stable,off,false,start),"checking 45s");
+    for(uint32_t dt=0;dt<45000;dt+=5000) stable.service(start+dt);
+    assert(store.saves==saves);
+    has(cli(stable,off,false,start+42000),"checking 45s");
+    stable.service(start+45000);stable.service(start+50000);
+    assert(store.saves==saves+1);
+    has(cli(stable,"get mppt saved"),"charge=off");
+    bus.r[0x14]=2;Controller saved(bus,store);saved.begin();saved.service(0);
+    assert(bus.r[0x14]&0x20);
+    has(cli(saved,"set mppt charge.enabled on",false),"automatic");
+    has(cli(saved,off,false,1000),"checking 45s");
+    saved.service(60000); // a long sleep is not proof the suspend survived
+    has(cli(saved,"get mppt saved"),"charge=trial");
+    for (uint32_t now=65000;now<=105000;now+=5000) saved.service(now);
+    has(cli(saved,"get mppt saved"),"charge=off");
   } else if(test=="defaults-identity") {
     c.service(0);c.service(5000);assert(bus.writes.empty());
     for(unsigned id: {0x0101u,0x0404u,0x0603u,0x0704u,0x0f04u}) {
@@ -265,7 +306,7 @@ class SolarXiaoPowerTests(unittest.TestCase):
             "-o", str(cls.binary)], check=True, capture_output=True, text=True, timeout=30)
 
     def test_shipping_core(self):
-        for scenario in ("readings", "voltage-cutoff", "defaults-identity", "locks-ranges", "rounding-rmw",
+        for scenario in ("readings", "voltage-cutoff", "remote-off-recovery", "defaults-identity", "locks-ranges", "rounding-rmw",
                          "persistence-order", "faults", "record-validation", "actions-parser"):
             with self.subTest(scenario=scenario):
                 result = subprocess.run([str(self.binary), scenario], capture_output=True,

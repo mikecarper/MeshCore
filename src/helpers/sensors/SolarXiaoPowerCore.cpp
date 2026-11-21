@@ -12,6 +12,9 @@ constexpr uint8_t CHARGER = 0x68;
 constexpr uint8_t MONITOR = 0x40;
 constexpr uint8_t CONFIG = 0x14;
 constexpr uint16_t SUSPEND_CHARGER = 0x20;
+constexpr uint32_t REMOTE_OFF_TRIAL_MS = 45000;
+constexpr uint32_t SERVICE_INTERVAL_MS = 5000;
+constexpr uint16_t BATTERY_DETECTING_OR_FAULT = (1u<<12)|(1u<<11)|(1u<<1)|1u;
 constexpr uint16_t DEFAULT_STOP_MV = 14000;
 constexpr uint16_t DEFAULT_RESUME_MV = 13600;
 enum Kind : uint8_t { Number, Signed, Boolean, Inverted, DieC, InputMa,
@@ -325,6 +328,7 @@ bool Controller::identify(uint16_t& identity) {
   return true;
 }
 void Controller::reload() {
+  trial_off=false;
   started=false;
   begin();
   next_service=0;
@@ -359,17 +363,33 @@ bool Controller::save(const Settings& candidate) {
 void Controller::service(uint32_t now) {
   if (!started || (serviced && static_cast<int32_t>(now-next_service)<0)) return;
   serviced=true;
-  next_service=now+5000;
+  next_service=now+SERVICE_INTERVAL_MS;
   uint16_t identity;
-  if (!identify(identity)) {apply_ok=false; return;}
+  if (!identify(identity)) {trial_off=false; apply_ok=false; return;}
   apply_ok=true;
-  if (!storage_healthy) {apply_ok=false; return;}
-  if (((identity>>8)&15)!=6 || (last_cells && last_cells!=4)) {apply_ok=false; return;}
+  if (!storage_healthy || ((identity>>8)&15)!=6 || (last_cells && last_cells!=4)) {
+    trial_off=false; apply_ok=false; return;
+  }
+  if (trial_off) {
+    // Losing solar input can reset the charger independently of the CPU.
+    if (uint32_t(now-trial_last_check)>2*SERVICE_INTERVAL_MS) trial_started=now;
+    trial_last_check=now;
+    uint16_t live;
+    if (!bus.read(CHARGER,CONFIG,live) || !(live&SUSPEND_CHARGER)) {
+      trial_off=false;
+    } else if (uint32_t(now-trial_started)>=REMOTE_OFF_TRIAL_MS) {
+      Settings candidate=settings;
+      candidate.masks[CONFIG]|=SUSPEND_CHARGER;
+      candidate.values[CONFIG]|=SUSPEND_CHARGER;
+      trial_off=false;
+      if (!save(candidate)) return;
+    }
+  }
   // Suspend first. Only release after replaying the other charger settings.
   const bool manual_off=(settings.values[CONFIG]&SUSPEND_CHARGER)!=0;
   if (manual_off) voltage_hold=true;
-  const bool suspend=manual_off || holdForVoltage();
-  if (suspend && !update(CONFIG,SUSPEND_CHARGER,SUSPEND_CHARGER)) {apply_ok=false; return;}
+  const bool suspend=trial_off || manual_off || holdForVoltage();
+  if (suspend && !trial_off && !update(CONFIG,SUSPEND_CHARGER,SUSPEND_CHARGER)) {apply_ok=false; return;}
   uint16_t start,end;
   if (settings.masks[16] || settings.masks[17]) {
     if (!bus.read(CHARGER,16,start) || !bus.read(CHARGER,17,end)) {apply_ok=false; return;}
@@ -460,7 +480,7 @@ bool Controller::snapshot(Snapshot& result) {
   return true;
 }
 
-bool Controller::setField(const char* key,const char* value,char* reply,size_t capacity) {
+bool Controller::setField(const char* key,const char* value,char* reply,size_t capacity,bool local,uint32_t now) {
   const bool stop=!strcmp(key,"charge.stop_mv");
   if (stop || !strcmp(key,"charge.resume_mv")) {
     unsigned mv;
@@ -528,6 +548,14 @@ bool Controller::setField(const char* key,const char* value,char* reply,size_t c
   // Save the operator's preference separately from the effective suspend bit.
   const bool charge_enable=field->reg==CONFIG && field->mask==SUSPEND_CHARGER;
   const bool auto_requested=charge_enable && !bits;
+  const bool try_off=charge_enable && !auto_requested && !local && !(settings.values[CONFIG]&SUSPEND_CHARGER);
+  if (try_off) {
+    uint16_t state;
+    if (!bus.read(CHARGER,0x34,state) || !state || (state&BATTERY_DETECTING_OR_FAULT)) {
+      trial_off=false;
+      snprintf(reply,capacity,"Err - charger cannot confirm battery; remote off not applied"); return true;
+    }
+  }
   if (charge_enable) {
     if (auto_requested && last_cells && last_cells!=4) {
       snprintf(reply,capacity,"Err - automatic charging requires a 4S carrier"); return true;
@@ -542,6 +570,12 @@ bool Controller::setField(const char* key,const char* value,char* reply,size_t c
     const bool restored=update(field->reg,field->mask,before&field->mask);
     snprintf(reply,capacity,"Err - write/readback failed; rollback=%s",restored?"verified":"unconfirmed"); return true;
   }
+  if (try_off) {
+    if (!trial_off || !(before&SUSPEND_CHARGER)) trial_started=trial_last_check=now;
+    trial_off=true;
+    snprintf(reply,capacity,"> charger held off; checking 45s before save; get mppt saved");
+    return true;
+  }
   if (!save(candidate)) {
     if (charge_enable && bits) {
       snprintf(reply,capacity,"Err - save unconfirmed; charger held off; use mppt reload"); return true;
@@ -550,6 +584,7 @@ bool Controller::setField(const char* key,const char* value,char* reply,size_t c
     snprintf(reply,capacity,"Err - save unconfirmed; live rollback=%s; use mppt reload",restored?"verified":"unconfirmed"); return true;
   }
   apply_ok=true;
+  if (charge_enable) trial_off=false;
   if (auto_requested) {
     snprintf(reply,capacity,"OK - automatic charging enabled; charger %s",bits?"held off":"enabled");
     return true;
@@ -602,7 +637,7 @@ bool Controller::action(const char* args,bool local,char* reply,size_t capacity)
     Settings candidate; candidate.defaults();
     storage_healthy=store.available();
     if (!save(candidate)) snprintf(reply,capacity,"Err - default policy save unconfirmed");
-    else snprintf(reply,capacity,"OK - saved policy/calibration reset; live charger unchanged");
+    else {trial_off=false; snprintf(reply,capacity,"OK - saved policy/calibration reset; live charger unchanged");}
     return true;
   }
   if (!strcmp(args,"reload")) {
@@ -613,7 +648,7 @@ bool Controller::action(const char* args,bool local,char* reply,size_t capacity)
     Settings candidate=settings;
     memset(candidate.masks,0,sizeof(candidate.masks)); memset(candidate.values,0,sizeof(candidate.values));
     if (!save(candidate)) snprintf(reply,capacity,"Err - override removal save unconfirmed");
-    else snprintf(reply,capacity,"OK - saved register overrides removed; live charger unchanged");
+    else {trial_off=false; snprintf(reply,capacity,"OK - saved register overrides removed; live charger unchanged");}
     return true;
   }
   if (!strcmp(args,"bsr run") || !strcmp(args,"ship arm") || !strcmp(args,"ship disarm")) {
@@ -644,7 +679,7 @@ bool Controller::action(const char* args,bool local,char* reply,size_t capacity)
   return false;
 }
 
-bool Controller::handle(const char* command,char* reply,size_t capacity,bool local) {
+bool Controller::handle(const char* command,char* reply,size_t capacity,bool local,uint32_t now) {
   if (!command || !reply || capacity<2) return false;
   const bool get=!strncmp(command,"get mppt",8) && (!command[8] || command[8]==' ');
   const bool set=!strncmp(command,"set mppt ",9);
@@ -654,7 +689,7 @@ bool Controller::handle(const char* command,char* reply,size_t capacity,bool loc
     char key[48],value[48],tail;
     if (sscanf(command+9,"%47s %47s %c",key,value,&tail)!=2)
       snprintf(reply,capacity,"Err - use set mppt <field> <value>; get mppt fields <page>");
-    else setField(key,value,reply,capacity);
+    else setField(key,value,reply,capacity,local,now);
     return true;
   }
   if (act) {
@@ -682,9 +717,10 @@ bool Controller::handle(const char* command,char* reply,size_t capacity,bool loc
   }
   if (!strcmp(key,"saved")) {
     unsigned count=0; for (uint16_t mask:settings.masks) if (mask) ++count;
-    snprintf(reply,capacity,"> storage=%s overrides=%u apply=%s rsnsb=%.3gmOhm rsnsi=%.3gmOhm cal_user=%02X%s",
+    snprintf(reply,capacity,"> storage=%s overrides=%u apply=%s rsnsb=%.3gmOhm rsnsi=%.3gmOhm cal_user=%02X%s charge=%s",
       storage_healthy?"ok":"unavailable",count,apply_ok?"verified":"pending",double(settings.rsnsb_mohm),double(settings.rsnsi_mohm),settings.calibration_user_mask,
-      storage_healthy && loaded_backup?" source=backup":""); return true;
+      storage_healthy && loaded_backup?" source=backup":"",
+      trial_off?"trial":(settings.values[CONFIG]&SUSPEND_CHARGER)?"off":"auto"); return true;
   }
   if (*key && getField(key,reply,capacity)) return true;
   Snapshot s; snapshot(s);

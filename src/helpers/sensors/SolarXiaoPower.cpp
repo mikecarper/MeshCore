@@ -139,7 +139,7 @@ bool handleCommand(const char* command,char* reply,size_t capacity,bool local) {
     snprintf(reply,capacity,"%s",error);
     return true;
   }
-  return controller.handle(command,reply,capacity,local);
+  return controller.handle(command,reply,capacity,local,millis());
 }
 void addTelemetry(CayenneLPP& lpp) {
   if (!selection.nativeAllowed()) return;
