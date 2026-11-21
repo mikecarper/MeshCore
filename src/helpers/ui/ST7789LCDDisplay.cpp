@@ -1,7 +1,7 @@
 #include "ST7789LCDDisplay.h"
 #include "ColorTheme.h"
 
-#ifdef LILYGO_TDECK
+#ifdef MESHCORE_BUFFERED_SPI_DISPLAY
 #include <esp_heap_caps.h>
 #include <new>
 #include <string.h>
@@ -83,7 +83,7 @@ bool ST7789LCDDisplay::prepareCanvas() {
   if (!_canvas || !_canvas->pixels()) {
     delete _canvas;
     _canvas = nullptr;
-    mesh::usbConsolePort().println("WARN: T-Deck display PSRAM allocation failed; using direct redraw");
+    mesh::usbConsolePort().println("WARN: display PSRAM allocation failed");
     return false;
   }
   return true;
@@ -245,7 +245,7 @@ bool ST7789LCDDisplay::begin() {
   if (!_probe_complete) mesh::ui::heltec_r8::backlightOff();
 #endif
   if (!_isOn) {
-  #ifdef LILYGO_TDECK
+  #ifdef MESHCORE_BUFFERED_SPI_DISPLAY
     // This board has no TFT reset pin or separately switched panel supply.
     // Blanking its backlight does not require a slow controller reinit on wake.
     if (_panel_ready) {
@@ -337,7 +337,13 @@ bool ST7789LCDDisplay::begin() {
     }
 #endif
 
+#ifdef LILYGO_TLORA_PAGER
+    // The 222-pixel glass is centered in the controller's 320-column RAM.
+    display.init(222, 480, 0, 49, ST7796S_BGR);
+    display.invertDisplay(true);
+#else
     display.init(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+#endif
     display.setRotation(effectiveRotation());
     setDimensions(display.width(), display.height());
 #ifdef HELTEC_V4_R8_TFT
@@ -360,8 +366,16 @@ bool ST7789LCDDisplay::begin() {
 
     _panel_ready = true;
     _isOn = true;
-#ifdef LILYGO_TDECK
+#ifdef MESHCORE_BUFFERED_SPI_DISPLAY
+#ifdef LILYGO_TLORA_PAGER
+    if (!prepareCanvas()) {
+      turnOff();
+      _panel_ready = false;
+      return false;
+    }
+#else
     if (_buffered_rendering) prepareCanvas();
+#endif
 #endif
   }
 
@@ -401,10 +415,10 @@ void ST7789LCDDisplay::turnOff() {
 }
 
 void ST7789LCDDisplay::clear() {
-#if defined(LILYGO_TDECK) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
+#if defined(MESHCORE_BUFFERED_SPI_DISPLAY) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
   if (!_isOn) return;
 #endif
-#ifdef LILYGO_TDECK
+#ifdef MESHCORE_BUFFERED_SPI_DISPLAY
   if (isBufferedRendering()) {
     if (!_isOn) return;
     _canvas->fillScreen(ST77XX_BLACK);
@@ -417,10 +431,10 @@ void ST7789LCDDisplay::clear() {
 
 void ST7789LCDDisplay::startFrame(ColorVal bkg) {
   bkg = mesh::ui::color_theme::background(bkg);
-#if defined(LILYGO_TDECK) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
+#if defined(MESHCORE_BUFFERED_SPI_DISPLAY) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
   if (!_isOn) return;
 #endif
-#ifdef LILYGO_TDECK
+#ifdef MESHCORE_BUFFERED_SPI_DISPLAY
   if (isBufferedRendering()) {
     if (!_isOn) return;
     _frame_active = true;
@@ -439,10 +453,10 @@ void ST7789LCDDisplay::startFrame(ColorVal bkg) {
 }
 
 void ST7789LCDDisplay::setTextSize(int sz) {
-#if defined(LILYGO_TDECK) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
+#if defined(MESHCORE_BUFFERED_SPI_DISPLAY) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
   if (!_isOn) return;
 #endif
-#ifdef LILYGO_TDECK
+#ifdef MESHCORE_BUFFERED_SPI_DISPLAY
   if (isBufferedRendering()) {
     _canvas->setTextSize(sz > 0 ? sz : 1);
     return;
@@ -453,10 +467,10 @@ void ST7789LCDDisplay::setTextSize(int sz) {
 
 void ST7789LCDDisplay::setColor(ColorVal c) {
   c = mesh::ui::color_theme::render(c);
-#if defined(LILYGO_TDECK) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
+#if defined(MESHCORE_BUFFERED_SPI_DISPLAY) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
   if (!_isOn) return;
 #endif
-#ifdef LILYGO_TDECK
+#ifdef MESHCORE_BUFFERED_SPI_DISPLAY
   if (isBufferedRendering()) {
     _canvas->setTextColor(_color = c);
     return;
@@ -466,10 +480,10 @@ void ST7789LCDDisplay::setColor(ColorVal c) {
 }
 
 void ST7789LCDDisplay::setCursor(int x, int y) {
-#if defined(LILYGO_TDECK) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
+#if defined(MESHCORE_BUFFERED_SPI_DISPLAY) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
   if (!_isOn) return;
 #endif
-#ifdef LILYGO_TDECK
+#ifdef MESHCORE_BUFFERED_SPI_DISPLAY
   if (isBufferedRendering()) {
     _canvas->setCursor(x, y);
     return;
@@ -479,10 +493,10 @@ void ST7789LCDDisplay::setCursor(int x, int y) {
 }
 
 void ST7789LCDDisplay::print(const char* str) {
-#if defined(LILYGO_TDECK) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
+#if defined(MESHCORE_BUFFERED_SPI_DISPLAY) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
   if (!_isOn) return;
 #endif
-#ifdef LILYGO_TDECK
+#ifdef MESHCORE_BUFFERED_SPI_DISPLAY
   if (isBufferedRendering()) {
     if (!_isOn) return;
     int16_t x, y;
@@ -497,10 +511,10 @@ void ST7789LCDDisplay::print(const char* str) {
 }
 
 void ST7789LCDDisplay::fillRect(int x, int y, int w, int h) {
-#if defined(LILYGO_TDECK) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
+#if defined(MESHCORE_BUFFERED_SPI_DISPLAY) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
   if (!_isOn) return;
 #endif
-#ifdef LILYGO_TDECK
+#ifdef MESHCORE_BUFFERED_SPI_DISPLAY
   if (isBufferedRendering()) {
     if (!_isOn) return;
     _canvas->fillRect(x, y, w, h, _color);
@@ -512,10 +526,10 @@ void ST7789LCDDisplay::fillRect(int x, int y, int w, int h) {
 }
 
 void ST7789LCDDisplay::drawRect(int x, int y, int w, int h) {
-#if defined(LILYGO_TDECK) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
+#if defined(MESHCORE_BUFFERED_SPI_DISPLAY) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
   if (!_isOn) return;
 #endif
-#ifdef LILYGO_TDECK
+#ifdef MESHCORE_BUFFERED_SPI_DISPLAY
   if (isBufferedRendering()) {
     if (!_isOn) return;
     _canvas->drawRect(x, y, w, h, _color);
@@ -527,10 +541,10 @@ void ST7789LCDDisplay::drawRect(int x, int y, int w, int h) {
 }
 
 void ST7789LCDDisplay::drawXbm(int x, int y, const uint8_t* bits, int w, int h) {
-#if defined(LILYGO_TDECK) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
+#if defined(MESHCORE_BUFFERED_SPI_DISPLAY) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
   if (!_isOn) return;
 #endif
-#ifdef LILYGO_TDECK
+#ifdef MESHCORE_BUFFERED_SPI_DISPLAY
   if (isBufferedRendering()) {
     if (!_isOn) return;
     _canvas->drawBitmap(x, y, bits, w, h, _color);
@@ -543,10 +557,10 @@ void ST7789LCDDisplay::drawXbm(int x, int y, const uint8_t* bits, int w, int h) 
 }
 
 uint16_t ST7789LCDDisplay::getTextWidth(const char* str) {
-#if defined(LILYGO_TDECK) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
+#if defined(MESHCORE_BUFFERED_SPI_DISPLAY) || defined(MESHCORE_HELTEC_R8_TFT_DETECTION)
   if (!_isOn) return 0;
 #endif
-#ifdef LILYGO_TDECK
+#ifdef MESHCORE_BUFFERED_SPI_DISPLAY
   if (isBufferedRendering()) {
     int16_t x, y;
     uint16_t w, h;
@@ -561,7 +575,7 @@ uint16_t ST7789LCDDisplay::getTextWidth(const char* str) {
 }
 
 void ST7789LCDDisplay::endFrame() {
-#ifdef LILYGO_TDECK
+#ifdef MESHCORE_BUFFERED_SPI_DISPLAY
   if (!_isOn) {
     _frame_active = false;
     return;

@@ -4,10 +4,17 @@
 #include <Wire.h>
 #include <SPI.h>
 #include <Adafruit_GFX.h>
+#ifdef LILYGO_TLORA_PAGER
+#include <Adafruit_ST7796S.h>
+#else
 #include <Adafruit_ST7789.h>
+#endif
+#if defined(LILYGO_TDECK) || defined(LILYGO_TLORA_PAGER)
+#define MESHCORE_BUFFERED_SPI_DISPLAY 1
+#endif
 #include <helpers/RefCountedDigitalPin.h>
 
-#ifdef LILYGO_TDECK
+#ifdef MESHCORE_BUFFERED_SPI_DISPLAY
 class TDeckCanvas;
 #endif
 
@@ -34,7 +41,11 @@ class ST7789LCDDisplay : public DisplayDriver {
   #if defined(LILYGO_TDECK) || defined(HELTEC_LORA_V4_TFT) || defined(HELTEC_V4_R8_TFT)
     SPIClass displaySPI;
   #endif
+#ifdef LILYGO_TLORA_PAGER
+  Adafruit_ST7796S display;
+#else
   Adafruit_ST7789 display;
+#endif
   bool _isOn;
   bool _panel_ready = false;   // panel has been configured at least once
 #ifdef MESHCORE_HELTEC_R8_TFT_DETECTION
@@ -51,10 +62,15 @@ class ST7789LCDDisplay : public DisplayDriver {
   uint16_t _color;
   RefCountedDigitalPin* _peripher_power;
 
+#ifdef LILYGO_TLORA_PAGER
+  static constexpr int kWidth = 480;
+  static constexpr int kHeight = 222;
+#else
   static constexpr int kWidth = (DISPLAY_ROTATION & 1) ? 320 : 240;
   static constexpr int kHeight = (DISPLAY_ROTATION & 1) ? 240 : 320;
+#endif
 
-#ifdef LILYGO_TDECK
+#ifdef MESHCORE_BUFFERED_SPI_DISPLAY
   friend class TDeckCanvas;
   TDeckCanvas* _canvas = nullptr;
   bool _buffered_rendering = true;
@@ -105,7 +121,7 @@ public:
 #endif
   bool begin();
 
-#ifdef LILYGO_TDECK
+#ifdef MESHCORE_BUFFERED_SPI_DISPLAY
   ~ST7789LCDDisplay();
   // Call only between frames. Disabling buffering retains the allocation for
   // same-image comparisons with the original direct-to-panel renderer.

@@ -25,24 +25,30 @@ using std::min; using std::max;
 #define rtos_free std::free
 void yield() {}
 struct Bus {
-  int transfers=0, expected_bytes=0;
-  template<class T> void beginTransaction(T) {}
-  void endTransaction() {}
-  void transfer(void*,void*,int bytes) { assert(bytes==expected_bytes); ++transfers; }
+  bool active=false, selected=false;
+  int transfers=0, expected_bytes=0, bytes=0;
+  std::vector<int> bursts;
+  template<class T> void beginTransaction(T) { assert(!active && !selected); active=true; bytes=0; }
+  void endTransaction() { assert(active && !selected); active=false; bursts.push_back(bytes); }
+  void transfer(void*,void*,int bytes) { assert(active && selected && bytes==expected_bytes); this->bytes+=bytes; ++transfers; }
 };
+static Bus* monitored;
+static int services;
+void serviceRadio() { assert(monitored && !monitored->active && !monitored->selected); ++services; }
 class Panel {
  public:
   int displayWidth,displayHeight,_buffheight;
   uint16_t _RGB=0xffff, _lastRGB=0xffff;
   int _spiSettings=0;
   Bus bus; Bus* _spi=&bus;
+  void (*_serviceRadio)() = nullptr;
   std::vector<uint8_t> front,back;
   uint8_t* buffer; uint8_t* buffer_back;
   std::vector<int> rows;
   Panel(int w,int h):displayWidth(w),displayHeight(h),_buffheight((h+7)/8),
     front(w*_buffheight,0xff),back(w*_buffheight,0),
     buffer(front.data()),buffer_back(back.data()),rows(h,0) {}
-  void set_CS(int) {}
+  void set_CS(int level) { assert(bus.active); bus.selected=level==LOW; }
   void setAddrWindow(int x,int y,int w,int h) {
     assert(x==0 && w==displayWidth && h==1 && y>=0 && y<displayHeight);
     ++rows[y]; bus.expected_bytes=w*2;
@@ -52,7 +58,13 @@ class Panel {
 };
 int main() {
   for(auto size:{std::make_pair(240,135),{320,170},{320,240}}) {
-    Panel p(size.first,size.second); p.display();
+    Panel p(size.first,size.second);
+    if (size.second==240) { monitored=&p.bus; services=0; p._serviceRadio=serviceRadio; }
+    p.display();
+    if (p._serviceRadio) {
+      assert(services==80 && p.bus.bursts.size()==80);
+      for(int bytes:p.bus.bursts) assert(bytes<=2*960);
+    } else { assert(p.bus.bursts.size()==1); }
     assert(p.bus.transfers==p.displayHeight);
     for(int row:p.rows) assert(row==1);
 #ifdef OLEDDISPLAY_DOUBLE_BUFFER

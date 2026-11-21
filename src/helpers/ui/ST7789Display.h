@@ -34,6 +34,9 @@ public:
 #else
   ST7789Display() : DisplayDriver(240, 135), display(&SPI1, PIN_TFT_RST, PIN_TFT_DC, PIN_TFT_CS, GEOMETRY_RAWMODE, 240, 135) {_isOn = false;}
 #endif
+#ifdef THINKNODE_M9
+  void setRenderYieldCallback(void (*callback)()) { display.setRenderYieldCallback(callback); }
+#endif
   bool begin();
 
   bool isOn() override { return _isOn; }

@@ -73,6 +73,11 @@ bool radio_init() {
 
   radio_driver.setDeepInitCallback(radio_init);
 
+#ifdef DISPLAY_CLASS
+  display.setRenderYieldCallback([]() {
+    if (radio_driver.profiles()->enabled()) radio_driver.loop();
+  });
+#endif
   return true;  // success
 }
 

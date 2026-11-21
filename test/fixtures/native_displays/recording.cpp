@@ -58,6 +58,7 @@ struct Canvas {
   void setTextColor(int) {}
   void setColor(OLEDDISPLAY_COLOR) {}
   void setRGB(int) {}
+  void setRenderYieldCallback(void (*)()) {}
   void setFont(int) {}
   void setFont(const int* font) { ascent=*font; }
   void print(const char*) {}
