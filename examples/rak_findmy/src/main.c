@@ -8,7 +8,9 @@
 #include <zephyr/kernel.h>
 #include <zephyr/settings/settings.h>
 #include <zephyr/shell/shell.h>
+#ifdef CONFIG_USB_DEVICE_STACK
 #include <zephyr/usb/usb_device.h>
+#endif
 
 extern bool tag_has_product_plan(void);
 extern void tag_mesh_start(void);
@@ -205,7 +207,9 @@ SHELL_CMD_REGISTER(tag, &tag_commands, "RAK WisMesh Tag", NULL);
 int main(void)
 {
     // The tracker also boots on battery with no USB host.
+#ifdef CONFIG_USB_DEVICE_STACK
     (void)usb_enable(NULL);
+#endif
     int err = 0;
     if (!gpio_is_ready_dt(&green) || !gpio_is_ready_dt(&button)
         || !device_is_ready(buzzer.dev) || !device_is_ready(battery.dev)) err = -ENODEV;

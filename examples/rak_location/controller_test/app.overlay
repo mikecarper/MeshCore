@@ -1,0 +1,11 @@
+#include "../../rak_findmy/app.overlay"
+&uicr { /delete-property/ gpio-as-nreset; nfct-pins-as-gpios; };
+&tag_app { reg = <0x26000 0x9b000>; };
+&flash0 {
+  partitions {
+    /delete-node/ partition@d2000;
+    storage_partition: partition@c1000 { label = "bench-settings"; reg = <0xc1000 0x2000>; };
+    bt_fast_pair_partition: partition@c8000 { label = "bt-fast-pair"; reg = <0xc8000 0x1000>; };
+    mfg_storage: partition@d1000 { label = "mfg_storage"; reg = <0xd1000 0x1000>; };
+  };
+};

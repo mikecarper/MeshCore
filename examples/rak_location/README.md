@@ -144,3 +144,7 @@ MeshCore worker is scheduled with both blank and unreadable storage.
 ```sh
 python examples/rak_location/tests/blank_boot.py sidewalk /work/rak-sidewalk-sensor/zephyr/zephyr.elf
 ```
+
+The [three-library controller test](controller_test/README.md) links all three
+SDKs into one RAK image per role. Its USB command measures the Bluetooth
+controller's advertising-set capacity independently of network enrollment.
