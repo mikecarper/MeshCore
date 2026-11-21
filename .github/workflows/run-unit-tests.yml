@@ -1089,6 +1089,9 @@ jobs:
           python3 -B test/test_sensor_tracker_store.py -v
           python3 -B test/test_tracker_owner_response.py -v
           python3 -B test/test_sensor_tracker_client.py -v
+          python3 -B test/test_companion_dog_tracker.py -v
+          python3 -B test/test_rak_findmy_mesh_wire.py -v
+          python3 -B test/test_lis2dh_motion.py -v
           python3 -B test/test_sensor_tracker_gps.py -v
           python3 -B test/test_sensor_tracker_sleep.py -v
           python3 -B test/test_power_saving_deadlines.py -v

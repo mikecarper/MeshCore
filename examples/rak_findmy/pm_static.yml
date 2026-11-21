@@ -1,0 +1,14 @@
+# Stock RAK S140 6.1.1 UF2 bootloader. Keep the settings inside application
+# space, separate from MeshCore's extra filesystem and the bootloader.
+softdevice:
+  address: 0x00000
+  size: 0x26000
+  region: flash_primary
+settings_storage:
+  address: 0xd2000
+  size: 0x2000
+  region: flash_primary
+reserved:
+  address: 0xd4000
+  size: 0x2c000
+  region: flash_primary

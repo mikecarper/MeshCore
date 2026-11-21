@@ -198,3 +198,16 @@ executed as a tracker or console command.
 Battery life and reliable wake behavior still need measurements on the actual
 hardware, including GPS reception, repeater availability, and the chosen
 reporting intervals.
+
+## RAK WisMesh Tag Companion as a collar
+
+The RAK WisMesh Tag USB and BLE Companion builds also accept the local tracker
+commands above. Save the owner's Companion as a contact on the Tag before
+enabling dog mode. The Tag retains its normal Companion receive and control
+interfaces between checks. Use `tracker check` to request a check immediately
+and `get tracker status` to see the last accepted owner response.
+
+Two additional experimental RAK images run the tracker with Nordic's native
+Apple Find My accessory service. Apple-issued provisioning is required for
+iPhone enrollment. The build and bench instructions cover both tracker roles.
+[RAK Find My tracker instructions](https://github.com/mikecarper/MeshCore/tree/keymindCascade/examples/rak_findmy)

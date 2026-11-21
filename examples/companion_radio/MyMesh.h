@@ -65,6 +65,10 @@ namespace mesh { class BeaconManager; }
 #include <helpers/ArduinoHelpers.h>
 #include <helpers/BaseSerialInterface.h>
 #include <helpers/CompanionDelayedReplies.h>
+#if defined(RAK_WISMESH_TAG) && ENV_INCLUDE_GPS == 1
+#define COMPANION_RAK_TRACKER 1
+#include <helpers/SensorTrackerStore.h>
+#endif
 #if MESH_ENABLE_LOST_REPLY
 #include <helpers/CompanionLostReply.h>
 #endif
@@ -568,7 +572,7 @@ protected:
   bool allowFloodRetry(const mesh::Packet* packet) const override;
   uint8_t getFloodRetryMaxPathLength(const mesh::Packet* packet) const override;
   uint8_t getFloodRetryMaxAttempts(const mesh::Packet* packet) const override;
-#if defined(COMPANION_MESH_CLOCK_SYNC) || defined(MESHCORE_HAS_COLOR_DISPLAY) \
+#if defined(COMPANION_MESH_CLOCK_SYNC) || defined(MESHCORE_HAS_COLOR_DISPLAY) || COMPANION_RAK_TRACKER \
     || (defined(USE_LR2021) && defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM)
   void onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id,
                     uint32_t timestamp, const uint8_t* app_data,
@@ -609,6 +613,8 @@ protected:
   bool onContactPathRecv(ContactInfo& from, uint8_t* in_path, uint8_t in_path_len, uint8_t* out_path, uint8_t out_path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) override;
 #if COMPANION_FEATURE_DIRECT_OTA_ADMIN
   uint8_t getContactTxRadio(const mesh::Identity& peer) const override;
+#endif
+#if COMPANION_FEATURE_DIRECT_OTA_ADMIN || COMPANION_RAK_TRACKER
   void onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx,
                       const uint8_t* secret, uint8_t* data, size_t len) override;
   bool onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret,
@@ -1122,7 +1128,12 @@ private:
   bool _temp_radio_applied;
 #endif
   bool send_unscoped;   // force un-scoped flood (instead of using send_scope)
+#if COMPANION_RAK_TRACKER
+  // Full owner keys and multi-hop paths must fit the interactive console.
+  char cli_command[168];
+#else
   char cli_command[80];
+#endif
   bool _cli_line_overflow = false;
   char reply_buf[166];
   uint8_t app_target_ver;
@@ -1227,6 +1238,24 @@ private:
   };
   #define EXPECTED_ACK_TABLE_SIZE 8
   AckTableEntry expected_ack_table[EXPECTED_ACK_TABLE_SIZE]; // circular table
+#if COMPANION_RAK_TRACKER
+  mesh::tracker::TrackerRecord dog;
+  enum class DogPhase : uint8_t { Idle, Gps, Queued, Sent };
+  DogPhase dog_phase = DogPhase::Idle;
+  bool dog_storage_fault = false;
+  uint32_t dog_due = 0, dog_radio_anchor = 0, dog_rtc = 0, dog_ms = 0;
+  unsigned long dog_deadline = 0;
+  uint8_t dog_packet_hash[MAX_HASH_SIZE] = {};
+  void beginDogTracker();
+  void loopDogTracker();
+  void cancelDogCheck(bool delivered = false);
+  bool saveDogTracker(mesh::tracker::TrackerRecord& record);
+  bool dogCommand(const char* command, char* reply, size_t capacity);
+  void dogSendResult(mesh::Packet* p, bool sent);
+  void dogHeardRepeater();
+  bool dogResponse(mesh::Packet* p, const uint8_t* secret, const uint8_t* body, size_t len,
+                   const uint8_t* path = nullptr, uint8_t path_len = 0);
+#endif
 #if MESH_ENABLE_LOST_REPLY
   mesh::companion::LostReplyLimiter lost_reply_limiter;
   void maybeReplyToLostQuestion(const ContactInfo& from, uint32_t sender_timestamp,

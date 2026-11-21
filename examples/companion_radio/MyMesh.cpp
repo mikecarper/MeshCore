@@ -2001,7 +2001,7 @@ void MyMesh::onGroupDataRecv(mesh::Packet* packet, uint8_t type,
   BaseChatMesh::onGroupDataRecv(packet, type, key, data, len);
 }
 
-#if defined(COMPANION_MESH_CLOCK_SYNC) || defined(MESHCORE_HAS_COLOR_DISPLAY) \
+#if defined(COMPANION_MESH_CLOCK_SYNC) || defined(MESHCORE_HAS_COLOR_DISPLAY) || COMPANION_RAK_TRACKER \
     || (defined(USE_LR2021) && defined(MESHNOLOGY_W12) && defined(MESH_ENABLE_LR2021_AUTO_XTRIM) && MESH_ENABLE_LR2021_AUTO_XTRIM)
 void MyMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id,
                           uint32_t timestamp, const uint8_t* app_data,
@@ -2016,6 +2016,12 @@ void MyMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id,
   if (!isLocalContactImport(packet)) {
     mesh::ui::observeDisplayNightAdvert(packet, id, self_id, app_data,
                                        app_data_len, millis());
+  }
+#endif
+#if COMPANION_RAK_TRACKER
+  if (dog.enabled && !packet->radio_local && !isLocalContactImport(packet) && packet->getPathHashCount() == 0) {
+    AdvertDataParser advert(app_data, app_data_len);
+    if (advert.isValid() && advert.getType() == ADV_TYPE_REPEATER) dogHeardRepeater();
   }
 #endif
   BaseChatMesh::onAdvertRecv(packet, id, timestamp, app_data, app_data_len);
@@ -2099,6 +2105,9 @@ void MyMesh::onRadioProfileCopyQueued(mesh::Packet* packet, const mesh::Packet* 
 
 void MyMesh::onSendComplete(mesh::Packet* packet) {
   mesh::Mesh::onSendComplete(packet);
+#if COMPANION_RAK_TRACKER
+  dogSendResult(packet, true);
+#endif
   if (_primary_radio_reply.complete(packet) && !_primary_radio_reply.waiting())
     finishPrimaryRadioReply(true);
   // Use the completed packet's idle gap before a busy queue starts another TX.
@@ -2108,6 +2117,9 @@ void MyMesh::onSendComplete(mesh::Packet* packet) {
 
 void MyMesh::onSendFail(mesh::Packet* packet) {
   mesh::Mesh::onSendFail(packet);
+#if COMPANION_RAK_TRACKER
+  dogSendResult(packet, false);
+#endif
   if (_primary_radio_reply.fail(packet)) finishPrimaryRadioReply(false);
   else if (!_primary_radio_reply.waiting() && _primary_radio_reply.succeeded())
     finishPrimaryRadioReply(true);
@@ -2734,8 +2746,12 @@ uint8_t MyMesh::getContactTxRadio(const mesh::Identity& peer) const {
       : BaseChatMesh::getContactTxRadio(peer);
 }
 
+#endif
+
+#if COMPANION_FEATURE_DIRECT_OTA_ADMIN || COMPANION_RAK_TRACKER
 void MyMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx,
                           const uint8_t* secret, uint8_t* data, size_t len) {
+#if COMPANION_FEATURE_DIRECT_OTA_ADMIN
   const uint32_t now = _ms->getMillis();
   const bool selected = _ota_direct_admin.matchesSecret(secret, now);
   if (selected && (!directOtaRadioCurrent() || !packet || packet->radio_profile != _ota_direct_radio_profile
@@ -2752,12 +2768,17 @@ void MyMesh::onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx,
       return;  // Do not let the normal callback rewrite a stored route.
     }
   }
+#endif
+#if COMPANION_RAK_TRACKER
+  if (type == PAYLOAD_TYPE_RESPONSE && dogResponse(packet, secret, data, len)) return;
+#endif
   BaseChatMesh::onPeerDataRecv(packet, type, sender_idx, secret, data, len);
 }
 
 bool MyMesh::onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret,
                           uint8_t* path, uint8_t path_len, uint8_t extra_type,
                           uint8_t* extra, uint8_t extra_len) {
+#if COMPANION_FEATURE_DIRECT_OTA_ADMIN
   const uint32_t now = _ms->getMillis();
   if (_ota_direct_admin.matchesSecret(secret, now)) {
     if (!directOtaRadioCurrent() || !packet || packet->radio_profile != _ota_direct_radio_profile
@@ -2769,6 +2790,10 @@ bool MyMesh::onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t*
     }
     return false;  // RAM maintenance peer never changes a saved contact path.
   }
+#endif
+#if COMPANION_RAK_TRACKER
+  if (extra_type == PAYLOAD_TYPE_RESPONSE && dogResponse(packet, secret, extra, extra_len, path, path_len)) return false;
+#endif
   return BaseChatMesh::onPeerPathRecv(packet, sender_idx, secret, path, path_len,
                                     extra_type, extra, extra_len);
 }
@@ -3722,6 +3747,9 @@ void MyMesh::begin(bool has_display, bool radio_available,
   configureRadioFromPrefs();
 #if MESH_ENABLE_HOST_KISS
   mesh::hostkiss::begin(_store->getPrimaryFS(), *_radio, _radio_profiles, *this);
+#endif
+#if COMPANION_RAK_TRACKER
+  beginDogTracker();
 #endif
 #if MESH_ENABLE_TX_BEACONS
   beginBeacons();
@@ -11765,6 +11793,9 @@ bool MyMesh::handleDirectCommand(const char* command, char* reply, size_t reply_
           command, reply, reply_size)) return true;
   if (mesh::power::handleStoredBatteryCalibrationCommand(
           board, command, reply, reply_size)) return true;
+#if COMPANION_RAK_TRACKER
+  if (dogCommand(command, reply, reply_size)) return true;
+#endif
 #if MESH_ENABLE_LOST_REPLY
   if (mesh::companion::handleLostReplyCommand(
           _prefs, command, reply, reply_size, [this]() { return savePrefs(); })) return true;
@@ -12777,6 +12808,9 @@ void MyMesh::loop() {
   );
 #endif
   BaseChatMesh::loop();
+#if COMPANION_RAK_TRACKER
+  if (!mesh::morseTimingActive(_radio)) loopDogTracker();
+#endif
 #if MESH_WARM_RX_REFRESH
   if (_radio && _radio->isAGCMaintenanceActive()) return;
 #endif
