@@ -12,11 +12,11 @@ answer with the owner's saved lost status. These experimental images have a
 USB shell and direct LoRa tracker protocol. The standard firmware still
 provides the full Sensor and Companion interfaces.
 
-| Image | First USB commands | Live test requires |
+| Slot and image | First USB commands | Live test requires |
 | --- | --- | --- |
-| Sidewalk | `dog status` and `sidewalk status` | An AWS Sidewalk device and credentials, positioning enabled with a destination, and a participating gateway |
-| Find Hub | `dog status` and `findhub status` | Your registered Find Hub-capable Google model and a compatible Android phone configured for that model |
-| Apple Find My | `dog status` and `tag status` | A product plan and the individual accessory's Apple-issued credentials. See the [iPhone setup guide](../rak_findmy/README.md). |
+| A · Apple Find My | `dog status` and `tag status` | A product plan and the individual accessory's Apple-issued credentials. See the [iPhone setup guide](../rak_findmy/README.md). |
+| B · Android / Google Find Hub | `dog status` and `findhub status` | Your registered Find Hub-capable Google model and a compatible Android phone configured for that model |
+| C · Amazon Sidewalk | `dog status` and `sidewalk status` | An AWS Sidewalk device and credentials, positioning enabled with a destination, and a participating gateway |
 
 Each image runs one commercial network. Changing a Bluetooth address does
 not enroll an accessory. Before switching a paired item to a different network,
@@ -147,5 +147,8 @@ python examples/rak_location/tests/blank_boot.py sidewalk /work/rak-sidewalk-sen
 
 The [three-library controller test](controller_test/README.md) links all three
 SDKs into one RAK image per role. Run `locator ids start` to broadcast three
-named BLE beacons concurrently, each with its own address. Use
-`locator ids status` to inspect them and `locator ids stop` to stop them.
+named BLE beacons concurrently, each with its own address. For example,
+`locator ids stop B` stops the Android test beacon and `locator ids start B`
+restarts it. The native build helper accepts the same letters. Use the
+v2.4.2 SDK environment and pass `--sdk /path/to/sdk-find-my` for A.
+Use the v3.3.0 environment for B and the Sidewalk add-on for C.

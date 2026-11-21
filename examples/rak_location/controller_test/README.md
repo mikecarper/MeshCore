@@ -10,14 +10,14 @@ present for the size measurement and stay idle during this controller test.
 1. Double-reset a bench tag with its stock S140 6.1.1 UF2 bootloader and copy
    the appropriate controller-test UF2 to the bootloader drive.
 2. Open the tag's USB console and run `dog status` to confirm the role.
-3. Run `locator ids start`. In a nearby BLE scanner, look for **RAK-TX-A**,
-   **RAK-TX-B** and **RAK-TX-C**. The controller keeps all three beacons
-   active and interleaves their transmissions. Each uses ordinary,
-   nonconnectable Bluetooth advertisements and its own random-static address.
-4. Run `locator ids status` to see each name, address and on/off state.
-   Run `locator ids stop` to stop all three. A scanner may cache old results,
-   so check for fresh packets. After a reboot, the beacons start off.
-   Running `locator ids start` again reuses the saved addresses.
+3. Run `locator ids start` and scan for the three names below. Each test beacon
+   has its own random-static address. The controller interleaves broadcasts
+   using ordinary nonconnectable Bluetooth advertisements.
+4. Run `locator ids stop B` to turn off the Android beacon. Fresh packets from
+   A and C should continue. Run `locator ids start B` to bring it back.
+   `start`, `stop` and `status` each accept an optional A, B or C. Omitting
+   the letter addresses all three. All start off on reboot and reuse their
+   saved addresses when started again.
 5. With the beacons stopped, run `locator capacity` twice. The command asks the physical controller how
    many advertising sets it supports, tries to allocate three concurrently,
    reports the count, and releases them. For example, a result ending in
@@ -25,9 +25,15 @@ present for the size measurement and stay idle during this controller test.
    slots are available and reusable on that unit. This check sends no finder
    advertisements and uses no account credentials.
 
-The three names identify local test beacons. Apple Find My, Google Find Hub
-and Amazon Sidewalk stay idle while these beacons run. A local scan verifies
-the radio behavior. A network sighting requires a provisioned finder profile.
+| Slot | Local BLE name | Native firmware profile | USB command in the native image |
+| --- | --- | --- | --- |
+| A | `RAK-A-Apple` | Apple Find My | `tag status` |
+| B | `RAK-B-Android` | Google Find Hub | `findhub status` |
+| C | `RAK-C-Sidewalk` | Amazon Sidewalk | `sidewalk status` |
+
+The combined image runs local beacons. To test a real finder service, flash
+the Sensor or USB Companion UF2 for its letter and provision that profile.
+The [native profile guide](../README.md) covers enrollment and sightings.
 
 The build allocates `0xc1000..0xc2fff` to the bench MeshCore and Bluetooth
 settings. The USB firmware update preserves the individual profiles' settings
@@ -57,8 +63,9 @@ python examples/rak_location/controller_test/build.py sensor \
 On Linux with the same Zephyr workspace, build the native test application.
 It runs the same shell commands and Bluetooth host code as the firmware.
 The Python test uses Bumble 0.0.236 and Python 3.11 or newer. A separate
-simulated scanner checks three names and addresses, repeated starts and
-stops, and address persistence across two boots with shared simulated flash.
+simulated scanner checks every combination of the three names, address
+persistence across two boots and continuous advertising by unaffected slots
+when an individual command or a group start fails.
 
 ```sh
 ZEPHYR_TOOLCHAIN_VARIANT=host west build --no-sysbuild -b native_sim/native/64 \
