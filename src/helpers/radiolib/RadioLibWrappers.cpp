@@ -3805,6 +3805,16 @@ float RadioLibWrapper::packetScoreInt(float snr, int sf, int packet_len) {
   return score < 1.0f ? score : 1.0f;
 }
 
+// Keep the failed-read fallback out of the ESP32's resident retune code.
+// Allow explicit header, CRC, low data rate optimization and coding rate 4/8.
+static __attribute__((cold, noinline)) uint32_t fallbackPayloadMillis(
+    uint8_t sf, uint32_t symbol_us, uint32_t payload_bytes) {
+  const uint32_t bits = 8 * payload_bytes + 16 + 20 + (sf <= 6 ? 0 : 8) - 4 * sf;
+  const uint32_t bits_per_block = 4 * (sf - 2);
+  const uint32_t blocks = (bits + bits_per_block - 1) / bits_per_block;
+  return static_cast<uint32_t>((uint64_t(blocks) * 8 * symbol_us + 999) / 1000);
+}
+
 MC_RADIO_FAST_CODE_ATTR PacketMillis RadioLibWrapper::calcMaxPacketMillis(uint8_t sf, float bw, uint8_t cr, uint16_t preambleSymbols) {
   // based on RadioLib's calculateTimeOnAir()
   uint32_t tsym_us = ((uint32_t)10000 << sf) / (bw * 10);
@@ -3819,15 +3829,9 @@ MC_RADIO_FAST_CODE_ATTR PacketMillis RadioLibWrapper::calcMaxPacketMillis(uint8_
   // airtime for max packet at current radio settings
   const uint32_t total_us = _radio->getTimeOnAir(MAX_TRANS_UNIT);
   if (!total_us || mesh::isEncodedRadioLibAirtimeError(total_us)) {
-    // LR2021 reads the packet type over SPI. A failed read is returned as
-    // unsigned airtime. Bound a latched header using the configured LoRa SF
-    // and bandwidth, allowing explicit header, CRC, LDRO and CR 4/8.
-    const uint32_t bits = 8 * MAX_TRANS_UNIT + 16 + 20 + (sf <= 6 ? 0 : 8) - 4 * sf;
-    const uint32_t bits_per_block = 4 * (sf - 2);
-    const uint32_t blocks = (bits + bits_per_block - 1) / bits_per_block;
-    const uint64_t payload_us = uint64_t(blocks) * 8 * tsym_us;
+    // LR2021 can return an encoded SPI read error instead of packet airtime.
     return {static_cast<uint32_t>((preamble_guard_us + 999) / 1000),
-            static_cast<uint32_t>((payload_us + 999) / 1000)};
+            fallbackPayloadMillis(sf, tsym_us, MAX_TRANS_UNIT)};
   }
   // airtime for payload only (no preamble, header or SOF)
   const uint32_t fallback_total_us = 4000000UL;

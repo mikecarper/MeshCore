@@ -59,6 +59,9 @@ class TraceProfileTimingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="trace-profile-timing-", dir=cache) as directory:
             work = Path(directory)
             (work / "production.inc").write_text(methods, encoding="ascii")
+            mesh_header = (ROOT / "src/Mesh.h").read_text()
+            (work / "trace_forward_gate.inc").write_text(
+                extract_braced(mesh_header, "bool canForwardPacket("), encoding="ascii")
             (work / "constants.inc").write_text(constants, encoding="ascii")
             (work / "trace_priority.inc").write_text("\n".join(extract_braced(mesh, signature)
                 for signature in ("static uint8_t decodeTraceHashSize(",

@@ -887,7 +887,8 @@ int main() {
 
     def test_preamble_margin_and_receive_deadlines(self):
         radio_source = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.cpp').read_text()
-        timing = method(radio_source, 'PacketMillis RadioLibWrapper::calcMaxPacketMillis(')
+        timing = method(radio_source, 'uint32_t fallbackPayloadMillis(') + '\n'
+        timing += method(radio_source, 'PacketMillis RadioLibWrapper::calcMaxPacketMillis(')
         estimate = method(radio_source, 'uint32_t RadioLibWrapper::getEstAirtimeFor(')
         sx1262 = method((ROOT / 'src/helpers/radiolib/CustomSX1262.h').read_text(),
                         'bool isReceiving()')

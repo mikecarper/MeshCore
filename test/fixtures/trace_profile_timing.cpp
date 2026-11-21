@@ -113,6 +113,8 @@ public:
     bool isHashMatch(const uint8_t* bytes, size_t length) { return memcmp(bytes, key, length) == 0; }
   } self_id;
   unsigned completed = 0;
+  bool _cold_boot_repeat_hold = false;
+#include "trace_forward_gate.inc"
   bool allowPacketForward(const Packet*) { return true; }
   uint32_t getDirectRetransmitDelay(const Packet*) { return 0; }
   void onTraceRecv(Packet*, uint32_t, uint32_t, uint8_t, const uint8_t*, const uint8_t*, uint8_t) { ++completed; }
