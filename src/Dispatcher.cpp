@@ -165,11 +165,9 @@ void Dispatcher::updateTxBudget() {
   }
 }
 
-bool Dispatcher::deferForTxBudget(uint32_t required_ms) {
-  if (tx_budget_ms >= required_ms) return false;
-  const float duty_cycle = 1.0f / (1.0f + getAirtimeBudgetFactor());
-  next_tx_time = futureMillis((unsigned long)((required_ms - tx_budget_ms) / duty_cycle));
-  return true;
+uint32_t Dispatcher::txBudgetDelay(uint32_t required_ms) const {
+  if (tx_budget_ms >= required_ms) return 0;
+  return (uint32_t)((required_ms - tx_budget_ms) * (1.0f + getAirtimeBudgetFactor()));
 }
 
 bool Dispatcher::restoreOutboundTxOverrides() {
@@ -510,7 +508,7 @@ void Dispatcher::finishForeignRadioFrame(bool success, bool account_airtime) {
     }
     updateTxBudget();
     tx_budget_ms = elapsed >= tx_budget_ms ? 0 : tx_budget_ms - elapsed;
-    if (!deferForTxBudget(MIN_TX_BUDGET_RESERVE_MS)) next_tx_time = _ms->getMillis();
+    next_tx_time = futureMillis(txBudgetDelay(MIN_TX_BUDGET_RESERVE_MS));
   }
   if (success && _radio->profiles()) ++_radio->profiles()->tx_packets[foreign_radio_profile];
 #if MESH_ENABLE_OTA_KISS_DIRECT
@@ -594,12 +592,16 @@ bool Dispatcher::checkForeignRadioSend() {
     return false;
   }
   if (foreign_radio_retry_at && (int32_t)(now - foreign_radio_retry_at) < 0) return false;
+  if (!millisHasNowPassed(next_tx_time)) return false;
   updateTxBudget();
   const uint32_t airtime = validRadioAirtime(
       _radio->getProfileAirtime(foreign_radio_profile, foreign_radio_length));
   if (!airtime) { finishForeignRadioFrame(false, false); return false; }
-  if (deferForTxBudget(airtime / MIN_TX_BUDGET_AIRTIME_DIV)) return false;
-  if (!millisHasNowPassed(next_tx_time)) return false;
+  const uint32_t budget_delay = txBudgetDelay(airtime / MIN_TX_BUDGET_AIRTIME_DIV);
+  if (budget_delay) {
+    foreign_radio_retry_at = now + budget_delay;
+    return false;
+  }
   const auto prepared = _radio->prepareTransmitProfile(foreign_radio_profile);
   if (prepared == RadioParamApplyResult::BUSY) {
     if (!foreign_radio_prepare_deadline) {
@@ -1156,7 +1158,7 @@ void Dispatcher::loop() {
         tx_budget_ms -= t;
       }
 
-      if (!deferForTxBudget(MIN_TX_BUDGET_RESERVE_MS)) next_tx_time = _ms->getMillis();
+      next_tx_time = futureMillis(txBudgetDelay(MIN_TX_BUDGET_RESERVE_MS));
 
       _radio->onSendFinished();
       // RX can occur entirely between two loop observations during a TX
@@ -1773,8 +1775,9 @@ void Dispatcher::checkSend() {
       return;
     }
   }
+  if (!millisHasNowPassed(next_tx_time)) return;
   updateTxBudget();
-  
+
   uint32_t est_airtime = validRadioAirtime(pending && _radio->profiles()
       ? _radio->getProfileAirtime(pending->radio_profile, MAX_TRANS_UNIT)
       : _radio->getEstAirtimeFor(MAX_TRANS_UNIT));
@@ -1782,9 +1785,26 @@ void Dispatcher::checkSend() {
     est_airtime = validRadioAirtime(_radio->getProfileAirtime(
         pending->radio_profile, pending->getRawLength(), pending->tx_cr));
   }
-  if (deferForTxBudget(est_airtime / MIN_TX_BUDGET_AIRTIME_DIV)) return;
-  
-  if (!millisHasNowPassed(next_tx_time)) return;
+  const uint32_t required_ms = est_airtime / MIN_TX_BUDGET_AIRTIME_DIV;
+  const uint32_t budget_delay = txBudgetDelay(required_ms);
+  if (budget_delay) {
+    if (!pending || !isDualRadioActive()) {
+      next_tx_time = now + budget_delay;
+      return;
+    }
+    // Yield once to affordable traffic. If a continuous stream spends that
+    // credit, let the older entry keep its queue priority on its next turn.
+    // A frame larger than the entire budget can never claim that priority.
+    const uint32_t recheck = budget_delay > 1000 ? 1000 : budget_delay;
+    if ((!pending->yielded_tx_budget || required_ms * (1.0f + getAirtimeBudgetFactor()) > getDutyCycleWindowMs())
+        && _mgr->deferOutbound(pending, now + recheck)) {
+      pending->yielded_tx_budget = true;
+      return;
+    }
+    // Recheck priority, expiry and settings while the credit accumulates.
+    next_tx_time = now + (recheck > 100 ? 100 : recheck);
+    return;
+  }
 
   // Waiting for airtime credit must leave the receive scanner free to run.
   // Only retune once this queue entry is actually eligible to transmit.
@@ -1939,6 +1959,7 @@ void Dispatcher::retireUnusedCADWait(uint8_t profile) {
 }
 
 bool Dispatcher::queueTransmitCandidate(Packet* packet, uint8_t priority, uint32_t scheduled_for) {
+  packet->yielded_tx_budget = false;
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
   packet->w12_pre_tx_deadline=0; packet->w12_post_tx_retry_used=false;
 #endif

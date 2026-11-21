@@ -19,6 +19,7 @@ HARNESS = r'''
 #include <initializer_list>
 #include <new>
 #include <Packet.h>
+#include <RadioProfiles.h>
 #include <helpers/RoutingPolicy.h>
 #include <helpers/MorseReplyHandoff.h>
 #define LOOP_DETECT_OFF 0
@@ -81,6 +82,12 @@ struct MyMesh : mesh::Mesh {
   bool filter_block = false, moderation_block = false, clock_sync_mesh_edge_enabled = false;
   unsigned commits = 0, clock_samples = 0;
   SimpleMeshTables tables;
+  uint8_t active_sf = 10;
+  struct TestRadio {
+    mesh::RadioProfiles config;
+    const mesh::RadioProfiles* profiles() const { return &config; }
+  } radio;
+  TestRadio* _radio = &radio;
   bool floodChannelDataHopApplies(const mesh::Packet*) const { return true; }
   bool isLooped(const mesh::Packet*, const uint8_t*) { return looped; }
   bool shouldBlockFloodPacketForward(const mesh::Packet*, unsigned) { return filter_block; }
@@ -88,7 +95,6 @@ struct MyMesh : mesh::Mesh {
   void commitFloodPacketFilterRates(const mesh::Packet*, unsigned) { ++commits; }
   void recordAcceptedFloodClockSample(const mesh::Packet*) { ++clock_samples; }
   const SimpleMeshTables* getTables() const { return &tables; }
-  int8_t getDirectRetryMinSNRX4() const { return 12; }
   bool allowPacketForward(const mesh::Packet*);
   bool allowPacketTransmit(const mesh::Packet*) const override;
   bool allowDirectRetry(const mesh::Packet*, const uint8_t*, uint8_t) const;
@@ -153,12 +159,28 @@ int main() {
   const uint8_t hop[] = {0x42};
   assert(node.allowDirectRetry(&p, hop, 1)); // unknown remains eligible
   node.tables.known = true;
-  node.tables.recent.snr_x4 = 11;
+  node.tables.recent.snr_x4 = -61;
   assert(!node.allowDirectRetry(&p, hop, 1));
-  node.tables.recent.snr_x4 = 12;
+  node.tables.recent.snr_x4 = -60;
   assert(node.allowDirectRetry(&p, hop, 1));
   node._prefs.direct_retry_snr_margin_x4 = 1;
   assert(!node.allowDirectRetry(&p, hop, 1));
+
+  // At -10 dB the saved neighbor clears the primary SF10 threshold.
+  // R2 must apply its own SF7 or SF5 threshold to the same observation.
+  node._prefs.direct_retry_snr_margin_x4 = 0;
+  node.tables.recent.snr_x4 = -40;
+  assert(node.allowDirectRetry(&p, hop, 1));
+  p.radio_profile = 1;
+  node.radio.config.secondary.mode = mesh::RadioProfileMode::RxTx;
+  for (uint8_t sf : {7, 5}) {
+    node.radio.config.secondary.params.sf = sf;
+    node.tables.recent.snr_x4 = -40;
+    assert(!node.allowDirectRetry(&p, hop, 1));
+    node.tables.recent.snr_x4 = sf == 7 ? -30 : -10;
+    assert(node.allowDirectRetry(&p, hop, 1));
+  }
+  p.radio_profile = 0;
 
   // The opt-in never overrides existing flood-hop/region/scope/loop rules,
   // or spends moderation quota for a packet rejected earlier in the chain.

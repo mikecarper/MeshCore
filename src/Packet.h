@@ -72,6 +72,7 @@ public:
   bool w12_post_tx_retry_used = false;
 #endif
   bool forwarded = false;  // local relay ownership, copied into retries; never serialized
+  bool yielded_tx_budget = false;  // one turn for the other profile per queued send
   uint32_t radio_generation = 0;
   uint32_t radio_origin_generation = 0;
   uint8_t radio_profile = 0;

@@ -43,7 +43,8 @@ public:
   }
   void onReceiveProcessed() override { ++processed; }
   uint32_t getEstAirtimeFor(int) override { return 100; }
-  uint32_t getProfileAirtime(uint8_t,int,uint8_t=0) override { return 100; }
+  uint32_t profile_airtime[2] = {100, 100};
+  uint32_t getProfileAirtime(uint8_t profile,int,uint8_t=0) override { return profile_airtime[profile]; }
   float packetScore(float,int) override { return 1; }
   RadioParamApplyResult prepareTransmitProfile(uint8_t n) override {
     if (prepare==RadioParamApplyResult::APPLIED) active=n;
@@ -93,6 +94,97 @@ static Packet* newPacket(TestDispatcher& d,uint8_t policy=RADIO_TX_BOTH) {
   p->tx_radio=policy;p->payload[0]=0x12;p->payload_len=1;return p;
 }
 int main() {
+  // A slow frame on either MeshCore profile can wait while an affordable
+  // frame uses the other profile, then send once credit has recovered.
+  for (uint8_t slow : {0, 1}) {
+    Fixture f;
+    f.radio.p.secondary.params.protocol = RadioProfileProtocol::MeshCore;
+    f.d.duty_window = 1000;
+    f.d.begin();
+    f.radio.profile_airtime[0] = 300;
+    assert(f.d.sendPacket(newPacket(f.d, RADIO_TX_PRIMARY), 0));
+    f.tick();
+    f.radio.complete = true;
+    f.tick(300);
+    assert(f.d.getRemainingTxBudget() == 200);
+    uint8_t fast = slow ^ 1;
+    f.radio.profile_airtime[slow] = 800;
+    f.radio.profile_airtime[fast] = 100;
+    auto policy = [](uint8_t profile) { return profile ? RADIO_TX_SECONDARY : RADIO_TX_PRIMARY; };
+    assert(f.d.sendPacket(newPacket(f.d, policy(slow)), 0));
+    assert(f.d.sendPacket(newPacket(f.d, policy(fast)), 1));
+    f.tick();
+    f.tick();
+    assert(f.radio.sends == 2 && f.radio.active == fast);
+    f.radio.complete = true;
+    f.tick();
+    f.tick(10);
+    assert(f.radio.sends == 2 && f.manager.getOutboundTotal() == 1);
+    f.tick(410);
+    assert(f.radio.sends == 3 && f.radio.active == slow);
+  }
+  // Keep a high-priority primary reply eligible even during sustained R2 TX.
+  {
+    Fixture f;
+    f.radio.p.secondary.params.protocol = RadioProfileProtocol::MeshCore;
+    f.d.duty_window = 1000;
+    f.d.begin();
+    f.radio.profile_airtime[0] = 300;
+    assert(f.d.sendPacket(newPacket(f.d, RADIO_TX_PRIMARY), 0));
+    f.tick();
+    f.radio.complete = true;
+    f.tick(300);
+    f.radio.profile_airtime[0] = 800;
+    assert(f.d.sendPacket(newPacket(f.d, RADIO_TX_PRIMARY), 0));
+    unsigned send_ticks = 0;
+    for (unsigned i = 0; i < 250; ++i) {
+      if (f.manager.getOutboundTotal() < 2)
+        assert(f.d.sendPacket(newPacket(f.d, RADIO_TX_SECONDARY), 1));
+      if (f.radio.sending) f.radio.complete = ++send_ticks == 5;
+      else send_ticks = 0;
+      f.tick(10);
+      if (f.radio.sending && f.radio.active == 0) break;
+    }
+    assert(f.radio.sends > 2 && f.radio.sending && f.radio.active == 0);
+  }
+  // A foreign frame on R2 also yields to affordable primary traffic.
+  {
+    Fixture f;
+    f.d.duty_window = 1000;
+    f.d.begin();
+    f.radio.profile_airtime[0] = 300;
+    assert(f.d.sendPacket(newPacket(f.d, RADIO_TX_PRIMARY), 0));
+    f.tick();
+    f.radio.complete = true;
+    f.tick(300);
+    f.radio.profile_airtime[1] = 800;
+    assert(f.d.queue(bytes));
+    assert(f.d.sendPacket(newPacket(f.d, RADIO_TX_PRIMARY), 0));
+    f.tick();
+    f.tick();
+    assert(f.radio.sends == 2 && f.radio.active == 0 && f.d.hasForeignRadioFrame());
+    f.radio.complete = true;
+    f.tick();
+    f.tick(410);
+    assert(f.radio.sends == 3 && f.radio.active == 1);
+  }
+  // A cheap queued packet still has to wait for the shared post-TX reserve.
+  {
+    Fixture f;
+    f.d.duty_window = 200;
+    f.d.begin();
+    assert(f.d.sendPacket(newPacket(f.d, RADIO_TX_PRIMARY), 0));
+    f.tick();
+    f.radio.complete = true;
+    f.tick(100);
+    assert(f.d.getRemainingTxBudget() == 0);
+    assert(f.d.sendPacket(newPacket(f.d, RADIO_TX_PRIMARY), 0));
+    f.tick();
+    f.tick(110);
+    assert(f.radio.sends == 1);
+    f.tick(90);
+    assert(f.radio.sends == 2);
+  }
   { Fixture f;assert(f.d.queue(bytes));assert(f.d.hasOutbound());assert(!f.d.queue(bytes));
     uint32_t delay=99;assert(f.d.getNextQueueWakeDelay(delay) && delay==0);
     f.tick();assert(f.radio.sends==1 && f.radio.active==1 && f.radio.sent==std::vector<uint8_t>(bytes,bytes+3));

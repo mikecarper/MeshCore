@@ -952,7 +952,6 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
 #endif
 
   bool extractDirectRetryPrefix(const mesh::Packet* packet, uint8_t* prefix, uint8_t& prefix_len) const;
-  int8_t getDirectRetryMinSNRX4() const;
   uint8_t getDirectRetryCodingRateForSNR(int8_t snr_x4) const;
   uint8_t getDirectRetryConfiguredMaxAttempts() const;
   uint32_t getDirectRetryAttemptStepMillis() const;

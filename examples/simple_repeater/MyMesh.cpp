@@ -1718,18 +1718,6 @@ bool MyMesh::maybeShortCircuitDirect(mesh::Packet* packet) {
   return true;
 }
 
-int8_t MyMesh::getDirectRetryMinSNRX4() const {
-  switch (active_sf) {
-    case 7: return -30;
-    case 8: return -40;
-    case 9: return -50;
-    case 10: return -60;
-    case 11: return -70;
-    case 12: return -80;
-    default: return -60;
-  }
-}
-
 uint8_t MyMesh::getDirectRetryCodingRateForSNR(int8_t snr_x4) const {
   if (!_prefs.direct_retry_cr_enabled) return 0;
   if (snr_x4 >= _prefs.direct_retry_cr4_snr_x4) return 4;
@@ -1772,7 +1760,10 @@ bool MyMesh::allowDirectRetry(const mesh::Packet* packet, const uint8_t* next_ho
     // recent-repeater table below the +3.00 dB starting point.
     return true;
   }
-  int16_t retry_floor_x4 = (int16_t)getDirectRetryMinSNRX4() + (int16_t)_prefs.direct_retry_snr_margin_x4;
+  const auto* profiles = packet && packet->radio_profile == 1 ? _radio->profiles() : nullptr;
+  const uint8_t sf = profiles ? profiles->secondary.params.sf : active_sf;
+  const int16_t retry_floor_x4 = mesh::RadioProfiles::estimatedMinSnrX4(sf >= 5 && sf <= 12 ? sf : 10)
+      + _prefs.direct_retry_snr_margin_x4;
   return (int16_t)repeater->snr_x4 >= retry_floor_x4;
 }
 

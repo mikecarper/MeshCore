@@ -174,6 +174,9 @@ class RadioProfiles {
     for (size_t i = 0; i < count; ++i) if (fabsf(p.bw - bandwidths[i]) < 0.01f) return true;
     return false;
   }
+  // Approximate LoRa demodulation threshold in quarter dB for SF5-SF12.
+  static constexpr int8_t estimatedMinSnrX4(uint8_t sf) { return 40 - 10 * sf; }
+
   static double symbolUs(const RadioProfileParams& p) {
     return p.bw > 0 && p.sf <= 12 ? (double)(1U << p.sf) * 1000.0 / p.bw : 0;
   }

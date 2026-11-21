@@ -896,7 +896,9 @@ public:
   float getLastRSSI() const override final;
   float getLastSNR() const override final;
 
-  float packetScore(float snr, int packet_len) override { return packetScoreInt(snr, 10, packet_len); }  // assume sf=10
+  float packetScore(float snr, int packet_len) override {
+    return packetScoreInt(snr, getSpreadingFactor(), packet_len);
+  }
 
   bool setRxBoostedGainMode(bool enabled);
   mesh::RadioParamApplyResult trySetRxBoostedGainMode(bool enabled);

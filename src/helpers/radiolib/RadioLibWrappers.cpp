@@ -3794,10 +3794,9 @@ float RadioLibWrapper::getLastSNR() const {
 }
 
 float RadioLibWrapper::packetScoreInt(float snr, int sf, int packet_len) {
-  if (sf < 7) return 0.0f;
+  if (sf < 5 || sf > 12) return 0.0f;
 
-  // Semtech's approximate threshold drops 2.5 dB for each step from SF7.
-  const float snr_threshold = -7.5f - (sf - 7) * 2.5f;
+  const float snr_threshold = mesh::RadioProfiles::estimatedMinSnrX4(sf) * 0.25f;
   if (snr < snr_threshold) return 0.0f;
 
   const float success_rate = (snr - snr_threshold) * 0.1f;

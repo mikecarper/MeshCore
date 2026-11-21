@@ -1164,7 +1164,9 @@ TEST_F(DualProfileTest, PacketArrivingAfterFailedTransmitCannotDeadlockRadioRetr
 TEST_F(DualProfileTest, AirtimeBudgetWaitDoesNotPinReceiverToQueuedTransmitProfile) {
   node.flood_attempts = 0;
   radio.config.cross = mesh::RadioCrossMode::Off;
-  radio.estimated_airtime = 100000000;
+  // Valid RadioLib milliseconds, with half the estimate exceeding the
+  // fixture's 1,800,000 ms initial credit.
+  radio.estimated_airtime = 4000000;
   ASSERT_NE(nullptr, queue());
   radio.selected = 1; // scanner is currently on the other channel
   tick();

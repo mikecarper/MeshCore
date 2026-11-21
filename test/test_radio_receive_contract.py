@@ -788,6 +788,54 @@ def transition_harness(source=None):
 
 
 class RadioReceiveContractTest(unittest.TestCase):
+    def test_packet_score_uses_receiving_spreading_factor(self):
+        lib = ROOT / 'src/helpers/radiolib'
+        common = method((lib / 'RadioLibWrappers.h').read_text(), 'float packetScore(')
+        score = method((lib / 'RadioLibWrappers.cpp').read_text(), 'float RadioLibWrapper::packetScoreInt(')
+        scanner = method((lib / 'W12PramScannerLab.inc').read_text(), 'float packetScore(')
+        source = r'''
+#include <cassert>
+#include <RadioProfiles.h>
+struct Radio { virtual float packetScore(float, int) = 0; };
+struct RadioLibWrapper : Radio {
+  int sf = 10;
+  int getSpreadingFactor() const { return sf; }
+  float packetScoreInt(float, int, int);
+  @COMMON@
+};
+@SCORE@
+struct W12 : RadioLibWrapper {
+  bool _lab_scan_active = false;
+  int _lab_last_profile = -1;
+  struct { int sf = 0; } _lab_last;
+  @SCANNER@
+};
+int main() {
+  W12 radio;
+  // Same packet length and SNR, with opposite profiles on the host and chip.
+  for (int sf = 5; sf <= 12; ++sf) {
+    radio._lab_scan_active = false;
+    radio.sf = sf;
+    float threshold = -7.5f - (sf - 7) * 2.5f;
+    assert(radio.packetScore(threshold, 128) == 0.0f);
+    float host = radio.packetScore(threshold + 5.0f, 128);
+    assert(host == 0.25f);
+    radio.sf = sf == 10 ? 7 : 10;
+    radio._lab_last_profile = 1;
+    radio._lab_last.sf = sf;
+    radio._lab_scan_active = true;
+    assert(radio.packetScore(threshold + 5.0f, 128) == host);
+  }
+}
+'''
+        with tempfile.TemporaryDirectory() as folder:
+            cpp, binary = Path(folder) / 'score.cpp', Path(folder) / 'score'
+            cpp.write_text(source.replace('@COMMON@', common).replace('@SCORE@', score)
+                           .replace('@SCANNER@', scanner))
+            subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-I', str(ROOT / 'src'),
+                            str(cpp), '-o', str(binary)], check=True)
+            subprocess.run([str(binary)], check=True)
+
     def test_frontend_settling_uses_all_production_family_branches(self):
         harness = transition_harness().split('struct LegacyRadio {', 1)[0]
         harness += r'''
