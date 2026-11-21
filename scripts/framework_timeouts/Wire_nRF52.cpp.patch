@@ -1,0 +1,72 @@
+--- a/Wire_nRF52.cpp
++++ b/Wire_nRF52.cpp
+@@ -28,6 +28,7 @@
+ #include <wiring_private.h>
+ 
+ #include "Wire.h"
++#include <helpers/nrf52/WireTimeout.h>
+ 
+ #include <Adafruit_TinyUSB.h> // for Serial
+ 
+@@ -161,24 +162,25 @@
+   _p_twim->TASKS_RESUME = 0x1UL;
+   _p_twim->RXD.PTR = (uint32_t)rxBuffer._aucBuffer;
+   _p_twim->RXD.MAXCNT = quantity;
++  mesh::nrf52::WireWait timeout;
+   _p_twim->TASKS_STARTRX = 0x1UL;
+ 
+-  while(!_p_twim->EVENTS_RXSTARTED && !_p_twim->EVENTS_ERROR);
++  if (!timeout.wait(_p_twim, _p_twim->EVENTS_RXSTARTED, true)) return 0;
+   _p_twim->EVENTS_RXSTARTED = 0x0UL;
+ 
+-  while(!_p_twim->EVENTS_LASTRX && !_p_twim->EVENTS_ERROR);
++  if (!timeout.wait(_p_twim, _p_twim->EVENTS_LASTRX, true)) return 0;
+   _p_twim->EVENTS_LASTRX = 0x0UL;
+ 
+   if (stopBit || _p_twim->EVENTS_ERROR)
+   {
+     _p_twim->TASKS_STOP = 0x1UL;
+-    while(!_p_twim->EVENTS_STOPPED);
++    if (!timeout.wait(_p_twim, _p_twim->EVENTS_STOPPED, false)) return 0;
+     _p_twim->EVENTS_STOPPED = 0x0UL;
+   }
+   else
+   {
+     _p_twim->TASKS_SUSPEND = 0x1UL;
+-    while(!_p_twim->EVENTS_SUSPENDED);
++    if (!timeout.wait(_p_twim, _p_twim->EVENTS_SUSPENDED, false)) return 0;
+     _p_twim->EVENTS_SUSPENDED = 0x0UL;
+   }
+ 
+@@ -225,26 +227,27 @@
+   _p_twim->TXD.PTR = (uint32_t)txBuffer._aucBuffer;
+   _p_twim->TXD.MAXCNT = txBuffer.available();
+ 
++  mesh::nrf52::WireWait timeout;
+   _p_twim->TASKS_STARTTX = 0x1UL;
+ 
+-  while(!_p_twim->EVENTS_TXSTARTED && !_p_twim->EVENTS_ERROR);
++  if (!timeout.wait(_p_twim, _p_twim->EVENTS_TXSTARTED, true)) return 4;
+   _p_twim->EVENTS_TXSTARTED = 0x0UL;
+ 
+   if (txBuffer.available()) {
+-    while(!_p_twim->EVENTS_LASTTX && !_p_twim->EVENTS_ERROR);
++    if (!timeout.wait(_p_twim, _p_twim->EVENTS_LASTTX, true)) return 4;
+   }
+   _p_twim->EVENTS_LASTTX = 0x0UL;
+ 
+   if (stopBit || _p_twim->EVENTS_ERROR)
+   {
+     _p_twim->TASKS_STOP = 0x1UL;
+-    while(!_p_twim->EVENTS_STOPPED);
++    if (!timeout.wait(_p_twim, _p_twim->EVENTS_STOPPED, false)) return 4;
+     _p_twim->EVENTS_STOPPED = 0x0UL;
+   }
+   else
+   {
+     _p_twim->TASKS_SUSPEND = 0x1UL;
+-    while(!_p_twim->EVENTS_SUSPENDED);
++    if (!timeout.wait(_p_twim, _p_twim->EVENTS_SUSPENDED, false)) return 4;
+     _p_twim->EVENTS_SUSPENDED = 0x0UL;
+   }
+ 

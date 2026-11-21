@@ -3,6 +3,7 @@
 #include <MeshCore.h>
 #include <Arduino.h>
 #include <helpers/NRF52Board.h>
+#include <helpers/nrf52/ShutdownButton.h>
 
 class SenseCapSolarBoard : public NRF52BoardDCDC {
 protected:
@@ -51,19 +52,15 @@ public:
     digitalWrite(LED_BLUE, LOW);
 
 #ifdef PIN_USER_BTN
-    while (digitalRead(PIN_USER_BTN) == LOW);
     // Keep pull-up enabled in system-off so the wake line doesn't float low.
-    nrf_gpio_cfg_sense_input(digitalPinToInterrupt(g_ADigitalPinMap[PIN_USER_BTN]), NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
+    mesh::nrf52::armShutdownButton(PIN_USER_BTN, LOW, NRF_GPIO_PIN_PULLUP);
 #elif defined(PIN_BUTTON1)
-    while (digitalRead(PIN_BUTTON1) == LOW);
     // Keep pull-up enabled in system-off so the wake line doesn't float low.
-    nrf_gpio_cfg_sense_input(digitalPinToInterrupt(g_ADigitalPinMap[PIN_BUTTON1]), NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
+    mesh::nrf52::armShutdownButton(PIN_BUTTON1, LOW, NRF_GPIO_PIN_PULLUP);
 #endif
   }
 
   void powerOff() override {
-    shutdownPeripherals();
-
 #ifdef NRF52_POWER_MANAGEMENT
     shutdownPeripherals();
     initiateShutdown(SHUTDOWN_REASON_USER);

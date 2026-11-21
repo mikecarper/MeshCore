@@ -35,12 +35,7 @@ uint16_t TechoBoard::getBattMilliVolts() {
   delay(10);  // let divider + ADC settle
 
   // Read and average (matching LilyGo's approach)
-  uint32_t sum = 0;
-  for (int i = 0; i < 8; i++) {
-    sum += analogRead(PIN_VBAT_READ);
-    delayMicroseconds(100);
-  }
-  uint16_t adc = sum / 8;
+  const uint32_t adc = readBatteryAdcAverage(PIN_VBAT_READ, 8, 100);
 
   // Disable divider to save power
   digitalWrite(PIN_VBAT_MEAS_EN, LOW);

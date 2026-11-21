@@ -1,0 +1,75 @@
+--- a/wiring_analog_nRF52.c
++++ b/wiring_analog_nRF52.c
+@@ -163,6 +163,30 @@
+   }
+ }
+ 
++// Bound SAADC events even during early boot, before a scheduler tick is available.
++static bool waitForAdcEvent(volatile uint32_t *event)
++{
++  for (unsigned polls = 0; !*event; ++polls) {
++    if (polls == 10000) return false;
++    delayMicroseconds(2);
++  }
++  return true;
++}
++
++static void abortAdc(void)
++{
++  NRF_SAADC->EVENTS_STOPPED = 0;
++  NRF_SAADC->TASKS_STOP = 1;
++  (void)waitForAdcEvent(&NRF_SAADC->EVENTS_STOPPED);
++  NRF_SAADC->ENABLE = 0;
++  NRF_SAADC->RESULT.MAXCNT = 0;
++  NRF_SAADC->RESULT.PTR = 0;
++  NRF_SAADC->EVENTS_STARTED = 0;
++  NRF_SAADC->EVENTS_END = 0;
++  NRF_SAADC->EVENTS_STOPPED = 0;
++  NRF_SAADC->EVENTS_CALIBRATEDONE = 0;
++}
++
+ static uint32_t analogRead_internal( uint32_t psel )
+ {
+   uint32_t saadcResolution;
+@@ -206,17 +230,26 @@
+ 
+   NRF_SAADC->TASKS_START = 0x01UL;
+ 
+-  while (!NRF_SAADC->EVENTS_STARTED);
++  if (!waitForAdcEvent(&NRF_SAADC->EVENTS_STARTED)) {
++    abortAdc();
++    return 0;
++  }
+   NRF_SAADC->EVENTS_STARTED = 0x00UL;
+ 
+   NRF_SAADC->TASKS_SAMPLE = 0x01UL;
+ 
+-  while (!NRF_SAADC->EVENTS_END);
++  if (!waitForAdcEvent(&NRF_SAADC->EVENTS_END)) {
++    abortAdc();
++    return 0;
++  }
+   NRF_SAADC->EVENTS_END = 0x00UL;
+ 
+   NRF_SAADC->TASKS_STOP = 0x01UL;
+ 
+-  while (!NRF_SAADC->EVENTS_STOPPED);
++  if (!waitForAdcEvent(&NRF_SAADC->EVENTS_STOPPED)) {
++    abortAdc();
++    return 0;
++  }
+   NRF_SAADC->EVENTS_STOPPED = 0x00UL;
+ 
+   if (value < 0) {
+@@ -301,7 +334,10 @@
+   NRF_SAADC->TASKS_CALIBRATEOFFSET = 0x01;
+ 
+   // Wait for completion
+-  while (!NRF_SAADC->EVENTS_CALIBRATEDONE);
++  if (!waitForAdcEvent(&NRF_SAADC->EVENTS_CALIBRATEDONE)) {
++    abortAdc();
++    return;
++  }
+ 
+   // Clear the done flag  (really shouldn't have to do this both times)
+   NRF_SAADC->EVENTS_CALIBRATEDONE = 0x00;

@@ -40,11 +40,7 @@ public:
     analogReference(AR_INTERNAL_3_0);
     delay(1);
 
-    uint32_t raw = 0;
-    for (int i = 0; i < BATTERY_SAMPLES; i++) {
-      raw += analogRead(PIN_VBAT_READ);
-    }
-    raw = raw / BATTERY_SAMPLES;
+    const uint32_t raw = readBatteryAdcAverage(PIN_VBAT_READ, BATTERY_SAMPLES);
 
     // ADC_MULTIPLIER is the voltage divider ratio
     return calibrateBatteryMillivolts((raw * ADC_MULTIPLIER * AREF_VOLTAGE) / 4.096);

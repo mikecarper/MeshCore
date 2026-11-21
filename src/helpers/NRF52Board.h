@@ -34,6 +34,7 @@ class NRF52Board : public mesh::MainBoard {
 #endif
 
 protected:
+  static uint32_t readBatteryAdcAverage(uint32_t pin, uint8_t count, unsigned intervalUs = 0);
   uint8_t startup_reason;
   char *ota_name;
   bool cpu_dcdc_supported = false;

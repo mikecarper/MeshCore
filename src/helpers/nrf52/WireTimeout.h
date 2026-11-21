@@ -1,7 +1,7 @@
 #pragma once
 
-// Included in the SolarXiao build of the nRF52 Wire master driver.
-namespace mesh { namespace solar {
+// Included in the nRF52 Wire master driver.
+namespace mesh { namespace nrf52 {
 
 class WireWait {
   // Shared by the phases of one Wire transmit or receive. The poll limit
@@ -43,4 +43,4 @@ public:
   }
 };
 
-}}  // namespace mesh::solar
+}}  // namespace mesh::nrf52

@@ -3,6 +3,7 @@
 #include <MeshCore.h>
 #include <Arduino.h>
 #include <helpers/NRF52Board.h>
+#include <helpers/nrf52/ShutdownButton.h>
 
 // built-ins
 #define  PIN_VBAT_READ    5
@@ -34,11 +35,7 @@ public:
   uint16_t getBattMilliVolts() override {
     analogReadResolution(12);
 
-    uint32_t raw = 0;
-    for (int i = 0; i < BATTERY_SAMPLES; i++) {
-      raw += analogRead(PIN_VBAT_READ);
-    }
-    raw = raw / BATTERY_SAMPLES;
+    const uint32_t raw = readBatteryAdcAverage(PIN_VBAT_READ, BATTERY_SAMPLES);
 
     return calibrateBatteryMillivolts((ADC_MULTIPLIER * raw) / 4096);
   }
@@ -63,19 +60,13 @@ public:
     if (mesh::leds::enabled()) digitalWrite(LED_PIN, HIGH);
     #endif
     #ifdef BUTTON_PIN
-    // wismesh tag uses LOW to indicate button is pressed, wait until it goes HIGH to indicate it was released
-    while(digitalRead(BUTTON_PIN) == LOW);
+    mesh::nrf52::armShutdownButton(BUTTON_PIN, LOW, NRF_GPIO_PIN_PULLUP);
     #endif
     #ifdef LED_GREEN
     digitalWrite(LED_GREEN, LOW);
     #endif
     #ifdef LED_BLUE
     digitalWrite(LED_BLUE, LOW);
-    #endif
-
-    #ifdef BUTTON_PIN
-    // configure button press to wake up when in powered off state
-    nrf_gpio_cfg_sense_input(digitalPinToInterrupt(BUTTON_PIN), NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
     #endif
   }
 };

@@ -1,0 +1,17 @@
+--- a/i2c.c
++++ b/i2c.c
+@@ -288,8 +288,13 @@
+             timeout_check(ts, true); // for per iteration checks, this will reset the timeout
+         }
+ 
+-        while (!i2c_get_write_available(i2c))
++        while (!i2c_get_write_available(i2c)) {
++            if (timeout_check && timeout_check(ts, false)) {
++                i2c->restart_on_next = false;
++                return PICO_ERROR_TIMEOUT;
++            }
+             tight_loop_contents();
++        }
+ 
+         i2c->hw->data_cmd =
+                 bool_to_bit(first && i2c->restart_on_next) << I2C_IC_DATA_CMD_RESTART_LSB |

@@ -3,6 +3,7 @@
 #include <MeshCore.h>
 #include <Arduino.h>
 #include <helpers/NRF52Board.h>
+#include <helpers/nrf52/ShutdownButton.h>
 
 #ifndef USER_BTN_PRESSED
 #define USER_BTN_PRESSED LOW
@@ -52,16 +53,11 @@ public:
     // set led on and wait for button release before poweroff
     if (mesh::leds::enabled()) digitalWrite(PIN_LED, LOW);
 #ifdef PIN_USER_BTN
-    while(digitalRead(PIN_USER_BTN) == USER_BTN_PRESSED);
+    mesh::nrf52::armShutdownButton(PIN_USER_BTN, USER_BTN_PRESSED, NRF_GPIO_PIN_PULLUP);
 #endif
     digitalWrite(LED_GREEN, HIGH);
     digitalWrite(LED_BLUE, HIGH);
     digitalWrite(PIN_LED, HIGH);
-
-#ifdef PIN_USER_BTN
-    // configure button press to wake up when in powered off state
-    nrf_gpio_cfg_sense_input(digitalPinToInterrupt(g_ADigitalPinMap[PIN_USER_BTN]), NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
-#endif
   }
 };
 

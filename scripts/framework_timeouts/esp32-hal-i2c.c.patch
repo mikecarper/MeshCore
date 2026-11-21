@@ -1,0 +1,87 @@
+--- a/esp32-hal-i2c.c
++++ b/esp32-hal-i2c.c
+@@ -57,13 +57,16 @@
+         }
+     }
+     //acquire lock
+-    if(xSemaphoreTake(bus[i2c_num].lock, portMAX_DELAY) != pdTRUE){
+-        log_e("could not acquire lock");
+-        return ESP_FAIL;
++    if(xSemaphoreTake(bus[i2c_num].lock, pdMS_TO_TICKS(50)) != pdTRUE){
++        log_e("could not acquire lock");
++        return ESP_ERR_TIMEOUT;
+     }
+ #endif
+     if(bus[i2c_num].initialized){
+         log_e("bus is already initialized");
++#if !CONFIG_DISABLE_HAL_LOCKS
++        xSemaphoreGive(bus[i2c_num].lock);
++#endif
+         return ESP_FAIL;
+     }
+ 
+@@ -111,9 +114,9 @@
+     }
+ #if !CONFIG_DISABLE_HAL_LOCKS
+     //acquire lock
+-    if(bus[i2c_num].lock == NULL || xSemaphoreTake(bus[i2c_num].lock, portMAX_DELAY) != pdTRUE){
+-        log_e("could not acquire lock");
+-        return err;
++    if(bus[i2c_num].lock == NULL || xSemaphoreTake(bus[i2c_num].lock, pdMS_TO_TICKS(50)) != pdTRUE){
++        log_e("could not acquire lock");
++        return ESP_ERR_TIMEOUT;
+     }
+ #endif
+     if(!bus[i2c_num].initialized){
+@@ -139,9 +142,9 @@
+     }
+ #if !CONFIG_DISABLE_HAL_LOCKS
+     //acquire lock
+-    if(bus[i2c_num].lock == NULL || xSemaphoreTake(bus[i2c_num].lock, portMAX_DELAY) != pdTRUE){
+-        log_e("could not acquire lock");
+-        return ret;
++    if(bus[i2c_num].lock == NULL || xSemaphoreTake(bus[i2c_num].lock, pdMS_TO_TICKS(timeOutMillis)) != pdTRUE){
++        log_e("could not acquire lock");
++        return ESP_ERR_TIMEOUT;
+     }
+ #endif
+     if(!bus[i2c_num].initialized){
+@@ -193,9 +196,9 @@
+     }
+ #if !CONFIG_DISABLE_HAL_LOCKS
+     //acquire lock
+-    if(bus[i2c_num].lock == NULL || xSemaphoreTake(bus[i2c_num].lock, portMAX_DELAY) != pdTRUE){
+-        log_e("could not acquire lock");
+-        return ret;
++    if(bus[i2c_num].lock == NULL || xSemaphoreTake(bus[i2c_num].lock, pdMS_TO_TICKS(timeOutMillis)) != pdTRUE){
++        log_e("could not acquire lock");
++        return ESP_ERR_TIMEOUT;
+     }
+ #endif
+     if(!bus[i2c_num].initialized){
+@@ -222,9 +225,9 @@
+     }
+ #if !CONFIG_DISABLE_HAL_LOCKS
+     //acquire lock
+-    if(bus[i2c_num].lock == NULL || xSemaphoreTake(bus[i2c_num].lock, portMAX_DELAY) != pdTRUE){
+-        log_e("could not acquire lock");
+-        return ret;
++    if(bus[i2c_num].lock == NULL || xSemaphoreTake(bus[i2c_num].lock, pdMS_TO_TICKS(timeOutMillis)) != pdTRUE){
++        log_e("could not acquire lock");
++        return ESP_ERR_TIMEOUT;
+     }
+ #endif
+     if(!bus[i2c_num].initialized){
+@@ -251,9 +254,9 @@
+     }
+ #if !CONFIG_DISABLE_HAL_LOCKS
+     //acquire lock
+-    if(bus[i2c_num].lock == NULL || xSemaphoreTake(bus[i2c_num].lock, portMAX_DELAY) != pdTRUE){
+-        log_e("could not acquire lock");
+-        return ret;
++    if(bus[i2c_num].lock == NULL || xSemaphoreTake(bus[i2c_num].lock, pdMS_TO_TICKS(50)) != pdTRUE){
++        log_e("could not acquire lock");
++        return ESP_ERR_TIMEOUT;
+     }
+ #endif
+     if(!bus[i2c_num].initialized){

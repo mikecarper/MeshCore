@@ -275,6 +275,19 @@ void NRF52Board::loop() {
 #endif
 }
 
+uint32_t NRF52Board::readBatteryAdcAverage(uint32_t pin, uint8_t count, unsigned intervalUs) {
+  uint32_t sum = 0;
+  for (unsigned i = 0; i < count; ++i) {
+    const uint32_t sample = analogRead(pin);
+    // A failed conversion returns zero. Mixing that into a live battery
+    // measurement could manufacture a valid-looking low-voltage shutdown.
+    if (!sample) return 0;
+    sum += sample;
+    if (intervalUs) delayMicroseconds(intervalUs);
+  }
+  return count ? sum / count : 0;
+}
+
 uint16_t NRF52Board::calibrateBatteryMillivolts(uint16_t raw_mv) const {
 #ifdef NRF52_POWER_MANAGEMENT
   if (supportsBatteryCalibration() && mesh::power::voltagePolicySupported()) {

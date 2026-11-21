@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <MeshCore.h>
 #include <helpers/NRF52Board.h>
+#include <helpers/nrf52/ShutdownButton.h>
 
 class MeshtinyBoard : public NRF52BoardDCDC {
 protected:
@@ -45,9 +46,7 @@ public:
     NRF52Board::shutdownPeripherals();
 
 #ifdef PIN_USER_BTN
-    while (digitalRead(PIN_USER_BTN) == LOW) {
-      delay(10);
-    }
+    mesh::nrf52::armShutdownButton(PIN_USER_BTN, LOW, NRF_GPIO_PIN_PULLUP);
 #endif
 
 #ifdef PIN_3V3_EN
@@ -62,10 +61,6 @@ public:
 
 #ifdef PIN_LED2
     digitalWrite(PIN_LED2, LOW);
-#endif
-
-#ifdef PIN_USER_BTN
-    nrf_gpio_cfg_sense_input(g_ADigitalPinMap[PIN_USER_BTN], NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
 #endif
   }
 };

@@ -83,11 +83,7 @@ uint16_t HeltecRC52Board::getBattMilliVolts()
   digitalWrite(PIN_ADC_CTRL, ADC_CTRL_ENABLED);
 
   delay(10);
-  uint32_t raw = 0;
-  for (int i = 0; i < 8; i++) {
-    raw += analogRead(PIN_VBAT_READ);
-  }
-  raw /= 8;
+  const uint32_t raw = readBatteryAdcAverage(PIN_VBAT_READ, 8);
   digitalWrite(PIN_ADC_CTRL, !ADC_CTRL_ENABLED);
 
   return calibrateBatteryMillivolts((uint16_t)((float)raw * MV_LSB * ADC_MULTIPLIER));

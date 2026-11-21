@@ -26,3 +26,5 @@ tools/bluedroid_bond_patch/upstream/** -text whitespace=-blank-at-eol,-blank-at-
 
 # Keep the reviewed STM32 entrypoint fingerprint identical on every platform.
 test/fixtures/stm32_program_lifetime/* -text whitespace=-blank-at-eol,-blank-at-eof
+
+scripts/framework_timeouts/*.patch text eol=lf whitespace=-blank-at-eol,-blank-at-eof

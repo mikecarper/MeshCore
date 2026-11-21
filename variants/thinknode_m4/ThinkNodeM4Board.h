@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <MeshCore.h>
 #include <helpers/NRF52Board.h>
+#include <helpers/nrf52/ShutdownButton.h>
 
 class ThinkNodeM4Board : public NRF52BoardDCDC {
 protected:
@@ -44,7 +45,7 @@ public:
     if (mesh::leds::enabled()) digitalWrite(LED_STATUS, HIGH);
     #endif
     #ifdef BUTTON_PIN
-    while(!digitalRead(BUTTON_PIN));
+    mesh::nrf52::armShutdownButton(BUTTON_PIN, LOW, NRF_GPIO_PIN_NOPULL);
     #endif
     #ifdef LED_STATUS
     digitalWrite(LED_STATUS, LOW);
@@ -61,8 +62,5 @@ public:
     digitalWrite(I2C_POWER, !I2C_POWER_ACTIVE);
     digitalWrite(PIN_GPS_POWER, !GPS_POWER_ACTIVE);
 
-    #ifdef BUTTON_PIN
-    nrf_gpio_cfg_sense_input(BUTTON_PIN, NRF_GPIO_PIN_NOPULL, NRF_GPIO_PIN_SENSE_LOW);
-    #endif
   }
 };

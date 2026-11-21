@@ -406,11 +406,11 @@ void delayMicroseconds(unsigned us) {
   if (us==5) {++stop_polls; if (!stuck_stop) bus.EVENTS_STOPPED=1;}
   else {assert(us==2); ++polls;}
 }
-#include <helpers/nrf52/SolarXiaoWireTimeout.h>
+#include <helpers/nrf52/WireTimeout.h>
 int main() {
   for (bool stuck : {true, false}) {
     stuck_stop=stuck; polls=stop_polls=0;
-    mesh::solar::WireWait transfer;
+    mesh::nrf52::WireWait transfer;
     bus.EVENTS_ERROR=1;
     assert(transfer.wait(&bus,bus.EVENTS_TXSTARTED,true)); // let Wire handle a NACK
     // STOP must complete even if ERROR is set: the two events are distinct.
@@ -418,7 +418,7 @@ int main() {
     assert(polls==25000 && stop_polls==(stuck?200u:1u));
     assert(bus.TASKS_RESUME && bus.TASKS_STOP && bus.ENABLE==6);
     assert(!bus.EVENTS_ERROR && !bus.EVENTS_STOPPED);
-    mesh::solar::WireWait retry;
+    mesh::nrf52::WireWait retry;
     bus.EVENTS_LASTRX=1;
     assert(retry.wait(&bus,bus.EVENTS_LASTRX,true));
   }

@@ -1,0 +1,173 @@
+--- a/Wire.cpp
++++ b/Wire.cpp
+@@ -126,7 +126,7 @@
+         }
+     }
+     //acquire lock
+-    if(xSemaphoreTake(lock, portMAX_DELAY) != pdTRUE){
++    if(xSemaphoreTake(lock, pdMS_TO_TICKS(_timeOutMillis)) != pdTRUE){
+         log_e("could not acquire lock");
+         return false;
+     }
+@@ -194,7 +194,7 @@
+         }
+     }
+     //acquire lock
+-    if(xSemaphoreTake(lock, portMAX_DELAY) != pdTRUE){
++    if(xSemaphoreTake(lock, pdMS_TO_TICKS(_timeOutMillis)) != pdTRUE){
+         log_e("could not acquire lock");
+         return 0;
+     }
+@@ -237,7 +237,7 @@
+         }
+     }
+     //acquire lock
+-    if(xSemaphoreTake(lock, portMAX_DELAY) != pdTRUE){
++    if(xSemaphoreTake(lock, pdMS_TO_TICKS(_timeOutMillis)) != pdTRUE){
+         log_e("could not acquire lock");
+         return false;
+     }
+@@ -288,7 +288,7 @@
+         }
+     }
+     //acquire lock
+-    if(xSemaphoreTake(lock, portMAX_DELAY) != pdTRUE){
++    if(xSemaphoreTake(lock, pdMS_TO_TICKS(_timeOutMillis)) != pdTRUE){
+         log_e("could not acquire lock");
+         return false;
+     }
+@@ -328,7 +328,7 @@
+ #if !CONFIG_DISABLE_HAL_LOCKS
+     if(lock != NULL){
+         //acquire lock
+-        if(xSemaphoreTake(lock, portMAX_DELAY) != pdTRUE){
++        if(xSemaphoreTake(lock, pdMS_TO_TICKS(_timeOutMillis)) != pdTRUE){
+             log_e("could not acquire lock");
+             return false;
+         }
+@@ -355,7 +355,7 @@
+     uint32_t frequency = 0;
+ #if !CONFIG_DISABLE_HAL_LOCKS
+     //acquire lock
+-    if(lock == NULL || xSemaphoreTake(lock, portMAX_DELAY) != pdTRUE){
++    if(lock == NULL || xSemaphoreTake(lock, pdMS_TO_TICKS(_timeOutMillis)) != pdTRUE){
+         log_e("could not acquire lock");
+     } else {
+ #endif
+@@ -377,7 +377,7 @@
+     esp_err_t err = ESP_OK;
+ #if !CONFIG_DISABLE_HAL_LOCKS
+     //acquire lock
+-    if(lock == NULL || xSemaphoreTake(lock, portMAX_DELAY) != pdTRUE){
++    if(lock == NULL || xSemaphoreTake(lock, pdMS_TO_TICKS(_timeOutMillis)) != pdTRUE){
+         log_e("could not acquire lock");
+         return false;
+     }
+@@ -405,6 +405,13 @@
+     return _timeOutMillis;
+ }
+ 
++#if !CONFIG_DISABLE_HAL_LOCKS
++static bool ownsWireMutex(SemaphoreHandle_t lock)
++{
++    return lock && xSemaphoreGetMutexHolder(lock) == xTaskGetCurrentTaskHandle();
++}
++#endif
++
+ void TwoWire::beginTransmission(uint16_t address)
+ {
+     if(is_slave){
+@@ -412,13 +419,8 @@
+         return;
+     }
+ #if !CONFIG_DISABLE_HAL_LOCKS
+-    if(nonStop && nonStopTask == xTaskGetCurrentTaskHandle()){
+-        log_e("Unfinished Repeated Start transaction! Expected requestFrom, not beginTransmission! Clearing...");
+-        //release lock
+-        xSemaphoreGive(lock);
+-    }
+-    //acquire lock
+-    if(lock == NULL || xSemaphoreTake(lock, portMAX_DELAY) != pdTRUE){
++    // A new begin by the owner abandons its unfinished transfer in place.
++    if(!ownsWireMutex(lock) && (lock == NULL || xSemaphoreTake(lock, pdMS_TO_TICKS(_timeOutMillis)) != pdTRUE)){
+         log_e("could not acquire lock");
+         return;
+     }
+@@ -444,8 +446,15 @@
+         log_e("Bus is in Slave Mode");
+         return 4;
+     }
++#if !CONFIG_DISABLE_HAL_LOCKS
++    if(!ownsWireMutex(lock)) return 5;
++#endif
+     if (txBuffer == NULL){
+         log_e("NULL TX buffer pointer");
++#if !CONFIG_DISABLE_HAL_LOCKS
++        nonStop = false;
++        xSemaphoreGive(lock);
++#endif
+         return 4;
+     }
+     esp_err_t err = ESP_OK;
+@@ -477,37 +486,29 @@
+         log_e("Bus is in Slave Mode");
+         return 0;
+     }
+-    if (rxBuffer == NULL || txBuffer == NULL){
+-        log_e("NULL buffer pointer");
++#if !CONFIG_DISABLE_HAL_LOCKS
++    if(!ownsWireMutex(lock) && (lock == NULL || xSemaphoreTake(lock, pdMS_TO_TICKS(_timeOutMillis)) != pdTRUE)){
++        log_e("could not acquire lock");
+         return 0;
+     }
++#endif
++    rxIndex = 0;
++    rxLength = 0;
++    if (rxBuffer == NULL || txBuffer == NULL || (nonStop && address != txAddress)){
++        nonStop = false;
++#if !CONFIG_DISABLE_HAL_LOCKS
++        xSemaphoreGive(lock);
++#endif
++        return 0;
++    }
+     esp_err_t err = ESP_OK;
+-    if(nonStop
+-#if !CONFIG_DISABLE_HAL_LOCKS
+-    && nonStopTask == xTaskGetCurrentTaskHandle()
+-#endif
+-    ){
+-        if(address != txAddress){
+-            log_e("Unfinished Repeated Start transaction! Expected address do not match! %u != %u", address, txAddress);
+-            return 0;
+-        }
++    if(nonStop){
+         nonStop = false;
+-        rxIndex = 0;
+-        rxLength = 0;
+         err = i2cWriteReadNonStop(num, address, txBuffer, txLength, rxBuffer, size, _timeOutMillis, &rxLength);
+         if(err){
+             log_e("i2cWriteReadNonStop returned Error %d", err);
+         }
+     } else {
+-#if !CONFIG_DISABLE_HAL_LOCKS
+-        //acquire lock
+-        if(lock == NULL || xSemaphoreTake(lock, portMAX_DELAY) != pdTRUE){
+-            log_e("could not acquire lock");
+-            return 0;
+-        }
+-#endif
+-        rxIndex = 0;
+-        rxLength = 0;
+         err = i2cRead(num, address, rxBuffer, size, _timeOutMillis, &rxLength);
+         if(err){
+             log_e("i2cRead returned Error %d", err);
+@@ -522,6 +523,9 @@
+ 
+ size_t TwoWire::write(uint8_t data)
+ {
++#if !CONFIG_DISABLE_HAL_LOCKS
++    if(!is_slave && !ownsWireMutex(lock)) return 0;
++#endif
+     if (txBuffer == NULL){
+         log_e("NULL TX buffer pointer");
+         return 0;

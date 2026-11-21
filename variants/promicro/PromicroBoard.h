@@ -22,11 +22,7 @@ public:
   uint16_t getBattMilliVolts() override {
     analogReadResolution(12);
 
-    uint32_t raw = 0;
-    for (int i = 0; i < BATTERY_SAMPLES; i++) {
-      raw += analogRead(PIN_VBAT_READ);
-    }
-    raw = raw / BATTERY_SAMPLES;
+    const uint32_t raw = readBatteryAdcAverage(PIN_VBAT_READ, BATTERY_SAMPLES);
     return (adc_mult * raw);
   }
 

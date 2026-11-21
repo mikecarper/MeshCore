@@ -3,6 +3,7 @@
 #include <MeshCore.h>
 #include <Arduino.h>
 #include <helpers/NRF52Board.h>
+#include <helpers/nrf52/ShutdownButton.h>
 
 class MeshTrackerX1Board : public NRF52BoardDCDC {
 public:
@@ -75,14 +76,10 @@ public:
     if (mesh::leds::enabled()) digitalWrite(LED_PIN, HIGH);
     #endif
     #ifdef BUTTON_PIN
-    while(digitalRead(BUTTON_PIN));
+    mesh::nrf52::armShutdownButton(BUTTON_PIN, HIGH, NRF_GPIO_PIN_PULLDOWN);
     #endif
     #ifdef LED_PIN
     digitalWrite(LED_PIN, LOW);
-    #endif
-
-    #ifdef BUTTON_PIN
-    nrf_gpio_cfg_sense_input(BUTTON_PIN, NRF_GPIO_PIN_PULLDOWN, NRF_GPIO_PIN_SENSE_HIGH);
     #endif
   }
 };
