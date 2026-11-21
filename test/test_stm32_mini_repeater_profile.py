@@ -400,7 +400,7 @@ int main() {
     def test_compact_crypto_and_unused_timer_wrappers_are_explicit(self):
         for macro in ("ED25519_COMPACT_SHA512=1", "ED25519_COMPACT_SCALAR=1",
                       "ED25519_COMPACT_FIELD=1", "RADIOLIB_TONE_UNSUPPORTED",
-                      "HAL_TIM_MODULE_ONLY"):
+                      "HAL_TIM_MODULE_ONLY", "MESH_STM32_COMPACT_ASSERT=1"):
             self.assertRegex(self.flags, r"-D\s+" + macro + r"\b")
         common = read_config(ROOT / "platformio.ini")
         self.assertRegex(common["stm32_base"]["build_flags"],

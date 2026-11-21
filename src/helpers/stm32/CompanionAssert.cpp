@@ -1,5 +1,5 @@
 // newlib-nano's default assertion handler pulls in a second printf engine for
-// FILE streams. These small Companions use a fixed stderr descriptor, including
+// FILE streams. These small STM32 builds use a fixed stderr descriptor, including
 // on allocation failure. Keep its full diagnostic without allocating memory.
 #if defined(STM32_PLATFORM) && defined(MESH_STM32_COMPACT_ASSERT) && MESH_STM32_COMPACT_ASSERT
 #include <assert.h>

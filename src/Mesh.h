@@ -84,7 +84,6 @@ public:
 */
 class Mesh : public Dispatcher {
   static constexpr uint32_t REPEAT_STARTUP_MS = 45000;
-  bool _cold_boot_repeat_hold = false;
   bool canForwardPacket(const Packet* packet) {
     return !_cold_boot_repeat_hold && allowPacketForward(packet);
   }
@@ -194,6 +193,7 @@ class Mesh : public Dispatcher {
   };
   OtaForwardEntry _ota_forwarded[16] = {};
   uint8_t _ota_forward_next = 0;
+  bool _cold_boot_repeat_hold = false;
   bool allowOtaForwardRetry(const Packet* packet);
   OtaForwardEntry* findOtaForwardEntry(const uint8_t* hash, uint8_t profile);
   void rememberOtaForward(const Packet* packet);
