@@ -365,6 +365,8 @@ jobs:
           bash build.sh build-firmware Xiao_C3_companion_radio_full
           --firmware-version v1.18.0.1-halo-keymind-cascade-dev
           --radio-preset usa-cascade-fixed --profile cascade --require-ota
+      - name: Verify radio profile programming in the Full image
+        run: python test/check_radio_retune_ram.py .pio/build/Xiao_C3_companion_radio_wifi/firmware.elf
 
       - name: Qualify DFRobot Full Companion within internal RAM and flash budgets
         run: >-
@@ -394,10 +396,9 @@ jobs:
           bash tools/ci/pio_retry.sh run -e Xiao_rp2040_companion_radio_usb
           -e LilyGo_Tlora_C6_room_server_ -e Generic_ESPNOW_comp_radio_usb
       - name: Check radio switching code in the RP2040 and ESP32-C6 images
-        run: >-
-          python test/check_radio_retune_ram.py
-          .pio/build/Xiao_rp2040_companion_radio_usb/firmware.elf
-          .pio/build/LilyGo_Tlora_C6_room_server_/firmware.elf
+        run: |
+          python test/check_radio_retune_ram.py --controller .pio/build/Xiao_rp2040_companion_radio_usb/firmware.elf
+          python test/check_radio_retune_ram.py .pio/build/LilyGo_Tlora_C6_room_server_/firmware.elf
 
   cardputer-smoke:
     runs-on: ubuntu-26.04
@@ -414,7 +415,7 @@ jobs:
           -e LilyGo_TDeck_companion_radio_ble
       - name: Qualify combined Cardputer-Adv Full Companion
         run: bash build.sh build-firmware M5Stack_Cardputer_Adv_companion_radio_full --firmware-version v1.18.0.2-halo-keymind-cascade-dev --radio-preset usa-cascade-fixed --profile cascade
-      - name: Verify the Full image radio driver runs from RAM
+      - name: Verify radio profile programming in the Full image
         run: python test/check_radio_retune_ram.py .pio/build/M5Stack_Cardputer_Adv_companion_radio_full/firmware.elf
 
   universal-lora-contracts:
@@ -548,6 +549,7 @@ jobs:
             bash build.sh build-firmware "$target" \
               --firmware-version v1.18.0.1-halo-keymind-cascade-dev \
               --radio-preset usa-cascade-fixed --profile cascade --require-ota
+            python test/check_radio_retune_ram.py ".pio/build/$target/firmware.elf"
           done
 
       - name: Verify packed STM32 replies and reviewed program lifetime

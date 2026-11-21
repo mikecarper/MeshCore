@@ -32,9 +32,11 @@
 #define MC_RADIO_FAST_CODE_ATTR
 #endif
 
-// Size-limited images spend their RAM on the chip parameter writes. The
-// default places the switching controller and receive restart in RAM.
-#if defined(MC_RADIO_RETUNE_DRIVER_ONLY) && MC_RADIO_RETUNE_DRIVER_ONLY
+// Every board keeps profile programming in RAM. ESP32 images retain their
+// qualified extended placement tier. Small ARM images may opt out of the
+// additional controller and receive-restart code to retain flash and heap.
+#if (defined(MC_RADIO_RETUNE_PROGRAM_ONLY) && MC_RADIO_RETUNE_PROGRAM_ONLY) || \
+    (defined(ESP32_PLATFORM) && !MC_ESP32_RADIO_FAST_CODE)
 #define MC_RADIO_SWITCH_CONTROL(name)
 #else
 #define MC_RADIO_SWITCH_CONTROL(name) MC_RADIO_RETUNE_ATTR(name)

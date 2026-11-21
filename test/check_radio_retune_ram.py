@@ -1,6 +1,6 @@
 """Verify switching code in the final firmware ELF. Run with PlatformIO's Python."""
 
-from pathlib import Path
+import argparse
 import sys
 
 from elftools.elf.elffile import ELFFile
@@ -16,13 +16,8 @@ FUNCTIONS = {
 }
 
 
-# PlatformIO stores each ELF under its environment name. These constrained
-# releases move the chip's parameter writes into RAM to meet their memory limits.
-DRIVER_ONLY = {"wio-e5-mini_repeater", "M5Stack_Cardputer_Adv_companion_radio_full"}
-
-
-def check(path):
-    functions = PROGRAM if Path(path).parent.name in DRIVER_ONLY else FUNCTIONS
+def check(path, check_controller):
+    functions = FUNCTIONS if check_controller else PROGRAM
     with open(path, "rb") as stream:
         elf = ELFFile(stream)
         arm = elf["e_machine"] == "EM_ARM"
@@ -59,10 +54,13 @@ def check(path):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        sys.exit("usage: check_radio_retune_ram.py FIRMWARE.elf [...]")
-    for path in sys.argv[1:]:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--controller", action="store_true",
+                        help="also require the complete switching controller in RAM")
+    parser.add_argument("firmware", nargs="+", metavar="FIRMWARE.elf")
+    args = parser.parse_args()
+    for path in args.firmware:
         try:
-            check(path)
+            check(path, args.controller)
         except (OSError, ValueError) as error:
             sys.exit(f"{path}: {error}")

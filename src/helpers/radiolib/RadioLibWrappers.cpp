@@ -881,14 +881,7 @@ bool RadioLibWrapper::validateProfile(const mesh::RadioProfileParams& p) const {
 MC_RADIO_RETUNE_ATTR(program_profile) bool RadioLibWrapper::programProfile(
     const mesh::RadioProfileParams& p, uint16_t preamble) {
   _physical_preamble = preamble;
-  if (!applyParams(p.freq, p.bw, p.sf, p.cr)) return false;
-#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE || MESH_ENABLE_HOST_KISS
-  // Changing only the protocol still changes the sync word. Conversely a
-  // failed write must not publish the new generation or cached wire format.
-  if ((_physical_protocol != p.protocol || _profile_refresh_required) && !applyProtocol(p.protocol)) return false;
-  _physical_protocol = p.protocol;
-#endif
-  return true;
+  return applyParams(p.freq, p.bw, p.sf, p.cr);
 }
 
 MC_RADIO_SWITCH_CONTROL(tune_profile) mesh::RadioParamApplyResult RadioLibWrapper::tuneProfile(uint8_t profile) {
@@ -960,6 +953,13 @@ MC_RADIO_SWITCH_CONTROL(tune_profile) mesh::RadioParamApplyResult RadioLibWrappe
   const auto old_protocol = _physical_protocol;
 #endif
   bool applied = programProfile(p, preamble);
+#if MESH_ENABLE_MESHTEXT_WIRE || MESH_ENABLE_ETHERNET_WIRE || MESH_ENABLE_HOST_KISS
+  // A protocol-only change still requires a sync-word update.
+  if (applied && (_physical_protocol != p.protocol || _profile_refresh_required)) {
+    applied = applyProtocol(p.protocol);
+  }
+  if (applied) _physical_protocol = p.protocol;
+#endif
   if (applied) {
     cacheParams(p.freq, p.bw, p.sf, p.cr);
     _active_profile = profile;
