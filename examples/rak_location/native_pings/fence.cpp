@@ -14,7 +14,7 @@ namespace {
 constexpr int32_t scale = 10000000;
 constexpr int32_t pole = 90 * scale, dateline = 180 * scale;
 constexpr int64_t acquisition_ms = 120000, quiet_ms = 10000;
-bool armed, fence_active, acquiring, pending_motion, fresh_pair;
+bool armed, fence_active, side_verified, acquiring, pending_motion, fresh_pair;
 TagFix last_fix{};
 int64_t poll_at, last_motion, acquisition_start, retry_gps_at, retry_alert_at;
 Side candidate;
@@ -165,7 +165,7 @@ int save(const Record& next) {
 }
 void pause() {
   if (armed) rak_collar_motion_stop();
-  armed = fence_active = acquiring = pending_motion = fresh_pair = false;
+  armed = fence_active = side_verified = acquiring = pending_motion = fresh_pair = false;
   last_fix = {};
   candidate = Unknown;
   latest_utc = ack_utc = 0;
@@ -314,7 +314,8 @@ void observe(const TagFix& fix, int64_t now) {
   // An ordinary collar check can also discover a new side. Keep GPS on long
   // enough to confirm it even if the accelerometer missed that movement.
   if (!acquiring && !confirmed && side != record.side) pending_motion = true;
-  if (!confirmed || side == record.side) return;
+  if (!confirmed) return;
+  if (side == record.side) { side_verified = true; return; }
   Record next = record;
   if (next.side != Unknown) {
     if (next.count == ARRAY_SIZE(next.queue)) {
@@ -326,7 +327,10 @@ void observe(const TagFix& fix, int64_t now) {
   next.side = side;
   next.confirmed_utc = fix.utc;
   if (save(next)) fresh_pair = false;
+  else side_verified = true;
 }
+
+bool outside() { return fence_active && side_verified && record.side == Outside; }
 
 bool alert_due(int64_t now) {
   return fence_active && record.count && now >= retry_alert_at;

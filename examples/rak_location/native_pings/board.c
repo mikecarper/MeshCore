@@ -71,11 +71,28 @@ static void stop(unsigned client)
     k_mutex_unlock(&lock);
 }
 
+static unsigned pet_hz;
+
+static int write_sound(unsigned clients, unsigned hz)
+{
+    uint32_t period = clients || !hz ? buzzer.period : 1000000000U / hz;
+    return pwm_set_dt(&buzzer, period, (clients || hz) ? period / 2 : 0);
+}
+
+int rak_pet_tone(unsigned hz)
+{
+    k_mutex_lock(&lock, K_FOREVER);
+    int err = write_sound(ringing, hz);
+    if (!err) pet_hz = hz;
+    k_mutex_unlock(&lock);
+    return err;
+}
+
 static int sound(unsigned client, bool active)
 {
     k_mutex_lock(&lock, K_FOREVER);
     unsigned next = active ? ringing | client : ringing & ~client;
-    int err = pwm_set_pulse_dt(&buzzer, next ? buzzer.period / 2 : 0);
+    int err = write_sound(next, pet_hz);
     if (!err) ringing = next;
     k_mutex_unlock(&lock);
     return err;

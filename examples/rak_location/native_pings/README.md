@@ -60,6 +60,10 @@ motion GPS when pet mode is on. The owner's MeshCore app shows the alert with co
 USB tracker Companion in watch mode shows its latest alert with `pet last`.
 [Set up and walk-test a fence](../../../docs/sensor_tracker.md#motion-gps-and-geofence-alerts)
 
+The [return-home tune and hike mode guide](../../../docs/sensor_tracker.md#return-home-tune-and-hike-mode)
+covers editing and previewing a tune, enrolling two phones, and testing the
+lost timer in the web flasher or USB console.
+
 ## Prepare a tag for live tests
 
 Use a fresh test tag. For Apple, build the combined UF2 with your product
@@ -120,6 +124,7 @@ For a two-tag boundary test, pass both role images:
 
 ```sh
 python examples/rak_location/native_pings/verify_fence.py /work/native-sensor/native-firmware/zephyr/zephyr.elf /work/native-companion/native-firmware/zephyr/zephyr.elf
+python examples/rak_location/native_pings/verify_hike.py /work/native-sensor/native-firmware/zephyr/zephyr.elf /work/native-companion/native-firmware/zephyr/zephyr.elf
 ```
 
 This test drives the USB commands and both tags' firmware workers with simulated

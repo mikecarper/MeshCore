@@ -130,8 +130,9 @@ def isolation(elf):
     image.cpu.mem_write(scratch, struct.pack("<II", callback, callback))
     assert image.call("rak_register_android_gatt", scratch) == 0
     services = (
-        (0x1800, (1, 2, 3)), (0x1801, (1, 2, 3)), (0xfe03, (1,)),
+        (0x1800, (0, 1, 2, 3)), (0x1801, (0, 1, 2, 3)), (0xfe03, (1,)),
         (0xfe2c, (2,)), (0x180a, (2,)), (0xfd44, (3,)), (0xbeef, ()),
+        ("caa50001-a471-47ba-898a-f85af2612101", (0,)),
         ("15190001-12f4-c226-88ed-2ac5579f2a85", (2,)),
         ("87290102-3c51-43b1-a1a9-11b9dc38478b", (3,)),
     )

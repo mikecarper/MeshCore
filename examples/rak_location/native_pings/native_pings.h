@@ -17,3 +17,4 @@ int rak_android_buzzer(bool active);
 int rak_board_prepare(void);
 int rak_apple_indicator(bool active);
 int rak_android_indicator(bool active);
+bool rak_hike_service(const struct bt_uuid *uuid);

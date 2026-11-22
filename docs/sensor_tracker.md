@@ -288,6 +288,79 @@ the number waiting. Out of radio range, the message can arrive later. Without
 a GPS fix, a crossing can be missed. Leave space between a fence edge and places
 where the pet normally rests, since GPS readings can drift near the edge.
 
+### Return-home tune and hike mode
+
+On either combined RAK collar build, choose the running collar's USB port and
+open **Pet tracking** in the [USB flasher](https://mikecarper.github.io/meshfirmware/#pet-tracking).
+**Read collar settings** shows its fence, tune, hike state and two phone slots.
+
+**Return-home tune.** With a home boundary saved and tracking on, two fresh GPS
+fixes outside start the tune. It repeats every 30 seconds by default. Two fixes
+inside stop playback, including a tune in progress. A reboot requires fresh fixes
+before the collar sounds again. This works for circles, boxes and polygons. The
+tune works independently of hike mode. Mute repeats for a planned walk outside
+the home boundary if desired.
+
+- Choose **Save tune** to write up to eight notes and a repeat interval of
+  1-3600 seconds. For example, `pet tune 20 1568:175,0:100,1047:350` plays
+  two notes separated by a rest every 20 seconds. Each pair is frequency in Hz
+  (200-5000, or 0 for a rest) and duration in milliseconds (50-1000).
+  A tune always finishes before the next repeat starts.
+- **Play saved tune** previews it once, including when repeats are muted.
+  `pet tune off` mutes repeats and keeps the notes. `pet tune 30` enables them
+  again. Finder ringing has priority on the shared buzzer.
+
+**Enroll one or two owner phones.** Each phone uses its own Bluetooth bond.
+The MeshCore owner radio still receives the private fence messages.
+
+1. In **Owner phones**, choose a slot and **Enroll phone**. Keep the six-digit
+   code on screen. It is valid for two minutes and five attempts.
+2. Near the collar, open [nRF Connect for Mobile](https://www.nordicsemi.com/Products/Development-tools/nRF-Connect-for-mobile)
+   on iPhone or Android. Scan for **Pet Collar**, connect and accept the Bluetooth
+   pairing prompt. Under service `caa50001-a471-47ba-898a-f85af2612101`, write
+   the code **as six UTF-8 text characters**, including leading zeroes, to
+   characteristic `caa50002-a471-47ba-898a-f85af2612101`. Use write with
+   response. Read collar settings to check that the slot is enrolled.
+3. Repeat in the second slot for another phone. Select **Start hike**, reconnect
+   each available owner phone to **Pet Collar** in its BLE app, and check that
+   at least one slot says `connected`. After losing radio range, reconnect from
+   the app if it does not reconnect automatically. The phone needs a live app
+   connection throughout the hike. Lock the screen and verify the connection
+   before relying on it. Bluetooth being enabled on the phone, finder sightings,
+   and scanning alone do not count.
+4. With either phone connected, the hike state is `nearby`. After both disconnect
+   it is `waiting`. After 180 continuous seconds away it becomes `lost`.
+   **Save timeout** changes the grace period to 1-3600 seconds. With mesh pet
+   tracking on, loss requests an immediate GPS/LoRa check and subsequent checks
+   use the one-minute lost interval. GPS acquisition, radio coverage and retries
+   affect when a position arrives. Reconnecting either phone clears the local
+   lost state. The owner radio can independently continue to report the pet lost.
+5. Choose **End hike** to stop proximity monitoring. Both phone slots and the
+   timeout persist. A collar reboot starts a fresh grace period if hike mode
+   is on. **Forget selected phone** frees that slot. Removing the last phone
+   also ends hike mode. To enroll a forgotten phone again, remove its old
+   Bluetooth pairing on the phone first if the OS reports a stale bond.
+
+The same controls are available over the USB console:
+
+```text
+pet phone 1 enroll
+pet phone 2 enroll
+pet phones
+pet hike timeout 180
+pet hike on
+pet hike
+pet hike off
+pet phone 2 forget
+```
+
+For a bench test, set the timeout to 10 seconds. Connect both phones, disconnect
+one, and verify the collar still reads `nearby`. Disconnect the other, wait ten
+seconds, then check for `lost`. Reconnect either phone to recover. Restore the
+desired timeout before the outing. A provisioned Apple accessory follows its
+SDK's normal behavior of pausing Find My advertisements while a primary-purpose
+Bluetooth link is connected and resuming when those links disconnect.
+
 ### A. Apple Find My on iPhone
 
 1. **Prepare the tag.** The combined image needs your Find My product plan

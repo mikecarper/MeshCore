@@ -67,6 +67,8 @@ static bool allow_attr(struct bt_conn *conn, const struct bt_gatt_attr *attr, bo
     if (!service) return false;
     bool common = !bt_uuid_cmp(service, BT_UUID_GAP) || !bt_uuid_cmp(service, BT_UUID_GATT);
     switch (info.id) {
+    case BT_ID_DEFAULT:
+        return common || rak_hike_service(service);
     case RAK_APPLE_ID:
         return fmna_is_ready() && (common || !bt_uuid_cmp(service, BT_UUID_DECLARE_16(0xfd44)) ||
             !bt_uuid_cmp(service, BT_UUID_DECLARE_128(BT_UUID_128_ENCODE(

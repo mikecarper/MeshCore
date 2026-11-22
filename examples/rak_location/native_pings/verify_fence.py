@@ -30,6 +30,7 @@ class Tag:
         self.fix = None
         self.gps = False
         self.motion = 0
+        self.tones = []
         self.inbox, self.sent = [], []
         self.sleeps = 0
         for name in ("settings_subsys_init", "z_impl_k_mutex_lock", "z_impl_k_mutex_unlock",
@@ -39,6 +40,12 @@ class Tag:
             im.hook(name, lambda: im.ret(0))
         for name in ("_Z17tag_gps_availablev", "_Z19tag_radio_availablev"):
             im.hook(name, lambda: im.ret(1))
+        for name in ("k_work_cancel_delayable", "k_work_reschedule"):
+            im.hook(name, lambda: im.ret(0))
+        def tone():
+            self.tones.append((self.clock, im.arg(0)))
+            im.ret(0)
+        im.hook("rak_pet_tone", tone)
         im.hook("tag_battery_mv", lambda: im.ret(3900))
 
         def load():
@@ -187,13 +194,15 @@ def check(collar_elf, companion_elf):
     collar.step(28000, outside, utc=EPOCH + 27)
     collar.step(29000, inside)
     collar.step(30000, outside)
-    assert not collar.alerts()
+    assert not collar.alerts() and not collar.tones
     collar.step(31000, outside)
+    assert collar.tones == [(31000, 1568)]
     assert len(collar.alerts()) == 1
     exit_frame = collar.alerts()[0]
     # Lost ACK and subsequent return. Preserve both events through reboot.
     collar.step(32000, inside)
     collar.step(33000, inside)
+    assert collar.tones[-1] == (33000, 0)
     collar.inbox.append(bytes((14, 0, 1, 2, 3, 4)))  # Wrong ACK.
     collar.step(34000)
     collar = Tag(collar_elf, COLLAR, collar.settings)

@@ -29,6 +29,7 @@ void after_load(int result);
 int command(const shell* sh, size_t argc, char** argv, const uint8_t* owner, bool owner_ready);
 bool needs_gps(bool pet_on, const uint8_t* owner, int64_t now);
 void observe(const TagFix& fix, int64_t now);
+bool outside();
 bool alert_due(int64_t now);
 void make_alert(mesh::Packet& packet, const uint8_t* sender, const uint8_t* secret, int64_t now);
 bool acknowledge(const uint8_t* frame, size_t length);
