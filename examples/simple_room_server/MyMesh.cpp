@@ -62,6 +62,7 @@
 #ifdef WITH_WEBCONFIG
 #include <WiFi.h>
 #include <Preferences.h>
+#include <nvs.h>
 #include <ArduinoJson.h>
 #include <memory>
 #include <helpers/RoomWebJson.h>
@@ -2957,10 +2958,17 @@ void MyMesh::begin(FILESYSTEM *fs) {
   room_access.load(_fs);
   loadRoomHistory();
 #ifdef WITH_WEBCONFIG
-  Preferences room_settings;
-  if (room_settings.begin("mesh-room", true)) {
-    room_web_enabled = room_settings.getBool("web", false);
-    room_settings.end();
+  // The namespace is created by the first successful "set room.web".
+  nvs_handle_t room_settings;
+  uint8_t web = 0;
+  esp_err_t err = nvs_open("mesh-room", NVS_READONLY, &room_settings);
+  if (err == ESP_OK) {
+    err = nvs_get_u8(room_settings, "web", &web);
+    nvs_close(room_settings);
+  }
+  room_web_enabled = err == ESP_OK && web == 1;
+  if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
+    log_e("Cannot read room.web: %s", esp_err_to_name(err));
   }
   getRNG()->random((uint8_t*)&room_web_boot_id, sizeof(room_web_boot_id));
   if (room_web_boot_id == 0) room_web_boot_id = 1;
