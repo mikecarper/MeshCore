@@ -22,6 +22,9 @@ static bool loaded;
 static atomic_t host_err = ATOMIC_INIT(-EINPROGRESS);
 static atomic_t next_mask = ATOMIC_INIT(7);
 static atomic_t boot_mask;
+enum { DEFAULT_INTERVAL_S = 10, MAX_INTERVAL_S = 300 };
+static atomic_t next_interval_s = ATOMIC_INIT(DEFAULT_INTERVAL_S);
+static atomic_t boot_interval_s = ATOMIC_INIT(DEFAULT_INTERVAL_S);
 static K_MUTEX_DEFINE(selection_lock);
 static const struct bt_gatt_authorization_cb *android_gatt;
 static K_MUTEX_DEFINE(android_lock);
@@ -99,8 +102,21 @@ static const struct bt_gatt_authorization_cb auth = {
     .read_authorize = allow_read, .write_authorize = allow_write
 };
 
-static int load_mask(const char *key, size_t len, settings_read_cb read, void *ctx)
+uint32_t rak_ping_interval_units(void)
 {
+    // The LE extended advertising command encodes intervals in 625 us units.
+    return (uint32_t)atomic_get(&boot_interval_s) * 1600U;
+}
+
+static int load_ping_setting(const char *key, size_t len, settings_read_cb read, void *ctx)
+{
+    if (!strcmp(key, "interval")) {
+        uint16_t seconds;
+        if (len != sizeof(seconds) || read(ctx, &seconds, len) != sizeof(seconds) ||
+            !seconds || seconds > MAX_INTERVAL_S) return -EINVAL;
+        atomic_set(&next_interval_s, seconds);
+        return 0;
+    }
     if (strcmp(key, "enabled")) return -ENOENT;
     uint8_t mask;
     if (len != sizeof(mask) || read(ctx, &mask, sizeof(mask)) != sizeof(mask) || mask > 7)
@@ -108,7 +124,48 @@ static int load_mask(const char *key, size_t len, settings_read_cb read, void *c
     atomic_set(&next_mask, mask);
     return 0;
 }
-SETTINGS_STATIC_HANDLER_DEFINE(rak_pings, "rak_pings", NULL, load_mask, NULL, NULL);
+SETTINGS_STATIC_HANDLER_DEFINE(rak_pings, "rak_pings", NULL, load_ping_setting, NULL, NULL);
+
+static void show_interval(const struct shell *sh)
+{
+    shell_print(sh, "Ping interval: %u s on this boot, %u s on next boot",
+                (unsigned)atomic_get(&boot_interval_s), (unsigned)atomic_get(&next_interval_s));
+}
+
+static unsigned parse_interval(const char *text)
+{
+    unsigned seconds = 0;
+    for (; *text; ++text) {
+        if (*text < '0' || *text > '9') return 0;
+        seconds = seconds * 10U + (*text - '0');
+        if (seconds > MAX_INTERVAL_S) return 0;
+    }
+    return seconds;
+}
+
+static int interval_cmd(const struct shell *sh, size_t argc, char **argv)
+{
+    uint16_t seconds = 0;
+    if (argc == 2) {
+        int err = rak_host_ready();
+        if (err) return err;
+        seconds = parse_interval(argv[1]);
+        if (!seconds) {
+            shell_error(sh, "Enter a whole number of seconds from 1 to %d", MAX_INTERVAL_S);
+            return -EINVAL;
+        }
+    }
+    k_mutex_lock(&selection_lock, K_FOREVER);
+    int err = 0;
+    if (argc == 2 && atomic_get(&next_interval_s) != seconds) {
+        err = settings_save_one("rak_pings/interval", &seconds, sizeof(seconds));
+        if (!err) atomic_set(&next_interval_s, seconds);
+    }
+    if (!err) show_interval(sh);
+    k_mutex_unlock(&selection_lock);
+    if (!err && argc == 2 && seconds != atomic_get(&boot_interval_s)) shell_print(sh, "Reboot to apply.");
+    return err;
+}
 
 static int configure(const struct shell *sh, size_t argc, char **argv)
 {
@@ -128,6 +185,7 @@ static int configure(const struct shell *sh, size_t argc, char **argv)
         if (err) return err;
         shell_print(sh, "Selection saved. Reboot to apply.");
     }
+    show_interval(sh);
     shell_print(sh, "Bluetooth error=%ld. Selected on this boot / next boot:", (long)atomic_get(&host_err));
     for (int i = 0; i < 3; ++i) {
         shell_print(sh, "%c %s / %s", 'A' + i, (atomic_get(&boot_mask) & BIT(i)) ? "on" : "off",
@@ -136,6 +194,7 @@ static int configure(const struct shell *sh, size_t argc, char **argv)
     return 0;
 }
 SHELL_STATIC_SUBCMD_SET_CREATE(pings_commands,
+    SHELL_CMD_ARG(interval, NULL, "Show or set heartbeat interval in seconds (1-300)", interval_cmd, 1, 1),
     SHELL_CMD_ARG(status, NULL, "Show startup selection", configure, 1, 0),
     SHELL_CMD_ARG(on, NULL, "Enable A, B, C or all on next boot", configure, 2, 0),
     SHELL_CMD_ARG(off, NULL, "Disable A, B, C or all on next boot", configure, 2, 0),
@@ -169,6 +228,7 @@ K_THREAD_DEFINE(sidewalk_worker, 8192, sidewalk_thread, NULL, NULL, NULL, 6, 0, 
 int main(void)
 {
     int err = prepare_host();
+    atomic_set(&boot_interval_s, atomic_get(&next_interval_s));
     atomic_set(&host_err, err);
     tag_mesh_start();
     if (err) return err;

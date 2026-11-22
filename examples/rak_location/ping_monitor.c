@@ -81,6 +81,20 @@ int __wrap_bt_le_ext_adv_start(struct bt_le_ext_adv *adv,
 int __wrap_bt_le_ext_adv_create(const struct bt_le_adv_param *param, const struct bt_le_ext_adv_cb *cb,
                                 struct bt_le_ext_adv **adv)
 {
+#ifdef RAK_NATIVE_PINGS
+    // Both normal paired Apple states use 2 s in the pinned SDK. Pairing and
+    // fast reconnect use 30 ms. Sidewalk v1.2.0 narrows its 32-bit interval
+    // to 16 bits in the BLE adapter. Restore the full value before creation.
+    struct bt_le_adv_param paced;
+    const uint32_t apple_normal = BT_GAP_MS_TO_ADV_INTERVAL(2000);
+    if (param && !param->peer && (param->id == RAK_SIDEWALK_ID ||
+        (param->id == RAK_APPLE_ID && param->interval_min == apple_normal &&
+         param->interval_max == apple_normal))) {
+        paced = *param;
+        paced.interval_min = paced.interval_max = rak_ping_interval_units();
+        param = &paced;
+    }
+#endif
     int err = __real_bt_le_ext_adv_create(param, cb, adv);
     if (!err) {
         uint8_t index = bt_le_ext_adv_get_index(*adv);

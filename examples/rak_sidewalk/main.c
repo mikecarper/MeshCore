@@ -5,6 +5,9 @@
 #include <sid_pal_common_ifc.h>
 #include <app_ble_config.h>
 #include <app_mfg_config.h>
+#ifdef RAK_NATIVE_PINGS
+#include "native_pings.h"
+#endif
 #include <zephyr/drivers/adc.h>
 #include <zephyr/kernel.h>
 #include <zephyr/shell/shell.h>
@@ -124,6 +127,17 @@ static int start(void)
         .callbacks = &callbacks
     };
     config.link_config = app_get_ble_config();
+#ifdef RAK_NATIVE_PINGS
+    // A single presence cadence has no fast-to-slow transition at 30 s.
+    static sid_ble_link_config_t link;
+    static sid_ble_config_t ble;
+    link = *config.link_config;
+    ble = *link.config;
+    ble.adv_param.fast_enabled = false;
+    ble.adv_param.slow_interval = rak_ping_interval_units();
+    link.config = &ble;
+    config.link_config = &link;
+#endif
     set_stage("stack init");
     err = sid_init(&config, &handle);
     if (err)

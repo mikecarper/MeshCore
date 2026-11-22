@@ -222,4 +222,6 @@ For all three native presence beacons on one RAK WisMesh Tag, choose the
 combined Sensor or USB tracker Companion build. It enables Apple Find My (A),
 Android Find Hub (B) and Sidewalk presence (C) by default. After provisioning,
 `finder ping` shows which services are currently advertising.
+All three share a 10-second heartbeat by default. Use `pings interval 30`,
+for example, and reset the tag to apply it. The range is 1–300 seconds.
 [Combined RAK firmware and bench test](https://github.com/mikecarper/MeshCore/tree/keymindCascade/examples/rak_location/native_pings)

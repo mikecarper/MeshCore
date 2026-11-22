@@ -11,13 +11,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
 from arm_image import ArmImage
 
 
-def boot(elf, mask, fail_id=False):
+def boot(elf, mask, fail_id=False, interval=None, test_commands=True):
     image = ArmImage(elf)
     ids, starts, loads, saved = [], [], [], []
     scratch = 0x20039000
     fail_save = False
-    for name in ("z_impl_k_mutex_lock", "z_impl_k_mutex_unlock", "bt_gatt_authorization_cb_register",
-                 "shell_fprintf_normal"):
+    for name in ("z_impl_k_mutex_lock", "z_impl_k_mutex_unlock", "bt_gatt_authorization_cb_register"):
         image.hook(name, lambda: image.ret(0))
 
     def bt_ready():
@@ -29,7 +28,7 @@ def boot(elf, mask, fail_id=False):
         image.ret(0)
 
     def id_get():
-        image.put_word(image.arg(1), 1)  # Host default identity already exists.
+        image.put_word(image.arg(1), 1 + len(ids))  # Includes the default identity.
         image.ret(0)
 
     def allocate():
@@ -47,8 +46,8 @@ def boot(elf, mask, fail_id=False):
         image.ret(0)
 
     def read_setting():
-        image.cpu.mem_write(image.arg(1), bytes((mask,)))
-        image.ret(1)
+        image.cpu.mem_write(image.arg(1), stored)
+        image.ret(len(stored))
 
     def save():
         assert bytes(image.cpu.mem_read(image.arg(0), 18)).split(b"\0")[0] == b"rak_pings/enabled"
@@ -66,9 +65,14 @@ def boot(elf, mask, fail_id=False):
     image.hook("settings_load", load)
     image.hook("settings_save_one", save)
     image.hook("adc_nrfx_channel_setup", read_setting)
+    if interval is not None:
+        stored = struct.pack("<H", interval)
+        image.cpu.mem_write(scratch, b"interval\0")
+        assert image.call("load_ping_setting", scratch, len(stored), image.symbols["adc_nrfx_channel_setup"] | 1, 0) == 0
     if mask is not None:
+        stored = bytes((mask,))
         image.cpu.mem_write(scratch, b"enabled\0")
-        assert image.call("load_mask", scratch, 1, image.symbols["adc_nrfx_channel_setup"] | 1, 0) == 0
+        assert image.call("load_ping_setting", scratch, 1, image.symbols["adc_nrfx_channel_setup"] | 1, 0) == 0
     expected = 7 if mask is None else mask
     err = image.call("main")
     if fail_id:
@@ -78,6 +82,11 @@ def boot(elf, mask, fail_id=False):
     assert starts == ["Bluetooth", "mesh"] + [letter for letter, bit in (("A", 1), ("C", 4), ("B", 2)) if expected & bit]
     assert image.word(image.symbols["boot_mask"]) == expected
     assert image.call("__wrap_settings_load") == 0 and loads == [1]
+
+    assert image.call("rak_ping_interval_units") == (interval or 10) * 1600
+    if not test_commands:
+        return image
+    image.hook("shell_fprintf_normal", lambda: image.ret(0))
 
     def select(command, letter):
         image.cpu.mem_write(scratch + 32, command.encode() + b"\0")

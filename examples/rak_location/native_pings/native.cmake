@@ -24,6 +24,7 @@ function(replace_sample old new)
   string(REPLACE "${old}" "${new}" result "${sample}")
   set(sample "${result}" PARENT_SCOPE)
 endfunction()
+replace_sample("#define FHN_ADV_INTERVAL (0x0C80)" "#define FHN_ADV_INTERVAL rak_ping_interval_units()")
 replace_sample("#define APP_BT_ID 1" "#define APP_BT_ID RAK_ANDROID_ID")
 replace_sample("err = bt_enable(NULL);" "err = rak_host_ready();")
 replace_sample("bt_gatt_authorization_cb_register(&gatt_authorization_callbacks)"
@@ -32,3 +33,26 @@ file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/rak_locator_main.inc" CONTENT
 target_include_directories(app PRIVATE "${locator}/src")
 zephyr_link_libraries(-Wl,--wrap=settings_load)
 include("${native}/../ping_monitor.cmake")
+
+# The pinned Zephyr host writes 24-bit intervals in LE Set Extended Advertising
+# Parameters but validates them against the 16-bit legacy command's limit.
+# Keep that limit for controllers using legacy HCI. Only build a private copy.
+set(host_target subsys__bluetooth__host)
+set(host_dir "${ZEPHYR_BASE}/subsys/bluetooth/host")
+set(host_adv "${host_dir}/adv.c")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${host_adv}")
+file(READ "${host_adv}" sample)
+replace_sample("param->interval_max > 0x4000)"
+               "param->interval_max > ((IS_ENABLED(CONFIG_BT_EXT_ADV) && BT_DEV_FEAT_LE_EXT_ADV(bt_dev.le.features)) ? 0xffffffU : 0x4000U))")
+set(patched "${CMAKE_CURRENT_BINARY_DIR}/rak_host_adv.c")
+file(CONFIGURE OUTPUT "${patched}" CONTENT "${sample}" @ONLY)
+get_target_property(host_sources ${host_target} SOURCES)
+set(original ${host_sources})
+list(FILTER original INCLUDE REGEX "(^|/)adv[.]c$")
+list(LENGTH original matches)
+if(NOT matches EQUAL 1)
+  message(FATAL_ERROR "Expected the pinned Zephyr Bluetooth host advertising source")
+endif()
+list(REMOVE_ITEM host_sources "${original}")
+set_property(TARGET ${host_target} PROPERTY SOURCES "${host_sources};${patched}")
+target_include_directories(${host_target} PRIVATE "${host_dir}")

@@ -4,7 +4,7 @@ The experimental Sensor and USB tracker Companion each run Apple Find My (A),
 Android Find Hub (B) and Amazon Sidewalk presence (C) on one nRF52840. The
 Bluetooth controller interleaves advertisements using a separate identity for
 each service. All three are selected on first boot. Each SDK manages its own
-enrollment, advertising interval and changes of state. The tracker also runs
+enrollment and changes of state. Regular pings share one saved interval. The tracker also runs
 the direct GPS and LoRa dog-check protocol. [Tracker commands](../../rak_findmy/README.md#test-the-collar-against-a-keymind-companion)
 
 ## Check the pings
@@ -15,7 +15,8 @@ console after restart.
 
 | Command | What to look for |
 | --- | --- |
-| `pings status` | Selected services for this boot and the next boot. |
+| `pings status` | Selected services and heartbeat interval for this boot and the next boot. |
+| `pings interval [seconds]` | Read the interval or save a whole number from 1 to 300. The default is 10 seconds. Reset the tag to apply a change. |
 | `finder ping` | A, B and C each show their current native advertising state and the number of payload updates and starts the Bluetooth host accepted. |
 | `tag status` | A needs a configured product plan, device credentials and successful iPhone enrollment. Its counter recognizes separated-mode advertisements. |
 | `findhub status` | B reports ready after reading a valid Google model record. Check for `provisioned=1` after pairing with Android. |
@@ -24,6 +25,12 @@ console after restart.
 To use all three, run `pings on all` and reset the tag. To use A and C alone,
 run `pings off B` and reset. To use only B, run `pings off all`, then
 `pings on B`, and reset once. The saved choice survives power loss.
+
+For example, enter `pings interval 30` and reset once to send one regular
+heartbeat per enabled network about every 30 seconds. Enter `pings interval`
+to see the active and saved values. Apple pairing and fast reconnect and
+Android Fast Pair discovery keep their native timing. A longer interval gives
+a passing receiver fewer chances to hear the tag.
 
 The controller repeats accepted payloads automatically, so the counters can
 stay steady while packets continue. Pairing, owner proximity and live
@@ -83,12 +90,17 @@ With Python 3.11 or later, install `pyelftools`, `unicorn==2.1.4` and
 
 ```sh
 python examples/rak_location/native_pings/verify_boot.py /work/native-sensor/native-firmware/zephyr/zephyr.elf
+python examples/rak_location/native_pings/verify_interval.py /work/native-sensor/native-firmware/zephyr/zephyr.elf
 python examples/rak_location/native_pings/verify_pings.py /work/native-sensor/native-firmware/zephyr/zephyr.elf
+python examples/rak_location/native_pings/verify_pings.py /work/native-sensor/native-firmware/zephyr/zephyr.elf --interval 300 --virtual-time
 ```
 
 The boot test executes the application’s ARM code with simulated drivers for
-all eight selections. The scanner test runs the linked native advertising
+all eight selections. The interval test exercises USB settings and checks that
+the linked Zephyr host and Nordic radio controller accept the full interval
+without truncation. The scanner test runs the linked native advertising
 functions with synthetic fixtures, enables three advertising sets on one
-virtual controller and receives the emitted frames with one passive scanner.
+virtual controller and checks the gaps between advertisements with one passive
+scanner. The optional virtual clock advances to each scheduled event.
 Physical RF reception, native app enrollment and network sightings require a
 provisioned tag and nearby participating phones or gateways.
