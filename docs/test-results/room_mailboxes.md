@@ -16,7 +16,7 @@ LoRa/Wi-Fi transfer. No lab radio was flashed for these mailbox checks.
   caller and recipient bans, and permission revocation before cached replies.
 - Mailbox-only suppression of public posts, topic delivery, active retries and
   public unread counts. Corrupt saved policy blocks automatic chat.
-- A later dog-tracker check-in retrieving `dog lost`, resumable reads, no
+- A later pet tracker check-in retrieving the owner's message, resumable reads, no
   implicit acknowledgement, and an explicit durable receipt. Message text
   never executes administrative commands.
 - Up to 32 owners, 16 globally queued messages, four per owner, 512 UTF-8 bytes

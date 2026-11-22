@@ -19,6 +19,10 @@ SCRATCH = 0x20039000
 class Tag:
     def __init__(self, elf, identity, settings=None):
         self.image = im = ArmImage(elf)
+        im.cpu.mem_write(SCRATCH, b"pet\0")
+        entry = im.call("z_shell_find_cmd", 0, SCRATCH, SCRATCH + 64)
+        assert entry, "pet command missing from the USB shell"
+        im.symbols["pet_command"] = im.word(entry + 12)  # shell_static_entry.handler on nRF52840
         self.settings = settings if settings is not None else {}
         self.settings["tagmesh/seed"] = identity
         self.fail_key = None
@@ -133,12 +137,12 @@ class Tag:
     def command(self, *args):
         im = self.image
         pointer = SCRATCH + 128
-        for i, arg in enumerate(("dog", *args)):
+        for i, arg in enumerate(("pet", *args)):
             data = arg.encode() + b"\0"
             im.cpu.mem_write(pointer, data)
             im.put_word(SCRATCH + 4 * i, pointer)
             pointer += len(data)
-        return im.call("_ZN12_GLOBAL__N_17commandEPK5shelljPPc", 0, len(args) + 1, SCRATCH)
+        return im.call("pet_command", 0, len(args) + 1, SCRATCH)
 
     def alerts(self):
         return [p for p in self.sent if (p[0] >> 2) & 15 == 2]
@@ -167,7 +171,7 @@ def check(collar_elf, companion_elf):
     other_edge = (10000000, -1790000000)
     outside = (-1250000, -1790000000)
     collar.step(1000, inside)
-    collar.step(2000, other_edge)  # Silent baseline. Ordinary dog check also runs.
+    collar.step(2000, other_edge)  # Silent baseline. Ordinary pet check also runs.
     collar.step(22000)
     assert not collar.gps and not collar.alerts()
     collar.motion = -1  # An accelerometer fault cannot masquerade as movement.

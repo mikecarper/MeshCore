@@ -21,10 +21,10 @@ provides the full Sensor and Companion interfaces.
 
 | Slot and image | First USB commands | Live test requires |
 | --- | --- | --- |
-| A · Apple Find My | `dog status` and `tag status` | A product plan and the individual accessory's Apple-issued credentials. See the [iPhone setup guide](../rak_findmy/README.md). |
-| B · Android / Google Find Hub | `dog status` and `findhub status` | Your registered Find Hub-capable Google model and a compatible Android phone configured for that model |
-| C · Amazon Sidewalk presence | `dog status` and `sidewalk status` | A registered AWS Sidewalk device, a participating gateway and AWS proximity events enabled |
-| C · Amazon Sidewalk gateway location | `dog status` and `sidewalk status` | An AWS Sidewalk device and credentials, positioning enabled with a destination, and a participating gateway |
+| A · Apple Find My | `pet status` and `tag status` | A product plan and the individual accessory's Apple-issued credentials. See the [iPhone setup guide](../rak_findmy/README.md). |
+| B · Android / Google Find Hub | `pet status` and `findhub status` | Your registered Find Hub-capable Google model and a compatible Android phone configured for that model |
+| C · Amazon Sidewalk presence | `pet status` and `sidewalk status` | A registered AWS Sidewalk device, a participating gateway and AWS proximity events enabled |
+| C · Amazon Sidewalk gateway location | `pet status` and `sidewalk status` | An AWS Sidewalk device and credentials, positioning enabled with a destination, and a participating gateway |
 
 Each image in the table runs one commercial network. Changing a Bluetooth address does
 not enroll an accessory. Before switching a paired item to a different network,
@@ -71,8 +71,8 @@ the AWS event above, to confirm a network sighting.
    The tag reboots. Open its USB serial console.
 2. Run the two status commands in the table. On a fresh tag, Sidewalk reports
    `needs AWS manufacturing data`. Google reports `Needs Google model registration data`.
-   `dog status` shows the tracker role and the tag's mesh public key.
-3. Test `dog radio`, `dog owner`, and `dog check` with a Keymind Companion.
+   `pet status` shows the tracker role and the tag's mesh public key.
+3. Test `pet radio`, `pet owner`, and `pet check` with a Keymind Companion.
    Each network profile has its own stored mesh identity and owner settings.
    [Radio setup and expected replies](../rak_findmy/README.md#test-the-collar-against-a-keymind-companion)
 

@@ -10,7 +10,7 @@ namespace collar_fence {
 enum Side : uint8_t { Unknown, Inside, Outside };
 struct Point { int32_t lat, lon; };
 struct Shape {
-  Point points[9];  // The USB shell accepts 20 words, including "dog fence".
+  Point points[9];  // The USB shell accepts 20 words, including "pet fence".
   uint32_t radius_m;
   uint8_t count;
 };
@@ -27,7 +27,7 @@ constexpr char settings_key[] = "tagmesh/fence2";
 extern Record record;
 void after_load(int result);
 int command(const shell* sh, size_t argc, char** argv, const uint8_t* owner, bool owner_ready);
-bool needs_gps(bool dog_on, const uint8_t* owner, int64_t now);
+bool needs_gps(bool pet_on, const uint8_t* owner, int64_t now);
 void observe(const TagFix& fix, int64_t now);
 bool alert_due(int64_t now);
 void make_alert(mesh::Packet& packet, const uint8_t* sender, const uint8_t* secret, int64_t now);

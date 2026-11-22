@@ -31,7 +31,7 @@ inline const char* editSetting(const char* command, const TrackerRecord& origina
       memset(candidate.path, 0, sizeof(candidate.path));
       candidate.last_lost = mesh::tracker::Unknown;
     }
-  } else if (strcmp(command, "set tracker.mode dog") == 0) {
+  } else if (strcmp(command, "set tracker.mode pet") == 0) {
     if (!gps_detected) { return "ERR: GPS required"; }
     candidate.enabled = true;
   } else if (strcmp(command, "set tracker.mode off") == 0) candidate.enabled = false;
@@ -73,7 +73,7 @@ inline bool formatQuery(const char* command, const TrackerRecord& tracker, bool 
     return true;
   }
   if (strcmp(command, "get tracker.mode") == 0) {
-    snprintf(reply, capacity, "%s", tracker.enabled ? "dog" : "off"); return true;
+    snprintf(reply, capacity, "%s", tracker.enabled ? "pet" : "off"); return true;
   }
   if (strcmp(command, "get tracker.interval") == 0
       || strcmp(command, "get tracker.lost.interval") == 0) {
@@ -92,7 +92,7 @@ inline bool formatQuery(const char* command, const TrackerRecord& tracker, bool 
     snprintf(reply, capacity, "ERR: unknown tracker setting"); return true;
   }
   snprintf(reply, capacity, "mode=%s status=%s interval=%lu lost.interval=%lu flood=%s clock=%s storage=%s",
-      tracker.enabled ? "dog" : "off", tracker.last_lost == 2 ? "yes" : tracker.last_lost == 1 ? "no" : "unknown",
+      tracker.enabled ? "pet" : "off", tracker.last_lost == 2 ? "yes" : tracker.last_lost == 1 ? "no" : "unknown",
       (unsigned long)tracker.normal_interval, (unsigned long)tracker.lost_interval,
       tracker.route.flags & mesh::tracker::kFloodLocked ? "locked" : "6h",
       tracker.route.flags & mesh::tracker::kClockFault ? "fault" : "ok",

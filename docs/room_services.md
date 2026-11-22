@@ -58,7 +58,7 @@ are reserved mailbox commands and never become public room posts:
 !mail delivery chat
 !mail settings
 !mail settings 1
-!mail send <complete-64-hex-recipient-public-key> dog lost
+!mail send <complete-64-hex-recipient-public-key> pet lost
 !mail check
 !mail inbox
 !mail list 1
@@ -94,8 +94,8 @@ automatic chat rather than silently enabling it.
 
 ### Sleeping tracker example
 
-A dog tracker can keep its mailbox private, approve its owner's sender identity,
-and select mailbox-only delivery. The owner leaves `dog lost` while the tracker
+A pet tracker can keep its mailbox private, approve its owner's sender identity,
+and select mailbox-only delivery. The owner leaves `pet lost` while the tracker
 is asleep. At its next scheduled check-in, the tracker authenticates to the
 room, checks its inbox, retrieves that message in resumable chunks and confirms
 receipt only after handling it. Lost replies and another sleep cycle do not
@@ -109,7 +109,7 @@ For a reachable owner's Companion, the optional
 [lost-status auto responder](companion_lost_reply.md) can also answer a private
 `Am I lost?` question with a saved `Yes` or `No`.
 
-The opt-in [Sensor dog tracker](sensor_tracker.md) currently checks a reachable
+The opt-in [Sensor pet tracker](sensor_tracker.md) currently checks a reachable
 owner's Companion through tagged encrypted requests. It does not yet log in
 to a Room Server or automatically poll these mailboxes.
 

@@ -2,9 +2,9 @@
 <p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/test-results/sensor_dog_tracker/">View this page on MeshCore Docs</a>.</p>
 <!-- meshcore-hosted-doc-link:end -->
 
-# Sensor dog tracker validation
+# Sensor pet tracker validation
 
-The opt-in [Sensor dog tracker](../sensor_tracker.md) was checked on
+The opt-in [Sensor pet tracker](../sensor_tracker.md) was checked on
 2026-10-10 using executable host tests and firmware builds. This report
 qualifies the code paths named below; no radio was flashed for these checks,
 and battery current, GPS acquisition outdoors, and live RF delivery were not
@@ -20,7 +20,7 @@ measured.
 | `test_tracker_owner_response.py` | Actual Companion responder across four feature configurations: persistent contact authentication, flags and padding, time-bounded position updates, rate limits, and preserved ordinary message state. |
 | `test_sensor_tracker_gps.py` | 5 tests: fresh parser/PVT samples, GPS ownership, 120-second bound, validated UTC recovery after a cold start, stale sync notifications and saved preference restoration. |
 | `test_sensor_tracker_sleep.py` | 4 tests: actual sleep gates, nRF52 timer allocation/queue failures, warm radio pause and resume, Dispatcher watchdog anchors, and feature defaults. |
-| `test_sensor_subscriptions.py` | 18 tests: existing delivery behavior plus suppression in dog mode and restoration after leaving it. |
+| `test_sensor_subscriptions.py` | 18 tests: existing delivery behavior plus suppression in pet mode and restoration after leaving it. |
 | `test_radio_interrupt_recovery.py` | 9 tests: radio recovery preserves the no-flood-retry policy when a missing transmit-complete interrupt could conceal a transmission. |
 
 Host C++ tests use AddressSanitizer and UndefinedBehaviorSanitizer where

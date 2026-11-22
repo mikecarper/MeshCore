@@ -5,7 +5,7 @@ Android Find Hub (B) and Amazon Sidewalk gateway location (C) on one nRF52840. T
 Bluetooth controller interleaves advertisements using a separate identity for
 each service. All three are selected on first boot. Each SDK manages its own
 enrollment and changes of state. Regular pings share one saved interval. The tracker also runs
-the direct GPS and LoRa dog-check protocol. [Tracker commands](../../rak_findmy/README.md#test-the-collar-against-a-keymind-companion)
+the direct GPS and LoRa pet-check protocol. [Tracker commands](../../rak_findmy/README.md#test-the-collar-against-a-keymind-companion)
 
 For phone pairing, maps and last-seen times, see the
 [owner’s guide for all three networks](../../../docs/sensor_tracker.md#find-your-rak-tag-from-a-phone).
@@ -52,12 +52,12 @@ are based on the gateway. The collar's own GPS fix travels separately over LoRa.
 
 ## Motion and boundary alerts
 
-Both collar roles accept `dog motion on` for a GPS fix on movement and
-`dog fence` for private exit and return alerts to a MeshCore owner. Enter one
+Both collar roles accept `pet motion on` for a GPS fix on movement and
+`pet fence` for private exit and return alerts to a MeshCore owner. Enter one
 latitude/longitude pair and a radius in meters for a circle, two opposite corners
 for a box, or 3–9 perimeter points for a polygon. A configured fence enables
-motion GPS when dog mode is on. The owner's MeshCore app shows the alert with coordinates. A combined
-USB tracker Companion in watch mode shows its latest alert with `dog last`.
+motion GPS when pet mode is on. The owner's MeshCore app shows the alert with coordinates. A combined
+USB tracker Companion in watch mode shows its latest alert with `pet last`.
 [Set up and walk-test a fence](../../../docs/sensor_tracker.md#motion-gps-and-geofence-alerts)
 
 ## Prepare a tag for live tests

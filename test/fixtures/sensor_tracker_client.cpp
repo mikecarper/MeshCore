@@ -23,7 +23,9 @@ static std::string command(SensorMesh& mesh, const std::string& value, uint32_t 
 }
 static void configure(SensorMesh& mesh) {
   assert(command(mesh, "set tracker.owner " + hexKey(ownerKey())) == "OK");
-  assert(command(mesh, "set tracker.mode dog") == "OK");
+  assert(command(mesh, "set tracker.mode pet") == "OK");
+  assert(command(mesh, "get tracker.mode") == "pet");
+  assert(command(mesh, "get tracker status").find("mode=pet ") == 0);
   assert(mesh.tracker.enabled && mesh.tracker.generation == 2);
   assert(sensors.mode && sensors.power_save && mesh.num_alert_tasks == 0);
   assert(mesh.alert1.text[0] == 0 && mesh.alert2.text[0] == 0);
@@ -104,7 +106,7 @@ static void commands() {
   SensorMesh mesh;
   assert(command(mesh, "get tracker").find("mode=off status=unknown interval=1800 lost.interval=60") == 0);
   assert(command(mesh, "tracker check") == "ERR: tracker unavailable");
-  assert(command(mesh, "set tracker.mode dog").find("configure tracker.owner") != std::string::npos);
+  assert(command(mesh, "set tracker.mode pet").find("configure tracker.owner") != std::string::npos);
   assert(command(mesh, "set tracker.owner " + std::string(64, '0')) == "ERR: invalid owner key");
   auto self = ownerKey(); memcpy(self.data(), mesh.self_id.pub_key, 32);
   assert(command(mesh, "set tracker.owner " + hexKey(self)) == "ERR: invalid owner key");
@@ -136,7 +138,7 @@ static void commands() {
   assert(command(mesh, "set tracker.owner " + hexKey(ownerKey(2))) == "OK");
   assert(mesh.tracker.path_len == kUnknownPath && !mesh.tracker.last_lost);
   sensors.detected = false;
-  assert(command(mesh, "set tracker.mode dog") == "ERR: GPS required");
+  assert(command(mesh, "set tracker.mode pet") == "ERR: GPS required");
   assert(command(mesh, "set tracker.mode off") == "OK" && !mesh.tracker.enabled && !sensors.mode);
   assert(!mesh.tracker_next_check && mesh.advert_timer_updates && mesh.flood_timer_updates);
   char unused[160] = {}; assert(!mesh.handleTrackerCommand(0, "other", unused));
@@ -161,7 +163,7 @@ static void cadence() {
   ++mesh.rtc.now; mesh.now_ms += 1000; queueCheck(mesh); transmitted(mesh);
   assert(response(mesh, Unknown));
   assert(mesh.tracker.last_lost == Lost && mesh.tracker_next_check == mesh.rtc.now + 60);
-  assert(mesh.tracker_awake_until != 0); // Unknown never silently declares the dog safe.
+  assert(mesh.tracker_awake_until != 0); // Unknown never silently declares the pet safe.
   mesh.rtc.now += 60; mesh.now_ms += 60000; queueCheck(mesh); transmitted(mesh);
   assert(response(mesh, Lost, 65535));
   assert(mesh.tracker_awake_until == mesh.now_ms + 300000);

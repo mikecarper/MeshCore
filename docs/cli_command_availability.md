@@ -86,7 +86,7 @@ fix, no WiFi connection, an inactive bridge, or an nRF52 bootloader without
 ## Companion framed CLI
 
 GPS-equipped Sensor builds also provide the local-only
-[dog tracker settings](sensor_tracker.md): `get tracker`,
+[pet tracker settings](sensor_tracker.md): `get tracker`,
 `get/set tracker.owner`, `get/set tracker.mode`, `get/set tracker.interval`,
 `get/set tracker.lost.interval`, `get/set tracker.path`, and `tracker check`.
 They are excluded from compact STM32 defaults. LoRa CLI cannot change them.

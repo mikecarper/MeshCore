@@ -1,7 +1,7 @@
-# RAK WisMesh Tag dog tracker with Apple Find My
+# RAK WisMesh Tag pet tracker with Apple Find My
 
 These experimental nRF52840 builds run Nordic's Find My accessory service and
-a direct MeshCore dog check on the same WisMesh Tag. The sensor sends fresh GPS
+a direct MeshCore pet check on the same WisMesh Tag. The sensor sends fresh GPS
 fixes to its owner. The tracker companion can also receive a configured
 collar's checks and answer with a saved lost status. Both have a USB console.
 The ordinary Keymind Cascade Sensor, USB Companion and BLE Companion retain
@@ -20,7 +20,7 @@ UF2 to the mounted drive. Reopen its USB serial console after restart.
 ```text
 tag status
 tag sound
-dog status
+pet status
 ```
 
 The first command reports product-plan and provisioning presence, stack state,
@@ -32,30 +32,30 @@ identity on first boot.
 
 ### Test the collar against a Keymind Companion
 
-1. Enter `dog radio <frequency-Hz> <bandwidth-kHz> <SF> <CR>` on the Tag.
+1. Enter `pet radio <frequency-Hz> <bandwidth-kHz> <SF> <CR>` on the Tag.
    Copy the owner's active radio settings. Supported bandwidths are 62.5, 125,
    250 and 500 kHz. The preamble is 16 symbols, the coding rate is the
    denominator (5 through 8), and transmit power is 14 dBm.
-2. Enter `dog owner <full-owner-public-key>`. Use the owner's 64 hexadecimal
-   characters. Take the Tag outdoors with a sky view and enter `dog advert`.
+2. Enter `pet owner <full-owner-public-key>`. Use the owner's 64 hexadecimal
+   characters. Take the Tag outdoors with a sky view and enter `pet advert`.
    Once GPS establishes UTC, the Tag sends a signed, direct advertisement.
    Save that contact on the owner Companion and set `set lost.reply no` there.
-3. Enter `dog check` on the Tag. After a fresh GPS fix it sends one encrypted
-   check and listens for the owner's matching reply. In `dog status`,
+3. Enter `pet check` on the Tag. After a fresh GPS fix it sends one encrypted
+   check and listens for the owner's matching reply. In `pet status`,
    `status=1` means safe and `status=2` means lost. Set
    `set lost.reply yes` on the owner and repeat to test the change.
-4. Enter `dog on` for automatic checks or `dog off` to stop. The bench
+4. Enter `pet on` for automatic checks or `pet off` to stop. The bench
    build checks every 15 minutes when safe or unknown and every minute when
    lost. It waits up to two minutes for a fresh GPS fix. Automatic checks
    use direct radio range.
 
 For a two-Tag test, install the Find My tracker companion on the owner Tag.
 Configure matching radio settings on both. On the owner enter
-`dog watch <collar-public-key>` and `dog lost no` (or `yes`). Give both Tags
-a sky view. `dog last` on the owner shows the last accepted check, including
+`pet watch <collar-public-key>` and `pet lost no` (or `yes`). Give both Tags
+a sky view. `pet last` on the owner shows the last accepted check, including
 coordinates in ten-millionths of a degree and battery millivolts. The owner
 uses GPS time to reject stale requests and keeps listening while watch is
-enabled. Use `dog watch off` to stop it. This test companion exposes its
+enabled. Use `pet watch off` to stop it. This test companion exposes its
 tracker controls over USB. The full BLE Companion has its own firmware image.
 
 ## Add a provisioned Tag to the iPhone

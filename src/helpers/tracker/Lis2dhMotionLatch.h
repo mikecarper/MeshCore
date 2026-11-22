@@ -28,7 +28,7 @@ template <typename Bus>
 class Lis2dhMotionLatch {
  public:
   // At +/-2 g INT1_THS is 16 mg per step. The default is about 256 mg.
-  // Threshold and sample rate require tuning on the actual collar and dog.
+  // Threshold and sample rate require tuning on the actual collar and pet.
   static constexpr uint8_t kDefaultThresholdSteps = 16;
   static constexpr uint32_t kWarmupMs = 200;  // Two 10 Hz sample periods.
 

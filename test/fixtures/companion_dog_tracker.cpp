@@ -36,10 +36,10 @@ int main() {
   const char* set_owner = "set tracker.owner 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
   char reply[200];
   assert(tag.dogCommand(set_owner, reply, sizeof(reply)) && !strcmp(reply, "OK"));
-  assert(tag.dogCommand("set tracker.mode dog", reply, sizeof(reply)) && strstr(reply, "contact"));
+  assert(tag.dogCommand("set tracker.mode pet", reply, sizeof(reply)) && strstr(reply, "contact"));
   memcpy(tag.contact.id.pub_key, tag.dog.owner, 32);
   tag.added = true;
-  assert(tag.dogCommand("set tracker.mode dog", reply, sizeof(reply)) && !strcmp(reply, "OK"));
+  assert(tag.dogCommand("set tracker.mode pet", reply, sizeof(reply)) && !strcmp(reply, "OK"));
   tag.loopDogTracker();
   assert(sensors.pending && !tag.created);
   sensors.fix();

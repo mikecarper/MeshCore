@@ -260,9 +260,9 @@ int command(const shell* sh, size_t argc, char** argv, const uint8_t* owner, boo
   return rc;
 }
 
-bool needs_gps(bool dog_on, const uint8_t* owner, int64_t now) {
-  fence_active = dog_on && record.shape.count && !memcmp(record.owner, owner, 32);
-  if (!dog_on || !(fence_active || record.motion_enabled)) {
+bool needs_gps(bool pet_on, const uint8_t* owner, int64_t now) {
+  fence_active = pet_on && record.shape.count && !memcmp(record.owner, owner, 32);
+  if (!pet_on || !(fence_active || record.motion_enabled)) {
     if (armed) pause();
     return false;
   }

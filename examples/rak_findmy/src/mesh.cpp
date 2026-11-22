@@ -300,7 +300,7 @@ int command(const shell* sh, size_t argc, char** argv) {
     shell_print(sh, "id=%s radio=%s frequency_Hz=%lu GPS=%s fix=%d mode=%s status=%u pending=%lu error=%d",
                 have_id ? key : "unavailable", tag_radio_available() ? "ready" : "unavailable",
                 (unsigned long)cfg.frequency, gps_on ? "on" : gps_ready ? "idle" : "unavailable",
-                tag_gps_latest(fix), cfg.enabled ? "dog" : "off", owner_status,
+                tag_gps_latest(fix), cfg.enabled ? "pet" : "off", owner_status,
                 (unsigned long)waiting, rc ? rc : last_error);
   } else if (!rc) {
 #if RAK_TAG_COMPANION
@@ -403,9 +403,9 @@ int command(const shell* sh, size_t argc, char** argv) {
 #define FENCE_HELP ""
 #endif
 #if RAK_TAG_COMPANION
-SHELL_CMD_REGISTER(dog, NULL, "status | radio Hz BW_kHz SF CR | owner key | on | off | advert | check | watch key/off | lost yes/no/off | last" FENCE_HELP, command);
+SHELL_CMD_REGISTER(pet, NULL, "status | radio Hz BW_kHz SF CR | owner key | on | off | advert | check | watch key/off | lost yes/no/off | last" FENCE_HELP, command);
 #else
-SHELL_CMD_REGISTER(dog, NULL, "status | radio Hz BW_kHz SF CR | owner key | on | off | advert | check" FENCE_HELP, command);
+SHELL_CMD_REGISTER(pet, NULL, "status | radio Hz BW_kHz SF CR | owner key | on | off | advert | check" FENCE_HELP, command);
 #endif
 
 void worker(void*, void*, void*) {

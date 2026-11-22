@@ -35,15 +35,15 @@ and save. The control is shown only on Companion firmware with this capability.
 The existing mobile app protocol needs no new message type; a native app toggle
 is not added by this firmware change.
 
-## Dog tracker example
+## Pet tracker example
 
 The owner's Companion stores the tracker as a normal radio contact. Set the
-answer to `no` during normal operation. If the dog is lost, set it to `yes`.
+answer to `no` during normal operation. If the pet is lost, set it to `yes`.
 When the tracker sends `Am I lost?` privately to that reachable Companion, it
 receives the selected answer, even when the owner's phone is disconnected.
 The same configured answer applies to all eligible contacts on this Companion.
 
-The opt-in [Sensor dog tracker](sensor_tracker.md) implements periodic fresh
+The opt-in [Sensor pet tracker](sensor_tracker.md) implements periodic fresh
 GPS acquisition, low power sleep, and owner check-ins. It uses a tagged encrypted
 request and response rather than parsing plain `Yes` or `No` text, so old answers
 cannot change a newer check-in. Store the Sensor as a persistent Sensor contact

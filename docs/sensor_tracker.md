@@ -2,9 +2,9 @@
 <p class="meshcore-hosted-doc-link"><a href="https://mikecarper.github.io/MeshCore/sensor_tracker/">View this page on MeshCore Docs</a>.</p>
 <!-- meshcore-hosted-doc-link:end -->
 
-# Sensor dog tracker
+# Sensor pet tracker
 
-Dog tracker mode is an optional mode in the Sensor firmware. It acquires a new
+Pet tracker mode is an optional mode in the Sensor firmware. It acquires a new
 GPS position, sends an encrypted check to one configured owner's Companion,
 and waits for that owner's saved lost status. The owner's answer controls the
 tracker's reporting rate and awake window.
@@ -31,7 +31,7 @@ set lost.reply no
 get lost.reply
 ```
 
-Use `set lost.reply yes` when the dog is lost. Use `set lost.reply off` to
+Use `set lost.reply yes` when the pet is lost. Use `set lost.reply off` to
 return an unknown status. These are owner settings; an incoming tracker check
 cannot change them. A normal private `Am I lost?` message also receives the
 saved answer where the text responder is available, but the automatic Sensor
@@ -51,7 +51,7 @@ set tracker.owner <owner-public-key>
 set tracker.interval 1800
 set tracker.lost.interval 60
 set tracker.path direct
-set tracker.mode dog
+set tracker.mode pet
 get tracker status
 ```
 
@@ -77,7 +77,7 @@ still applies. Encrypted path replies can update the retained path.
 | `get tracker.owner` | Show the configured owner's full public key. |
 | `get tracker.path` | Show whether the route is direct, saved, or unknown, and its hop count. |
 | `set tracker.owner <full-key>` | Save the destination identity. |
-| `set tracker.mode dog` | Enable automatic checks and tracker power control. |
+| `set tracker.mode pet` | Enable automatic checks and tracker power control. |
 | `set tracker.mode off` | Stop automatic checks and restore normal Sensor operation. |
 | `set tracker.interval <seconds>` | Normal interval, 60 to 86400 seconds; default 1800. |
 | `set tracker.lost.interval <seconds>` | Lost interval, 60 to 86400 seconds; default 60. |
@@ -207,7 +207,7 @@ reporting intervals.
 
 The RAK WisMesh Tag USB and BLE Companion builds also accept the local tracker
 commands above. Save the owner's Companion as a contact on the Tag before
-enabling dog mode. The Tag retains its normal Companion receive and control
+enabling pet mode. The Tag retains its normal Companion receive and control
 interfaces between checks. Use `tracker check` to request a check immediately
 and `get tracker status` to see the last accepted owner response.
 
@@ -246,47 +246,47 @@ own GPS. The owner's Companion receives alerts over direct LoRa, independently
 of A, B and C. On an iPhone, open the collar's conversation in the MeshCore app
 connected to your owner Companion.
 
-1. On the collar's USB console, enter `dog radio <Hz> <bandwidth-kHz> <SF> <CR>`
-   using the owner's radio settings. Enter `dog owner <owner-public-key>` with
-   the full 64-character key. Outdoors, run `dog advert` and save the collar
+1. On the collar's USB console, enter `pet radio <Hz> <bandwidth-kHz> <SF> <CR>`
+   using the owner's radio settings. Enter `pet owner <owner-public-key>` with
+   the full 64-character key. Outdoors, run `pet advert` and save the collar
    as a contact on the owner Companion. If the receiver is another combined
-   USB tracker Companion, enter `dog watch <collar-public-key>` on that receiver.
+   USB tracker Companion, enter `pet watch <collar-public-key>` on that receiver.
 2. On the collar, enter one of the commands below with your own coordinates,
-   then enter `dog on`. Each point is **latitude longitude** in decimal degrees.
+   then enter `pet on`. Each point is **latitude longitude** in decimal degrees.
    Separate the numbers with spaces. A saved fence enables motion-triggered GPS.
 
     | Shape | What to enter | Example |
     | --- | --- | --- |
-    | Circle | Center point, then a positive whole-number radius in meters | `dog fence 47.610 -122.210 100` |
-    | Box | Two opposite corners, in either order | `dog fence 47.610 -122.210 47.612 -122.206` |
-    | Polygon | 3–9 points around the perimeter, clockwise or counterclockwise | `dog fence 47.610 -122.210 47.612 -122.210 47.611 -122.206` |
+    | Circle | Center point, then a positive whole-number radius in meters | `pet fence 47.610 -122.210 100` |
+    | Box | Two opposite corners, in either order | `pet fence 47.610 -122.210 47.612 -122.206` |
+    | Polygon | 3–9 points around the perimeter, clockwise or counterclockwise | `pet fence 47.610 -122.210 47.612 -122.210 47.611 -122.206` |
 
     The collar closes the polygon automatically. Enter each corner once and
     keep the edges from crossing. Local polygons can cross the date line and
     must span less than 180° of longitude. A box uses the shorter longitude span.
     Coordinates on the boundary count as inside.
 
-3. Start inside with a clear sky view. Run `dog fence` until it shows
+3. Start inside with a clear sky view. Run `pet fence` until it shows
    `side=inside`. The first two fresh fixes establish a baseline silently.
    Walk well past an edge and back, allowing two fresh fixes on each side.
    The owner receives **Collar left the fence** and **Collar returned to the fence**,
    each with the crossing coordinates. On a USB tracker Companion receiver,
-   run `dog last` to read the most recent alert and its UTC timestamp.
+   run `pet last` to read the most recent alert and its UTC timestamp.
 
-Run `dog fence` to display the saved shape and points, including the radius for a circle.
+Run `pet fence` to display the saved shape and points, including the radius for a circle.
 
-For motion-triggered GPS alone, use `dog motion on` and `dog on`. Run
-`dog motion` to see the last fix observed while armed. Scheduled collar checks
-continue to report fresh positions. `dog off` pauses tracking and retains
-settings. `dog fence off` clears the fence and pending alerts. To stop motion-triggered fixes while keeping
-normal collar checks, clear the fence and enter `dog motion off`.
+For motion-triggered GPS alone, use `pet motion on` and `pet on`. Run
+`pet motion` to see the last fix observed while armed. Scheduled collar checks
+continue to report fresh positions. `pet off` pauses tracking and retains
+settings. `pet fence off` clears the fence and pending alerts. To stop motion-triggered fixes while keeping
+normal collar checks, clear the fence and enter `pet motion off`.
 
 The fence and its last confirmed side survive a restart. The collar retains the
 eight most recent undelivered crossings and retries the oldest about once per
-minute until the owner's radio acknowledges it. `queued` in `dog fence` shows
+minute until the owner's radio acknowledges it. `queued` in `pet fence` shows
 the number waiting. Out of radio range, the message can arrive later. Without
 a GPS fix, a crossing can be missed. Leave space between a fence edge and places
-where the dog normally rests, since GPS readings can drift near the edge.
+where the pet normally rests, since GPS readings can drift near the edge.
 
 ### A. Apple Find My on iPhone
 

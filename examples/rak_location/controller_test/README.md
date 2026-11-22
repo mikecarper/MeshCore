@@ -15,7 +15,7 @@ its application can overwrite the combined firmware's settings partition.
 
 1. Double-reset a bench tag with its stock S140 6.1.1 UF2 bootloader and copy
    the appropriate controller-test UF2 to the bootloader drive.
-2. Open the tag's USB console and run `dog status` to confirm the role.
+2. Open the tag's USB console and run `pet status` to confirm the role.
 3. Run `locator ids start` and scan for the three names below. Each test beacon
    has its own random-static address. The controller interleaves broadcasts
    using ordinary nonconnectable Bluetooth advertisements.
