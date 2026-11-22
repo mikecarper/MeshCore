@@ -53,11 +53,12 @@ are based on the gateway. The collar's own GPS fix travels separately over LoRa.
 ## Motion and boundary alerts
 
 Both collar roles accept `dog motion on` for a GPS fix on movement and
-`dog fence SOUTH WEST NORTH EAST` for private exit and return alerts to a
-MeshCore owner. A configured box enables motion GPS automatically when dog mode
-is on. The owner's MeshCore app shows the alert with coordinates. A combined
+`dog fence` for private exit and return alerts to a MeshCore owner. Enter one
+latitude/longitude pair and a radius in meters for a circle, two opposite corners
+for a box, or 3–9 perimeter points for a polygon. A configured fence enables
+motion GPS when dog mode is on. The owner's MeshCore app shows the alert with coordinates. A combined
 USB tracker Companion in watch mode shows its latest alert with `dog last`.
-[Set up and walk-test a box](../../../docs/sensor_tracker.md#motion-gps-and-box-alerts)
+[Set up and walk-test a fence](../../../docs/sensor_tracker.md#motion-gps-and-geofence-alerts)
 
 ## Prepare a tag for live tests
 

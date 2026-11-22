@@ -2,6 +2,7 @@
 #include "../../rak_findmy/src/TagPackets.h"
 #include <zephyr/settings/settings.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 extern "C" void rak_collar_motion_start(void);
 extern "C" bool rak_collar_motion_detected(void);
@@ -21,17 +22,111 @@ uint32_t latest_utc, ack_utc;
 uint8_t ack_hash[4], attempt;
 int storage_error;
 
-bool valid(const Bounds& b) {
-  return b.south >= -pole && b.south < b.north && b.north <= pole &&
-      b.west >= -dateline && b.west <= dateline && b.east >= -dateline && b.east <= dateline &&
-      b.west != b.east && !(b.west == dateline && b.east == -dateline);
+// Keep the 64-bit geometry primitives shared across edge checks on Cortex-M4.
+[[gnu::noinline]] int32_t longitude_offset(int32_t lon, int32_t origin) {
+  int64_t diff = int64_t(lon) - origin;
+  if (diff > dateline) diff -= 2LL * dateline;
+  if (diff < -dateline) diff += 2LL * dateline;
+  return int32_t(diff);
 }
 
-bool contains(const Bounds& b, int32_t lat, int32_t lon) {
-  if (lat < b.south || lat > b.north) return false;
-  if (lon == dateline && b.west == -dateline) lon = -dateline;
-  else if (lon == -dateline && b.east == dateline) lon = dateline;
-  return b.west < b.east ? lon >= b.west && lon <= b.east : lon >= b.west || lon <= b.east;
+bool between(int32_t v, int32_t a, int32_t b) {
+  return (a <= v && v <= b) || (b <= v && v <= a);
+}
+
+// Compare the cross products separately so even world-scale inputs fit in int64.
+[[gnu::noinline]] int orientation(Point a, Point b, Point p) {
+  int64_t left = (int64_t(b.lon) - a.lon) * (p.lat - a.lat);
+  int64_t right = (int64_t(p.lon) - a.lon) * (b.lat - a.lat);
+  return (left > right) - (left < right);
+}
+
+bool in_bounds(Point a, Point b, Point p) {
+  return between(p.lat, a.lat, b.lat) && between(p.lon, a.lon, b.lon);
+}
+
+bool intersects(Point a, Point b, Point c, Point d) {
+  int abc = orientation(a, b, c), abd = orientation(a, b, d);
+  int cda = orientation(c, d, a), cdb = orientation(c, d, b);
+  return (abc * abd < 0 && cda * cdb < 0) ||
+      (!abc && in_bounds(a, b, c)) || (!abd && in_bounds(a, b, d)) ||
+      (!cda && in_bounds(c, d, a)) || (!cdb && in_bounds(c, d, b));
+}
+
+bool valid(const Shape& shape) {
+  unsigned n = shape.count;
+  if (!n || n > ARRAY_SIZE(shape.points)) return false;
+  Point v[ARRAY_SIZE(shape.points)];
+  int32_t west = 0, east = 0;
+  for (unsigned i = 0; i < n; ++i) {
+    Point p = shape.points[i];
+    if (p.lat < -pole || p.lat > pole || p.lon < -dateline || p.lon > dateline) return false;
+    v[i] = {p.lat, longitude_offset(p.lon, shape.points[0].lon)};
+    west = MIN(west, v[i].lon);
+    east = MAX(east, v[i].lon);
+  }
+  if (n == 1) return shape.radius_m > 0;
+  if (n == 2) return v[0].lat != v[1].lat && v[1].lon != 0;
+  if (int64_t(east) - west >= dateline) return false;
+  for (unsigned i = 0; i < n; ++i) {
+    Point a = v[i], b = v[(i + 1) % n], c = v[(i + 2) % n];
+    if ((a.lat == b.lat && a.lon == b.lon) ||
+        (!orientation(a, b, c) && !in_bounds(a, c, b))) return false;
+    for (unsigned j = i + 2; j < n; ++j) {
+      if ((j + 1) % n != i && intersects(a, b, v[j], v[(j + 1) % n])) return false;
+    }
+  }
+  return true;
+}
+
+// All haversine arguments below are in [-pi/2, pi/2]. On this interval the
+// sine series through x^19 has truncation error below 3e-16. This avoids
+// linking the embedded math library's general-purpose angle reduction tables.
+double bounded_sine(double x) {
+  double step = -x * x, term = x, sum = x;
+  for (int i = 2; i <= 18; i += 2) {
+    term *= step / (i * (i + 1));
+    sum += term;
+  }
+  return sum;
+}
+
+bool contains(const Shape& shape, Point p) {
+  const Point a = shape.points[0];
+  const int32_t x = longitude_offset(p.lon, a.lon);
+  if (shape.count == 1) {
+    // Compare haversines directly. A metre-scale delta retains its precision
+    // because we subtract the integer coordinates before converting to radians.
+    constexpr double rad = 1.7453292519943295e-9, earth_radius_m = 6371008.8;
+    if (shape.radius_m >= 20015115) return true;  // Half the Earth's circumference.
+    double dy = bounded_sine((p.lat - a.lat) * (rad / 2));
+    double dx = bounded_sine(x * (rad / 2));
+    double limit = bounded_sine(shape.radius_m / (2 * earth_radius_m));
+    double cos_a = bounded_sine((pole - abs(a.lat)) * rad);
+    double cos_p = bounded_sine((pole - abs(p.lat)) * rad);
+    return dy * dy + cos_a * cos_p * dx * dx <= limit * limit;
+  }
+  if (shape.count == 2) {
+    Point b = shape.points[1];
+    int32_t west = MIN(a.lon, b.lon), east = MAX(a.lon, b.lon);
+    if (p.lon == dateline) p.lon = -dateline;
+    bool within = int64_t(east) - west <= dateline ? between(p.lon, west, east) : p.lon <= west || p.lon >= east;
+    return between(p.lat, a.lat, b.lat) && within;
+  }
+  // Ray crossing in longitude/latitude space. Unwrap around the first vertex
+  // so a local fence can straddle the date line. Points on an edge are inside.
+  p.lon = x;
+  bool inside = false;
+  Point prev = {a.lat, 0};
+  for (unsigned i = 1; i <= shape.count; ++i) {
+    Point next = shape.points[i % shape.count];
+    next.lon = longitude_offset(next.lon, a.lon);
+    int side = orientation(prev, next, p);
+    if (!side && in_bounds(prev, next, p)) return true;
+    if ((prev.lat > p.lat) != (next.lat > p.lat) && (side > 0) == (next.lat > prev.lat)) inside = !inside;
+    prev = next;
+  }
+  return inside;
 }
 
 // Parse the same signed, seven-decimal-degree format that the tracker sends.
@@ -87,7 +182,7 @@ void after_load(int result) {
     record.motion_enabled = motion_enabled;
     return;
   }
-  if (!result && (!valid(record.box) || record.count > ARRAY_SIZE(record.queue) ||
+  if (!result && (!valid(record.shape) || record.count > ARRAY_SIZE(record.queue) ||
       record.side > Outside || (record.side == Unknown) != (record.confirmed_utc == 0))) result = -EBADMSG;
   uint32_t previous = 0;
   for (unsigned i = 0; !result && i < record.count; ++i) {
@@ -120,33 +215,53 @@ int command(const shell* sh, size_t argc, char** argv, const uint8_t* owner, boo
     return save(next);
   }
   if (argc == 2) {
-    if (!valid(record.box)) shell_print(sh, "fence=off storage_error=%d", storage_error);
+    if (!record.shape.count) shell_print(sh, "fence=off storage_error=%d", storage_error);
     else {
-      char s[16], w[16], n[16], e[16];
-      format(s, record.box.south); format(w, record.box.west);
-      format(n, record.box.north); format(e, record.box.east);
-      shell_print(sh, "fence=%s south=%s west=%s north=%s east=%s side=%s queued=%u storage_error=%d",
-                  fence_active ? "armed" : "paused", s, w, n, e, name(record.side), record.count, storage_error);
+      const Shape& shape = record.shape;
+      const char* type = shape.count == 1 ? "circle" : shape.count == 2 ? "box" : "polygon";
+      shell_print(sh, "fence=%s shape=%s side=%s queued=%u storage_error=%d",
+                  fence_active ? "armed" : "paused", type, name(record.side), record.count, storage_error);
+      for (unsigned i = 0; i < shape.count; ++i) {
+        char lat[16], lon[16];
+        format(lat, shape.points[i].lat); format(lon, shape.points[i].lon);
+        shell_print(sh, "%s %s", lat, lon);
+      }
+      if (shape.count == 1) shell_print(sh, "radius_m=%lu", (unsigned long)shape.radius_m);
     }
     return 0;
   }
   Record next{};
   next.motion_enabled = record.motion_enabled;
-  if (argc == 6) {
+  if (argc != 3 || strcmp(argv[2], "off")) {
     if (!owner_ready) return -ENODEV;
-    auto& b = next.box;
-    if (!coordinate(argv[2], b.south) || !coordinate(argv[3], b.west) ||
-        !coordinate(argv[4], b.north) || !coordinate(argv[5], b.east) || !valid(b)) return -EINVAL;
+    Shape& shape = next.shape;
+    if (argc == 5) {
+      for (const char* s = argv[4]; *s; ++s) {
+        unsigned digit = unsigned(*s - '0');
+        if (digit > 9 || shape.radius_m > (UINT32_MAX - digit) / 10) return -EINVAL;
+        shape.radius_m = shape.radius_m * 10 + digit;
+      }
+      shape.count = 1;
+    } else {
+      if (argc < 6 || argc % 2 || argc > 2 + 2 * ARRAY_SIZE(shape.points)) return -EINVAL;
+      shape.count = (argc - 2) / 2;
+    }
+    for (unsigned i = 0; i < shape.count; ++i) {
+      Point& p = shape.points[i];
+      if (!coordinate(argv[2 + 2 * i], p.lat) || !coordinate(argv[3 + 2 * i], p.lon)) return -EINVAL;
+      if (p.lon == dateline) p.lon = -dateline;
+    }
+    if (!valid(shape)) return -EINVAL;
     memcpy(next.owner, owner, 32);
-    if (!memcmp(&record.box, &b, sizeof(b)) && !memcmp(record.owner, owner, 32)) return 0;
-  } else if (argc != 3 || strcmp(argv[2], "off")) return -EINVAL;
+    if (!memcmp(&record.shape, &shape, sizeof(shape)) && !memcmp(record.owner, owner, 32)) return 0;
+  }
   int rc = save(next);
   if (!rc) pause();
   return rc;
 }
 
 bool needs_gps(bool dog_on, const uint8_t* owner, int64_t now) {
-  fence_active = dog_on && valid(record.box) && !memcmp(record.owner, owner, 32);
+  fence_active = dog_on && record.shape.count && !memcmp(record.owner, owner, 32);
   if (!dog_on || !(fence_active || record.motion_enabled)) {
     if (armed) pause();
     return false;
@@ -190,7 +305,7 @@ void observe(const TagFix& fix, int64_t now) {
     fresh_pair = true;
     return;
   }
-  Side side = contains(record.box, fix.lat, fix.lon) ? Inside : Outside;
+  Side side = contains(record.shape, {fix.lat, fix.lon}) ? Inside : Outside;
   bool confirmed = side == candidate && fix.utc - latest_utc <= 15 &&
       fix.received_ms > previous.received_ms && fix.received_ms - previous.received_ms <= 15000;
   latest_utc = fix.utc;
@@ -226,7 +341,7 @@ void make_alert(mesh::Packet& packet, const uint8_t* sender, const uint8_t* secr
   uint8_t sequence = attempt++;
   data[4] = sequence & 3;
   int chars = snprintf(reinterpret_cast<char*>(data + 5), sizeof(data) - 5,
-                       "Collar %s the box at %s, %s", event.side == Inside ? "returned to" : "left", lat, lon);
+                       "Collar %s the fence at %s, %s", event.side == Inside ? "returned to" : "left", lat, lon);
   size_t length = 5 + chars;
   mesh::Utils::sha256(ack_hash, sizeof(ack_hash), data, length, sender, 32);
   if (sequence > 3) {

@@ -8,17 +8,22 @@ namespace collar_fence {
 
 // Persisted together so a power loss cannot separate a transition from its alert.
 enum Side : uint8_t { Unknown, Inside, Outside };
-struct Bounds { int32_t south, west, north, east; };
+struct Point { int32_t lat, lon; };
+struct Shape {
+  Point points[9];  // The USB shell accepts 20 words, including "dog fence".
+  uint32_t radius_m;
+  uint8_t count;
+};
 struct Crossing { uint32_t utc; int32_t lat, lon; Side side; };
 struct Record {
-  Bounds box;
+  Shape shape;
   uint8_t owner[32];
   uint32_t confirmed_utc;
   Side side;
   uint8_t count, motion_enabled;
   Crossing queue[8];
 };
-constexpr char settings_key[] = "tagmesh/fence1";
+constexpr char settings_key[] = "tagmesh/fence2";
 extern Record record;
 void after_load(int result);
 int command(const shell* sh, size_t argc, char** argv, const uint8_t* owner, bool owner_ready);

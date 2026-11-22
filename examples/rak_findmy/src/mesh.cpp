@@ -172,8 +172,8 @@ bool receive_alert(const Frame& frame) {
   if (len <= 5 || (data[4] >> 2) != 0) return false;
   const auto* text = reinterpret_cast<const char*>(data + 5);
   size_t size = strnlen(text, len - 5);
-  constexpr char exit_prefix[] = "Collar left the box at ";
-  constexpr char return_prefix[] = "Collar returned to the box at ";
+  constexpr char exit_prefix[] = "Collar left the fence at ";
+  constexpr char return_prefix[] = "Collar returned to the fence at ";
   if (size >= sizeof(watch_alert.text) ||
       !((size > sizeof(exit_prefix) - 1 && !memcmp(text, exit_prefix, sizeof(exit_prefix) - 1)) ||
         (size > sizeof(return_prefix) - 1 && !memcmp(text, return_prefix, sizeof(return_prefix) - 1)))) return false;
@@ -398,7 +398,7 @@ int command(const shell* sh, size_t argc, char** argv) {
   return rc;
 }
 #ifdef RAK_NATIVE_PINGS
-#define FENCE_HELP " | motion [on | off] | fence [off | south west north east]"
+#define FENCE_HELP " | motion [on | off] | fence [off | lat lon radius_m | lat lon lat lon ...]"
 #else
 #define FENCE_HELP ""
 #endif

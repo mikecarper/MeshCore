@@ -153,7 +153,7 @@ def check(collar_elf, companion_elf):
     assert collar.command("fence", "0", "170", "1", "-170") != 0
     assert owner.command("watch", COLLAR.hex()) == 0
     assert collar.command("owner", OWNER.hex()) == 0
-    for bounds in [("1", "1", "0", "2"), ("0", "0", "91", "1"),
+    for bounds in [("1", "1", "1", "2"), ("0", "0", "91", "1"),
                    ("0", "-181", "1", "1"), ("0", "1", "1", "1"), ("NaN", "0", "1", "1")]:
         assert collar.command("fence", *bounds) != 0
     # Cross the date line; the north and south edges are inside the box.
@@ -203,7 +203,7 @@ def check(collar_elf, companion_elf):
     owner.inbox.append(exit_frame)
     owner.step(3000)
     received = owner.settings["tagmesh/watchalert1"]
-    assert b"Collar left the box at -0.1250000, -179.0000000\0" in received
+    assert b"Collar left the fence at -0.1250000, -179.0000000\0" in received
     assert received[:32] == COLLAR and struct.unpack_from("<I", received, 32)[0] == EPOCH + 31
     # Simulate a dropped ACK and verify retransmission, receiver dedup and queue draining.
     collar.step(21000)
@@ -219,7 +219,7 @@ def check(collar_elf, companion_elf):
     assert len(collar.alerts()) == 3
     owner.inbox.append(collar.alerts()[-1])
     owner.step(63000)
-    assert b"Collar returned to the box at 0.0000000, 179.0000000\0" in owner.settings["tagmesh/watchalert1"]
+    assert b"Collar returned to the fence at 0.0000000, 179.0000000\0" in owner.settings["tagmesh/watchalert1"]
     collar.inbox.append(owner.sent[-1])
     collar.step(64000)
     collar.step(125000)
@@ -260,13 +260,50 @@ def check(collar_elf, companion_elf):
     assert len(collar.alerts()) == 3
     collar.motion = 1
     collar.step(295000, (476120000, -1222060000))
-    collar.fail_key = "tagmesh/fence1"
+    collar.fail_key = "tagmesh/fence2"
     collar.step(296000, (476110000, -1222080000))
     assert len(collar.alerts()) == 3
     collar.fail_key = None
     collar.step(297000, (476100000, -1222100000))
     assert len(collar.alerts()) == 4
     print(f"{collar_elf}: motion wake, silent baseline, fresh crossings, encrypted owner alerts, retries, reboot and pause passed")
+
+
+def check_shape(collar_elf, companion_elf, args, inside, outside, back):
+    collar, owner = Tag(collar_elf, COLLAR), Tag(companion_elf, OWNER)
+    for tag in (owner, collar):
+        assert tag.command("radio", "915000000", "125", "9", "5") == 0
+    assert collar.command("owner", OWNER.hex()) == owner.command("watch", COLLAR.hex()) == 0
+    assert collar.command("fence", *args.split()) == 0
+    saved = collar.settings["tagmesh/fence2"]
+    for invalid in ("0 0 0", "0 0 -1", "0 0 1.5", "0 0 4294967296", "91 0 100",
+                    "0 0 1 1 2", "0 0 1 1 2 2", "0 0 2 2 0 2 2 0", "0 0 0 1 0 0", "0 180 1 -180",
+                    "0 0 0 1 0 2 1 2 2 2 2 1 2 0 1.5 0 1 0 0.5 0"):
+        assert collar.command("fence", *invalid.split()) != 0, invalid
+        assert collar.settings["tagmesh/fence2"] == saved
+    collar = Tag(collar_elf, COLLAR, collar.settings)
+    assert collar.command("on") == 0
+
+    def fix(ms, point):
+        collar.step(ms, tuple(round(c * 10000000) for c in point))
+
+    collar.step(50)
+    fix(1000, inside)
+    fix(2000, inside)
+    collar.step(22000)
+    assert not collar.alerts()
+    collar.motion = 1
+    collar.step(24000)
+    for ms, point, expected in [(25000, outside, b"left"), (31000, back, b"returned to")]:
+        fix(ms, point)
+        fix(ms + 1000, point)
+        assert len(collar.alerts()) == (1 if expected == b"left" else 2)
+        owner.inbox.append(collar.alerts()[-1])
+        owner.step(ms + 2000)
+        assert b"Collar " + expected + b" the fence at " in owner.settings["tagmesh/watchalert1"]
+        collar.inbox.append(owner.sent[-1])
+        collar.step(ms + 2100)
+    print(f"{collar_elf}: {args} exit and return acknowledged")
 
 
 if __name__ == "__main__":
@@ -276,3 +313,15 @@ if __name__ == "__main__":
     paths = parser.parse_args()
     for firmware in (paths.sensor, paths.companion):
         check(firmware, paths.companion)
+        # At 60° latitude the two points across the date line are ~95 m and ~111 m east.
+        check_shape(firmware, paths.companion, "60 179.999 100",
+                    (60, -179.9993), (60, -179.999), (60, 179.999))
+        check_shape(firmware, paths.companion, "0 0 1", (0, 0.000008), (0, 0.000010), (0, 0))
+        check_shape(firmware, paths.companion, "1 1 -1 -1", (0, 0), (-2, 0), (-1, 1))
+        check_shape(firmware, paths.companion, "0 0 0 2 2 0", (0.5, 0.5), (1.5, 1.5), (1, 1))
+        # Concave outline straddling the date line, a point in the notch and a point on its edge.
+        check_shape(firmware, paths.companion, "-1 170 2 170 2 -170 1 -170 1 175 -1 175",
+                    (1.5, -175), (0, -175), (1, 175))
+        # All nine vertices fit the existing USB command, with no repeated closing vertex.
+        check_shape(firmware, paths.companion, "0 0 0 1 0 2 1 2 2 2 2 1 2 0 1.5 0 1 0",
+                    (1, 1), (1, 3), (1, 0))

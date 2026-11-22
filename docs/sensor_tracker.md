@@ -235,11 +235,13 @@ and restart the tag. The range is 1–300 seconds. `finder ping` shows local
 Bluetooth activity. The **time on the map** tells you when the network last
 located the tag, which can be much less frequent.
 
-### Motion GPS and box alerts
+<a id="motion-gps-and-box-alerts"></a>
+
+### Motion GPS and geofence alerts
 
 The combined RAK Sensor and USB tracker Companion can wake GPS when the
 collar moves and send you a private MeshCore message when it leaves or
-returns to a rectangular area. Both features start off. The collar uses its
+returns to a circle, box or polygon. Both features start off. The collar uses its
 own GPS. The owner's Companion receives alerts over direct LoRa, independently
 of A, B and C. On an iPhone, open the collar's conversation in the MeshCore app
 connected to your owner Companion.
@@ -249,29 +251,41 @@ connected to your owner Companion.
    the full 64-character key. Outdoors, run `dog advert` and save the collar
    as a contact on the owner Companion. If the receiver is another combined
    USB tracker Companion, enter `dog watch <collar-public-key>` on that receiver.
-2. Enter `dog fence SOUTH WEST NORTH EAST` on the collar, replacing the four
-   values with the latitudes and longitudes of your southwest and northeast
-   corners in decimal degrees. West longitudes and south latitudes are negative.
-   For example, `dog fence 47.6100 -122.2100 47.6120 -122.2060`. Then enter
-   `dog on`. A configured box automatically enables motion-triggered GPS.
+2. On the collar, enter one of the commands below with your own coordinates,
+   then enter `dog on`. Each point is **latitude longitude** in decimal degrees.
+   Separate the numbers with spaces. A saved fence enables motion-triggered GPS.
+
+    | Shape | What to enter | Example |
+    | --- | --- | --- |
+    | Circle | Center point, then a positive whole-number radius in meters | `dog fence 47.610 -122.210 100` |
+    | Box | Two opposite corners, in either order | `dog fence 47.610 -122.210 47.612 -122.206` |
+    | Polygon | 3–9 points around the perimeter, clockwise or counterclockwise | `dog fence 47.610 -122.210 47.612 -122.210 47.611 -122.206` |
+
+    The collar closes the polygon automatically. Enter each corner once and
+    keep the edges from crossing. Local polygons can cross the date line and
+    must span less than 180° of longitude. A box uses the shorter longitude span.
+    Coordinates on the boundary count as inside.
+
 3. Start inside with a clear sky view. Run `dog fence` until it shows
    `side=inside`. The first two fresh fixes establish a baseline silently.
    Walk well past an edge and back, allowing two fresh fixes on each side.
-   The owner receives **Collar left the box** and **Collar returned to the box**,
+   The owner receives **Collar left the fence** and **Collar returned to the fence**,
    each with the crossing coordinates. On a USB tracker Companion receiver,
    run `dog last` to read the most recent alert and its UTC timestamp.
+
+Run `dog fence` to display the saved shape and points, including the radius for a circle.
 
 For motion-triggered GPS alone, use `dog motion on` and `dog on`. Run
 `dog motion` to see the last fix observed while armed. Scheduled collar checks
 continue to report fresh positions. `dog off` pauses tracking and retains
-settings. `dog fence off` clears the box and pending alerts. To stop motion-triggered fixes while keeping
-normal collar checks, clear the box and enter `dog motion off`.
+settings. `dog fence off` clears the fence and pending alerts. To stop motion-triggered fixes while keeping
+normal collar checks, clear the fence and enter `dog motion off`.
 
-The box and its last confirmed side survive a restart. The collar retains the
+The fence and its last confirmed side survive a restart. The collar retains the
 eight most recent undelivered crossings and retries the oldest about once per
 minute until the owner's radio acknowledges it. `queued` in `dog fence` shows
 the number waiting. Out of radio range, the message can arrive later. Without
-a GPS fix, a crossing can be missed. Leave space between a box edge and places
+a GPS fix, a crossing can be missed. Leave space between a fence edge and places
 where the dog normally rests, since GPS readings can drift near the edge.
 
 ### A. Apple Find My on iPhone
