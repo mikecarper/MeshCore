@@ -102,10 +102,15 @@ static const struct bt_gatt_authorization_cb auth = {
     .read_authorize = allow_read, .write_authorize = allow_write
 };
 
+uint32_t rak_ping_interval_seconds(void)
+{
+    return (uint32_t)atomic_get(&boot_interval_s);
+}
+
 uint32_t rak_ping_interval_units(void)
 {
     // The LE extended advertising command encodes intervals in 625 us units.
-    return (uint32_t)atomic_get(&boot_interval_s) * 1600U;
+    return rak_ping_interval_seconds() * 1600U;
 }
 
 static int load_ping_setting(const char *key, size_t len, settings_read_cb read, void *ctx)

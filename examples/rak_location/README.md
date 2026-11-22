@@ -1,7 +1,7 @@
 # RAK WisMesh Tag location test firmware
 
-For one RAK WisMesh Tag to send Apple Find My, Android Find Hub and Amazon
-Sidewalk presence pings together, use the **combined native pings** Sensor or
+For one RAK WisMesh Tag to use Apple Find My, Android Find Hub and Amazon
+Sidewalk gateway location together, use the **combined native pings** Sensor or
 USB tracker Companion build. Each service has a separate Bluetooth identity.
 [Combined firmware, setup and USB commands](native_pings/README.md)
 
@@ -102,7 +102,8 @@ storage key for the stock bootloader.
 2. When `registered=1` and `cloud_ble=1`, run `sidewalk locate`.
    `gateway_location=1` means that the gateway reported L1 location available,
    `0` means unavailable, and `-1` means it has not reported availability.
-   The firmware also requests a location about every 15 minutes while connected.
+   The standalone location firmware also requests a location about every 15 minutes
+   while connected. The combined build uses its saved `pings interval`.
 3. Watch `sent` for a successful SDK uplink, then check the timestamp and
    coordinates at your AWS location destination. The second check confirms a
    sighting. The gateway position and the collar's GPS fix can differ.

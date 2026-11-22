@@ -1,7 +1,7 @@
-# Three native presence beacons on one RAK WisMesh Tag
+# Apple Find My, Google Find Hub and Sidewalk gateway location on one RAK WisMesh Tag
 
 The experimental Sensor and USB tracker Companion each run Apple Find My (A),
-Android Find Hub (B) and Amazon Sidewalk presence (C) on one nRF52840. The
+Android Find Hub (B) and Amazon Sidewalk gateway location (C) on one nRF52840. The
 Bluetooth controller interleaves advertisements using a separate identity for
 each service. All three are selected on first boot. Each SDK manages its own
 enrollment and changes of state. Regular pings share one saved interval. The tracker also runs
@@ -20,7 +20,8 @@ console after restart.
 | `finder ping` | A, B and C each show their current native advertising state and the number of payload updates and starts the Bluetooth host accepted. |
 | `tag status` | A needs a configured product plan, device credentials and successful iPhone enrollment. Its counter recognizes separated-mode advertisements. |
 | `findhub status` | B reports ready after reading a valid Google model record. Check for `provisioned=1` after pairing with Android. |
-| `sidewalk status` | C reports `mode=proximity`. Its advertising counter also includes enrollment beacons. Check for `registered=1` before testing AWS sightings. |
+| `sidewalk status` | C reports `mode=location`. Look for `registered=1`, `cloud_ble=1` and `gateway_location=1` on a gateway that supports positioning. |
+| `sidewalk locate` | Queue a gateway location request immediately while connected. `pending=1` indicates a request in progress. `sent` counts successful uplinks. |
 
 To use all three, run `pings on all` and reset the tag. To use A and C alone,
 run `pings off B` and reset. To use only B, run `pings off all`, then
@@ -34,11 +35,17 @@ a passing receiver fewer chances to hear the tag.
 
 The controller repeats accepted payloads automatically, so the counters can
 stay steady while packets continue. Pairing, owner proximity and live
-connections can change advertising state. To verify actual reception, check
-the item timestamp in Find My or Find Hub, or the AWS Sidewalk
-`beacon_discovered` event. Sidewalk presence provides a last-seen timestamp.
-The application sends no gateway connection or location requests.
-[AWS proximity event setup](../README.md#test-one-way-sightings)
+connections can change advertising state. Check the item timestamp in Find My
+or Find Hub to confirm a sighting.
+
+C automatically requests a BLE gateway connection and, once registered and
+connected, requests an approximate position at the configured ping interval.
+Only one request runs at a time. Timeouts, retries and gateway availability can
+delay updates. To check coverage manually, run `sidewalk connect`, then
+`sidewalk status`. A gateway with Community Finding enabled can report
+`gateway_location=1`. Run `sidewalk locate` and check for a new timestamp
+and coordinates at your configured AWS location destination. These coordinates
+are based on the gateway. The collar's own GPS fix travels separately over LoRa.
 
 ## Prepare a tag for live tests
 
@@ -51,8 +58,8 @@ On the iPhone use **Find My → Items → + → Add Other Item** after entering
 
 For B, use the registered Google model and its provisioning record at
 `0xc8000`, then enroll it with the owner’s Android phone. For C, use the
-tag's AWS manufacturing record at `0xd1000` and enable proximity events
-for that device in AWS IoT Wireless. The existing provisioning checker
+tag's AWS manufacturing record at `0xd1000`, enable positioning in AWS IoT
+Wireless and configure a location destination. The existing provisioning checker
 validates the two record files before programming.
 [Google model setup](../README.md#google-find-hub-item-test) · [AWS device provisioning](../README.md#sidewalk-gateway-test)
 
@@ -90,13 +97,15 @@ With Python 3.11 or later, install `pyelftools`, `unicorn==2.1.4` and
 
 ```sh
 python examples/rak_location/native_pings/verify_boot.py /work/native-sensor/native-firmware/zephyr/zephyr.elf
+python examples/rak_location/native_pings/verify_location.py /work/native-sensor/native-firmware/zephyr/zephyr.elf
 python examples/rak_location/native_pings/verify_interval.py /work/native-sensor/native-firmware/zephyr/zephyr.elf
 python examples/rak_location/native_pings/verify_pings.py /work/native-sensor/native-firmware/zephyr/zephyr.elf
 python examples/rak_location/native_pings/verify_pings.py /work/native-sensor/native-firmware/zephyr/zephyr.elf --interval 300 --virtual-time
 ```
 
 The boot test executes the application’s ARM code with simulated drivers for
-all eight selections. The interval test exercises USB settings and checks that
+all eight selections. The location test exercises automatic and manual gateway
+requests with simulated Sidewalk responses. The interval test exercises USB settings and checks that
 the linked Zephyr host and Nordic radio controller accept the full interval
 without truncation. The scanner test runs the linked native advertising
 functions with synthetic fixtures, enables three advertising sets on one

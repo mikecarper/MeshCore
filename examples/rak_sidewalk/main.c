@@ -128,7 +128,7 @@ static int start(void)
     };
     config.link_config = app_get_ble_config();
 #ifdef RAK_NATIVE_PINGS
-    // A single presence cadence has no fast-to-slow transition at 30 s.
+    // Keep the configured advertising interval while waiting for a gateway.
     static sid_ble_link_config_t link;
     static sid_ble_config_t ble;
     link = *config.link_config;
@@ -176,7 +176,7 @@ static int status_cmd(const struct shell *sh, size_t argc, char **argv)
                     stage, (long)atomic_get(&registered), (long)atomic_get(&cloud),
                     (long)atomic_get(&last_error));
     } else {
-        shell_print(sh, "%s; registered=%ld cloud_ble=%ld gateway_location=%ld pending=%ld sent=%ld last_error=%ld",
+        shell_print(sh, "mode=location %s; registered=%ld cloud_ble=%ld gateway_location=%ld pending=%ld sent=%ld last_error=%ld",
                     stage, (long)atomic_get(&registered), (long)atomic_get(&cloud),
                     (long)atomic_get(&gateway_location), (long)atomic_get(&pending), (long)atomic_get(&sent), (long)atomic_get(&last_error));
     }
@@ -230,6 +230,11 @@ int main(void)
     if (err)
         return 0;
 
+#ifdef RAK_NATIVE_PINGS
+    const int64_t location_interval_ms = (int64_t)rak_ping_interval_seconds() * 1000;
+#else
+    const int64_t location_interval_ms = 15 * 60 * 1000;
+#endif
     int64_t next_connect = 0, next_location = 0, pending_deadline = 0;
     for (;;) {
         err = sid_process(handle);
@@ -293,8 +298,11 @@ int main(void)
                 atomic_clear(&pending);
                 atomic_set(&last_error, err);
             }
-            next_location = now + (err ? 60000 : 900000);
+            next_location = now + (err ? 60000 : location_interval_ms);
         }
-        k_sem_take(&wake, K_SECONDS(5));
+        int64_t wait_ms = 5000;
+        if (next_location > now)
+            wait_ms = MIN(wait_ms, next_location - now);
+        k_sem_take(&wake, K_MSEC(wait_ms));
     }
 }

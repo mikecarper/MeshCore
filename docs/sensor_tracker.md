@@ -218,10 +218,13 @@ GPS checks. The Google profile supports Android item-finding tests. Each
 individual image enables one commercial network and stores its own configuration.
 [Build and test the RAK location profiles](https://github.com/mikecarper/MeshCore/tree/keymindCascade/examples/rak_location)
 
-For all three native presence beacons on one RAK WisMesh Tag, choose the
+For all three services on one RAK WisMesh Tag, choose the
 combined Sensor or USB tracker Companion build. It enables Apple Find My (A),
-Android Find Hub (B) and Sidewalk presence (C) by default. After provisioning,
+Android Find Hub (B) and Sidewalk gateway location (C) by default. After provisioning,
 `finder ping` shows which services are currently advertising.
 All three share a 10-second heartbeat by default. Use `pings interval 30`,
 for example, and reset the tag to apply it. The range is 1–300 seconds.
+Sidewalk requests a position automatically while connected to a compatible
+gateway. Run `sidewalk locate` for an immediate request and check the configured
+AWS location destination for coordinates.
 [Combined RAK firmware and bench test](https://github.com/mikecarper/MeshCore/tree/keymindCascade/examples/rak_location/native_pings)
