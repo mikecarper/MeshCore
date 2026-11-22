@@ -9,6 +9,10 @@ GPS position, sends an encrypted check to one configured owner's Companion,
 and waits for that owner's saved lost status. The owner's answer controls the
 tracker's reporting rate and awake window.
 
+Using the combined RAK WisMesh Tag firmware? Jump to
+[Find your RAK tag from a phone](#find-your-rak-tag-from-a-phone) for Apple,
+Google and Sidewalk setup and maps.
+
 Tracker mode starts off. It is compiled by default for GPS Sensor builds on
 nRF52, ESP32, and RP2040; compact STM32 builds exclude it by default. A build
 can override `MESH_ENABLE_SENSOR_TRACKER`. GPS hardware must be detected and
@@ -218,13 +222,73 @@ GPS checks. The Google profile supports Android item-finding tests. Each
 individual image enables one commercial network and stores its own configuration.
 [Build and test the RAK location profiles](https://github.com/mikecarper/MeshCore/tree/keymindCascade/examples/rak_location)
 
-For all three services on one RAK WisMesh Tag, choose the
-combined Sensor or USB tracker Companion build. It enables Apple Find My (A),
-Android Find Hub (B) and Sidewalk gateway location (C) by default. After provisioning,
-`finder ping` shows which services are currently advertising.
-All three share a 10-second heartbeat by default. Use `pings interval 30`,
-for example, and reset the tag to apply it. The range is 1–300 seconds.
-Sidewalk requests a position automatically while connected to a compatible
-gateway. Run `sidewalk locate` for an immediate request and check the configured
-AWS location destination for coordinates.
-[Combined RAK firmware and bench test](https://github.com/mikecarper/MeshCore/tree/keymindCascade/examples/rak_location/native_pings)
+## Find your RAK tag from a phone
+
+Use the **combined Sensor** or **USB tracker Companion** firmware. Both select
+A (Apple), B (Google) and C (Sidewalk) on first boot. On the tag’s USB console,
+run `pings status` to see which are enabled. To enable one, for example C, run
+`pings on C` and restart the tag. Each network needs its own setup below.
+[Combined firmware and device provisioning](https://github.com/mikecarper/MeshCore/tree/keymindCascade/examples/rak_location/native_pings#prepare-a-tag-for-live-tests)
+
+The default ping interval is 10 seconds. To change it, enter `pings interval 30`
+and restart the tag. The range is 1–300 seconds. `finder ping` shows local
+Bluetooth activity. The **time on the map** tells you when the network last
+located the tag, which can be much less frequent.
+
+### A. Apple Find My on iPhone
+
+1. **Prepare the tag.** The combined image needs your Find My product plan
+   and this tag’s Apple-issued credentials. Run `tag status` over USB and look
+   for `ready=1`. If it reports `plan=absent`, install a build with your plan
+   before trying to pair.
+2. **Pair once.** With the iPhone near the tag, enter `tag pair` on the USB
+   console. On the iPhone, open **Find My → Items → + → Add Other Item**.
+   Select the tag, tap **Connect**, name it and finish registration with your
+   Apple Account. Confirm `paired=1` in `tag status`.
+3. **Check the location.** Open **Find My → Items** and tap the name you gave
+   the tag. Read the time shown with its map location. To test a remote
+   sighting, check for a newer time after another participating Apple device
+   passes the tag outside your iPhone’s Bluetooth range. [Apple’s Find My item guide](https://support.apple.com/guide/iphone/add-a-third-party-item-iph09cb07b40/ios)
+
+### B. Google Find Hub on Android or iPhone
+
+1. **Prepare the tag.** Load the provisioning record for your registered Google
+   model. Run `findhub status` on the USB console and look for `Ready`. For
+   a development model, use its authorized Google test account. [Google model setup](https://github.com/mikecarper/MeshCore/tree/keymindCascade/examples/rak_location#google-find-hub-item-test)
+2. **Pair once on Android.** Turn on Bluetooth and bring the owner’s Android
+   phone near the tag. Accept the **Fast Pair** prompt. If the unpaired tag
+   shows `pairing_advertising=0`, tap and release its button to make it
+   discoverable. After pairing, `findhub status` should show `provisioned=1`.
+   [Google’s locator tag setup](https://support.google.com/accounts/answer/3265955?hl=en)
+3. **Check the location on Android.** Open **Find Hub** with the account used
+   to pair the tag and select it in the device list. Check its map position and
+   last-seen time. To test a remote sighting, move the paired phone away and
+   check for a newer time after another participating Android device passes.
+4. **To check from an iPhone**, the unofficial **Tagpin** viewer requires
+   iOS 17 or later and a build from source on a Mac using Xcode. Pair on
+   Android first, then sign in to Tagpin with that same Google account, select
+   the tag and check the report time on its map. This viewer has yet to be
+   verified with the RAK build. [Tagpin install guide](https://github.com/darthkubox/Tagpin#install)
+
+### C. Amazon Sidewalk in iPhone Safari
+
+1. **Enable positioning.** In Safari, sign in to the AWS account and region
+   where the tag was registered. Open the Sidewalk devices list and select
+   your tag. Under **Edit → Geolocation**, select **Activate positioning**,
+   choose the **Position data destination**, and save. The tag needs its own
+   AWS manufacturing record. [Open your Sidewalk devices](https://console.aws.amazon.com/iot/home#/wireless/devices?tab=sidewalk) · [AWS positioning setup](https://docs.aws.amazon.com/iot-wireless/latest/developerguide/sidewalk-location-devices.html)
+2. **Request a position.** The tag requests positions automatically near a
+   compatible gateway with Community Finding enabled. To test now, run
+   `sidewalk status` over USB. Look for `mode=location`, `registered=1`,
+   `cloud_ble=1` and `gateway_location=1`, then run `sidewalk locate`.
+   If disconnected, try `sidewalk connect` near a gateway and check status
+   again. `sent` counts uplinks completed by the tag.
+3. **Check the map.** In Safari, open the tag’s AWS device page and tap
+   **Position**. After the first resolved report, this tab shows the map,
+   coordinates and timestamp. Refresh and look for a newer timestamp to
+   confirm a sighting. The pin is an estimate based on the gateway that heard
+   the tag. Bookmark the device page for next time. [Sidewalk map guide](https://docs.silabs.com/amazon-sidewalk/2.9.2/sidewalk-getting-started/provision-your-device)
+4. **If Position is missing or empty**, confirm positioning and the destination
+   are saved, then check the tag’s gateway status. A `gateway_location=0`
+   means that gateway reported location unavailable. Check again after the tag
+   reaches a participating gateway and AWS receives a location report.

@@ -7,6 +7,9 @@ each service. All three are selected on first boot. Each SDK manages its own
 enrollment and changes of state. Regular pings share one saved interval. The tracker also runs
 the direct GPS and LoRa dog-check protocol. [Tracker commands](../../rak_findmy/README.md#test-the-collar-against-a-keymind-companion)
 
+For phone pairing, maps and last-seen times, see the
+[owner’s guide for all three networks](../../../docs/sensor_tracker.md#find-your-rak-tag-from-a-phone).
+
 ## Check the pings
 
 On a fresh bench tag with its stock S140 6.1.1 UF2 bootloader, double-reset
