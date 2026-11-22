@@ -19,6 +19,9 @@
 #include <stdlib.h>
 #include "gnss.h"
 #include "TagPackets.h"
+#ifdef RAK_NATIVE_PINGS
+#include "fence.h"
+#endif
 
 extern "C" int tag_battery_mv(void);
 
@@ -47,6 +50,10 @@ struct Watch {
   StatusRequest last;
 };
 Watch watch{};
+#ifdef RAK_NATIVE_PINGS
+struct WatchAlert { uint8_t peer[32]; uint32_t utc; char text[80]; };
+WatchAlert watch_alert{};
+#endif
 uint8_t watch_secret[32];
 bool listening;
 int64_t retry_listen_at;
@@ -158,7 +165,42 @@ int save_watch(const Watch& next) {
   if (!rc) watch = next;
   return rc;
 }
+#ifdef RAK_NATIVE_PINGS
+bool receive_alert(const Frame& frame) {
+  uint8_t data[MAX_PACKET_PAYLOAD];
+  int len = tag_packets::open(frame.bytes, frame.len, PAYLOAD_TYPE_TXT_MSG, pub, watch.peer, watch_secret, data);
+  if (len <= 5 || (data[4] >> 2) != 0) return false;
+  const auto* text = reinterpret_cast<const char*>(data + 5);
+  size_t size = strnlen(text, len - 5);
+  constexpr char exit_prefix[] = "Collar left the box at ";
+  constexpr char return_prefix[] = "Collar returned to the box at ";
+  if (size >= sizeof(watch_alert.text) ||
+      !((size > sizeof(exit_prefix) - 1 && !memcmp(text, exit_prefix, sizeof(exit_prefix) - 1)) ||
+        (size > sizeof(return_prefix) - 1 && !memcmp(text, return_prefix, sizeof(return_prefix) - 1)))) return false;
+  uint32_t utc = get32(data);
+  if (!utc) return false;
+  if (memcmp(watch_alert.peer, watch.peer, 32) || utc > watch_alert.utc) {
+    WatchAlert next{};
+    memcpy(next.peer, watch.peer, 32);
+    next.utc = utc;
+    memcpy(next.text, text, size);
+    last_error = settings_save_one("tagmesh/watchalert1", &next, sizeof(next));
+    if (last_error) return true;  // The sender can retry an undelivered alert.
+    watch_alert = next;
+  }
+  mesh::Packet ack;
+  ack.header = ROUTE_TYPE_DIRECT | (PAYLOAD_TYPE_ACK << PH_TYPE_SHIFT);
+  ack.payload_len = 4;
+  mesh::Utils::sha256(ack.payload, ack.payload_len, data, 5 + size, watch.peer, 32);
+  stop_rx();
+  last_error = send(ack);
+  return true;
+}
+#endif
 void answer(const Frame& frame) {
+#ifdef RAK_NATIVE_PINGS
+  if (receive_alert(frame)) return;
+#endif
   TagFix own{};
   if (!tag_gps_latest(own)) return;
   uint32_t tag;
@@ -200,11 +242,28 @@ void service() {
       last_error = 0;
       due = k_uptime_get() + (owner_status == Lost ? 60000 : 900000);
     }
+#ifdef RAK_NATIVE_PINGS
+    else if (size > 0 && reply_deadline && !waiting && collar_fence::acknowledge(frame.bytes, frame.len)) {
+      stop_rx();
+      last_error = 0;
+    }
+#endif
 #if RAK_TAG_COMPANION
-    else if (size > 0 && !waiting && watch.enabled) answer(frame);
+    else if (size > 0 && !reply_deadline && watch.enabled) answer(frame);
 #endif
   }
   if (reply_deadline) return;
+#ifdef RAK_NATIVE_PINGS
+  if (collar_fence::alert_due(k_uptime_get())) {
+    stop_rx();
+    mesh::Packet packet;
+    collar_fence::make_alert(packet, pub, secret, k_uptime_get());
+    last_error = send(packet);
+    if (!last_error) last_error = tag_radio_listen();
+    if (!last_error) reply_deadline = k_uptime_get() + kReplyTimeoutMs;
+    return;
+  }
+#endif
   if (!advertise && !request && (!cfg.enabled || k_uptime_get() < due)) return;
   TagFix fix{};
   if (!tag_gps_latest(fix)) return;
@@ -274,6 +333,15 @@ int command(const shell* sh, size_t argc, char** argv) {
       shell_print(sh, "watch=%u tag=%lu gps_flags=%u latitude_e7=%ld longitude_e7=%ld battery_mV=%u",
                   watch.enabled, (unsigned long)watch.last_tag, watch.last.flags,
                   (long)watch.last.latitude, (long)watch.last.longitude, watch.last.battery_mv);
+#ifdef RAK_NATIVE_PINGS
+      if (watch.enabled && watch_alert.utc && !memcmp(watch_alert.peer, watch.peer, 32))
+        shell_print(sh, "alert_utc=%lu %s", (unsigned long)watch_alert.utc, watch_alert.text);
+#endif
+    } else
+#endif
+#ifdef RAK_NATIVE_PINGS
+    if (!strcmp(op, "fence") || !strcmp(op, "motion")) {
+      rc = collar_fence::command(sh, argc, argv, cfg.owner, radio_valid(cfg) && !mesh::Utils::isZeroes(secret, 32));
     } else
 #endif
     if (!strcmp(op, "radio") && argc == 6) {
@@ -329,10 +397,15 @@ int command(const shell* sh, size_t argc, char** argv) {
   k_mutex_unlock(&lock);
   return rc;
 }
-#if RAK_TAG_COMPANION
-SHELL_CMD_REGISTER(dog, NULL, "status | radio Hz BW_kHz SF CR | owner key | on | off | advert | check | watch key/off | lost yes/no/off | last", command);
+#ifdef RAK_NATIVE_PINGS
+#define FENCE_HELP " | motion [on | off] | fence [off | south west north east]"
 #else
-SHELL_CMD_REGISTER(dog, NULL, "status | radio Hz BW_kHz SF CR | owner key | on | off | advert | check", command);
+#define FENCE_HELP ""
+#endif
+#if RAK_TAG_COMPANION
+SHELL_CMD_REGISTER(dog, NULL, "status | radio Hz BW_kHz SF CR | owner key | on | off | advert | check | watch key/off | lost yes/no/off | last" FENCE_HELP, command);
+#else
+SHELL_CMD_REGISTER(dog, NULL, "status | radio Hz BW_kHz SF CR | owner key | on | off | advert | check" FENCE_HELP, command);
 #endif
 
 void worker(void*, void*, void*) {
@@ -358,13 +431,26 @@ void worker(void*, void*, void*) {
     }
   }
 #endif
+#ifdef RAK_NATIVE_PINGS
+  if (!rc) {
+    collar_fence::after_load(load(collar_fence::settings_key, &collar_fence::record, sizeof(collar_fence::record)));
+#if RAK_TAG_COMPANION
+    if (load("tagmesh/watchalert1", &watch_alert, sizeof(watch_alert)) ||
+        !memchr(watch_alert.text, 0, sizeof(watch_alert.text))) watch_alert = {};
+#endif
+  }
+#endif
   gps_ready = tag_gps_available();
   init_error = rc;
   k_mutex_unlock(&lock);
   while (true) {
     k_mutex_lock(&lock, K_FOREVER);
-    bool need_gps = !init_error && (advertise || request
+    bool check_needs_gps = !init_error && (advertise || request
         || (cfg.enabled && k_uptime_get() >= due));
+    bool need_gps = check_needs_gps;
+#ifdef RAK_NATIVE_PINGS
+    if (!init_error && collar_fence::needs_gps(cfg.enabled, cfg.owner, k_uptime_get())) need_gps = true;
+#endif
 #if RAK_TAG_COMPANION
     need_gps = need_gps || (!init_error && watch.enabled);
 #endif
@@ -376,9 +462,12 @@ void worker(void*, void*, void*) {
       gps_on = false;
     }
     if (gps_on) tag_gps_process();
-    if (!init_error) service();
     TagFix fix{};
-    if (gps_on && k_uptime_get() - gps_started > 120000 && !tag_gps_latest(fix)
+#ifdef RAK_NATIVE_PINGS
+    if (gps_on && tag_gps_latest(fix)) collar_fence::observe(fix, k_uptime_get());
+#endif
+    if (!init_error) service();
+    if (check_needs_gps && gps_on && k_uptime_get() - gps_started > 120000 && !tag_gps_latest(fix)
 #if RAK_TAG_COMPANION
         && !watch.enabled
 #endif

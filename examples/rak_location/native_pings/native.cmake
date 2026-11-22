@@ -1,6 +1,6 @@
 target_include_directories(app PRIVATE "${native}" "${CMAKE_CURRENT_BINARY_DIR}")
 target_compile_definitions(app PRIVATE RAK_NATIVE_PINGS=1)
-target_sources(app PRIVATE "${native}/main.c" "${native}/board.c")
+target_sources(app PRIVATE "${native}/main.c" "${native}/board.c" "${native}/fence.cpp")
 if(RAK_FINDMY_PRODUCT_PLAN)
   if(NOT IS_ABSOLUTE "${RAK_FINDMY_PRODUCT_PLAN}" OR NOT EXISTS "${RAK_FINDMY_PRODUCT_PLAN}")
     message(FATAL_ERROR "Supply the absolute path to your Apple product plan C source")

@@ -235,6 +235,45 @@ and restart the tag. The range is 1–300 seconds. `finder ping` shows local
 Bluetooth activity. The **time on the map** tells you when the network last
 located the tag, which can be much less frequent.
 
+### Motion GPS and box alerts
+
+The combined RAK Sensor and USB tracker Companion can wake GPS when the
+collar moves and send you a private MeshCore message when it leaves or
+returns to a rectangular area. Both features start off. The collar uses its
+own GPS. The owner's Companion receives alerts over direct LoRa, independently
+of A, B and C. On an iPhone, open the collar's conversation in the MeshCore app
+connected to your owner Companion.
+
+1. On the collar's USB console, enter `dog radio <Hz> <bandwidth-kHz> <SF> <CR>`
+   using the owner's radio settings. Enter `dog owner <owner-public-key>` with
+   the full 64-character key. Outdoors, run `dog advert` and save the collar
+   as a contact on the owner Companion. If the receiver is another combined
+   USB tracker Companion, enter `dog watch <collar-public-key>` on that receiver.
+2. Enter `dog fence SOUTH WEST NORTH EAST` on the collar, replacing the four
+   values with the latitudes and longitudes of your southwest and northeast
+   corners in decimal degrees. West longitudes and south latitudes are negative.
+   For example, `dog fence 47.6100 -122.2100 47.6120 -122.2060`. Then enter
+   `dog on`. A configured box automatically enables motion-triggered GPS.
+3. Start inside with a clear sky view. Run `dog fence` until it shows
+   `side=inside`. The first two fresh fixes establish a baseline silently.
+   Walk well past an edge and back, allowing two fresh fixes on each side.
+   The owner receives **Collar left the box** and **Collar returned to the box**,
+   each with the crossing coordinates. On a USB tracker Companion receiver,
+   run `dog last` to read the most recent alert and its UTC timestamp.
+
+For motion-triggered GPS alone, use `dog motion on` and `dog on`. Run
+`dog motion` to see the last fix observed while armed. Scheduled collar checks
+continue to report fresh positions. `dog off` pauses tracking and retains
+settings. `dog fence off` clears the box and pending alerts. To stop motion-triggered fixes while keeping
+normal collar checks, clear the box and enter `dog motion off`.
+
+The box and its last confirmed side survive a restart. The collar retains the
+eight most recent undelivered crossings and retries the oldest about once per
+minute until the owner's radio acknowledges it. `queued` in `dog fence` shows
+the number waiting. Out of radio range, the message can arrive later. Without
+a GPS fix, a crossing can be missed. Leave space between a box edge and places
+where the dog normally rests, since GPS readings can drift near the edge.
+
 ### A. Apple Find My on iPhone
 
 1. **Prepare the tag.** The combined image needs your Find My product plan

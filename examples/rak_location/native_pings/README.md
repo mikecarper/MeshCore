@@ -50,6 +50,15 @@ delay updates. To check coverage manually, run `sidewalk connect`, then
 and coordinates at your configured AWS location destination. These coordinates
 are based on the gateway. The collar's own GPS fix travels separately over LoRa.
 
+## Motion and boundary alerts
+
+Both collar roles accept `dog motion on` for a GPS fix on movement and
+`dog fence SOUTH WEST NORTH EAST` for private exit and return alerts to a
+MeshCore owner. A configured box enables motion GPS automatically when dog mode
+is on. The owner's MeshCore app shows the alert with coordinates. A combined
+USB tracker Companion in watch mode shows its latest alert with `dog last`.
+[Set up and walk-test a box](../../../docs/sensor_tracker.md#motion-gps-and-box-alerts)
+
 ## Prepare a tag for live tests
 
 Use a fresh test tag. For Apple, build the combined UF2 with your product
@@ -105,6 +114,16 @@ python examples/rak_location/native_pings/verify_interval.py /work/native-sensor
 python examples/rak_location/native_pings/verify_pings.py /work/native-sensor/native-firmware/zephyr/zephyr.elf
 python examples/rak_location/native_pings/verify_pings.py /work/native-sensor/native-firmware/zephyr/zephyr.elf --interval 300 --virtual-time
 ```
+
+For a two-tag boundary test, pass both role images:
+
+```sh
+python examples/rak_location/native_pings/verify_fence.py /work/native-sensor/native-firmware/zephyr/zephyr.elf /work/native-companion/native-firmware/zephyr/zephyr.elf
+```
+
+This test drives the USB commands and both tags' firmware workers with simulated
+motion, GPS and radio packets. It checks the encrypted alert and acknowledgment
+exchange, including out-of-range retries and recovery after reboot.
 
 The boot test executes the application’s ARM code with simulated drivers for
 all eight selections. The location test exercises automatic and manual gateway

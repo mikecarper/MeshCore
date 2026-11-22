@@ -29,12 +29,18 @@ extern "C" void tag_motion_start(void) {
   if (device_is_ready(bus)) latch.begin(i2c, k_uptime_get_32(), 4);
 }
 
-extern "C" bool tag_motion_detected(void) {
+// Negative means the reading is unavailable or the sensor is warming up.
+extern "C" int tag_motion_sample(void) {
   using mesh::tracker::motion::Observation;
   auto result = latch.poll(i2c, k_uptime_get_32());
   if (result == Observation::Unknown) tag_motion_start();
+  if (result == Observation::Unknown) return -1;
+  return result == Observation::Motion ? 1 : 0;
+}
+
+extern "C" bool tag_motion_detected(void) {
   // An unreadable sensor must not suppress a separated-accessory alert.
-  return result != Observation::NoMotionObserved;
+  return tag_motion_sample() != 0;
 }
 
 extern "C" void tag_motion_stop(void) {

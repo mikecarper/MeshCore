@@ -4,11 +4,12 @@
 #include "native_pings.h"
 
 extern void tag_motion_start(void);
-extern bool tag_motion_detected(void);
+extern int tag_motion_sample(void);
 extern void tag_motion_stop(void);
 
 static K_MUTEX_DEFINE(lock);
 static unsigned monitoring, observations, ringing, indicating;
+enum { COLLAR_MOTION = BIT(2) };
 static bool configured;
 static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_NODELABEL(tag_button), gpios);
 static const struct gpio_dt_spec green = GPIO_DT_SPEC_GET(DT_NODELABEL(green_led), gpios);
@@ -48,7 +49,13 @@ static void start(unsigned client)
 static bool detected(unsigned client)
 {
     k_mutex_lock(&lock, K_FOREVER);
-    if (monitoring && tag_motion_detected()) observations |= monitoring;
+    if (monitoring) {
+        int sample = tag_motion_sample();
+        if (sample > 0) observations |= monitoring;
+        // Finder SDKs treat a sensor error as possible movement. A GPS wake
+        // for the collar requires an actual motion observation.
+        if (sample < 0) observations |= monitoring & ~COLLAR_MOTION;
+    }
     bool moved = !(monitoring & client) || (observations & client);
     observations &= ~client;
     k_mutex_unlock(&lock);
@@ -75,6 +82,9 @@ static int sound(unsigned client, bool active)
 }
 
 void rak_apple_motion_start(void) { start(BIT(0)); }
+void rak_collar_motion_start(void) { start(COLLAR_MOTION); }
+bool rak_collar_motion_detected(void) { return detected(COLLAR_MOTION); }
+void rak_collar_motion_stop(void) { stop(COLLAR_MOTION); }
 bool rak_apple_motion_detected(void) { return detected(BIT(0)); }
 void rak_apple_motion_stop(void) { stop(BIT(0)); }
 int rak_apple_buzzer(bool active) { return sound(BIT(0), active); }
