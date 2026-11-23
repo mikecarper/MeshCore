@@ -161,7 +161,7 @@ public:
     if (start_pending) begin();
   }
   void sendPacket(mesh::Packet* p) override { if (allow(p)) ++sent; }
-  void onPacketReceived(mesh::Packet* p) { if (allow(p)) ++received; }
+  void onPacketReceived(mesh::Packet* p, float) { if (allow(p)) ++received; }
 };
 static uint32_t fake_millis = 100;
 static uint32_t millis() { return fake_millis; }
@@ -239,7 +239,7 @@ public:
   void boot() {
     @BOOT@
   }
-  void routeRx(mesh::Packet* pkt) {
+  void routeRx(mesh::Packet* pkt, float score = 0.5f) {
     @ROUTE_RX@
   }
   void routeTx(mesh::Packet* pkt) {
