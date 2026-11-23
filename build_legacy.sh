@@ -4876,6 +4876,11 @@ apply_companion_radio_full_profile() {
       record_build_reduction \
         "Companion Full: 256 offline frames normally; 128 while mOTA borrows queue storage; preserve unread on admission"
       ;;
+    nibble_zero_connect_companion_radio_full_)
+      # Keep room for TinyUSB alongside WiFi and BLE by putting existing
+      # queue slots in RTC RAM and growing terminal scrollback on demand.
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=34 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=34 -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=1024"
+      ;;
     mke_s3_companion_radio_full)
       # This non-PSRAM S3 retains the complete 256-frame queue during OTA, with
       # 32 existing frames in each RTC bank and all 350 contacts unchanged.
