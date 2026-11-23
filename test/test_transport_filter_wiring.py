@@ -40,6 +40,7 @@ HARNESS = r'''
 namespace radioDirection = mesh::radioDirection;
 #include <atomic>
 #include <cassert>
+#include <cmath>
 #include <vector>
 #include <helpers/bridges/RS232Heartbeat.h>
 #include <helpers/bridges/RS232BridgeDiagnostics.h>
@@ -144,10 +145,10 @@ struct MQTTBridge : BridgeBase {
  struct Identity {uint8_t pub_key[32]={};} id;
  Identity* _identity=&id;
  unsigned _filtered_packets=0,_bad_sig_adverts=0;
- bool _staged_raw_valid=false;
  bool shouldQueuePacketType(uint8_t,bool&) {return true;}
- void queuePacket(mesh::Packet*,bool) {++queued;}
- void onPacketReceived(mesh::Packet*) override;
+ void queuePacket(mesh::Packet*,bool,float) {++queued;}
+ void onPacketReceived(mesh::Packet* packet) override {onPacketReceived(packet, NAN);}
+ void onPacketReceived(mesh::Packet*,float score);
  void sendPacket(mesh::Packet*) override;
 };
 @METHODS@

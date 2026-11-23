@@ -29,7 +29,7 @@ LEGACY_FALLBACKS = {"lilygo_tdeck", "xiao_s3_wio"}
 def construction(target):
     filename = {"xiao_c6": "XiaoC6Board.cpp",
                 "m5stack_unit_c6l": "UnitC6LBoard.cpp"}.get(target, "target.cpp")
-    source = (ROOT / "variants" / target / filename).read_text(encoding="ascii")
+    source = (ROOT / "variants" / target / filename).read_text(encoding="utf-8")
     prefix = source[:source.index("WRAPPER_CLASS radio_driver")]
     # Only the target's actual global constructors are under test. The real
     # portable and platform HAL headers are included once by the harness;
@@ -128,7 +128,7 @@ void check() {{
                 self.assertNotEqual(legacy, code)
                 for text, succeeds in ((code, True), (legacy, False)):
                     with self.subTest(clock=clock, buffered=succeeds):
-                        cpp.write_text(text, encoding="ascii")
+                        cpp.write_text(text, encoding="utf-8")
                         built = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra",
                             "-DESP32_PLATFORM", f"-DMC_SX1262_SPI_HZ={clock}", *flags,
                             "-I", str(work), "-I", str(ROOT / "src"),
