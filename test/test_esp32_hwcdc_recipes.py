@@ -77,7 +77,8 @@ UNCHANGED_COUNTS = {
     ("esp32-s3-devkitc-1", "hwcdc"): 26,
     # Original OPI and N16R2 Indicator LoRa repeaters retain their UART backend.
     ("esp32-s3-devkitc-1", "uart"): 57,
-    ("esp32-s3-zero", "hwcdc"): 25,
+    ("esp32-s3-zero", "hwcdc"): 23,
+    ("esp32-s3-zero-otg", "tinyusb"): 2,
     ("esp32dev", "classic_uart"): 5,
     # E22 and Meshadventurer roles, including M33S variants, retain classic UART.
     ("esp32doit-devkit-v1", "classic_uart"): 38,
@@ -281,18 +282,22 @@ class Esp32HwcdcRecipeTests(unittest.TestCase):
                 self.assertIn(before_reset, ("default_reset", "usb_reset"))
                 self.assertIn(["0x303A", "0x1001"], row["manifest"]["build"]["hwids"])
 
-    def test_no_native_tinyusb_esp32_role_remains_and_sdk_selectors_agree(self):
+    def test_only_nibble_zero_usb_and_full_use_tinyusb_and_sdk_selectors_agree(self):
         counts = Counter()
         for name, row in self.rows.items():
             if not row["esp32"]:
                 continue
             with self.subTest(environment=name):
                 counts[row["kind"]] += 1
-                self.assertNotEqual(row["kind"], "tinyusb")
+                uses_tinyusb = name in (
+                    "nibble_zero_connect_companion_radio_usb_",
+                    "nibble_zero_connect_companion_radio_full_",
+                )
+                self.assertEqual(row["kind"] == "tinyusb", uses_tinyusb)
                 self.assertEqual(self.sdk["hwcdc_primary_enabled"](row["env"]),
                                  row["kind"] == "hwcdc")
-                self.assertFalse(self.sdk["native_primary_enabled"](row["env"]))
-        expected = Counter({"hwcdc": 358, "uart": 128, "classic_uart": 88})
+                self.assertEqual(self.sdk["native_primary_enabled"](row["env"]), uses_tinyusb)
+        expected = Counter({"hwcdc": 356, "tinyusb": 2, "uart": 128, "classic_uart": 88})
         expected.update(kind for _, _, kind in USB_PARTITION_BRIDGES.values())
         self.assertEqual(counts, expected)
 

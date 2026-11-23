@@ -4,10 +4,11 @@
 
 # Native USB backpressure and radio liveness
 
-The native USB defaults for eight ESP32-S3 board families now use hardware
-USB Serial/JTAG (HWCDC). The TinyUSB behavior below remains available to
-explicitly selected TinyUSB builds. UART and non-ESP32 transports retain their
-existing backend.
+The native USB defaults for eight ESP32-S3 board families use hardware
+USB Serial/JTAG (HWCDC). Nibble Zero Connect uses TinyUSB CDC for its USB and
+Full Companion images so a browser can open the serial port with DTR asserted.
+Retia verified a Companion self-info reply with DTR asserted on the Nibble Zero.
+[Retia's hardware test](https://github.com/RetiaLLC/MeshCore/commit/00d561fcf1893162293beb12ba8d4d5a599d93cc)
 
 ESP32-S2/S3 builds using native TinyUSB CDC (`ARDUINO_USB_MODE=0` and
 CDC-on-boot) must not wait for a computer to read USB output. In the bundled
