@@ -2,6 +2,7 @@
 #include "ColorTheme.h"
 #include "IndicatorRenderProfile.h"
 #include "DisplayTouchCoordinates.h"
+#include "QrCodeVersion.h"
 #include <lgfx/utility/lgfx_qrcode.h>
 
 #ifndef DISPLAY_ROTATION
@@ -370,17 +371,12 @@ bool LGFXDisplay::drawQrCode(const char* text, int x, int y, int size) {
   // which is deliberately reserved for transparent emoji pixels. Generate
   // the matrix directly so both colors use stable semantic palette entries.
   static constexpr uint8_t max_version = 10;
-  static constexpr uint8_t max_modules = 4 * max_version + 17;
+  const uint8_t version = mesh::ui::lowEccQrVersion(text);
+  if (version == 0 || version > max_version) return false;
+  static constexpr int max_modules = mesh::ui::qrModuleCount(max_version);
   uint8_t modules[(max_modules * max_modules + 7) / 8];
   QRCode qr = {};
-  bool initialized = false;
-  for (uint8_t version = 1; version <= max_version; ++version) {
-    if (lgfx_qrcode_initText(&qr, modules, version, ECC_LOW, text) == 0) {
-      initialized = true;
-      break;
-    }
-  }
-  if (!initialized) return false;
+  if (lgfx_qrcode_initText(&qr, modules, version, ECC_LOW, text) != 0) return false;
 
   static constexpr int quiet_zone = 4;
   const int scaled_size = size * _coordinateScale;

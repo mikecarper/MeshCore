@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DisplayDriver.h"
+#include "QrCodeVersion.h"
 #include "WiFiSetupQrPayload.h"
 #if defined(ESP_PLATFORM) || defined(ESP32_PLATFORM)
 #include "../esp32/WiFiAccessPointPolicy.h"
@@ -25,12 +26,7 @@ inline bool buildCurrentWiFiSetupQrPayload(char* payload, size_t payload_size,
 #endif
 }
 
-// Render a setup-AP join QR at the largest size that still leaves the right
-// half of compact displays available for a short textual fallback/reference.
-// A Version 1 QR, including its four-module quiet zone, is exactly 58 pixels
-// at two pixels per module. Keep that exact upper-left footprint on 128x64
-// panels so a normal setup IP has the full 66-pixel text row beside it.
-// Returns false when the payload or panel geometry cannot be represented.
+// Keep the setup address beside the QR code on a 128x64 display.
 inline bool drawWiFiSetupQr(DisplayDriver& display, const char* ssid,
                             const char* address, bool compact_border = false,
                             const char* action = nullptr) {
@@ -41,19 +37,25 @@ inline bool drawWiFiSetupQr(DisplayDriver& display, const char* ssid,
 
   int qr_size = display.height() < display.width() / 2
       ? display.height() : display.width() / 2;
-  static constexpr int compact_qr_size = (21 + 4 * 2) * 2;
-  if (compact_border && qr_size >= 44) {
-    // Version 1: 21 modules at 2 pixels, plus an exact one-pixel border.
-    qr_size = 44;
-  } else if (display.height() == 64 && qr_size >= compact_qr_size) {
-    qr_size = compact_qr_size;
+  const bool small_screen = display.width() == 128 && display.height() == 64;
+  if (small_screen || compact_border) {
+    const uint8_t version = lowEccQrVersion(payload);
+    if (version == 0) return false;
+    const int modules = qrModuleCount(version);
+    // 60 pixels fit a WPA setup code at 2x scale, a one-pixel white border,
+    // and leave a two-pixel gap before the 66-pixel setup address.
+    const int available = small_screen ? 60 : qr_size;
+    const int scale = (available - 2) / modules;
+    if (scale < 1) return false;
+    qr_size = modules * scale + 2;
+    compact_border = true;
   }
   const bool rendered = compact_border
       ? display.drawQrCodeWithBorder(payload, 0, 0, qr_size, 1)
       : display.drawQrCode(payload, 0, 0, qr_size);
   if (!rendered) return false;
 
-  const int text_x = qr_size + 4;
+  const int text_x = qr_size + (small_screen ? 2 : 4);
   display.setTextSize(1);
   display.setColor(UIColor::primary_txt);
   display.setCursor(text_x, 2);

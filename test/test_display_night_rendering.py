@@ -219,9 +219,14 @@ int main() {
 
     def test_actual_qr_paths_keep_red_quiet_zone_and_black_modules_at_night(self):
         qr_common = r'''
+#include <helpers/ui/QrCodeVersion.h>
 struct QRCode { uint8_t size=21; };
 const int ECC_LOW=0;
-int qrcode_initText(QRCode* qr,uint8_t*,uint8_t,int,const char*) { qr->size=21;return 0; }
+static uint8_t encodedVersion;
+static const char protectedWifi[] = "WIFI:T:WPA;S:MC-69C2;P:testpass;;";
+int qrcode_initText(QRCode* qr,uint8_t*,uint8_t version,int,const char*) {
+  encodedVersion=version; qr->size=mesh::ui::qrModuleCount(version); return 0;
+}
 bool qrcode_getModule(const QRCode*,unsigned col,unsigned row) { return col==row || col==0; }
 int lgfx_qrcode_initText(QRCode* q,uint8_t* b,uint8_t v,int e,const char* t) { return qrcode_initText(q,b,v,e,t); }
 bool lgfx_qrcode_getModule(const QRCode* q,unsigned c,unsigned r) { return qrcode_getModule(q,c,r); }
@@ -242,11 +247,14 @@ struct QrDisplay {
 int main() {
   for (bool active : {false,true}) {
     night=active; QrDisplay d;
-    assert(d.drawQrCodeWithBorder("X",0,0,64,-1));
+    assert(d.drawQrCodeWithBorder("WIFI:S:MC-69C2;;",0,0,64,-1));
+    assert(encodedVersion==1);
     assert(d.canvas.marks.size()==42);
     assert(d.canvas.marks[0]==(night ? 0xf800 : UIColor::popup_txt));
     for (unsigned i=1;i<d.canvas.marks.size();++i)
       assert(d.canvas.marks[i]==(night ? 0 : UIColor::window_bkg));
+    assert(d.drawQrCodeWithBorder(protectedWifi,0,0,60,1));
+    assert(encodedVersion==3);
   }
 }
 '''
@@ -266,7 +274,8 @@ struct LGFXDisplay {
 int main() {
   for (bool active : {false,true}) {
     night=active; LGFXDisplay d;
-    assert(d.drawQrCode("X",0,0,64));
+    assert(d.drawQrCode("WIFI:S:MC-69C2;;",0,0,64));
+    assert(encodedVersion==1);
     assert(d.buffer.marks.size()==42);
 #if UI_BUFFER_COLOR_DEPTH < 8
     const uint32_t light = 1u;
@@ -281,6 +290,8 @@ int main() {
     assert(d.buffer.marks[0]==light);
     for (unsigned i=1;i<d.buffer.marks.size();++i)
       assert(d.buffer.marks[i]==dark);
+    assert(d.drawQrCode(protectedWifi,0,0,64));
+    assert(encodedVersion==3);
   }
 }
 '''

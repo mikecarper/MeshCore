@@ -711,13 +711,25 @@ TEST(DisplayDriver, CompactWiFiQrLeavesRoomForCompleteSetupAddress) {
 
   EXPECT_EQ(0, display.qr_x);
   EXPECT_EQ(0, display.qr_y);
-  EXPECT_EQ(58, display.qr_size);
+  EXPECT_EQ(44, display.qr_size);
+  EXPECT_EQ(1, display.qr_border);
   ASSERT_FALSE(display.rows.empty());
   const auto& address = display.rows.back();
   EXPECT_EQ("192.168.4.1", address.text);
   EXPECT_EQ(48, address.y);
   EXPECT_LE(address.x + display.getTextWidth(address.text.c_str()),
             display.width());
+}
+
+TEST(DisplayDriver, CompactVersionThreeWiFiQrKeepsTwoPixelModulesAndFullAddress) {
+  QrTestDisplay display(128, 64, 6);
+  ASSERT_TRUE(mesh::ui::drawWiFiSetupQr(
+      display, "MeshCore-Setup-Long-Name", "192.168.4.1"));
+  EXPECT_EQ(29 * 2 + 2, display.qr_size);
+  EXPECT_EQ(1, display.qr_border);
+  ASSERT_FALSE(display.rows.empty());
+  EXPECT_EQ(62, display.rows.back().x);
+  EXPECT_EQ("192.168.4.1", display.rows.back().text);
 }
 
 TEST(WiFiSetupQrPayload, EncodesOpenSetupNetwork) {
@@ -746,7 +758,7 @@ TEST(DisplayDriver, V4QrUsesOnePixelBorderAndKeepsActionsBesideTheCode) {
   EXPECT_EQ("HOLD STOP", display.rows[1].text);
   EXPECT_EQ("192.168.4.1", display.rows.back().text);
   for (const auto& row : display.rows) {
-    EXPECT_GE(row.x, display.qr_size + 4);
+    EXPECT_GE(row.x, display.qr_size + 2);
     EXPECT_LE(row.x + display.getTextWidth(row.text.c_str()), display.width());
     EXPECT_LE(row.y + 8, display.height());
   }
