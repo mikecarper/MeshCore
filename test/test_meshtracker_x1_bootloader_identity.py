@@ -1,4 +1,5 @@
 """Validate the upcoming internal-only X1 bootloader package without release assets."""
+from configparser import ConfigParser
 from pathlib import Path
 import re
 import struct
@@ -21,6 +22,21 @@ TEST_VERSION = 0x02040D01
 
 
 class MeshtrackerX1BootloaderIdentityTest(unittest.TestCase):
+    def test_infrastructure_receives_updates_without_changing_companions(self):
+        config = ConfigParser(interpolation=None)
+        config.read(ROOT / "variants/meshtracker_x1/platformio.ini")
+        base = config["MeshTracker_X1_internal_ota"]
+        self.assertIn("-D OTA_FLASH_STORE=1", base["build_flags"])
+        self.assertIn("-D ENABLE_OTA=1", base["build_flags"])
+        self.assertNotIn("QSPIFLASH", base["build_flags"])
+        self.assertEqual(config["MeshTracker_X1"]["board_build.ldscript"], "boards/nrf52840_s140_v7.ld")
+        inventory = (ROOT / "tools/mota/nrf52_internal_bootloader_targets.txt").read_text().splitlines()
+        for role in ("repeater", "room_server", "companion_radio_usb", "companion_radio_ble", "kiss_modem"):
+            env = f"MeshTracker_X1_{role}"
+            supported = role in ("repeater", "room_server")
+            self.assertEqual(env in inventory, supported)
+            self.assertEqual(config[f"env:{env}"]["extends"] == "MeshTracker_X1_internal_ota", supported)
+
     def image(self, **kwargs):
         options = dict(board_id=BOARD_ID, device_name=NAME,
                        storage=ml.BOOT_STORAGE_INTERNAL_UPDATE,

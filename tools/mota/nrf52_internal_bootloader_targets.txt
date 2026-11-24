@@ -2,9 +2,9 @@
 # manifest identity and shared ED000/E2000 runtime geometry are qualified. This file is the
 # shared allowlist for build.sh release aliases and the subset that are also
 # literal PlatformIO envs. Synthetic aliases are activated by build.sh.
-# External QSPI/SD, internal ExtraFS, seeder-only, Ethernet, and full-sensor
-# roles are intentionally absent, except for the explicitly listed RAK4631
-# adaptive receiver aliases below.  Their optional RAK15002 SD path retains
+# Exclude ExtraFS, seeder-only, and other unqualified storage/role profiles.
+# The explicitly listed RAK4631 adaptive receiver aliases are the exception
+# for external staging. Their optional RAK15002 SD path retains
 # the existing internal/NOR shared-slot contract and must use the matching
 # all-in-one OTAFIX loader; it is not a generic SD-primary profile.
 Heltec_tower_v2_repeater_lora_ota_no_external_sensors
@@ -62,3 +62,11 @@ R1Neo_sensor_lora_ota_no_external_sensors
 GAT562_30S_Mesh_Kit_room_server_lora_ota_no_external_sensors
 GAT562_Mesh_Tracker_Pro_room_server_lora_ota_no_external_sensors
 GAT562_Mesh_EVB_Pro_room_server_lora_ota_no_external_sensors
+MeshTracker_X1_repeater
+MeshTracker_X1_room_server
+GAT562_30S_Mesh_Kit_repeater
+GAT562_30S_Mesh_Kit_room_server
+Heltec_t114_repeater
+Heltec_t114_room_server
+Heltec_t114_without_display_repeater
+Heltec_t114_without_display_room_server

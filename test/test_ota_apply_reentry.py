@@ -75,6 +75,8 @@ class OtaApplyReentryTest(unittest.TestCase):
             ('rak', ('OTA_RAK_AUTO_STORE', 'OTA_INTERNAL_BOOTLOADER_UPDATE', 'RAK_4631'), 144, 19),
             ('rak_sd', ('OTA_RAK_AUTO_STORE', 'OTA_INTERNAL_BOOTLOADER_UPDATE', 'RAK_4631',
                         'OTA_SD_STORE', 'OTA_RAK15002_SD_STORE'), 192, 25),
+            ('rak_raw', ('OTA_RAK_AUTO_STORE', 'OTA_INTERNAL_BOOTLOADER_UPDATE', 'RAK_4631',
+                         'OTA_SD_STORE', 'OTA_RAK15002_SD_STORE', 'ENABLE_OTA'), 192, 25),
             ('internal_rescue', (), 96, 13),
         )
         sanitizers = [] if os.name == 'nt' else [

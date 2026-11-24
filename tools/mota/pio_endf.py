@@ -373,6 +373,16 @@ def _append_endf_hex(source, target, env):        # Intel-HEX path (nRF52: app f
         # application region and the selected filesystem-safe ceiling.
         image_limit = min(linked_app_end, stage_ceiling) - app_start
         limit_name = "nRF52 OTA application"
+        if not _builds_companion_radio() and _cppdef("OTA_PREPARE_RAW_BOOTLOADER") not in (None, "0"):
+            if internal_bootloader_update:
+                scratch_start = ml.NRF52_SHARED_BOOT_STAGE_START
+            elif qspi_bootloader_update or sd_bootloader_update:
+                scratch_start = ml.NRF52_BOOT_SCRATCH_START
+            else:
+                scratch_start = None
+            if scratch_start is not None:
+                image_limit = min(image_limit, scratch_start - app_start)
+                limit_name = "raw bootloader staging application"
     if image_limit is not None and len(out) > image_limit:
         raise RuntimeError(f"nRF52 OTA image is {len(out)} bytes; {limit_name} limit is "
                            f"{image_limit} bytes")
