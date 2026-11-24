@@ -40,6 +40,62 @@ image; select it from the separate `OTAFIX-2.4.12-R_recovery.zip` and follow the
 release's recovery instructions. Recovery images are migration tools, not the
 normal download.
 
+## App-prepared bootloader staging (development only)
+
+MeshCore includes raw image preparation by default on nRF52840 infrastructure
+profiles that already support signed bootloader updates: shared internal flash
+(including adaptive RAK boards), raw QSPI, or SD. To build the legacy path alone,
+use `PLATFORMIO_BUILD_FLAGS=-DOTA_PREPARE_RAW_BOOTLOADER=0`. The X1, GAT562 30S
+and T114 Repeater and Room profiles require enough scratch headroom at build
+time as well as the live check on each installation.
+There is no new scratch access on other boards, ExtraFS layouts, or seeder-only
+builds, and Companion builds do not compile this feature. Without a matching
+capability in the CRC-validated installed bootloader, MeshCore uses the existing
+signed `.mota` handoff.
+
+| Existing bootloader package store | Capability | ABI | Image address | Record address | Record bytes | Reset source |
+| --- | --- | ---: | --- | --- | ---: | --- |
+| Shared internal flash | `MOTARAW1` | 1 | `0xE2000` | `0xEC000` | 40 | `0xE2` |
+| QSPI or SD | `MOTARAW2` | 2 | `0xE0000` | `0xEA000` | 44 | `0xE0` |
+
+A future bootloader must publish one matching word-aligned 16-byte capability
+inside its checksummed image: 8 ASCII bytes of magic, little-endian ABI
+(2 bytes), record length (2 bytes), and reset source (4 bytes). The source
+selects one fixed layout, not an arbitrary flash address. The external record
+uses one extra scratch page below InternalFS, separate from the rollback journal.
+
+The operator still supplies a trusted signed bootloader `.mota` and confirms
+its MID and image hash. MeshCore checks the candidate board and version, live
+EndF extent, boot settings, scratch bounds, and rollback state. It copies the
+exact 40 KiB image, verifies its SHA-256 from flash, then writes and reads back
+the handoff record. The record begins with ASCII `RAW1` or `RAW2`, a 4-byte
+little-endian version, and the 32-byte SHA-256. `RAW2` appends the candidate's
+4-byte little-endian board ID, including the exact target for XIAO variants
+that can switch between compatible identities.
+
+Only a completed stage arms request `0x6B`, after the reply drains. The loader
+must consume that request before validating scratch, the image hash, vectors,
+board identity, version, and platform continuity, and then ask the MBR to do
+the replacement. No released bootloader is assumed to accept the new handoff.
+Deploy compatible firmware before dropping the legacy preparation path from
+any bootloader. A failed copy cannot fall through to the legacy install; an
+overwritten internal package needs to be fetched again.
+
+## MeshTracker X1
+
+The standard X1 Repeater and Room Server builds use internal OTA staging with
+the exact `X1INT_DFU` bootloader (board `28860057`, mOTA target `CDDA9FF9`,
+S140 `0x0123`, application base `0x27000`). Use an X1-aware `motatool` and run
+`ota bootloader` to confirm the installed identity before staging. T1000-E
+shares the USB board ID but is not a compatible bootloader.
+
+Install the matching Repeater or Room application using local X1 DFU if the
+current firmware cannot receive `.mota`. The older X1 internal bootloader
+can install the first raw-capable replacement via the existing signed package
+path. Subsequent updates can use app-prepared staging. X1 application mOTA uses
+an exact-base delta, not a full application package. The X1 Companion and KISS
+builds do not use this installer.
+
 ## SenseCAP Solar P1 (experimental)
 
 The P1 Repeater and LoRa-OTA Room builds support the signed QSPI bootloader
@@ -169,16 +225,17 @@ use the picker for current application names and downloads.
 | Historical internal-only MeshTower V2 layout; current releases use the combined SD target | `239A0071 / TOWER_V2_OTA` | `1150F50E` |
 | T096 lean repeater, room, sensor and RS232 bridge | `239A0071 / T096_DFU` | `42354C85` |
 | T1 lean repeater and room | `239A0071 / T1_DFU` | `FC556FFC` |
-| T114 display and without-display lean repeaters and rooms, plus sensor | `239A0071 / T114_DFU` | `0C3F2902` |
+| T114 display and without-display standard and lean repeaters and rooms, plus the qualified sensor profile | `239A0071 / T114_DFU` | `0C3F2902` |
 | Mesh Pocket lean repeater and room | `239A0071 / MESH_POCKET_OTA` | `059277F4` |
 | Keepteen LT1 lean repeater and room | `239A00B3 / KeepteenLT1_OTA` | `DB2E7B51` |
 | Minewsemi ME25LS01 lean repeater and room | `239A0029 / MX25_DFU` | `026AA982` |
 | ProMicro radio variants: lean repeater, room and sensor | `239A00B3 / PROM_DFU` | `AF79E8CC` |
 | T1000-E lean repeater, room and sensor | `28860057 / T1KE_DFU` | `E6F5F03F` |
+| MeshTracker X1 standard repeater and room | `28860057 / X1INT_DFU` | `CDDA9FF9` |
 | ThinkNode M3 lean repeater and room | `239A00DA / TNM3_DFU` | `0CA41DB2` |
 | RAK3401 reduced repeater, room, sensor and unified repeater | `239A0029 / 3401_DFU` | `23818A80` |
 | RAK4631 reduced/unified repeater, both reduced RS232 bridges, and listed reduced Room/Sensor roles | `239A0029 / 4631_DFU` | `2D0DF000` |
-| GAT562 30S/Tracker Pro/EVB Pro lean repeaters and rooms | `239A0029 / GAT562_DFU` | `D50D2D44` |
+| GAT562 30S standard and lean repeater and room; Tracker Pro/EVB Pro lean repeater and room | `239A0029 / GAT562_DFU` | `D50D2D44` |
 | R1 Neo lean repeater, room and sensor | `239A0029 / 4631_DFU` | `2D0DF000` |
 | RAK WisMesh Tag lean repeater, room and sensor | `239A0029 / RTAG_DFU` | `C72E9C9C` |
 
@@ -248,8 +305,9 @@ does not make incompatible storage layouts interchangeable.
 
 Boards with onboard external flash are not silently redirected to internal
 staging. Mesh Solar, Nano G2 Ultra, T-Impulse Plus, ThinkNode M8, T-Echo
-Card, MeshTracker X1, and Wio WM1110 have board-specific QSPI hardware and
-need a separately matched QSPI path where available. Full Companions, other
+Card, and Wio WM1110 have board-specific QSPI hardware and need a separately
+matched QSPI path where available. The X1 uses its exact internal profile
+instead of relying on its external flash at boot. Full Companions, other
 SD/QSPI/ExtraFS roles, source-only roles, and unlisted full-sensor roles are
 excluded from the internal-flash inventory. The explicitly allowlisted RAK4631
 Ethernet Room role is an exception; the exact MeshTower V2 SD role above has

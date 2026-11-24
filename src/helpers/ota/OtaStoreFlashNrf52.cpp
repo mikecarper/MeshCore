@@ -11,6 +11,9 @@
 #include <string.h>
 #include "nrf.h"
 #include "flash/flash_nrf5x.h"   // Adafruit core internal-flash driver (SoftDevice-safe; LittleFS path)
+#if defined(MESHCORE_RAW_BOOT_STAGE_ENABLED) && defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+#include "OtaBootloaderUpdate.h"
+#endif
 
 namespace mesh {
 namespace ota {
@@ -339,6 +342,9 @@ bool OtaStoreFlashNrf52::begin(uint32_t total_size) {
   uint32_t app_end;
   if (planned_bootloader) {
 #if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+#if defined(MESHCORE_RAW_BOOT_STAGE_ENABLED)
+    if (ota_raw_boot_rollback_busy(app_base)) return false;
+#endif
     SelfFwInfo fi;
     uint32_t checked_start;
     if (stage_ceiling != MOTA_NRF52_APP_END || total_size != planned_total ||
@@ -347,6 +353,10 @@ bool OtaStoreFlashNrf52::begin(uint32_t total_size) {
             total_size, app_base, true, app_base + fi.image_len, checked_start) ||
         checked_start != planned_start)
       return false;
+#if defined(MESHCORE_RAW_BOOT_STAGE_ENABLED)
+    if (!ota_bootloader_live_bank_preserves_scratch(app_base, fi.image_len, checked_start))
+      return false;
+#endif
     app_end = app_base + fi.image_len;
 #else
     return false;
@@ -550,6 +560,34 @@ bool OtaStoreFlashNrf52::approve_for_bootloader() {
 }
 #endif
 
+#if defined(MESHCORE_RAW_BOOT_STAGE_ENABLED) && defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+bool OtaStoreFlashNrf52::prepare_raw_bootloader(uint32_t payload_offset, uint32_t version,
+                                              const uint8_t expected_hash[32]) {
+  constexpr auto layout = OtaRawBootLayout::SharedInternal;
+  const uint8_t* container = data();
+  if (!_planned_bootloader || !container ||
+      _write_start != ota_raw_boot_start(layout) || _stage_ceiling != MOTA_NRF52_APP_END ||
+      _flash_len != _stage_ceiling - _write_start) return false;
+
+  const bool ok = ota_stage_raw_bootloader(
+      layout, _total, payload_offset, version, 0u, expected_hash, _pay_page,
+      [container](uint32_t off, uint8_t* page, uint32_t size) {
+        memcpy(page, container + off, size);
+        return true;
+      },
+      [](uint32_t idx, const uint8_t* page) {
+        return ota_write_raw_boot_page(OtaRawBootLayout::SharedInternal, idx, page);
+      },
+      [](const uint8_t* hash) {
+        return ota_verify_raw_boot_image(OtaRawBootLayout::SharedInternal, hash);
+      });
+  // The container cannot be used again once compaction starts, even on error.
+  reset_session();
+  _io_ok = ok;
+  return ok;
+}
+#endif
+
 // Persist mid-transfer progress so a reboot can resume. Order matters for consistency: flush the open
 // payload page FIRST, then page 0 (the leaf-progress markers) -- so every block whose leaf is now in flash
 // also has its payload in flash. Infrequent (every OTA_CHECKPOINT_BLOCKS blocks), so the 2 extra page
@@ -596,12 +634,18 @@ bool OtaStoreFlashNrf52::reopenFor(const uint8_t* want_mid, uint32_t expected_ta
     const bool bootloader = manifest.is_bootloader();
     if (bootloader) {
 #if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
+#if defined(MESHCORE_RAW_BOOT_STAGE_ENABLED)
+      if (ota_raw_boot_rollback_busy(app_base)) continue;
+#endif
       SelfFwInfo fi;
       if (!ota_bootloader_self_update_caps_valid(ota_bootloader_update_caps()) ||
           !ota_self_firmware(fi) || !fi.valid || fi.image_len > UINT32_MAX - app_base ||
           !mota_nrf52_shared_boot_stage_plan(
               total, app_base, true, app_base + fi.image_len, want) || want != start)
         continue;
+#if defined(MESHCORE_RAW_BOOT_STAGE_ENABLED)
+      if (!ota_bootloader_live_bank_preserves_scratch(app_base, fi.image_len, want)) continue;
+#endif
 #else
       continue;
 #endif

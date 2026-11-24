@@ -26,6 +26,10 @@
   #include "OtaBlInfo.h"            // read the bootloader capability marker before arming an apply
   #include "OtaRollback.h"
   #include "OtaRollbackRecord.h"
+  #include "OtaRawBootStage.h"
+  #if defined(MESHCORE_RAW_BOOT_STAGE_ENABLED)
+    #include <stdlib.h>
+  #endif
   #include "Utils.h"
   #if defined(ENABLE_OTA) && !defined(OTA_SEEDER_ONLY) && (defined(OTA_SD_STORE) || defined(OTA_QSPI_STORE))
     #include <Arduino.h>
@@ -473,6 +477,9 @@ bool ota_apply_detools_mota(const uint8_t*, uint32_t, const SignerAllowlist&, Ap
 // not be published until the command reply has drained and reset is imminent.
 static OtaStoreFlashNrf52* g_nrf52_apply_store = nullptr;
 #endif
+#if defined(MESHCORE_RAW_BOOT_STAGE_ENABLED)
+static uint8_t g_nrf52_raw_boot_source = 0;
+#endif
 #if defined(OTA_QSPI_STORE)
 // Set by the successfully verified external application path, never inferred
 // from compile-time store flags: the same RAK image supports NOR and SD.
@@ -556,6 +563,25 @@ void ota_reboot_to_apply() {                   // public: set the apply magic + 
 
 void ota_reboot_to_bootloader_update() {
   if (meshRegulatorCleanReset) meshRegulatorCleanReset();
+#if defined(MESHCORE_RAW_BOOT_STAGE_ENABLED)
+  if (g_nrf52_raw_boot_source) {
+    const uint8_t source = g_nrf52_raw_boot_source;
+    g_nrf52_raw_boot_source = 0;
+    uint8_t sd_en = 0;
+    if (mesh_nrf52::softdeviceIsEnabled(sd_en) == NRF_SUCCESS) {
+      if (!sd_en) {
+        NRF_POWER->GPREGRET2 = source;
+        NRF_POWER->GPREGRET = GPREGRET_OTA_BOOTLOADER_UPDATE;
+      } else if (sd_power_gpregret_clr(0, 0xFFFFFFFFu) == NRF_SUCCESS &&
+                 sd_power_gpregret_clr(1, 0xFFFFFFFFu) == NRF_SUCCESS &&
+                 sd_power_gpregret_set(1, source) == NRF_SUCCESS) {
+        sd_power_gpregret_set(0, GPREGRET_OTA_BOOTLOADER_UPDATE);
+      }
+    }
+    NVIC_SystemReset();
+    return;
+  }
+#endif
   uint8_t source = GPREGRET2_OTA_STAGE_QSPI;
 #if defined(OTA_INTERNAL_BOOTLOADER_UPDATE)
   source = GPREGRET2_OTA_STAGE_EXPANDED;
@@ -1132,6 +1158,21 @@ static const char* ota_bootloader_continuity_error(OtaBootloaderContinuityGate g
   }
 }
 
+#if defined(MESHCORE_RAW_BOOT_STAGE_ENABLED)
+static bool ota_installed_raw_boot_support(OtaRawBootLayout layout) {
+  return ota_raw_boot_stage_supported(
+      reinterpret_cast<const uint8_t*>(OTA_BOOT_IMAGE_START), OTA_BOOT_IMAGE_SIZE, layout);
+}
+
+static bool ota_raw_boot_scratch_ready(OtaRawBootLayout layout, const SelfFwInfo& self) {
+  const uint32_t base = mota_nrf52_app_base();
+  return self.valid && ota_raw_boot_layout_fits(
+             layout, base, self.image_len, mota_nrf52_layout_stage_ceiling()) &&
+         ota_bootloader_live_bank_preserves_scratch(base, self.image_len, ota_raw_boot_start(layout)) &&
+         !ota_raw_boot_rollback_busy(base);
+}
+#endif
+
 #if defined(OTA_SD_BOOTLOADER_UPDATE)
 static bool external_bootloader_approve(OtaStoreSdNrf52& store,
                                         const uint8_t image_hash[32],
@@ -1161,6 +1202,9 @@ static bool ota_prepare_bootloader_update_external(Store& store,
                                                     ApplyState& st, char* msg) {
   static const size_t CAP = 96;
   st = ApplyState();
+#if defined(MESHCORE_RAW_BOOT_STAGE_ENABLED)
+  g_nrf52_raw_boot_source = 0;
+#endif
   SelfFwInfo fi;
   if (!ota_self_firmware(fi) ||
       !ota_bootloader_scratch_headroom_valid(
@@ -1265,6 +1309,29 @@ static bool ota_prepare_bootloader_update_external(Store& store,
     msg[CAP - 1] = 0;
     return false;
   }
+#if defined(MESHCORE_RAW_BOOT_STAGE_ENABLED)
+  constexpr auto layout = OtaRawBootLayout::ExternalScratch;
+  if (ota_installed_raw_boot_support(layout)) {
+    if (!ota_raw_boot_scratch_ready(layout, fi)) {
+      strcpy(msg, "raw bootloader scratch unavailable or rollback active"); return false;
+    }
+    auto* page = static_cast<uint8_t*>(malloc(MOTA_NRF52_FLASH_PAGE));
+    if (!page) { strcpy(msg, "not enough RAM to stage the raw bootloader"); return false; }
+    const bool ready = ota_stage_raw_bootloader(
+        layout, total, payload_off, m.fw_version, candidate.board_id, st.image_hash, page,
+        [&store](uint32_t off, uint8_t* dest, uint32_t size) { return store.read(off, dest, size); },
+        [](uint32_t idx, const uint8_t* bytes) {
+          return ota_write_raw_boot_page(OtaRawBootLayout::ExternalScratch, idx, bytes);
+        },
+        [](const uint8_t* hash) { return ota_verify_raw_boot_image(OtaRawBootLayout::ExternalScratch, hash); });
+    free(page);
+    if (!ready) { strcpy(msg, "raw bootloader staging failed; update not armed"); return false; }
+    g_nrf52_raw_boot_source = static_cast<uint8_t>(layout);
+    st.slot_ok = true;
+    strcpy(msg, "trusted bootloader prepared in raw staging; rebooting after this reply");
+    return true;
+  }
+#endif
   st.slot_ok = true;
   if (!external_bootloader_approve(store, m.image_hash, vr.container_hash)) {
     snprintf(msg, CAP, "%s bootloader handoff failed: %s", storage_name, store.last_error());
@@ -1388,6 +1455,9 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreFlashNrf52& store,
                                          ApplyState& st, char* msg) {
   static const size_t CAP = 96;
   st = ApplyState();
+#if defined(MESHCORE_RAW_BOOT_STAGE_ENABLED)
+  g_nrf52_raw_boot_source = 0;
+#endif
   const uint32_t total = store.staged_size();
   const uint8_t* container = store.data();
   MotaManifest m;
@@ -1487,6 +1557,22 @@ bool ota_prepare_bootloader_update_nrf52(OtaStoreFlashNrf52& store,
     msg[CAP - 1] = 0;
     return false;
   }
+#if defined(MESHCORE_RAW_BOOT_STAGE_ENABLED)
+  constexpr auto layout = OtaRawBootLayout::SharedInternal;
+  if (ota_installed_raw_boot_support(layout)) {
+    if (!ota_raw_boot_scratch_ready(layout, fi)) {
+      strcpy(msg, "raw bootloader scratch unavailable or rollback active"); return false;
+    }
+    if (!store.prepare_raw_bootloader(payload_off, m.fw_version, st.image_hash)) {
+      strcpy(msg, "raw bootloader staging failed; fetch the signed package again");
+      return false;
+    }
+    g_nrf52_raw_boot_source = static_cast<uint8_t>(layout);
+    st.slot_ok = true;
+    strcpy(msg, "trusted bootloader prepared in raw staging; rebooting after this reply");
+    return true;
+  }
+#endif
   st.slot_ok = true;
   if (!store.approve_for_bootloader()) {
     snprintf(msg, CAP, "internal bootloader handoff failed: %s", store.last_error()); return false;

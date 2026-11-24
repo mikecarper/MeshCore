@@ -5,6 +5,7 @@
 #include "OtaStore.h"
 #include "OtaFlashLayout_nrf52.h"
 #include "OtaHybridHandoff.h"
+#include "OtaRawBootStage.h"
 
 // Persistent flash-backed OtaStore for nRF52840. Stages the received `.mota` below the selected
 // filesystem-safe ceiling, bottom-aligned so the bootloader can find it. Internal ExtraFS roles stop
@@ -101,6 +102,10 @@ public:
   // payload-integrity, in-place compaction, and readback checks before self-write. APRV carries the app's completed
   // signature/allowlist and explicit-operator authorization decision across the reboot.
   bool approve_for_bootloader();
+#if defined(MESHCORE_RAW_BOOT_STAGE_ENABLED)
+  bool prepare_raw_bootloader(uint32_t payload_offset, uint32_t version,
+                              const uint8_t expected_hash[32]);
+#endif
   const char* last_error() const { return _io_ok ? "" : "internal flash write/verify failed"; }
 #endif
 

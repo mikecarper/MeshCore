@@ -427,6 +427,33 @@ class Nrf52EndfHexTests(unittest.TestCase):
                 stamp(action, path, env)
             self.assertEqual(path.read_bytes(), before)
 
+    def test_raw_shared_bootloader_build_keeps_endf_below_scratch(self):
+        app_base = ml.NRF52_APP_BASE_S140_V7
+        with tempfile.TemporaryDirectory() as directory:
+            env = BuildEnvironment(app_base)
+            env.linker = "boards/nrf52840_s140_v7_mota64.ld"
+            env["LDSCRIPT_PATH"] = env.linker
+            env["CPPDEFINES"].extend([
+                "OTA_FLASH_STORE", "OTA_INTERNAL_BOOTLOADER_UPDATE", "OTA_HYBRID_RAM_STORE",
+                ("OTA_PREPARE_RAW_BOOTLOADER", 1),
+            ])
+            load_post_script(env)
+            action = env.post_actions["$BUILD_DIR/${PROGNAME}.hex"]
+            path = Path(directory) / "firmware.hex"
+            body_at_limit = ml.NRF52_SHARED_BOOT_STAGE_START - app_base - ml.NRF52_LAYOUT_LEN - ml.ENDF_LEN
+            for extra in (0, 1):
+                image = IntelHex()
+                image.frombytes(b"\x55" * (body_at_limit + extra), offset=app_base)
+                image.write_hex_file(str(path))
+                if extra:
+                    before = path.read_bytes()
+                    with self.assertRaisesRegex(RuntimeError, "raw bootloader staging application"):
+                        stamp(action, path, env)
+                    self.assertEqual(path.read_bytes(), before)
+                else:
+                    stamp(action, path, env)
+                    self.assertEqual(app_base + len(read_application(path)), ml.NRF52_SHARED_BOOT_STAGE_START)
+
     def test_source_only_and_filesystem_staging_limits_remain_distinct(self):
         app_base = ml.NRF52_APP_BASE_S140_V7
         with tempfile.TemporaryDirectory() as directory:

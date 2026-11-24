@@ -190,7 +190,11 @@ struct OtaBootloaderIdentity {
 
 // A P1 and a XIAO share a board ID but have different bootloader hardware.
 inline bool ota_bootloader_identity_allowed_for_build(const OtaBootloaderIdentity& identity) {
-#if defined(SENSECAP_SOLAR_P1)
+#if defined(MESH_TRACKER_X1)
+  static const char expected[OTA_BOOT_DEVICE_NAME_SIZE] = "X1INT_DFU";
+  return identity.present && identity.crc_ok && identity.board_id == 0x28860057UL &&
+         memcmp(identity.device_name, expected, OTA_BOOT_DEVICE_NAME_SIZE) == 0;
+#elif defined(SENSECAP_SOLAR_P1)
   return identity.present && identity.crc_ok && identity.board_id == OTA_XIAO_BOARD_ID_BASE &&
          memcmp(identity.device_name, OTA_SENSECAP_BOOT_DEVICE_NAME, OTA_BOOT_DEVICE_NAME_SIZE) == 0;
 #elif defined(OTA_QSPI_BOOT_WIO_L1) || defined(OTA_QSPI_BOOT_TECHO) || \
