@@ -12061,11 +12061,13 @@ bool MyMesh::startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup
     return true;
   }
   if (_webconfig && _webconfig->isRunning()) {
-    if (!automatic_setup && !_webconfig->isStopping()) {
-      _webconfig->requestNetworkAccess();
+    if (!force_ap || !_webconfig->waitingForStation()) {
+      if (!automatic_setup && !_webconfig->isStopping()) {
+        _webconfig->requestNetworkAccess();
+      }
+      getWebUIStatus(reply);
+      return true;
     }
-    getWebUIStatus(reply);
-    return true;
   }
   if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) {
     strcpy(reply, "Error: WiFi disabled; use set wifi on or set 2.4ghz on");

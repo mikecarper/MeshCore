@@ -42,6 +42,7 @@ public:
     return true;
   }
   static bool formatWebUIStatus(char*, size_t, bool, const WebConfigServer*);
+  bool waitingForStation() const;
   @GETTERS@
 };
 bool WebConfigServer::saved_enabled = false;

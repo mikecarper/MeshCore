@@ -328,7 +328,7 @@ void serializeJson(DynamicJsonDocument& doc, AsyncResponseStream& response) {
   response.state = doc.state; response.networks = doc.networks;
 }
 struct WebConfigServer {
-  enum Mode { MODE_OFF, MODE_LAN, MODE_SETUP };
+  enum Mode { MODE_OFF, MODE_LAN, MODE_SETUP, MODE_CONNECTING };
   Mode _mode = MODE_OFF;
   bool _owns_wifi = true, _stopping = false, _start_retryable = false;
   bool _retry_saved_wifi_in_setup = true, _setup_reconnect_in_progress = true;
@@ -337,7 +337,7 @@ struct WebConfigServer {
   uint32_t _ap_auth_generation = 0, _ap_rekey_generation = 0;
   uint32_t _ap_rekey_after = 0, _ap_rekey_deadline = 0;
   uint32_t _setup_reconnect_deadline = 5, _setup_started_at = 5, _last_activity = 0;
-  const uint8_t _pub_key[2] = {0x62, 0xF2};
+  const uint8_t _pub_key[2] = {0x0A, 0xF2};
   char _ap_ssid[33] = {}, _wifi_ssid[32] = {};
   DNSServer* _dns = nullptr;
   Callbacks callbacks;
@@ -347,7 +347,9 @@ struct WebConfigServer {
   ~WebConfigServer() { delete _dns; }
   void createServer() { ++servers; }
   void requestNetworkAccess() {}
+  static void formatSetupSsid(char* ssid, size_t size, const uint8_t* pub_key);
   void initializeManagementPassword();
+  bool waitingForStation() const;
   bool startSetupMode(char reply[]);
   bool checkAuth(AsyncWebServerRequest*) const { return auth_allowed; }
   void handleScan(AsyncWebServerRequest* req);
@@ -357,8 +359,8 @@ struct WebConfigServer {
 void requireEndpoint(const WebConfigServer& portal, const char* reply, bool cached_scan = true) {
   assert(portal._mode == WebConfigServer::MODE_SETUP && portal._dns != nullptr);
   assert(WiFi.live_mode == WIFI_AP_STA && WiFi.ap_started);
-  assert(WiFi.live_config.ap.ssid_len == 7);
-  assert(memcmp(WiFi.live_config.ap.ssid, "MC-62F2", 7) == 0);
+  assert(WiFi.live_config.ap.ssid_len == 5);
+  assert(memcmp(WiFi.live_config.ap.ssid, "MC-0A", 5) == 0);
   assert(!WiFi.live_config.ap.ssid_hidden && WiFi.live_config.ap.channel == 6);
   assert(WiFi.live_config.ap.authmode == expectedAuth());
   assert(WiFi.live_protocol == mesh::wifi::kAccessPointProtocolMask);
@@ -370,7 +372,7 @@ void requireEndpoint(const WebConfigServer& portal, const char* reply, bool cach
   assert(WiFi.scan_result == (cached_scan ? 2 : WIFI_SCAN_FAILED));
   assert(!WiFi.sdk_scan_active && WiFi.sdk_scan_stops == (stopped_scan ? 1u : 0u));
   assert(!WiFi.auto_reconnect && !portal._retry_saved_wifi_in_setup);
-  assert(strstr(reply, "join 'MC-62F2', http://192.168.4.1/"));
+  assert(strstr(reply, "join 'MC-0A', http://192.168.4.1/"));
   assert(strstr(reply, expectedAuth() == WIFI_AUTH_WPA2_PSK
       ? "WiFi: admin password" : TEST_ADMIN_PASSWORD[0]
         ? "open WiFi; admin login required" : "open WiFi; no admin password"));
@@ -556,6 +558,16 @@ int main() {
   reset(); mesh::wireless::control().disabled = true;
   WebConfigServer disabled; char reply[160] = {};
   assert(!disabled.startSetupMode(reply) && WiFi.ap_calls == 0 && !disabled._dns);
+  // Reopen setup after fallback expiry or while the saved station is joining.
+  for (auto mode : {WebConfigServer::MODE_LAN, WebConfigServer::MODE_CONNECTING}) {
+    reset();
+    WebConfigServer offline;
+    offline._mode = mode;
+    offline.servers = mode == WebConfigServer::MODE_LAN ? 1 : 0;
+    assert(offline.waitingForStation() && offline.startSetupMode(reply));
+    requireEndpoint(offline, reply);
+    assert(!offline.waitingForStation());
+  }
   // Promoting an existing LAN listener changes its network, not its lifetime.
   reset(); WiFi.shared_espnow = true;
   WebConfigServer promoted;
@@ -578,7 +590,10 @@ int main() {
   for (int busy_case = 0; busy_case < 3; ++busy_case) {
     reset(); WebConfigServer busy;
     if (busy_case == 0) busy._mode = WebConfigServer::MODE_SETUP;
-    else if (busy_case == 1) busy._mode = WebConfigServer::MODE_LAN;
+    else if (busy_case == 1) {
+      busy._mode = WebConfigServer::MODE_LAN;
+      WiFi.fault = Fault::StillConnected;
+    }
     else busy._stopping = true;
     assert(!busy.startSetupMode(reply));
     assert(strstr(reply, "busy") && WiFi.ap_calls == 0 && !busy._dns && busy.servers == 0);

@@ -312,7 +312,8 @@ session instead of an already-running error.
 It serves the shared WiFi, radio, flood, loop, and status page and reports its
 URL. MQTT builds also show the MQTT tab and wizard step; non-MQTT builds remove
 them entirely. Sign in with the node's admin password. If the node has no saved
-WiFi SSID, the command starts the `MeshCore-Setup-XXXX` captive AP at
+WiFi SSID, the command starts the setup AP (`MC-XX` on standard display builds,
+`MeshCore-Setup-XXXX` on headless builds) at
 <http://192.168.4.1/> instead.
 
 If a saved WiFi network is unavailable and the node falls back to its setup
@@ -333,7 +334,9 @@ LAN mode otherwise remains active until reboot. On expanded FULL builds, an
 unconfigured automatic setup AP receives one absolute 30-minute window per
 boot, then powers WiFi off even if a client remains attached; rebooting starts
 a new automatic window unless `webui off` is saved. An administrator can
-explicitly run `start webconfig` again without rebooting. Once an SSID is saved,
+explicitly run `start webconfig ap` again. On a repeater with a display and a
+user button, tap to **Wi-Fi Setup** and hold the button to reopen the QR screen
+without rebooting. Once an SSID is saved,
 the cutoff no longer applies and the selected WiFi/MQTT mode keeps reconnecting.
 Other setup sessions retain
 their profile's idle timeout.

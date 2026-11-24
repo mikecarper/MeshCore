@@ -153,12 +153,21 @@ The bootstrap uses ES5 syntax and Promise-based loading, including on Android
 Most full-size ESP32 MQTT observer builds have the shared WebConfig portal. On a
 fresh device with no saved SSID:
 
-1. Join `MeshCore-Setup-XXXX` with the node's admin password (factory default
-   `password`). A display's WiFi QR code uses the hotspot's current credential.
+1. Scan the WiFi QR or join the hotspot shown on the display, such as `MC-36`.
+   Headless builds normally use `MeshCore-Setup-XXXX`. If prompted for a WiFi
+   password, enter the node's admin password (factory default `password`).
 2. If the captive page does not open, browse to `http://192.168.4.1/`.
 3. Enter WiFi, radio, identity, and MQTT settings.
 4. Select **Save & Reboot**.
 5. After reboot, check `get wifi.status` and `get mqtt.status`.
+
+**Reopen setup after a timeout.** On an ESP32 repeater with WebConfig, a
+display and a user button, tap the button until **Wi-Fi Setup** appears.
+While it says **Hold to start**, hold the button (about one second on a Heltec
+V3). Scan the QR or join the displayed network and open <http://192.168.4.1/>.
+Holding again on the QR screen closes the hotspot. This starts setup for one
+session and keeps your saved startup preference. From the admin CLI, use
+`start webconfig ap` and `get webui` to see the active address.
 
 ESP32 management uses one saved admin password for WebConfig login, browser
 firmware uploads, and setup WiFi. Choose 8–15 printable ASCII characters so the
@@ -204,8 +213,8 @@ WebConfig closes and the ESP32 WiFi radio remains off automatically for the
 remainder of that boot. A reboot or power cycle starts a new 30-minute setup
 window unless `set webui off` has been saved. That choice prevents automatic
 setup even without WiFi credentials. The timeout itself is not saved.
-An administrator can still override the automatic cutoff with an explicit
-`start webconfig` command.
+The **Wi-Fi Setup** button page or `start webconfig ap` opens a fresh setup
+window during the same boot.
 
 Once an SSID is saved, the provisioning cutoff no longer applies. When WiFi is
 selected by `logging.output wifi|both` and a broker is configured, the station
@@ -939,9 +948,9 @@ If the join fails and a recovery hotspot starts, the response explains both:
 
 ```text
 get wifi.status
-> WiFi: could not connect to 'iot'; setup hotspot 'MC-D177' at http://192.168.4.1/
+> WiFi: could not connect to 'iot'; setup hotspot 'MC-D1' at http://192.168.4.1/
 get webui
-> Web UI: setup hotspot 'MC-D177' at http://192.168.4.1/; auto-start: off
+> Web UI: setup hotspot 'MC-D1' at http://192.168.4.1/; auto-start: off
 ```
 
 The WiFi query also distinguishes idle (a saved network with no active join),
@@ -1104,7 +1113,8 @@ Common causes are:
 - the wrong firmware role or an older compact-CLI build without WebConfig.
 
 For a WiFi companion, find its station IP in the router, connect the client to
-TCP port 5000, and use the `MeshCore-Setup-XXXX` AP at
+TCP port 5000, and use the setup AP shown on the display (`MC-XX` on standard
+display builds, `MeshCore-Setup-XXXX` on headless builds) at
 `http://192.168.4.1/` if it cannot join the saved network. The hotspot uses the
 admin password when eligible for WPA2, as described above. Current firmware
 uses standard b/g/n for the setup AP, including ESP-NOW-capable targets.

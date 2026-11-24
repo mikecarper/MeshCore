@@ -187,6 +187,7 @@ struct WebConfigServer {
   static bool saveEnabled(bool enabled) { saved_enabled = enabled ? 1 : 0; return true; }
   static bool hasConfiguredWiFi(const void* prefs) { return static_cast<const ObserverPrefs*>(prefs)->wifi_ssid[0] != 0; }
   bool isRunning() const { return running; }
+  bool waitingForStation() const { return running && _mode == MODE_LAN && !WiFi.isConnected(); }
   bool isStopping() const { return stopping; }
   void updateWiFiOwnership(bool owner) { owns = owner; }
   void requestNetworkAccess() {

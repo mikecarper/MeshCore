@@ -29,7 +29,9 @@ class WebConfigApStartTest(unittest.TestCase):
             helper += extract_braced(source, "static bool setupAccessPointReady(") + "\n"
         if "static bool scanSetupNetworks(" in source:
             helper += extract_braced(source, "static bool scanSetupNetworks(")
-        method = extract_braced(source, "void WebConfigServer::initializeManagementPassword(") + "\n" + extract_braced(source, "bool WebConfigServer::startSetupMode(")
+        method = "\n".join(extract_braced(source, signature) for signature in (
+            "void WebConfigServer::formatSetupSsid(", "void WebConfigServer::initializeManagementPassword(",
+            "bool WebConfigServer::waitingForStation(", "bool WebConfigServer::startSetupMode("))
         scan_handler = extract_braced(source, "void WebConfigServer::handleScan(")
         policy = (ROOT / "src/helpers/esp32/WiFiRadioPolicy.h").read_text(encoding="utf-8")
         mask = policy[policy.index("static constexpr uint8_t kAccessPointProtocolMask ="):]

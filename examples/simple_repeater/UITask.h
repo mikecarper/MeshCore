@@ -2,6 +2,9 @@
 
 #include <helpers/ui/DisplayDriver.h>
 #include <helpers/CommonCLI.h>
+#ifdef ESP_PLATFORM
+  #include <helpers/esp32/WebConfigServer.h>
+#endif
 
 #ifdef DISPLAY_ACTIVITY_DASHBOARD
   #ifndef DISPLAY_REDRAW_ON_CHANGE
@@ -28,6 +31,12 @@ class UITask {
   uint8_t _radio_profile_display_page = 0;
   bool _dual_radio_enabled_seen = false;
   bool _startup_complete = false;
+#ifdef WITH_WEBCONFIG
+  bool _wifi_setup_page = false;
+  bool _setup_ap_was_active = false;
+  char _wifi_setup_reply[160] = {};
+  bool showingWiFiSetupPage() const;
+#endif
 
   void resetRadioProfileDisplayPage();
   void advanceRadioProfileDisplayPage();

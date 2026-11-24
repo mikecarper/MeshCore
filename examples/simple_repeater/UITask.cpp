@@ -5,6 +5,7 @@
 #include <helpers/MorseLoopPolicy.h>
 #include <helpers/CommonCLI.h>
 #include <helpers/ui/WiFiSetupQrDisplay.h>
+#include <helpers/ui/DisplayTextLayout.h>
 #include <helpers/ui/CompanionHomeLayout.h>
 #include <helpers/ui/RadioProfileDisplayPage.h>
 #include <RadioProfiles.h>
@@ -272,7 +273,9 @@ void drawT096Radio2Details(DisplayDriver& display, int mode_y, int cross_y) {
 
 #ifdef ESP_PLATFORM
 #include <WiFi.h>
-#include <helpers/esp32/WebConfigServer.h>   // defines WITH_WEBCONFIG on ESP32
+#endif
+#if defined(WITH_WEBCONFIG) && defined(PIN_USER_BTN) && defined(MESHCORE_HAS_REAL_DISPLAY)
+#define REPEATER_WIFI_SETUP_BUTTON
 #endif
 
 
@@ -388,6 +391,9 @@ void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* fi
 void UITask::resetRadioProfileDisplayPage() {
   _radio_profile_display_page = 0;
   _dual_radio_enabled_seen = the_mesh.isDualRadioActive();
+#ifdef REPEATER_WIFI_SETUP_BUTTON
+  _wifi_setup_page = _setup_ap_was_active;
+#endif
 }
 
 uint8_t UITask::currentRadioProfileDisplayPage() {
@@ -404,7 +410,14 @@ void UITask::advanceRadioProfileDisplayPage() {
   const bool dual_radio_enabled = the_mesh.isDualRadioActive();
   const uint8_t page_count = mesh::ui::radioProfileDisplayPageCount(
       dual_radio_enabled, radioProfileSystemStatusPageCount());
-  _radio_profile_display_page = (currentRadioProfileDisplayPage() + 1) % page_count;
+  const uint8_t next = (currentRadioProfileDisplayPage() + 1) % page_count;
+#ifdef REPEATER_WIFI_SETUP_BUTTON
+  _radio_profile_display_page = _wifi_setup_page ? 0 : next;
+  _wifi_setup_page = !_wifi_setup_page && next == 0;
+  _wifi_setup_reply[0] = 0;
+#else
+  _radio_profile_display_page = next;
+#endif
   _next_refresh = 0;
 #ifdef DISPLAY_REDRAW_ON_CHANGE
   _frame_valid = false;
@@ -434,6 +447,16 @@ bool UITask::showingRadioProfileSystemStatusPage(uint8_t* status_page_index) {
       radioProfileSystemStatusPageCount(), currentRadioProfileDisplayPage(),
       status_page_index);
 }
+
+#ifdef WITH_WEBCONFIG
+bool UITask::showingWiFiSetupPage() const {
+#ifdef REPEATER_WIFI_SETUP_BUTTON
+  return _wifi_setup_page;
+#else
+  return WebConfigServer::getSetupInfo(nullptr, 0, nullptr, 0);
+#endif
+}
+#endif
 
 void UITask::renderCurrScreen() {
   char tmp[80];
@@ -490,10 +513,29 @@ void UITask::renderCurrScreen() {
       _display->print("Rebooting...");
       return;
     }
-    char wc_ssid[33], wc_ip[16];
-    if (WebConfigServer::getSetupInfo(wc_ssid, sizeof(wc_ssid), wc_ip, sizeof(wc_ip))) {
-      // setup portal active: show join instructions instead of the home screen
-      if (mesh::ui::drawWiFiSetupQr(*_display, wc_ssid, wc_ip)) {
+    if (showingWiFiSetupPage()) {
+      char wc_ssid[33], wc_ip[16];
+      const bool active = WebConfigServer::getSetupInfo(wc_ssid, sizeof(wc_ssid), wc_ip, sizeof(wc_ip));
+      if (!active) {
+#ifdef REPEATER_WIFI_SETUP_BUTTON
+        WebConfigServer::formatSetupSsid(wc_ssid, sizeof(wc_ssid), the_mesh.getSelfId().pub_key);
+        _display->setTextSize(1);
+        _display->setColor(UIColor::primary_txt);
+        const int row = _display->textLineHeight() + 1;
+        _display->drawTextLeftAlign(0, 0, "Wi-Fi Setup");
+        _display->drawTextEllipsized(0, row, _display->width(), wc_ssid);
+        _display->drawTextLeftAlign(0, 2 * row, "Hold to start");
+        mesh::ui::drawTextWrapped(*_display, 0, 3 * row, _display->width(),
+                                  row, _display->height() / row - 3, _wifi_setup_reply);
+#endif
+        return;
+      }
+#ifdef REPEATER_WIFI_SETUP_BUTTON
+      const char* action = "HOLD STOP";
+#else
+      const char* action = nullptr;
+#endif
+      if (mesh::ui::drawWiFiSetupQr(*_display, wc_ssid, wc_ip, false, action)) {
         return;
       }
       _display->setTextSize(1);
@@ -671,8 +713,12 @@ uint32_t UITask::getFrameSignature() {
     return DisplayFrameSignature::append(signature, "rebooting");
   }
 
-  char wc_ssid[33], wc_ip[16];
-  if (WebConfigServer::getSetupInfo(wc_ssid, sizeof(wc_ssid), wc_ip, sizeof(wc_ip))) {
+  if (showingWiFiSetupPage()) {
+    char wc_ssid[33], wc_ip[16];
+    if (!WebConfigServer::getSetupInfo(wc_ssid, sizeof(wc_ssid), wc_ip, sizeof(wc_ip))) {
+      signature = DisplayFrameSignature::append(signature, "wifi-setup-off");
+      return DisplayFrameSignature::append(signature, _wifi_setup_reply);
+    }
     signature = DisplayFrameSignature::append(signature, "setup");
     signature = DisplayFrameSignature::append(signature, wc_ssid);
     return DisplayFrameSignature::append(signature, wc_ip);
@@ -906,14 +952,22 @@ void UITask::loop() {
 #endif
   }
 #if defined(PIN_USER_BTN) && defined(DISPLAY_CLASS)
+#ifdef REPEATER_WIFI_SETUP_BUTTON
+  const bool setup_active = WebConfigServer::getSetupInfo(nullptr, 0, nullptr, 0);
+  if (setup_active != _setup_ap_was_active) {
+    _setup_ap_was_active = setup_active;
+    if (setup_active) _wifi_setup_page = true;
+    _wifi_setup_reply[0] = 0;
+    _next_refresh = 0;
+  }
+#endif
   int ev = user_btn.check();
   // Multiclick stays enabled on the R8 observer so triple-click can toggle
   // WebConfig. Collapse a completed double-click into one display action
   // instead of silently consuming both presses.
   if (ev == BUTTON_EVENT_CLICK || ev == BUTTON_EVENT_DOUBLE_CLICK) {
-    // A page change is still user activity.  Capture the old state first so
-    // the first press wakes to R1, while every subsequent press both extends
-    // the 15-second timer and advances to the next available detail page.
+    // The first press wakes to the active setup QR or R1. Subsequent presses
+    // extend the screen timer and advance to the next page.
     const bool display_was_on = _display->isOn();
     _display->wake(mesh::ui::DisplayWake::Button);
     if (display_was_on) {
@@ -928,17 +982,30 @@ void UITask::loop() {
 #endif
     }
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
-      _display->wake(mesh::ui::DisplayWake::Button);
+#ifdef REPEATER_WIFI_SETUP_BUTTON
+    const bool setup_page_visible = _display->isOn() && _wifi_setup_page && _startup_complete
+        && !_powering_off_at && !WebConfigServer::isRebootPending();
+#endif
+    _display->wake(mesh::ui::DisplayWake::Button);
+#ifdef REPEATER_WIFI_SETUP_BUTTON
+    if (setup_page_visible) {
+      if (setup_active) the_mesh.stopWebConfig(_wifi_setup_reply);
+      else the_mesh.startWebConfig(true, _wifi_setup_reply);
+      mesh::usbConsolePort().printf("Wi-Fi Setup: %s\r\n", _wifi_setup_reply);
+    } else
+#endif
+    {
       resetRadioProfileDisplayPage();
       mesh::usbConsolePort().printf("Powering Off\r\n");
       _powering_off_at = millis() + POWEROFF_DELAY;
+    }
 #ifdef DISPLAY_REDRAW_ON_CHANGE
-      _frame_valid = false;
+    _frame_valid = false;
 #endif
 #ifdef DISPLAY_ACTIVITY_DASHBOARD
-      _rows_valid = false;
+    _rows_valid = false;
 #endif
-      _next_refresh = 0;
+    _next_refresh = 0;
 #ifdef WITH_WEBCONFIG
   } else if (ev == BUTTON_EVENT_TRIPLE_CLICK) {
     // Preserve the fork's persistent WebUI toggle. R8 observer repeaters keep

@@ -955,9 +955,10 @@ Where `&type` is:
 ### 7.6. Q: How do I connect to the companion via Wi-Fi, e.g. using a Heltec V3?
 **A:**
 Flash an ESP32 companion Wi-Fi build. Its shared WebUI is enabled by default. If
-it has no saved Wi-Fi configuration, it starts a `MeshCore-Setup-XXXX` access
-point. The hotspot uses the node's admin password for WPA2 when it is 8–15
-printable ASCII characters; standard builds initially use `password`. Other
+it has no saved Wi-Fi configuration, join the hotspot shown on its display
+(for example, `MC-36` on a Heltec V3). The hotspot uses the node's admin password
+for WPA2 when it is 8–15 printable ASCII characters. Standard builds initially
+use `password`. Other
 accepted admin passwords leave the hotspot open and require an HTTP admin
 login. Join it and browse to <http://192.168.4.1/>. Protected first-time setup
 continues directly to the wizard, which configures WiFi, node identity, radio,

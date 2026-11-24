@@ -803,6 +803,14 @@ bool WebConfigServer::isRebootPending() {
                           toSpecState(w->_batch_state));
 }
 
+void WebConfigServer::formatSetupSsid(char* ssid, size_t size, const uint8_t* pub_key) {
+  if (strcmp(WEBCONFIG_AP_PREFIX, "MC") == 0) {
+    snprintf(ssid, size, "MC-%02X", pub_key[0]);
+  } else {
+    snprintf(ssid, size, "%s-%02X%02X", WEBCONFIG_AP_PREFIX, pub_key[0], pub_key[1]);
+  }
+}
+
 bool WebConfigServer::getSetupInfo(char* ssid, size_t ssid_len, char* ip, size_t ip_len) {
   WebConfigServer* w = _active;
   if (w == NULL || w->_mode != MODE_SETUP || w->_stopping) return false;
@@ -886,6 +894,10 @@ static bool scanSetupNetworks() {
   return prepared;
 }
 
+bool WebConfigServer::waitingForStation() const {
+  return (_mode == MODE_CONNECTING || _mode == MODE_LAN) && WiFi.status() != WL_CONNECTED;
+}
+
 bool WebConfigServer::startSetupMode(char reply[]) {
   _start_retryable = false;
   if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) {
@@ -896,8 +908,11 @@ bool WebConfigServer::startSetupMode(char reply[]) {
     strcpy(reply, "Error: stop ESP-NOW before starting a setup AP");
     return false;
   }
-  const bool promote_lan = _mode == MODE_LAN && !_owns_wifi && !_stopping;
-  if ((_mode != MODE_OFF && !promote_lan) || _stopping) {
+  // An expired recovery hotspot leaves the listener waiting for the router.
+  // Reuse that listener when the operator explicitly brings setup back.
+  const bool waiting = waitingForStation();
+  const bool promote_lan = _mode == MODE_LAN && (!_owns_wifi || waiting);
+  if ((_mode != MODE_OFF && !promote_lan && !waiting) || _stopping) {
     strcpy(reply, "Err: webconfig busy");
     return false;
   }
@@ -925,8 +940,7 @@ bool WebConfigServer::startSetupMode(char reply[]) {
   WiFi.setAutoReconnect(false);
   bool disconnect_ok = WiFi.disconnect(false, true);
   delay(100);
-  snprintf(_ap_ssid, sizeof(_ap_ssid), "%s-%02X%02X",
-           WEBCONFIG_AP_PREFIX, _pub_key[0], _pub_key[1]);
+  formatSetupSsid(_ap_ssid, sizeof(_ap_ssid), _pub_key);
   const int ap_channel = mesh::wifi::accessPointChannel();
   const IPAddress ap_ip(192, 168, 4, 1);
   const IPAddress ap_mask(255, 255, 255, 0);

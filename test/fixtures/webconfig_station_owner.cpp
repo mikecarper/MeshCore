@@ -22,6 +22,7 @@ struct WebConfigServer {
                   const char*, const char*, const char*, const char*, bool canonical)
       : owns(owner), constructor_owns(owner) { assert(canonical); }
   bool isRunning() const { return false; }
+  bool waitingForStation() const { return false; }
   bool isStopping() const { return false; }
   void updateWiFiOwnership(bool owner) { owns = owner; }
   void requestNetworkAccess() {}

@@ -301,7 +301,7 @@ int main() {
         self.assertIn('#define WEBCONFIG_AP_PREFIX "MeshCore-Setup"', header)
         source = WEBCONFIG_SOURCE.read_text(encoding="utf-8")
         self.assertIn('"%s-%02X%02X"', source)
-        self.assertIn("WEBCONFIG_AP_PREFIX, _pub_key[0], _pub_key[1]", source)
+        self.assertIn("WEBCONFIG_AP_PREFIX, pub_key[0], pub_key[1]", source)
         self.assertIn("sizeof(WEBCONFIG_AP_PREFIX) <= 28", source)
 
     def test_lora_fresh_install_uses_compiled_cascade_defaults(self):

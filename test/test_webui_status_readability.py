@@ -30,13 +30,15 @@ class WebUIStatusReadabilityTest(unittest.TestCase):
             role_status = extract_braced(role_source, "bool MyMesh::getWebUIStatus(")
             start_method = extract_braced(role_source, "bool MyMesh::startWebConfigImpl(")
             block = extract_braced(start_method, "  if (_webconfig && _webconfig->isRunning())")
-            role_start = ("bool MyMesh::startWebConfig(bool, char* reply) {\n"
+            role_start = ("bool MyMesh::startWebConfig(bool force_ap, char* reply) {\n"
+                          "  (void)force_ap;\n"
                           "  const bool automatic_setup = false;\n" + block +
                           "\n  return false;\n}")
             default_enabled = "false"
         fixture = (ROOT / "test/fixtures/webui_status_readability.cpp").read_text()
-        return (fixture.replace("@METHOD@", extract_braced(source,
-                    "bool WebConfigServer::formatWebUIStatus("))
+        return (fixture.replace("@METHOD@", "\n".join(extract_braced(source, signature)
+                    for signature in ("bool WebConfigServer::formatWebUIStatus(",
+                                      "bool WebConfigServer::waitingForStation(")))
                 .replace("@GETTERS@", getters)
                 .replace("@ROLE_STATUS@", role_status)
                 .replace("@ROLE_START@", role_start)

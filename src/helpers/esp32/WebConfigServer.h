@@ -68,7 +68,7 @@ class WebTerminalStream;
 #endif
 #ifndef WEBCONFIG_AP_PREFIX
   #if defined(MESHCORE_HAS_REAL_DISPLAY)
-    // Keeps an open-network WiFi QR in Version 1 on 64-pixel-high screens.
+    // MC-XX fits a WiFi QR with an eight-character password in Version 2.
     #define WEBCONFIG_AP_PREFIX "MC"
   #else
     #define WEBCONFIG_AP_PREFIX "MeshCore-Setup"
@@ -219,6 +219,7 @@ public:
   // Returns true when that owner may manage STA. Loop task only.
   bool prepareStationOwner();
 
+  static void formatSetupSsid(char* ssid, size_t size, const uint8_t* pub_key);
   // For the device display: true while a setup-mode portal is active.
   // Fills the AP SSID and portal IP; either buffer may be NULL to just poll.
   // Call from the loop task only (same task that changes the mode).
@@ -293,6 +294,7 @@ public:
   bool isNetworkForegroundActive(uint32_t now) const;
 
   Mode mode() const { return _mode; }
+  bool waitingForStation() const;
   bool isRunning() const { return _mode != MODE_OFF; }
   bool isStopping() const { return _stopping; }
   bool isSavedWiFiRecoveryActive() const {

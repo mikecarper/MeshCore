@@ -19,8 +19,9 @@ check the exact artifact capability manifest.
 
 1. Flash an observer build such as `heltec_v4_repeater_observer_mqtt`.
 2. Enable the portal with `set webui on` if it is off.
-   On a fresh node with no saved WiFi SSID, join the open
-   `MeshCore-Setup-XXXX` access point. The captive page should open
+   On a fresh node with no saved WiFi SSID, join the hotspot shown on the
+   display (for example, `MC-36`). Headless builds normally use
+   `MeshCore-Setup-XXXX`. The captive page should open
    automatically; otherwise browse to <http://192.168.4.1/>.
 3. Complete the wizard, review the settings, and choose **Save & Reboot**. The
    MQTT bridge remains stopped while the setup AP owns WiFi and starts normally
@@ -750,14 +751,12 @@ be provisioned and managed without the serial CLI. It is started from the CLI
   minutes with no station associated).
 
 #### First-boot / setup-AP behavior
-On a node with no WiFi configured, the portal comes up automatically as an open
-SoftAP named `MeshCore-Setup-XXXX` (last two bytes of the public key), with a
-captive-portal redirect. The device display shows the AP name and portal URL
-(`http://192.168.4.1/`). Walk through the wizard (WiFi -> radio -> MQTT -> review),
-then **Save & reboot**; the node reboots and joins the configured network.
-
-Optionally set a WPA2 password for the setup AP at build time with
-`-D WEBCONFIG_AP_PASSWORD='"yourpassword"'`.
+On a node with no saved WiFi, the display shows the setup hotspot and
+<http://192.168.4.1/>. Standard display builds use `MC-XX` (the first byte of
+the public key). Headless builds normally use `MeshCore-Setup-XXXX` (the first
+two bytes). If the hotspot times out on a repeater, tap the user button to
+**Wi-Fi Setup**, then hold to start it again. Complete the wizard and choose
+**Save & reboot** to join the configured network.
 
 #### Modes and authentication
 - **Setup AP**: first-time provisioning with no saved WiFi SSID does not require
@@ -765,8 +764,9 @@ Optionally set a WPA2 password for the setup AP at build time with
   require the existing admin password, when configured, before settings can be
   changed. Joining the AP does not grant permission to replace that password.
   Only the SoftAP interface serves the setup API, including while saved-network
-  recovery retries the station connection. `WEBCONFIG_AP_PASSWORD` protects
-  joining the WiFi network separately from the portal's admin login.
+  recovery retries the station connection. An 8–15 character printable ASCII
+  admin password also protects the WiFi network with WPA2. Other accepted
+  passwords leave the WiFi network open and require the HTTP admin login.
 - **LAN**: requires the configured admin password (same one used for remote CLI
   admin). Images deliberately configured without an admin password retain their
   no-password policy. Sessions use a cookie with a sliding idle expiry (default
