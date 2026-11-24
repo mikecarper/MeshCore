@@ -65,6 +65,7 @@
 #include <helpers/CompanionPowerDiagnostics.h>
 #include <helpers/CompanionTxRoutingCLI.h>
 #include <helpers/CompanionTrafficRouting.h>
+#include <helpers/RadioDirectionPolicy.h>
 #include <helpers/CompanionChannelAlias.h>
 #include <helpers/FleetCommand.h>
 #include "CompanionBluetooth.h"
@@ -4496,12 +4497,9 @@ bool MyMesh::handleTxRoutingCommand(const char* command, char* reply, size_t rep
   return true;
 }
 
-// A trace may go on radio2 only: allowed (`set radio2.trace`), and radio2 can
-// transmit MeshCore now (as tx.media's radio2 rule).
 bool MyMesh::radio2TraceReady() const {
-  const auto* profiles = _radio->profiles();
-  return _radio2_trace_enabled && profiles && profiles->canTransmit(1)
-      && profiles->params(1).protocol == mesh::RadioProfileProtocol::MeshCore;
+  return _radio2_trace_enabled && isRadioAvailable() && mesh::radioDirection::radioTransmitAllowed()
+      && mesh::companion::trafficTransmitMask(mesh::RADIO_TX_SECONDARY, _radio->profiles());
 }
 
 #if defined(NRF52_PLATFORM) && defined(MESH_CLI_SHARE_MEMORY_OPERATIONS) && MESH_CLI_SHARE_MEMORY_OPERATIONS
@@ -8424,7 +8422,10 @@ void MyMesh::handleCmdFrame(size_t len) {
       }
       auto pkt = createTrace(tag, auth, flags & ~TRACE_FLAG_RADIO2);
       if (pkt) {
-        if (on_radio2) pkt->tx_radio = mesh::RADIO_TX_SECONDARY;
+        if (on_radio2) {
+          pkt->radio_profile = 1;
+          pkt->tx_radio = mesh::RADIO_TX_SECONDARY;
+        }
         // Compute before handing ownership to sendDirect(), which releases the
         // packet itself if validation or queueing fails.
         uint32_t t = getTransmitAirtime(pkt, 2 + pkt->payload_len + path_len);

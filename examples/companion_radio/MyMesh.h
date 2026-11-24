@@ -429,8 +429,6 @@ public:
 #endif
 #endif
 
-  // CMD_SEND_TRACE_PATH's radio2 bit can be honoured now (`get radio2.trace`).
-  bool radio2TraceReady() const;
   // Local control shared by every USB terminal. ESP32 WiFi companions expose
   // setup/status commands here; Full builds add TempRadio and OTA commands.
   bool handleLocalControlCommand(const char* command, char* reply,
@@ -748,6 +746,9 @@ public:
   bool canRecoverUsbLogging() const;
 
 private:
+  // Reset to enabled on each boot.
+  bool _radio2_trace_enabled = true;
+  bool radio2TraceReady() const;
 #if MESH_ENABLE_RADIO_PROBE_OBSERVER
   mesh::RadioProbeObserver _radio_probe;
 #endif
@@ -769,8 +770,6 @@ private:
   }
   bool _ota_direct_radio_owned = false;
   uint8_t _ota_direct_radio_profile = 0;
-  // `set radio2.trace`: CMD_SEND_TRACE_PATH may send on radio2 only (not saved).
-  bool _radio2_trace_enabled = true;
   uint32_t _ota_direct_radio_generation = 0;
   bool directOtaRadioEligible(uint8_t profile) const;
   bool directOtaRadioCurrent() const;

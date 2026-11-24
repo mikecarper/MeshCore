@@ -28,6 +28,7 @@ class TraceProfileTimingTests(unittest.TestCase):
             "bool Dispatcher::queueTransmitCandidate(",
             "bool Dispatcher::queueOutboundPacket(",
             "uint8_t Dispatcher::getTransmitProfileMask(",
+            "bool Dispatcher::isPacketRadioCurrent(",
             "uint32_t Dispatcher::getTransmitAirtime(const Packet* packet) const",
             "uint32_t Dispatcher::getTransmitAirtime(const Packet* packet, int wire_length) const",
             "bool Dispatcher::sendPacket(",
