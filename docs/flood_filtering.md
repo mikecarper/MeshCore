@@ -206,13 +206,15 @@ the ordered `prefix=` condition on a room server.
 
 ## Forward floods with their original scope
 
-With repeating enabled and no named regions configured, the default
-`region unknown auto` forwards only group text (`grp_txt`) and peer text
-(`txt_msg`) floods with an unknown scope. Both transport codes stay intact.
-Adding the first named region turns off this exception. Removing the last
-named region restores it.
+With repeating enabled, the default `region unknown auto` uses the radio that
+received the flood. Radio2 accepts all flood payload types from unknown scopes,
+even with named regions configured. The primary radio accepts group text
+(`grp_txt`) and peer text (`txt_msg`) from unknown scopes only while the named
+region list is empty. Both radios honor named flood denials and preserve
+both transport codes.
 
-To keep forwarding those two text types with unknown scopes alongside your configured regions, run
+To limit unknown scopes to those two text types on both radios, including
+when named regions are configured, run
 
 ```text
 region unknown allow

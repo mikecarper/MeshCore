@@ -339,9 +339,12 @@ RegionEntry* RegionMap::findMatch(const mesh::Packet* packet, uint8_t mask) {
 bool RegionMap::allowsUnmatchedFlood(const mesh::Packet* packet) {
   if (packet->getRouteType() != ROUTE_TYPE_TRANSPORT_FLOOD
       || packet->transport_codes[0] == 0 || packet->transport_codes[0] == 0xFFFF) return false;
-  if (!packet->isTextMessage()) return false;
-  if (unknown_scope == UnknownScope::Auto) return num_regions == 0;
-  if (unknown_scope != UnknownScope::Allow) return false;
+  if (unknown_scope == UnknownScope::Auto) {
+    // Radio2 accepts any flood type by default, subject to named denials below.
+    if (packet->radio_origin != 1) return num_regions == 0 && packet->isTextMessage();
+  } else if (unknown_scope != UnknownScope::Allow || !packet->isTextMessage()) {
+    return false;
+  }
   // The normal lookup skipped denied regions. Check only those keys here.
   for (int i = 0; i < num_regions; ++i) {
     if ((regions[i].flags & REGION_DENY_FLOOD) && matchesScope(regions[i], packet)) return false;

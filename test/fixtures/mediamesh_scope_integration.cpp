@@ -134,35 +134,46 @@ static void unknown_forward() {
     packet.transport_codes[0] = media_key.calcTransportCode(&packet);
   };
   auto forward = [&]() { return test.cli.allowsUnmatchedFlood(&packet); };
-  auto check_text_only = [&]() {
+  enum class Expected { All, Text, None };
+  auto check_types = [&](Expected expected) {
     for (uint8_t type = 0; type <= PH_TYPE_MASK; ++type) {
       set_type(type);
       const auto code = packet.transport_codes[0];
-      require(forward() == (type == PAYLOAD_TYPE_GRP_TXT || type == PAYLOAD_TYPE_TXT_MSG),
-              "only group text and text messages qualify for unknown-scope forwarding");
+      const bool text = type == PAYLOAD_TYPE_GRP_TXT || type == PAYLOAD_TYPE_TXT_MSG;
+      require(forward() == (expected == Expected::All || (expected == Expected::Text && text)),
+              "unknown-scope policy honors ingress radio, configured mode and named denials");
       require(packet.transport_codes[0] == code && packet.transport_codes[1] == 0x7351, "keep both scope codes");
     }
   };
-  check_text_only();
+  packet.radio_profile = 1; // Choosing radio2 for egress must not grant its ingress policy.
+  check_types(Expected::Text);
+  packet.radio_origin = 1;
+  check_types(Expected::All);
   map.setUnknownScope(RegionMap::UnknownScope::Allow);
-  check_text_only();
+  check_types(Expected::Text);
   map.setUnknownScope(RegionMap::UnknownScope::Auto);
+  packet.radio_origin = 0;
   set_type(PAYLOAD_TYPE_TXT_MSG);
   require(forward() && map.findMatch(&packet, REGION_DENY_FLOOD) == nullptr, "empty auto passes text without claiming a match");
   auto* local = map.putRegion("local", 0);
-  require(local && !forward(), "first named region closes auto");
+  require(local && !forward(), "first named region closes auto on primary");
+  packet.radio_origin = 1;
+  check_types(Expected::All);
   map.setUnknownScope(RegionMap::UnknownScope::Allow);
-  check_text_only();
-  set_type(PAYLOAD_TYPE_GRP_TXT);
+  check_types(Expected::Text);
   auto* media = map.putRegion("mediamesh", 0);
   require(media, "add matching named region");
   media->flags = REGION_DENY_FLOOD;
-  require(!forward(), "allow still respects a named flood denial");
+  check_types(Expected::None);
+  map.setUnknownScope(RegionMap::UnknownScope::Auto);
+  check_types(Expected::None);
+  map.setUnknownScope(RegionMap::UnknownScope::Allow);
   require(map.save(&test.fs), "save allow");
   RegionMap restarted(test.keys);
   require(restarted.load(&test.fs) && restarted.getUnknownScope() == RegionMap::UnknownScope::Allow, "reboot retains allow");
   require(map.removeRegion(*media) && map.removeRegion(*local), "remove named regions");
   map.setUnknownScope(RegionMap::UnknownScope::Deny);
+  check_types(Expected::None);
   require(!forward() && map.save(&test.fs) && restarted.load(&test.fs)
               && restarted.getUnknownScope() == RegionMap::UnknownScope::Deny, "empty deny survives reboot");
   restarted.resetFrom(map);
