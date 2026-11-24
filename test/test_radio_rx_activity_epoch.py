@@ -106,7 +106,6 @@ struct Chip : LR2021 {
  }'''
  assert old in source;source=source.replace(old,new)
  fields=r'''
- mesh::RadioProfiles _profiles;
  bool _params_valid=true,_profile_rxps_suspended=true,_profile_saved_rxps=false;
  bool _noise_floor_valid=true,_noise_floor_secondary_valid=true,_nf_refresh_requested=false;
  bool _nf_window_armed=false,_nf_lazy_refresh=false,_nf_refresh_attempted=false;

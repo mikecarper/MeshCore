@@ -40,7 +40,7 @@ def harness(uncached=False):
     # Compile the actual scanner entry through its ownership guard. The spy
     # stands in for later timestamp/retune work, not for the guard itself.
     scan_prefix = body(base, "void RadioLibWrapper::serviceProfileScan(")
-    scan_prefix = scan_prefix.split("  (void)profileTimestamp(_profiles.enabled());", 1)[0]
+    scan_prefix, _ = scan_prefix.split("  const uint32_t scan_stamp = profileTimestamp(_profiles.enabled());", 1)
     scan_prefix = scan_prefix.replace("RadioLibWrapper::", "") + "  ++scan_spy;\n}"
     admission = body(base, "mesh::AGCMaintenanceResult RadioLibWrapper::periodicAGCMaintenance(")
     admission = admission.replace("RadioLibWrapper::", "")

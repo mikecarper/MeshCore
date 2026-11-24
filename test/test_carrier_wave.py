@@ -311,12 +311,16 @@ int main() {
   {
     RadioLibWrapper w;
     g_mock_millis=0xfffffff0;
+    auto& health=w._profiles.scan_health;
+    health.service(100,0); health.service(150,0);
     assert(w.setCarrierWave(0,25)==Result::APPLIED);
     advance(20); assert(w.carrierWaveRemainingMillis()==5);
     assert(w.setCarrierWave(1,50)==Result::BUSY); // never switch an active carrier
     assert(w.setCarrierWave(0,50)==Result::APPLIED && w.chip.starts==1);
     advance(49); w.serviceCarrierWave(); assert(w.chip.carrier);
     advance(1); w.serviceCarrierWave(); assert(!w.chip.carrier);
+    health.service(1000000,0);
+    assert(health.service_gap_us==50); // intentional carrier ownership is not idle scan delay
   }
   {
     RadioLibWrapper w; w.chip.start_result=-705;

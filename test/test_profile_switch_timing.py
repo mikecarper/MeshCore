@@ -130,6 +130,7 @@ int main() {
         fixture = r'''
 #include <cassert>
 #include <cstdint>
+#include <helpers/RadioProfileScanHealth.h>
 #define MESH_HIL_PROFILE_TIMING 1
 #define MESH_ENABLE_TX_BEACONS 1
 #define RADIOLIB_ERR_NONE 0
@@ -141,6 +142,7 @@ uint32_t micros() { return now_us; }
 #include <helpers/radiolib/ProfileSwitchTiming.h>
 @GLOBALS@
 struct RadioLibWrapper {
+  struct { mesh::RadioProfileScanHealth scan_health; } _profiles;
   bool _beacon_owned=false,_beacon_restoring=false,_cw_active=false;
   bool _profile_repair_required=false,_rx_hold_continuous=true;
   bool _rx_ps_armed=false,_profile_refresh_required=false;

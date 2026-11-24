@@ -19,6 +19,7 @@ HARNESS = r'''
 #define MESH_ENABLE_TX_BEACONS 1
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
 #include <helpers/RadioDirectionPolicy.h>
+#include <helpers/RadioProfileScanHealth.h>
 #include <helpers/radiolib/NoiseFloorEstimator.h>
 #include <helpers/radiolib/RXPowerSaving.h>
 namespace mesh {
@@ -62,6 +63,7 @@ struct RadioLibWrapper {
   RxPowerSavingArmRetryState _rx_ps_arm_retry;
   NoiseFloorEstimator _floor_estimator, _secondary_floor_estimator;
   struct Profiles {
+    mesh::RadioProfileScanHealth scan_health;
     bool scanning = false;
     uint32_t generation[2] = {0, 0};
     bool enabled() const { return scanning; }
@@ -498,8 +500,19 @@ class RxPowerSavingRuntimeTests(unittest.TestCase):
             ("!_rx_ps_arm_retry.canAttempt(static_cast<uint32_t>(millis()))", "false"),
             ("_rx_ps_arm_retry.recordSuccess();", "/* omit successful-arm reset */"),
             ("serviceRxPowerSavingRetry(static_cast<uint32_t>(millis()));", "/* omit idle recovery */"),
-            ("|| isChipBusy() || isReceivingPacket()", "|| false"),
-            ("if (hasPendingRadioInterrupt()) return 2;", "/* lose IRQ arriving during activity probe */"),
+            ("""  if (isChipBusy()) {
+    _profiles.scan_health.hold(mesh::RadioProfileScanHealth::Other);
+    return 2;
+  }
+  if (isReceivingPacket()) {
+    _profiles.scan_health.hold(mesh::RadioProfileScanHealth::Receive);
+    return 2;
+  }""", "/* omit chip-busy and receiving admission guards */"),
+            ("""  if (hasPendingRadioInterrupt()) {
+    _profiles.scan_health.hold(mesh::RadioProfileScanHealth::Receive);
+    return 2;
+  }
+#endif""", "/* lose IRQ arriving during activity probe */\n#endif"),
             ("!_profile_repair_required && !retry_requested &&", "!_profile_repair_required && (retry_requested || true) &&"),
             ("if (resume_rx != 1) {", "if (resume_rx == 255) {"),
             ("if (err != RADIOLIB_ERR_NONE || !_rx_ps_enabled) _rx_ps_last_error = err;",

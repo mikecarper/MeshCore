@@ -1365,9 +1365,9 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
 #endif
 #endif
   enum { Base, Temporary, Scheduled, ScheduledTemporary, Crossing, Replies,
-         Status, Scan, Timing, TimingAlias, KeyCount };
+         Status, Scan, Timing, TimingAlias, Health, KeyCount };
   static const char keys[] = "radio2\0tempradio2\0radioat2\0tempradioat2\0radio2.cross\0"
-      "tx.reply\0radio2.status\0radio2.scan\0radio2.timing\0radio.timing";
+      "tx.reply\0radio2.status\0radio2.scan\0radio2.timing\0radio.timing\0radio2.health";
   const char* candidate = keys;
   unsigned kind = 0;
   while (kind < KeyCount && strcmp(key, candidate)) {
@@ -1384,6 +1384,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
   const bool status = kind == Status;
   const bool scan = kind == Scan;
   const bool timing = kind == Timing || kind == TimingAlias;
+  const bool health = kind == Health;
   if (!radio_ || !radio_->profiles()) { cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio profiles unsupported", "unsupported")); return true; }
   if (command == text && *args && verb == Get && (temporary || base)) verb = Set;
 #if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
@@ -1399,7 +1400,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
   if (hasReplyMutation() && verb != Get) {
     cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("radio acknowledgement pending", "ack pending")); return true;
   }
-  if ((timing || scan || status) && (verb != Get || *args)) {
+  if ((timing || scan || status || health) && (verb != Get || (!health && *args))) {
     snprintf(reply, capacity, "Error: %s is read-only", timing ? "radio timing" : key);
     return true;
   }
@@ -1465,6 +1466,24 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     }
     return true;
   }
+  if (health) {
+    const auto& h = radio_->profiles()->scan_health;
+    if (!*args) {
+      snprintf(reply, capacity, "> host late=%lu,%lu idle=%lu,%lu busy=%lu,%lu over=%lu,%lu svc=%luus",
+          (unsigned long)h.profile[0].late_visits, (unsigned long)h.profile[1].late_visits,
+          (unsigned long)h.profile[0].idle_gap_us, (unsigned long)h.profile[1].idle_gap_us,
+          (unsigned long)h.profile[0].busy_gap_us, (unsigned long)h.profile[1].busy_gap_us,
+          (unsigned long)h.profile[0].overdue_us, (unsigned long)h.profile[1].overdue_us,
+          (unsigned long)h.service_gap_us);
+    } else if (!strcmp(args, "radio") || !strcmp(args, "radio2")) {
+      const auto& p = h.profile[!strcmp(args, "radio2") ? 1 : 0];
+      snprintf(reply, capacity, "> %s late=%lu idle=%luus busy=%luus over=%luus rx_hold=%lu tx_hold=%lu",
+          args, (unsigned long)p.late_visits, (unsigned long)p.idle_gap_us,
+          (unsigned long)p.busy_gap_us, (unsigned long)p.overdue_us,
+          (unsigned long)p.rx_holds, (unsigned long)p.tx_holds);
+    } else cli::formatError(reply, capacity, "use get radio2.health [radio|radio2]");
+    return true;
+  }
   if (crossing) {
     if (verb == Get && !*args) {
       snprintf(reply, capacity, "> %s", cross_ == RadioCrossMode::Auto ? "auto" : cross_ == RadioCrossMode::On ? "on" : "off");
@@ -1507,9 +1526,10 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
       return true;
     }
     const auto& p = *radio_->profiles();
-    snprintf(reply, capacity, "> %s; RX=%lu,%lu TX=%lu,%lu switches=%lu errors=%lu max=%luus preamble=%u,%u",
+    snprintf(reply, capacity, "> %s; RX=%lu,%lu TX=%lu,%lu late=%lu,%lu switches=%lu errors=%lu max=%luus preamble=%u,%u",
         modeName(p.secondary.mode), (unsigned long)p.rx_packets[0], (unsigned long)p.rx_packets[1],
         (unsigned long)p.tx_packets[0], (unsigned long)p.tx_packets[1],
+        (unsigned long)p.scan_health.profile[0].late_visits, (unsigned long)p.scan_health.profile[1].late_visits,
         (unsigned long)p.switches, (unsigned long)p.switch_failures,
         (unsigned long)p.longest_switch_us, radio_->profilePreamble(0), radio_->profilePreamble(1));
     if (p.enabled()) {

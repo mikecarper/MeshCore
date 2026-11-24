@@ -30,6 +30,7 @@ PRELUDE = r'''
 #include <cstring>
 #include <cstdint>
 #include <initializer_list>
+#include <RadioProfiles.h>
 #include <helpers/radiolib/RadioInterruptEvents.h>
 #include <helpers/radiolib/RadioProfileChip.h>
 #define STATE_IDLE 0
@@ -169,6 +170,7 @@ struct Board {
  void onAfterTransmit(){++after;}
 };
 struct RadioLibWrapper {
+ mesh::RadioProfiles _profiles;
  uint8_t state=STATE_RX, _interrupt_slot=0xff, _irq_probe_failures=0;
  bool rx_had_crc=true;
  bool _loop_event_pending=false, _cw_active=false, _profile_repair_required=false, _profile_refresh_required=false;

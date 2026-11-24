@@ -5,6 +5,7 @@
 #include <math.h>
 #include <string.h>
 #include "RadioTxPolicy.h"
+#include "helpers/RadioProfileScanHealth.h"
 
 namespace mesh {
 
@@ -96,6 +97,7 @@ class RadioProfiles {
   uint32_t tx_packets[2] = {};
   uint32_t switch_failures = 0;
   uint32_t longest_switch_us = 0;
+  RadioProfileScanHealth scan_health;
   uint32_t switch_test_max_us[2] = {};
   uint8_t switch_test_samples[2] = {};
   uint32_t switch_runtime_started_ms = 0;
@@ -103,6 +105,7 @@ class RadioProfiles {
   bool switch_runtime_ready = false;
 
   void resetSwitchTest() {
+    scan_health = {};
     switch_test_max_us[0] = switch_test_max_us[1] = 0;
     switch_test_samples[0] = switch_test_samples[1] = 0;
     switch_runtime_started_ms = 0;

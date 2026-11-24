@@ -11,6 +11,14 @@
 #include "TDeckRadioHal.h"
 #include <helpers/radiolib/ESP32RetunePriority.h>
 #include <helpers/ui/ST7789LCDDisplay.h>
+#include <helpers/RadioDirectionPolicy.h>
+
+#if MESH_ENABLE_RADIO_DIRECTION
+// The bench has no settings CLI and must never permit packet transmission.
+namespace mesh { namespace radioDirection {
+Mode mode() { return Mode::Rx; }
+}}
+#endif
 
 namespace {
 // Exact min/mean/max plus bounded histogram percentiles. The percentile field
@@ -134,6 +142,55 @@ unsigned setupStage = 0;
 int setupApplyResult = -1;
 bool exactSpiClock = false;
 uint32_t clockSettingHz = 8000000;
+// Capture in RAM, never stream packet hex from a display/radio callback.
+// Retrieval is read-only and replayable after the bounded measurement window.
+struct DeliveryRecord {
+  uint32_t atUs, frame;
+  uint16_t length;
+  uint8_t profile;
+  bool duringRedraw;
+  uint8_t bytes[255];
+};
+constexpr unsigned DeliverySlots = 32;
+DeliveryRecord deliveryRecords[DeliverySlots];
+bool deliveryCapturing = false, duringRedraw = false;
+uint32_t deliveryStarted = 0, deliveryFrame = 0, deliveryDropped = 0;
+unsigned deliverySequence = 0, deliveryCount = 0;
+
+void captureDelivery(const uint8_t* packet, unsigned length) {
+  if (!deliveryCapturing) return;
+  if (deliveryCount == DeliverySlots || length > sizeof(deliveryRecords[0].bytes)) {
+    ++deliveryDropped;
+    return;
+  }
+  auto& record = deliveryRecords[deliveryCount++];
+  record.atUs = micros() - deliveryStarted;
+  record.frame = deliveryFrame;
+  record.length = length;
+  record.profile = driver.receiveProfile();
+  record.duringRedraw = duringRedraw;
+  memcpy(record.bytes, packet, length);
+}
+
+void printDeliveryRecord(unsigned sequence, unsigned index) {
+  if (!deliverySequence || sequence != deliverySequence || index >= deliveryCount) {
+    Serial.println("{\"error\":\"delivery record not retained\"}");
+    return;
+  }
+  const auto& record = deliveryRecords[index];
+  char hex[511];
+  const char digits[] = "0123456789abcdef";
+  for (unsigned i = 0; i < record.length; ++i) {
+    hex[2 * i] = digits[record.bytes[i] >> 4];
+    hex[2 * i + 1] = digits[record.bytes[i] & 15];
+  }
+  hex[2 * record.length] = 0;
+  Serial.printf("{\"delivery_record\":%u,\"index\":%u,\"profile\":%u,\"len\":%u,"
+                "\"at_us\":%u,\"frame\":%u,\"during_redraw\":%s,\"wire_hex\":\"%s\"}\n",
+                sequence, index, record.profile, unsigned(record.length), record.atUs,
+                record.frame, record.duringRedraw ? "true" : "false", hex);
+}
+
 void configureRadioClock(unsigned spiMHz) {
   clockSettingHz = spiMHz * 1000000UL;
   if (exactSpiClock)
@@ -197,6 +254,7 @@ void serviceRadio() {
   const int received = driver.recvRaw(packet, sizeof(packet));
   if (received > 0) {
     ++receivePackets;
+    captureDelivery(packet, unsigned(received));
     driver.onReceiveProcessed();
   }
   if (measuringService) serviceDuration.add(micros() - started);
@@ -208,6 +266,8 @@ void serviceRadio() {
 // permits radio service between short, completed display transactions.
 void drawFrame(unsigned mode, uint32_t frame) {
   const uint32_t started = micros();
+  duringRedraw = true;
+  deliveryFrame = frame;
   display.startFrame(UIColor::window_bkg);
   display.setColor(UIColor::title_bkg);
   display.fillRect(0, 0, display.width(), 28);
@@ -235,6 +295,7 @@ void drawFrame(unsigned mode, uint32_t frame) {
   display.setCursor(12, 200);
   display.print("Native USB commands; no autonomous TX");
   display.endFrame();
+  duringRedraw = false;
   if (measuringService) frameDuration.add(micros() - started);
 }
 
@@ -272,6 +333,9 @@ void printInfo() {
                 "\"free_heap_bytes\":%u,\"buffered\":%s,\"width\":%d,\"height\":%d,"
                 "\"stress_task_ready\":%s,\"loop_priority\":%u,\"core\":%u,"
                 "\"clock_fix_supported\":%s,"
+                "\"delivery_version\":1,\"delivery_slots\":%u,"
+                "\"delivery_command\":\"delivery <mode:0..2> <MHz:2,8> <bulk:0,1> "
+                "<seconds:3..10> <fps:1..30> <seq>; delivery-record <seq> <index>\","
                 "\"command\":\"trial <display:0,1,2> <MHz:8..16> <modemcache:0,1> "
                 "<iqcache:0,1> <priority:0,3> <load:0,1> <preamble:32,40> "
                 "<seconds:1..10> <fps:1..30> <seq>\"}\n",
@@ -279,7 +343,7 @@ void printInfo() {
                 ESP.getFreeHeap(), display.isBufferedRendering() ? "true" : "false",
                 display.width(), display.height(), stressTaskReady ? "true" : "false",
                 unsigned(uxTaskPriorityGet(nullptr)), unsigned(xPortGetCoreID()),
-                TDeckRadioHal::supportsClockTimingCorrection() ? "true" : "false");
+                TDeckRadioHal::supportsClockTimingCorrection() ? "true" : "false", DeliverySlots);
 }
 
 // Read-only link diagnostic, outside timed trials. Put the chip in standby
@@ -336,7 +400,9 @@ void inspectSpi(unsigned spiMHz, unsigned bulk, unsigned count = 100) {
 void run(unsigned mode, unsigned spiMHz, unsigned bulk, unsigned seconds,
          unsigned fps, unsigned sequence, unsigned modemCache = 0,
          unsigned iqCache = 0, unsigned priority = 0, unsigned load = 0,
-         unsigned secondaryPreamble = 32) {
+         unsigned secondaryPreamble = 32, bool delivery = false) {
+  deliveryCapturing = false;
+  deliverySequence = 0;
   if (!ready || !waitBusy()) { Serial.println("{\"error\":\"radio not ready\"}"); return; }
   measuringService = driver.measuring = false;
   radioHal.bulkTransfer = bulk;
@@ -373,6 +439,7 @@ void run(unsigned mode, unsigned spiMHz, unsigned bulk, unsigned seconds,
   const uint32_t transfersBefore = radioHal.transfers, bytesBefore = radioHal.bytes;
   const uint32_t modemQueriesBefore = radioHal.modemQueries;
   const uint32_t stressBefore = stressRounds.load(std::memory_order_relaxed);
+  const uint32_t rxErrorsBefore = driver.getPacketsRecvErrors();
   const unsigned originalPriority = uxTaskPriorityGet(nullptr);
   stressEnabled.store(load != 0, std::memory_order_relaxed);
   driver.resetMeasurements();
@@ -382,6 +449,23 @@ void run(unsigned mode, unsigned spiMHz, unsigned bulk, unsigned seconds,
   const uint32_t started = micros();
   uint32_t nextFrame = started, frames = 0;
   const uint32_t intervalUs = 1000000UL / fps;
+  if (delivery) {
+    deliverySequence = sequence;
+    deliveryCount = deliveryDropped = deliveryFrame = 0;
+    deliveryStarted = started;
+    deliveryCapturing = true;
+    // Establish the measured redraw workload before granting host TX readiness.
+    if (mode) {
+      drawFrame(mode, ++frames);
+      nextFrame = micros() + intervalUs;
+    }
+    Serial.printf("{\"delivery_ready\":%u,\"display_mode\":%u,\"spi_mhz\":%u,"
+                  "\"bulk\":%s,\"seconds\":%u,\"fps\":%u,\"capture_slots\":%u,"
+                  "\"profiles\":[{\"freq_mhz\":909.5,\"bw_khz\":62.5,\"sf\":7,\"cr\":5,\"preamble\":%u},"
+                  "{\"freq_mhz\":910.5,\"bw_khz\":500,\"sf\":8,\"cr\":5,\"preamble\":%u}]}\n",
+                  sequence, mode, spiMHz, bulk ? "true" : "false", seconds, fps,
+                  DeliverySlots, driver.profilePreamble(0), driver.profilePreamble(1));
+  }
   while (uint32_t(micros() - started) < seconds * 1000000UL) {
     serviceRadio();
     const uint32_t now = micros();
@@ -393,6 +477,7 @@ void run(unsigned mode, unsigned spiMHz, unsigned bulk, unsigned seconds,
     delay(0);
   }
   const uint32_t elapsedUs = micros() - started;
+  deliveryCapturing = false;
   stressEnabled.store(false, std::memory_order_relaxed);
   measuringService = driver.measuring = false;
   display.setRenderYieldCallback(nullptr);
@@ -442,6 +527,10 @@ void run(unsigned mode, unsigned spiMHz, unsigned bulk, unsigned seconds,
                exactSpiClock ? "true" : "false", clockSettingHz,
                radioHal.isClockTimingCorrectionActive() ? "true" : "false",
                radioHal.getOriginalClockTiming(), radioHal.getCorrectedClockTiming());
+  appendResult("\"delivery\":{\"enabled\":%s,\"sequence\":%u,\"records\":%u,"
+               "\"dropped\":%u,\"rx_errors\":%u},", delivery ? "true" : "false",
+               delivery ? sequence : 0, delivery ? deliveryCount : 0,
+               delivery ? deliveryDropped : 0, driver.getPacketsRecvErrors() - rxErrorsBefore);
   appendTiming("service_gap", serviceGap); appendResult(",");
   appendTiming("service_duration", serviceDuration); appendResult(",");
   appendTiming("frame", frameDuration); appendResult(",\"directions\":[");
@@ -501,6 +590,14 @@ void loop() {
       char trailing;
       if (!strcmp(line, "info")) printInfo();
       else if (!strcmp(line, "reboot")) ESP.restart();
+      else if (sscanf(line, "delivery-record %u %u %c", &sequence, &count, &trailing) == 2) {
+        printDeliveryRecord(sequence, count);
+      } else if (sscanf(line, "delivery %u %u %u %u %u %u %c", &mode, &spiMHz, &bulk,
+                        &seconds, &fps, &sequence, &trailing) == 6
+                 && mode <= 2 && (spiMHz == 2 || spiMHz == 8) && bulk <= 1
+                 && seconds >= 3 && seconds <= 10 && fps >= 1 && fps <= 30 && sequence) {
+        run(mode, spiMHz, bulk, seconds, fps, sequence, 0, 0, 0, 0, 32, true);
+      }
       else if (sscanf(line, "clockfix %u %c", &bulk, &trailing) == 1 && bulk <= 1) {
         const bool supported = radioHal.setClockTimingCorrection(bulk);
         Serial.printf("{\"clock_fix\":%s,\"supported\":%s}\n",

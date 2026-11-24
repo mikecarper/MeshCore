@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <helpers/CompanionRadioDiagnostics.h>
+#include <helpers/RadioProfileScanHealth.h>
 #include <helpers/radiolib/RXPowerSaving.h>
 namespace mesh { enum class RadioParamApplyResult : uint8_t { APPLIED, BUSY, FAILED }; }
 
@@ -24,6 +25,7 @@ struct CustomSX1262 {
 };
 class RadioLibWrapper {
 public:
+  struct { mesh::RadioProfileScanHealth scan_health; } _profiles;
   CustomSX1262 physical;
   CustomSX1262* _radio=&physical;
   uint8_t state=STATE_RX;

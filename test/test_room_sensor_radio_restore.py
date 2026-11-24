@@ -25,6 +25,7 @@ HARNESS = r'''
 #include <cstring>
 #include <helpers/radiolib/LR2021SideDetectorConfig.h>
 #include <helpers/RepeaterRadioTiming.h>
+#include <helpers/RadioProfileScanHealth.h>
 // Negative controls must fail without opening a Windows CRT abort dialog.
 #undef assert
 #define assert(condition) do { if (!(condition)) { \
@@ -54,6 +55,7 @@ template<typename T> T next(std::deque<T>& values, T fallback) {
 }
 struct Chip { int standby() { return 0; } } chip;
 struct Driver {
+  struct { mesh::RadioProfileScanHealth scan_health; } _profiles;
   enum { STATE_IDLE, STATE_RX, STATE_TX_WAIT };
   uint8_t state = STATE_IDLE;
   bool receiving = false, pending_irq = false, busy = false, supported = true;

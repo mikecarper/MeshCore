@@ -7,6 +7,7 @@
 #include <helpers/radiolib/LR2021ApplyStatus.h>
 #include <helpers/radiolib/AGCTimingDiagnostics.h>
 #include <helpers/OldAGCPolicy.h>
+#include <helpers/RadioProfileScanHealth.h>
 #include <helpers/radiolib/RxpsPulse.h>
 #include <helpers/radiolib/RxpsPulseScanLease.h>
 #include <helpers/radiolib/W12PramAutoPolicy.h>
@@ -54,6 +55,7 @@ struct Wrapper:Base {
  bool _params_valid=true,_profile_refresh_required=false,_profile_repair_required=false;
  uint8_t state=STATE_RX,_active_profile=0;
  struct Profiles {
+  mesh::RadioProfileScanHealth scan_health;
   struct Params{float freq;};Params configured[2]={{910.525f},{911.15f}};
   uint32_t generation[2]={11,22};bool active=false;
   bool enabled()const{return active;}const Params& params(uint8_t p)const{assert(p<2);return configured[p];}

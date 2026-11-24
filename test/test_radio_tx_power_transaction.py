@@ -17,6 +17,7 @@ HARNESS = r'''
 #include <cassert>
 #include <cstdint>
 #include <helpers/RadioDirectionPolicy.h>
+#include <helpers/RadioProfileScanHealth.h>
 #include <initializer_list>
 #define MESH_DEBUG_PRINTLN(...) ((void)0)
 #define RADIOLIB_ERR_NONE 0
@@ -42,6 +43,7 @@ struct Chip {
   }
 };
 struct RadioLibWrapper {
+  struct { mesh::RadioProfileScanHealth scan_health; } _profiles;
   Chip chip;
   Chip* _radio = &chip;
   uint8_t state = STATE_RX;

@@ -18,6 +18,9 @@ python3 -B test/test_esp32_network_backports.py -v # lwIP DNS dispatch and HTTP 
 python3 -B test/test_i2c_power_monitor_backports.py -v # INA219 alternate address and INA228 units
 pio test -e native -f test_webconfig_keys   # a single suite
 python3 test/test_radio_receive_contract.py # real CAD/re-arm/calibration/mode-watchdog methods
+python3 -B test/test_radio_profile_health.py -v # host scan timing, RF holds, rollover and read-only CLI
+RADIO2_LOAD_SANITIZE=1 python3 -B test/test_radio_profile_load.py -v # Linux seeded production-scanner traffic model
+python3 -B -m unittest discover -s tools/hil -p test_tdeck_radio2_delivery.py -v # strict redraw-delivery evidence and bounded capture
 python3 test/test_sx126x_agc_retention.py # AGC protection/gain sleep retention and SPI failure checks
 python3 test/test_agessaman_noise_floor.py # pinned sampler parity, V4 opt-in and fresh publication
 python3 -B test/test_browser_radio_defaults.py -v # patch ABI, CRC, fresh-only startup and checked seed/rollback

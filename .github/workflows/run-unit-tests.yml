@@ -1182,6 +1182,8 @@ jobs:
           python3 -B test/test_radio_profile_spiffs_missing.py -v
           python3 -B test/test_radio_reply_mutation.py
           python3 -B test/test_radio_profile_scan.py
+          python3 -B test/test_radio_profile_health.py -v
+          RADIO2_LOAD_SANITIZE=1 python3 -B test/test_radio_profile_load.py -v
           python3 -B test/test_radio_profile_clock.py -v
           python3 -B test/test_radio_profile_repair.py -v
           python3 -B test/test_radio_tx_power_transaction.py -v
@@ -1717,6 +1719,7 @@ jobs:
           python3 -B test/test_heltec_v4_oled_gpio.py -v
           python3 -B test/test_heltec_v4_unified_catalog.py -v
           python3 -B test/test_tdeck_display_cooperation.py -v
+          python3 -B -m unittest discover -s tools/hil -p test_tdeck_radio2_delivery.py -v
           python3 -B test/test_st7789_native_transfer.py -v
           python3 -B test/test_muzi_accessory_detection.py -v
           python3 -B test/test_techo_lite_display_detection.py -v

@@ -225,6 +225,8 @@ int main() {
   current = Mode::Tx;
   {
     RadioLibWrapper w;
+    auto& health = w._profiles.scan_health;
+    health.service(100, 0); health.service(150, 0);
     w._rx_ps_enabled = w._rx_ps_armed = true;
     w._rx_retry_pending = w._rx_hold_continuous = true;
     w._nf_calib_active = w._nf_refresh_requested = w._nf_window_armed = true;
@@ -267,6 +269,8 @@ int main() {
     w.state = STATE_IDLE; // Existing TxDone owner retires the on-air frame.
     w.startRecv();
     assert(w.state == STATE_RX && w.arms == 1);
+    health.service(1000000, 0);
+    assert(health.service_gap_us == 50); // deliberate RX-off time is not a scanner stall
   }
   current = Mode::Tx;
   {

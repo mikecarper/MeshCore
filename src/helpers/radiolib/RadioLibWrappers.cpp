@@ -539,24 +539,52 @@ MC_RADIO_SWITCH_CONTROL(begin_reconfigure) uint8_t RadioLibWrapper::beginReconfi
   // side of the cycle. Do not issue an IRQ/preamble query over SPI then; due
   // scheduled work will retry as soon as the next safe listen window opens.
 #if defined(USE_LR2021)
-  if (hasPendingRadioInterrupt()) { noteReconfigureAdmission("pending-irq", 0); return 2; }
-  if (base_state == STATE_TX_WAIT) { noteReconfigureAdmission("transmitting", 0); return 2; }
-  if (isChipBusy()) { noteReconfigureAdmission("chip-busy", 0); return 2; }
+  if (hasPendingRadioInterrupt()) {
+    _profiles.scan_health.hold(base_state == STATE_TX_WAIT ? mesh::RadioProfileScanHealth::Transmit : mesh::RadioProfileScanHealth::Receive);
+    noteReconfigureAdmission("pending-irq", 0); return 2;
+  }
+  if (base_state == STATE_TX_WAIT) {
+    _profiles.scan_health.hold(mesh::RadioProfileScanHealth::Transmit);
+    noteReconfigureAdmission("transmitting", 0); return 2;
+  }
+  if (isChipBusy()) {
+    _profiles.scan_health.hold(mesh::RadioProfileScanHealth::Other);
+    noteReconfigureAdmission("chip-busy", 0); return 2;
+  }
   if (isReceivingPacket() && !_primary_receive_preempt) {
+    _profiles.scan_health.hold(mesh::RadioProfileScanHealth::Receive);
     noteReconfigureAdmission("receiving", 0);
     return 2;
   }
   // A completion can race the activity probe. Stop only unfinished RX; never
   // claim/clear an old-profile FIFO in order to apply a command faster.
-  if (hasPendingRadioInterrupt()) { noteReconfigureAdmission("pending-irq", 0); return 2; }
+  if (hasPendingRadioInterrupt()) {
+    _profiles.scan_health.hold(mesh::RadioProfileScanHealth::Receive);
+    noteReconfigureAdmission("pending-irq", 0); return 2;
+  }
 #else
-  if (hasPendingRadioInterrupt() || base_state == STATE_TX_WAIT
-      || isChipBusy() || isReceivingPacket()) {
+  if (hasPendingRadioInterrupt()) {
+    _profiles.scan_health.hold(base_state == STATE_TX_WAIT ? mesh::RadioProfileScanHealth::Transmit : mesh::RadioProfileScanHealth::Receive);
+    return 2;
+  }
+  if (base_state == STATE_TX_WAIT) {
+    _profiles.scan_health.hold(mesh::RadioProfileScanHealth::Transmit);
+    return 2;
+  }
+  if (isChipBusy()) {
+    _profiles.scan_health.hold(mesh::RadioProfileScanHealth::Other);
+    return 2;
+  }
+  if (isReceivingPacket()) {
+    _profiles.scan_health.hold(mesh::RadioProfileScanHealth::Receive);
     return 2;
   }
   // A short frame can complete during the activity query itself. Retain its
   // FIFO before even entering standby, just as the post-standby check does.
-  if (hasPendingRadioInterrupt()) return 2;
+  if (hasPendingRadioInterrupt()) {
+    _profiles.scan_health.hold(mesh::RadioProfileScanHealth::Receive);
+    return 2;
+  }
 #endif
 
 #if MESH_HIL_PROFILE_TIMING
@@ -594,6 +622,7 @@ MC_RADIO_SWITCH_CONTROL(begin_reconfigure) uint8_t RadioLibWrapper::beginReconfi
   // Defer reconfiguration until recvRaw consumes it, rather than rearming and
   // clearing that completion as part of endReconfigure().
   if (hasPendingRadioInterrupt()) {
+    _profiles.scan_health.hold(mesh::RadioProfileScanHealth::Receive);
 #if defined(USE_LR2021)
     noteReconfigureAdmission("pending-irq", 0);
 #endif
@@ -1036,8 +1065,16 @@ MC_RADIO_SWITCH_CONTROL(tune_profile) mesh::RadioParamApplyResult RadioLibWrappe
   // Require four good RX-to-RX hops in each direction before using the budget,
   // then continue raising the observed maximum as later good hops run.
   // Deferred and rolled-back operations are not samples.
-  if (applied && resume && old_profile != profile) {
-    _profiles.sampleSwitch(old_profile, profile, elapsed, millis());
+  if (applied && old_profile != profile) {
+    if (resume) _profiles.sampleSwitch(old_profile, profile, elapsed, millis());
+    // Post-TX hops also enter a new profile, with RX rearmed by loop().
+    auto& health = _profiles.scan_health;
+#if defined(NRF52_PLATFORM)
+    const uint32_t health_now = health.timestamp(_profile_visit_stamp, dual_profile ? 15625 : 1, dual_profile ? 512 : 1);
+#else
+    const uint32_t health_now = health.timestamp(_profile_visit_stamp);
+#endif
+    health.visit(profile, health_now);
   }
 #if MESH_HIL_PROFILE_TIMING
   mesh::profiletiming::mark(mesh::profiletiming::Tail, mesh::profiletiming::readClock());
@@ -1157,6 +1194,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::prepareBeaconTransmit(
   // an exclusive lease until the ordinary receiver has been restored.
   _beacon_restore_profile = _active_profile;
   _beacon_owned = true;
+  _profiles.scan_health.pause();
   _dbm_applied = false;
   _beacon_restore_at = 0;
   _beacon_cad_timeout = cadScanTimeoutMillis(p.sf, p.bw);
@@ -1307,7 +1345,17 @@ void RadioLibWrapper::serviceProfileScan() {
   // reset scan generations, or publish an idle deadline before it is consumed.
   if(_rxps_pulse.pending) return;
 #endif
-  (void)profileTimestamp(_profiles.enabled());
+  const uint32_t scan_stamp = profileTimestamp(_profiles.enabled());
+  auto& health = _profiles.scan_health;
+  if (!_cw_active && _profiles.enabled() && !_profiles.secondaryOnly() && _profiles.switchTestReady()) {
+#if defined(NRF52_PLATFORM)
+    const uint32_t health_now = health.timestamp(scan_stamp, 15625, 512);
+#else
+    const uint32_t health_now = health.timestamp(scan_stamp);
+#endif
+    health.service(health_now, _active_profile);
+    if (state == STATE_TX_WAIT) health.hold(mesh::RadioProfileScanHealth::Transmit);
+  } else health.pause();
   if (_cw_active) return;
   if (!_params_valid || (_profile_retry_at && (int32_t)(millis() - _profile_retry_at) < 0)) return;
   _profile_retry_at = 0;
@@ -1362,6 +1410,8 @@ void RadioLibWrapper::serviceProfileScan() {
   const uint8_t visited_profile = _active_profile;
 #endif
   uint32_t visit_us = 0;
+  const uint8_t health_profile = _active_profile;
+  uint32_t health_visit_us = 0;
   const bool restart_scan = _profiles.enabled()
       && (_profile_scan_generation[0] != _profiles.generation[0]
           || _profile_scan_generation[1] != _profiles.generation[1]);
@@ -1398,6 +1448,7 @@ void RadioLibWrapper::serviceProfileScan() {
 #if defined(ESP32_PLATFORM)
     // Keep long visits and light-sleep elapsed time in the same 64-bit domain.
     const uint64_t now_us = static_cast<uint64_t>(esp_timer_get_time());
+    health_visit_us = uint32_t(now_us - _esp32_profile_visit_started_us);
 #if MESH_RADIO_TRACE_ENABLED
     if (mesh::radiotrace::trace().pending())
       mesh::radiotrace::trace().scan(_radio, now_us, _esp32_profile_visit_started_us, visit_us, false);
@@ -1405,10 +1456,13 @@ void RadioLibWrapper::serviceProfileScan() {
     if (now_us < _esp32_profile_visit_started_us
         || now_us - _esp32_profile_visit_started_us >= visit_us) target ^= 1;
 #else
-    if (profileElapsedUs(_profile_visit_stamp, profileTimestamp(true), true) >= visit_us) target ^= 1;
+    health_visit_us = profileElapsedUs(_profile_visit_stamp, profileTimestamp(true), true);
+    if (health_visit_us >= visit_us) target ^= 1;
 #endif
   }
   const auto result = tuneProfile(target);
+  if (result == mesh::RadioParamApplyResult::APPLIED && _active_profile != health_profile)
+    health.finishVisit(health_profile, health_visit_us, visit_us);
   if (restart_scan && result == mesh::RadioParamApplyResult::APPLIED) {
     _profile_scan_generation[0] = _profiles.generation[0];
     _profile_scan_generation[1] = _profiles.generation[1];
@@ -2332,6 +2386,7 @@ mesh::RadioParamApplyResult RadioLibWrapper::setCarrierWave(uint8_t profile, uin
   _cw_generation = _profiles.generation[profile];
   _morse_owned = false;
   _cw_active = true;
+  _profiles.scan_health.pause();
   _cw_stopping = false;
   _board->setRadioTestActive(true);  // service the deadline even without USB
   _board->onBeforeTransmit();
@@ -2391,6 +2446,7 @@ mesh::MorseTxResult RadioLibWrapper::startMorseTx(float frequency_mhz,
   // command can have reached the chip, requiring a confirmed stop/restore.
   _radio->clearPacketReceivedAction();
   _cw_active = _morse_owned = true;
+  _profiles.scan_health.pause();
   _cw_stopping = false;
   _cw_profile = _active_profile;
   _morse_generation[0] = _profiles.generation[0];
@@ -2560,6 +2616,7 @@ mesh::MorseRxResult RadioLibWrapper::startMorseRx(float frequency_mhz,
   }
   _radio->clearPacketReceivedAction();
   _cw_active = _morse_rx_owned = true;
+  _profiles.scan_health.pause();
 #if MESH_ENABLE_CARRIER_TOOLS
   _morse_owned = false;
 #endif
@@ -2781,6 +2838,7 @@ void RadioLibWrapper::serviceDirectionPolicy() {
     _direction_receive_disabled = false;
     return;
   }
+  _profiles.scan_health.pause();
   if (state == STATE_TX_WAIT) return;
 #if MESH_ENABLE_TX_BEACONS
   if (_beacon_owned) return;  // Its owner restores the saved tuple first.
@@ -3378,6 +3436,7 @@ int RadioLibWrapper::recvRaw(uint8_t* bytes, int sz) {
     last_radio_interrupt_millis = millis();   // ISR fired -> radio hardware is alive
     const bool packet_ready = isPacketReady();
     if (packet_ready) {
+      _profiles.scan_health.hold(mesh::RadioProfileScanHealth::Receive);
 #if MESH_RADIO_TRACE_ENABLED
       if (radio_trace.pending()) trace_rx = radio_trace.receiveRead(_radio, mesh::radiotrace::nowUs());
 #endif
@@ -3605,6 +3664,7 @@ bool RadioLibWrapper::startSendRaw(const uint8_t* bytes, int len) {
   int err = _radio->startTransmit((uint8_t *) bytes, len);
   if (err == RADIOLIB_ERR_NONE) {
     state = STATE_TX_WAIT;
+    _profiles.scan_health.hold(mesh::RadioProfileScanHealth::Transmit);
     return true;
   }
   MESH_DEBUG_PRINTLN("RadioLibWrapper: error: startTransmit(%d)", err);

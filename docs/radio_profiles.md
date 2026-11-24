@@ -1608,10 +1608,50 @@ suspended while scanning. Retries use the radio's preamble/header activity
 indicators. LR2021 extra-SF side detectors are suspended and restored as well.
 
 `get radio2.status` reports the active second-profile mode, MeshCore RX/TX counts
-for each profile, switch count, switch failures, longest measured switch and
+for each profile, idle late-visit counts (`late=radio,radio2`), switch count,
+switch failures, longest measured switch and
 both effective preambles. A long switch time or rising error count indicates
 that the chosen settings need investigation on that board.
 
 `get radio2.scan` shows which profile goes first, the two idle receive-window
 lengths in microseconds, and both effective preambles. It reports `off` in
 single-profile mode.
+
+### Host scan health
+
+Read the small in-memory timing counters without a special trace build:
+
+```text
+get radio2.health
+get radio2.health radio
+get radio2.health radio2
+```
+
+The summary lists pairs in `radio,radio2` order. `idle` is the longest interval
+between visits to that profile without an observed receive/transmit/chip-busy
+hold. `busy` is the longest interval with at least one such hold. `over` is
+the maximum time a completed idle visit exceeded its requested dwell; `late`
+counts those visits. Even a small ordinary loop delay can count as late. These
+are timing observations, not packet-loss counts or proof that a preamble was
+missed. `svc` is the longest gap between host scanner service calls. All times
+are microseconds.
+
+The per-profile query also reports `rx_hold` and `tx_hold`: revisit intervals
+that contained at least one observed RX/pending-RX interrupt or successful TX,
+respectively. An interval containing both increments both counters; these are
+not counts of individual packets. IRQ and chip-busy observations are conservative
+and do not identify a particular external sender or an application causing delay.
+
+Counters start after the normal switching self-test, saturate instead of
+wrapping, and reset with the profile pair's switching measurements (including
+a tuning-policy or CPU-clock change) or reboot. Disabled/exclusive-secondary
+periods, `radio.mode` RX-off periods, and intentional carrier/Morse/beacon
+ownership are excluded from new interval baselines. The counters describe the
+host RX scanner; an on-chip LR2021 scanner needs its own diagnostics. No
+background RF probes, logging, allocation or scheduling changes are added.
+
+The [T-Deck redraw report](test-results/tdeck_radio2_display.md) measures radio
+service latency, not controlled packet delivery during redraw. The optional
+delivery collector and seeded native traffic model are documented in
+[radio2 load testing](radio2_load_testing.md). Hardware delivery results must
+be collected separately from modeled acquisition and native regression results.
