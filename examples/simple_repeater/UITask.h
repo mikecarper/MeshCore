@@ -34,6 +34,7 @@ class UITask {
 #ifdef WITH_WEBCONFIG
   bool _wifi_setup_page = false;
   bool _setup_ap_was_active = false;
+  bool _wifi_setup_start_requested = false;
   char _wifi_setup_reply[160] = {};
   bool showingWiFiSetupPage() const;
 #endif

@@ -518,11 +518,16 @@ void UITask::renderCurrScreen() {
       const bool active = WebConfigServer::getSetupInfo(wc_ssid, sizeof(wc_ssid), wc_ip, sizeof(wc_ip));
       if (!active) {
 #ifdef REPEATER_WIFI_SETUP_BUTTON
-        WebConfigServer::formatSetupSsid(wc_ssid, sizeof(wc_ssid), the_mesh.getSelfId().pub_key);
         _display->setTextSize(1);
         _display->setColor(UIColor::primary_txt);
         const int row = _display->textLineHeight() + 1;
         _display->drawTextLeftAlign(0, 0, "Wi-Fi Setup");
+        if (_wifi_setup_start_requested) {
+          mesh::ui::drawTextWrapped(*_display, 0, row, _display->width(),
+                                    row, _display->height() / row - 1, "Turning on Wi-Fi...");
+          return;
+        }
+        WebConfigServer::formatSetupSsid(wc_ssid, sizeof(wc_ssid), the_mesh.getSelfId().pub_key);
         _display->drawTextEllipsized(0, row, _display->width(), wc_ssid);
         _display->drawTextLeftAlign(0, 2 * row, "Hold to start");
         mesh::ui::drawTextWrapped(*_display, 0, 3 * row, _display->width(),
@@ -716,6 +721,7 @@ uint32_t UITask::getFrameSignature() {
   if (showingWiFiSetupPage()) {
     char wc_ssid[33], wc_ip[16];
     if (!WebConfigServer::getSetupInfo(wc_ssid, sizeof(wc_ssid), wc_ip, sizeof(wc_ip))) {
+      if (_wifi_setup_start_requested) return DisplayFrameSignature::append(signature, "wifi-setup-starting");
       signature = DisplayFrameSignature::append(signature, "wifi-setup-off");
       return DisplayFrameSignature::append(signature, _wifi_setup_reply);
     }
@@ -989,9 +995,12 @@ void UITask::loop() {
     _display->wake(mesh::ui::DisplayWake::Button);
 #ifdef REPEATER_WIFI_SETUP_BUTTON
     if (setup_page_visible) {
-      if (setup_active) the_mesh.stopWebConfig(_wifi_setup_reply);
-      else the_mesh.startWebConfig(true, _wifi_setup_reply);
-      mesh::usbConsolePort().printf("Wi-Fi Setup: %s\r\n", _wifi_setup_reply);
+      if (setup_active) {
+        the_mesh.stopWebConfig(_wifi_setup_reply);
+        mesh::usbConsolePort().printf("Wi-Fi Setup: %s\r\n", _wifi_setup_reply);
+      } else {
+        _wifi_setup_start_requested = true;
+      }
     } else
 #endif
     {
@@ -1031,7 +1040,7 @@ void UITask::loop() {
     // Apply a live orientation change before drawing, including the first frame
     // after a preference was changed while the panel was blanked.
     applyDisplayFlip();
-    if (millisReached(millis(), _next_refresh)) {
+    if (_next_refresh == 0 || millisReached(millis(), _next_refresh)) {
       bool redraw = true;
 #ifdef DISPLAY_REDRAW_ON_CHANGE
       uint32_t frame_signature = getFrameSignature();
@@ -1065,6 +1074,20 @@ void UITask::loop() {
       _next_refresh = millis() + refresh_interval;
     }
   }
+
+#ifdef REPEATER_WIFI_SETUP_BUTTON
+  // The startup scan blocks the loop. Flush the acknowledgement to the panel
+  // above before starting Wi-Fi, then repaint with the QR or the error.
+  if (_wifi_setup_start_requested && !morse_timing) {
+    _wifi_setup_start_requested = false;
+    if (!_powering_off_at && !WebConfigServer::isRebootPending()) {
+      mesh::usbConsolePort().println("Wi-Fi Setup: starting");
+      the_mesh.startWebConfig(true, _wifi_setup_reply);
+      mesh::usbConsolePort().printf("Wi-Fi Setup: %s\r\n", _wifi_setup_reply);
+    }
+    _next_refresh = millis();
+  }
+#endif
 
   if (_powering_off_at > 0) { // power off timer armed
 #if defined(LED_PIN) && defined(LED_STATE_ON)

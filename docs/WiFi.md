@@ -164,7 +164,8 @@ fresh device with no saved SSID:
 **Reopen setup after a timeout.** On an ESP32 repeater with WebConfig, a
 display and a user button, tap the button until **Wi-Fi Setup** appears.
 While it says **Hold to start**, hold the button (about one second on a Heltec
-V3). Scan the QR or join the displayed network and open <http://192.168.4.1/>.
+V3). Release it when **Turning on Wi-Fi...** appears. The next screen shows
+the QR and network name. Scan the QR or join the network and open <http://192.168.4.1/>.
 Holding again on the QR screen closes the hotspot. This starts setup for one
 session and keeps your saved startup preference. From the admin CLI, use
 `start webconfig ap` and `get webui` to see the active address.
