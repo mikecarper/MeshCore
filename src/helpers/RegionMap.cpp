@@ -201,6 +201,7 @@ bool RegionMap::load(FILESYSTEM* _fs, const char* path) {
         next_id = loaded_next;
         wildcard.flags = loaded_wildcard_flags;
         unknown_scope = static_cast<UnknownScope>(header[0]);
+        if (unknown_scope == UnknownScope::Allow && header[1] == 1) unknown_scope = UnknownScope::All;
       }
       return success;
     }
@@ -224,8 +225,10 @@ bool RegionMap::save(FILESYSTEM* _fs, const char* path) {
     uint8_t pad[128];
     memset(pad, 0, sizeof(pad));
 
-    // Older writers zeroed these bytes, which selects Auto.
-    const uint8_t header[3] = {static_cast<uint8_t>(unknown_scope), 0, 0};
+    // The second byte extends Allow so older readers can still load the region table.
+    const bool all = unknown_scope == UnknownScope::All;
+    const uint8_t header[3] = {static_cast<uint8_t>(all ? UnknownScope::Allow : unknown_scope),
+                               static_cast<uint8_t>(all), 0};
     bool success = file.write(header, sizeof(header)) == sizeof(header);
     success = success && file.write((uint8_t *) &default_id, sizeof(default_id)) == sizeof(default_id);
     success = success && file.write((uint8_t *) &home_id, sizeof(home_id)) == sizeof(home_id);
@@ -339,11 +342,17 @@ RegionEntry* RegionMap::findMatch(const mesh::Packet* packet, uint8_t mask) {
 bool RegionMap::allowsUnmatchedFlood(const mesh::Packet* packet) {
   if (packet->getRouteType() != ROUTE_TYPE_TRANSPORT_FLOOD
       || packet->transport_codes[0] == 0 || packet->transport_codes[0] == 0xFFFF) return false;
-  if (unknown_scope == UnknownScope::Auto) {
-    // Radio2 accepts any flood type by default, subject to named denials below.
-    if (packet->radio_origin != 1) return num_regions == 0 && packet->isTextMessage();
-  } else if (unknown_scope != UnknownScope::Allow || !packet->isTextMessage()) {
-    return false;
+  switch (unknown_scope) {
+    case UnknownScope::Auto:
+      if (packet->radio_origin != 1) return num_regions == 0 && packet->isTextMessage();
+      break;
+    case UnknownScope::Allow:
+      if (!packet->isTextMessage()) return false;
+      break;
+    case UnknownScope::All:
+      break;
+    default:
+      return false;
   }
   // The normal lookup skipped denied regions. Check only those keys here.
   for (int i = 0; i < num_regions; ++i) {

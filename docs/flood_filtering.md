@@ -221,6 +221,10 @@ region unknown allow
 region save
 ```
 
+To allow all eligible flood types from unknown scopes on radio1 as well,
+run `region unknown all` followed by `region save`. A fresh installation
+with erased flash starts in `auto`.
+
 Use `region unknown deny` to require a recognized scope even with an empty list.
 The wildcard `*` controls unscoped floods. Explicit flood filters and hop limits
 still apply. Forwarding an unknown scope does not make it match `in=allowed`.

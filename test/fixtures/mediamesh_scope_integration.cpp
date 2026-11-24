@@ -146,7 +146,12 @@ static void unknown_forward() {
     }
   };
   packet.radio_profile = 1; // Choosing radio2 for egress must not grant its ingress policy.
+  require(map.getCount() == 0 && map.getUnknownScope() == RegionMap::UnknownScope::Auto,
+          "fresh region store starts in auto without named regions");
   check_types(Expected::Text);
+  map.setUnknownScope(RegionMap::UnknownScope::All);
+  check_types(Expected::All);
+  map.setUnknownScope(RegionMap::UnknownScope::Auto);
   packet.radio_origin = 1;
   check_types(Expected::All);
   map.setUnknownScope(RegionMap::UnknownScope::Allow);
@@ -157,7 +162,11 @@ static void unknown_forward() {
   require(forward() && map.findMatch(&packet, REGION_DENY_FLOOD) == nullptr, "empty auto passes text without claiming a match");
   auto* local = map.putRegion("local", 0);
   require(local && !forward(), "first named region closes auto on primary");
+  map.setUnknownScope(RegionMap::UnknownScope::All);
+  check_types(Expected::All);
   packet.radio_origin = 1;
+  check_types(Expected::All);
+  map.setUnknownScope(RegionMap::UnknownScope::Auto);
   check_types(Expected::All);
   map.setUnknownScope(RegionMap::UnknownScope::Allow);
   check_types(Expected::Text);
@@ -171,6 +180,12 @@ static void unknown_forward() {
   require(map.save(&test.fs), "save allow");
   RegionMap restarted(test.keys);
   require(restarted.load(&test.fs) && restarted.getUnknownScope() == RegionMap::UnknownScope::Allow, "reboot retains allow");
+  packet.radio_origin = 0;
+  map.setUnknownScope(RegionMap::UnknownScope::All);
+  check_types(Expected::None);
+  require(map.save(&test.fs) && restarted.load(&test.fs)
+              && restarted.getUnknownScope() == RegionMap::UnknownScope::All && restarted.getCount() == 2,
+          "all mode and named regions survive reboot");
   require(map.removeRegion(*media) && map.removeRegion(*local), "remove named regions");
   map.setUnknownScope(RegionMap::UnknownScope::Deny);
   check_types(Expected::None);
@@ -179,6 +194,7 @@ static void unknown_forward() {
   restarted.resetFrom(map);
   require(restarted.getUnknownScope() == RegionMap::UnknownScope::Deny, "bulk region load preserves mode");
   map.setUnknownScope(RegionMap::UnknownScope::Auto);
+  packet.radio_origin = 1;
   require(forward(), "empty auto reopens");
   for (const uint16_t code : {0, 0xffff}) {
     packet.transport_codes[0] = code;

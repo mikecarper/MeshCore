@@ -27,7 +27,7 @@ struct RegionEntry {
 
 class RegionMap {
 public:
-  enum class UnknownScope : uint8_t { Auto = 0, Allow = 1, Deny = 2 };
+  enum class UnknownScope : uint8_t { Auto = 0, Allow = 1, Deny = 2, All = 3 };
 
 private:
   TransportKeyStore* _store;

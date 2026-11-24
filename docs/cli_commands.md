@@ -6018,6 +6018,7 @@ scoped floods that do not match a named region. Set one of these modes and run
 | --- | --- |
 | `region unknown auto` (default) | Radio2 accepts every flood type from unknown scopes, even with named regions configured. The primary radio accepts only `grp_txt` and `txt_msg` from unknown scopes, and only with an empty named region list. |
 | `region unknown allow` | Both radios accept only `grp_txt` and `txt_msg` floods from unknown scopes, even with named regions configured. |
+| `region unknown all` | Both radios accept all eligible flood types from unknown scopes, even with named regions configured. |
 | `region unknown deny` | Require a matching flood-allowed region for scoped floods under the normal forwarding policy. |
 
 Both radios honor named flood denials. An incoming `#BlackHole86` flood stops in
