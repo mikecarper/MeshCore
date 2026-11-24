@@ -9,6 +9,7 @@
 #include <string>
 #include <type_traits>
 #include <vector>
+#include <RadioTxPolicy.h>
 #include <helpers/ArduinoSerialInterface.h>
 #include <helpers/MultiSerialInterface.h>
 #include <helpers/wifi/SerialWifiInterface.h>
@@ -64,6 +65,7 @@ struct RadioBoundary { uint32_t getEstAirtimeFor(size_t) const { return 100; } }
 namespace mesh {
 struct Packet {
   uint8_t payload[256] = {}, payload_len = 0, path_len = 0;
+  uint8_t radio_profile = 0, tx_radio = RADIO_TX_AUTO;
   float getSNR() const { return 0; }
   static bool isValidPathLen(uint8_t);
   static size_t writePath(uint8_t*, const uint8_t*, uint8_t);
@@ -220,6 +222,7 @@ struct MyMesh : BaseChatMesh {
   void serviceTerminalTrace();
   void serviceTerminalTrace(uint32_t);
   void sendTerminalTraceRoute(const uint8_t*, uint8_t, uint8_t, const char*);
+  bool radio2TraceReady() const { return false; }
 };
 #include "production_replies.inc"
 

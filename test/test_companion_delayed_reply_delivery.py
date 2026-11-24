@@ -87,7 +87,7 @@ def production_delayed_reply_inputs(work):
     native = (ROOT / "test/test_serial_mode_switch/test_serial_mode_switch.cpp").read_text()
     core = (ROOT / "src/MeshCore.h").read_text()
     constants = "\n".join(re.findall(
-        r"^#define (?:PUSH_CODE_\w+|RESP_CODE_\w+|CMD_SEND_\w+|ERR_CODE_\w+|REQ_TYPE_GET_TELEMETRY_DATA)\s+.+$",
+        r"^#define (?:PUSH_CODE_\w+|RESP_CODE_\w+|CMD_SEND_\w+|TRACE_FLAG_\w+|ERR_CODE_\w+|REQ_TYPE_GET_TELEMETRY_DATA)\s+.+$",
         source, re.MULTILINE))
     constants += "\n" + re.search(r"^#define CMD_LOGOUT\s+.+$", source, re.MULTILINE).group()
     wanted = ("PUB_KEY_SIZE", "MAX_PACKET_PAYLOAD", "MAX_PATH_SIZE", "OUT_PATH_UNKNOWN",

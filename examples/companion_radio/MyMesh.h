@@ -746,6 +746,9 @@ public:
   bool canRecoverUsbLogging() const;
 
 private:
+  // Reset to enabled on each boot.
+  bool _radio2_trace_enabled = true;
+  bool radio2TraceReady() const;
 #if MESH_ENABLE_RADIO_PROBE_OBSERVER
   mesh::RadioProbeObserver _radio_probe;
 #endif

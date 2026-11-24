@@ -599,6 +599,36 @@ primary profile without routing every raw application onto radio2. Choose
 `set tx.media radio2` if media must fail rather than use the primary when
 radio2 is off, RX-only, or owned by another protocol.
 
+## Companion traces on radio2
+
+MeshCore Open TAK can ask its Companion to send a one-hop trace to a known
+MediaMesh repeater on radio2. The flag selects the Companion's outgoing
+profile. Each repeater forwards according to its own profile settings. For a
+two-way radio2 measurement, use a repeater with `radio2.cross off`, as set by
+the MediaMesh preset. A repeater with crossover enabled can also forward the
+trace on the primary profile. The trace reply reports SNR without naming the
+receive profile.
+
+```text
+get radio2.trace
+set radio2.trace off
+set radio2.trace on
+```
+
+`get radio2.trace` returns `> on` when the switch is on and radio2 can
+transmit MeshCore on an `rxtx` profile, including an active `tempradio2`.
+It returns `> off` when the switch is off and `> off (radio2 TX unavailable)`
+when the switch is on but radio2 is unavailable for MeshCore TX. Restarting
+the Companion resets the switch to on.
+
+Apps should set bit 3 (`0x08`) of the `CMD_SEND_TRACE_PATH` flags byte only
+after `get radio2.trace` returns `> on`. Older firmware can ignore this
+routing request and transmit on its usual profile. The supporting Companion
+removes bit 3 before transmission and preserves the remaining flags,
+including the hash-width bits. If radio2 is unavailable or the switch is
+off, a flagged request returns `ERR_CODE_BAD_STATE` without transmitting.
+Unflagged requests follow their usual routing.
+
 ## ESP32 Companion Ethernet over LoRa (KISS)
 
 ESP32 **Full Companion** builds with a supported SX1262/SX1276 modem can

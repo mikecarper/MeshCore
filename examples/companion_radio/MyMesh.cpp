@@ -65,6 +65,7 @@
 #include <helpers/CompanionPowerDiagnostics.h>
 #include <helpers/CompanionTxRoutingCLI.h>
 #include <helpers/CompanionTrafficRouting.h>
+#include <helpers/RadioDirectionPolicy.h>
 #include <helpers/CompanionChannelAlias.h>
 #include <helpers/FleetCommand.h>
 #include "CompanionBluetooth.h"
@@ -245,6 +246,10 @@ static uint32_t nextRadioApplyRetryDelay(uint8_t& failure_count) {
 #define CMD_SIGN_DATA                 34
 #define CMD_SIGN_FINISH               35
 #define CMD_SEND_TRACE_PATH           36
+// CMD_SEND_TRACE_PATH flags bit, app-local: send the trace on radio2 only
+// (`get radio2.trace` says whether it can). Never sent: on air, a trace's flags
+// are bits 0-1 (hash width).
+#define TRACE_FLAG_RADIO2             0x08
 #define CMD_SET_DEVICE_PIN            37
 #define CMD_SET_OTHER_PARAMS          38
 #define CMD_SEND_TELEMETRY_REQ        39  // can deprecate this
@@ -4492,6 +4497,11 @@ bool MyMesh::handleTxRoutingCommand(const char* command, char* reply, size_t rep
   return true;
 }
 
+bool MyMesh::radio2TraceReady() const {
+  return _radio2_trace_enabled && isRadioAvailable() && mesh::radioDirection::radioTransmitAllowed()
+      && mesh::companion::trafficTransmitMask(mesh::RADIO_TX_SECONDARY, _radio->profiles());
+}
+
 #if defined(NRF52_PLATFORM) && defined(MESH_CLI_SHARE_MEMORY_OPERATIONS) && MESH_CLI_SHARE_MEMORY_OPERATIONS
 // Avoid expanding one-use helpers in this cold settings parser on small images.
 __attribute__((optimize("no-inline-functions-called-once")))
@@ -5011,6 +5021,23 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
 #endif
 
   if (handleCadCommand(command, reply, reply_size)) return true;
+
+  if (strcmp(command, "get radio2.trace") == 0) {
+    StrHelper::strzcpy(reply, radio2TraceReady() ? "> on"
+        : _radio2_trace_enabled ? "> off (radio2 TX unavailable)" : "> off", reply_size);
+    return true;
+  }
+
+  if (strncmp(command, "set radio2.trace ", 17) == 0) {
+    const char* value = command + 17;
+    if (strcmp(value, "on") != 0 && strcmp(value, "off") != 0) {
+      mesh::cli::formatError(reply, reply_size, "use set radio2.trace on|off");
+    } else {
+      _radio2_trace_enabled = strcmp(value, "on") == 0;
+      snprintf(reply, reply_size, "OK - radio2.trace %s", value);
+    }
+    return true;
+  }
 
   if (strcmp(command, "get radio.rxgain") == 0) {
     if (!radio_driver.supportsRxBoostedGainMode()) {
@@ -8383,13 +8410,22 @@ void MyMesh::handleCmdFrame(size_t len) {
       uint32_t tag, auth;
       memcpy(&tag, &cmd_frame[1], 4);
       memcpy(&auth, &cmd_frame[5], 4);
+      const bool on_radio2 = (flags & TRACE_FLAG_RADIO2) != 0;
+      if (on_radio2 && !radio2TraceReady()) {  // never falls back to the main radio
+        writeErrFrame(ERR_CODE_BAD_STATE);
+        return;
+      }
       if (!_delayed_replies.reserveBinaryTrace(tag, auth,
               _serial->captureReplyRoute(), _ms->getMillis())) {
         writeErrFrame(ERR_CODE_BAD_STATE);
         return;
       }
-      auto pkt = createTrace(tag, auth, flags);
+      auto pkt = createTrace(tag, auth, flags & ~TRACE_FLAG_RADIO2);
       if (pkt) {
+        if (on_radio2) {
+          pkt->radio_profile = 1;
+          pkt->tx_radio = mesh::RADIO_TX_SECONDARY;
+        }
         // Compute before handing ownership to sendDirect(), which releases the
         // packet itself if validation or queueing fails.
         uint32_t t = getTransmitAirtime(pkt, 2 + pkt->payload_len + path_len);

@@ -5,9 +5,11 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#define MESH_ENABLE_RADIO_DIRECTION 1
 #include <Packet.h>
 #include <RadioProfiles.h>
 #include <helpers/RadioDirectionPolicy.h>
+#include <helpers/CompanionTrafficRouting.h>
 #include <helpers/CompanionDelayedReplies.h>
 #include <helpers/TracePathHelpers.h>
 
@@ -43,6 +45,10 @@ struct Radio {
   }
 };
 struct Clock { uint32_t now = 100; uint32_t getMillis() const { return now; } };
+namespace mesh { namespace radioDirection {
+static Mode direction = Mode::Both;
+Mode mode() { return direction; }
+}}
 struct Manager {
   std::array<mesh::Packet, 4> packets;
   std::array<bool, 4> used{};
@@ -76,6 +82,7 @@ public:
   Clock clock;
   Clock* _ms = &clock;
   bool radio_available = true, receive_context_active = false;
+  bool isRadioAvailable() const { return radio_available; }
   uint8_t receive_context_profile = 0;
   uint32_t receive_context_generation = 0;
   uint32_t profile_cad_busy[2] = {};
@@ -84,7 +91,7 @@ public:
   Packet* obtainNewPacket();
   void releasePacket(Packet* packet) { _mgr->free(packet); }
   uint32_t futureMillis(uint32_t delta) const { return _ms->getMillis() + delta; }
-  bool isPacketRadioCurrent(const Packet*) const { return true; }
+  bool isPacketRadioCurrent(const Packet*) const;
   bool allowRadioProfileCross(const Packet*) { return true; }
   void onSendFail(Packet*) {}
   void onRadioProfileCopyQueued(Packet*, const Packet*, uint8_t) {}
@@ -170,6 +177,8 @@ public:
   uint32_t calcDirectTimeoutMillisFor(uint32_t, uint8_t) const;
   void sendTerminalTraceRoute(const uint8_t*, uint8_t, uint8_t, const char*);
   void handleTraceFrame(size_t);
+  bool _radio2_trace_enabled = true;
+  bool radio2TraceReady() const;
 };
 #include "production.inc"
 
@@ -403,7 +412,52 @@ static void hopBoundaryChecks(unsigned selected_hash = 0) {
   puts("PASS: 63-hop traces complete and 64-hop commands have no side effects");
 }
 
+// CMD_SEND_TRACE_PATH's app-local radio2 bit: radio2 only, the bit off the
+// air, and no side effects when radio2 can't take it.
+static void radio2Checks() {
+  const uint8_t route[2] = {0x11, 0x22};
+  using Direction = mesh::radioDirection::Mode;
+  struct Case { unsigned mode; bool enabled; bool sent; bool available = true; Direction direction = Direction::Both; };
+  for (const Case c : {Case{3, true, true}, Case{2, true, true}, Case{1, true, false},
+                       Case{0, true, false}, Case{7, true, false}, Case{8, true, false},
+                       Case{9, true, false}, Case{3, false, false}, Case{3, true, false, false},
+                       Case{3, true, false, true, Direction::Rx}, Case{3, true, false, true, Direction::Off}}) {
+    Radio radio; configure(radio, c.mode, false);
+    MyMesh node; node._radio = &radio; node._radio2_trace_enabled = c.enabled;
+    node.radio_available = c.available;
+    mesh::radioDirection::direction = c.direction;
+    node.cmd_frame[0] = CMD_SEND_TRACE_PATH;
+    const uint32_t tag = 17, auth = 23;
+    memcpy(node.cmd_frame + 1, &tag, 4); memcpy(node.cmd_frame + 5, &auth, 4);
+    const uint8_t hash_flags = c.mode == 2 ? 1 : 0;  // two-byte or one-byte hashes
+    node.cmd_frame[9] = TRACE_FLAG_RADIO2 | hash_flags;
+    memcpy(node.cmd_frame + 10, route, sizeof(route));
+    node.handleTraceFrame(10 + sizeof(route));
+    if (!c.sent) {
+      assert(node.error == ERR_CODE_BAD_STATE && "radio2 trace must not fall back to the main radio");
+      assert(!node._delayed_replies.hasBinaryTrace() && node.manager.allocations == 0);
+      assert(node.manager.queued.empty() && radio.calls.empty());
+      continue;
+    }
+    assert(node.error == 0 && node._delayed_replies.hasBinaryTrace());
+    assert(node.manager.queued.size() == 1 && "radio2 trace must go on radio2 only");
+    const auto* packet = node.manager.queued.front();
+    assert(packet->radio_profile == 1 && packet->tx_radio == mesh::RADIO_TX_SECONDARY);
+    ++radio.driver._profiles.generation[0];
+    assert(node.isPacketRadioCurrent(packet) && "primary retunes must leave radio2 traces queued");
+    ++radio.driver._profiles.generation[1];
+    assert(!node.isPacketRadioCurrent(packet) && "radio2 retunes must invalidate queued traces");
+    assert(packet->payload[8] == hash_flags && "only the radio2 bit should be removed");
+    for (const auto& call : radio.calls) assert(call.profile == 1);
+  }
+  puts("PASS: radio2 traces go on radio2 only");
+}
+
 int main(int argc, char** argv) {
+  if (argc == 2 && strcmp(argv[1], "radio2") == 0) {
+    radio2Checks();
+    return 0;
+  }
   if (argc == 2 && strncmp(argv[1], "hop-boundary", 12) == 0) {
     hopBoundaryChecks(strlen(argv[1]) == 14 ? argv[1][13] - '0' : 0);
     return 0;
