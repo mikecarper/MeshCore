@@ -84,7 +84,7 @@ and Cargo are **1.86 or newer**, then install the supported motatool revision:
 rustc --version
 cargo --version
 cargo install --git https://github.com/mikecarper/motatool.git \
-  --rev 5d9646cb08105245fb96c28450669c58763224bb --locked --bin motatool
+  --rev 79a3eb5e5af16cae6e792e2d32c24ce590adeb40 --locked --bin motatool
 meshcli -v
 motatool --version
 mkdir -p ~/ikoka-stick-ota/downloads ~/ikoka-stick-ota/inputs ~/ikoka-stick-ota/serve

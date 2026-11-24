@@ -244,7 +244,7 @@ revision used by the scripted updater:
 
 ```bash
 cargo install --git https://github.com/mikecarper/motatool.git \
-  --rev 5d9646cb08105245fb96c28450669c58763224bb --locked --bin motatool
+  --rev 79a3eb5e5af16cae6e792e2d32c24ce590adeb40 --locked --bin motatool
 ```
 
 ## ESP32: package a full firmware image

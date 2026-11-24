@@ -545,7 +545,7 @@ remote area.
    an ESP32 WiFi companion or FULL ESP32 node, or over encrypted **Bluetooth** if it is an nRF52 Full Companion:
    ```
    cargo install --git https://github.com/mikecarper/motatool \
-     --rev 5d9646cb08105245fb96c28450669c58763224bb --locked
+     --rev 79a3eb5e5af16cae6e792e2d32c24ce590adeb40 --locked
    # over USB serial:
    motatool serve --dir ./my_firmware/ --serial /dev/ttyACM0 -v
    # ...or over WiFi: the seeder is on dedicated TCP port 5001:

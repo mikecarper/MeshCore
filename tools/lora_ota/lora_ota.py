@@ -164,7 +164,7 @@ MIN_MESHCLI_VERSION = (1, 6, 0)
 # Tested format-3 inspect/verify/serve support. Keep automatic repairs pinned;
 # neither a package nor a moving branch may choose code to install on the host.
 MOTATOOL_REPAIR_REPOSITORY = "https://github.com/mikecarper/motatool.git"
-MOTATOOL_REPAIR_REVISION = "5d9646cb08105245fb96c28450669c58763224bb"
+MOTATOOL_REPAIR_REVISION = "79a3eb5e5af16cae6e792e2d32c24ce590adeb40"
 MOTATOOL_REPAIR_TIMEOUT_SECONDS = 60 * 60
 # The pinned lockfile, not motatool's older package-level rust-version: zeroize
 # needs edition 2024 (1.85), and idna_adapter/ICU 2.2 require Rust 1.86.
