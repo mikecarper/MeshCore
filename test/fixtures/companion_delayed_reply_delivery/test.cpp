@@ -62,8 +62,10 @@ struct RngBoundary {
 };
 struct RadioBoundary { uint32_t getEstAirtimeFor(size_t) const { return 100; } };
 namespace mesh {
+enum : uint8_t { RADIO_TX_SECONDARY = 2 };
 struct Packet {
   uint8_t payload[256] = {}, payload_len = 0, path_len = 0;
+  uint8_t tx_radio = 0;
   float getSNR() const { return 0; }
   static bool isValidPathLen(uint8_t);
   static size_t writePath(uint8_t*, const uint8_t*, uint8_t);
@@ -220,6 +222,7 @@ struct MyMesh : BaseChatMesh {
   void serviceTerminalTrace();
   void serviceTerminalTrace(uint32_t);
   void sendTerminalTraceRoute(const uint8_t*, uint8_t, uint8_t, const char*);
+  bool radio2TraceReady() const { return false; }
 };
 #include "production_replies.inc"
 

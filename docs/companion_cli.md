@@ -21,6 +21,7 @@ the board and firmware profile; use `help` for the commands in your build.
 | Timezone, hours | `get tz.offset`, `set tz.offset <hours>` |
 | Airtime limit | `get dutycycle`, `set dutycycle <percent>` |
 | Receive gain | `get radio.rxgain`, `set radio.rxgain <on/off>` |
+| Traces on radio2 only ([details](radio_profiles.md#companion-traces-on-radio2)) | `get radio2.trace`, `set radio2.trace <on/off>` |
 | Device power saving | `get powersaving`, `set powersaving <on/off>` |
 | GPS status, power and clock sync (GPS builds) | `gps`, `gps on`, `gps off`, `gps sync` |
 | Receive power saving | `get radio.rxps`, `get radio.rxps.config` |

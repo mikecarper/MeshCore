@@ -265,7 +265,7 @@ catalog; bytes `0x2C`-`0x31` are parked and `0x35` is unused.
 | `0x1E` | `CMD_GET_CONTACT_BY_KEY` | Look up a contact by public-key prefix. |
 | `0x1F` / `0x20` | `CMD_GET_CHANNEL` / `CMD_SET_CHANNEL` | Read or write a channel slot. |
 | `0x21`-`0x23` | `CMD_SIGN_START` through `CMD_SIGN_FINISH` | Stream data for identity signing. |
-| `0x24` | `CMD_SEND_TRACE_PATH` | Trace a direct route. |
+| `0x24` | `CMD_SEND_TRACE_PATH` | Trace a direct route. Flags bit `0x08` sends it on radio2 only ([radio2 traces](radio_profiles.md#companion-traces-on-radio2)). |
 | `0x25` | `CMD_SET_DEVICE_PIN` | Set or clear the device PIN. |
 | `0x26` | `CMD_SET_OTHER_PARAMS` | Set telemetry, location, ACK, and related preferences. |
 | `0x27` | `CMD_SEND_TELEMETRY_REQ` | Send the legacy telemetry request. |

@@ -599,6 +599,33 @@ primary profile without routing every raw application onto radio2. Choose
 `set tx.media radio2` if media must fail rather than use the primary when
 radio2 is off, RX-only, or owned by another protocol.
 
+## Companion traces on radio2
+
+An app can ask the Companion to send a trace on radio2 only. This is how
+MeshCore Open TAK's coverage mapping asks a MediaMesh repeater by name: a
+MediaMesh repeater forwards a packet on the profile it heard it on, so the
+answer and both SNRs are radio2's. Repeaters need no change.
+
+```text
+get radio2.trace
+set radio2.trace off
+set radio2.trace on
+```
+
+`get radio2.trace` answers `> on` when the switch is on and radio2 can
+transmit MeshCore now (an `rxtx` MeshCore profile, including an active
+`tempradio2`), and `> off` otherwise, with `(radio2 TX unavailable)` when only
+the profile is missing. The switch defaults to on and is not saved: a restart
+turns it back on.
+
+The app sets bit 3 (`0x08`) of `CMD_SEND_TRACE_PATH`'s flags byte. The
+Companion clears the bit before building the packet, since a trace's flags on
+the air are bits 0-1 (hash width), and sends it on radio2 only. When
+`get radio2.trace` would say `off`, the command fails with `ERR_CODE_BAD_STATE`
+and nothing is sent; it never falls back to the primary profile. Apps should
+send the bit only after `get radio2.trace` says `on`; older firmware answers
+`Unknown command`.
+
 ## ESP32 Companion Ethernet over LoRa (KISS)
 
 ESP32 **Full Companion** builds with a supported SX1262/SX1276 modem can

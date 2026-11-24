@@ -170,6 +170,8 @@ public:
   uint32_t calcDirectTimeoutMillisFor(uint32_t, uint8_t) const;
   void sendTerminalTraceRoute(const uint8_t*, uint8_t, uint8_t, const char*);
   void handleTraceFrame(size_t);
+  bool _radio2_trace_enabled = true;
+  bool radio2TraceReady() const;
 };
 #include "production.inc"
 
@@ -403,7 +405,43 @@ static void hopBoundaryChecks(unsigned selected_hash = 0) {
   puts("PASS: 63-hop traces complete and 64-hop commands have no side effects");
 }
 
+// CMD_SEND_TRACE_PATH's app-local radio2 bit: radio2 only, the bit off the
+// air, and no side effects when radio2 can't take it.
+static void radio2Checks() {
+  const uint8_t route[2] = {0x11, 0x22};
+  struct Case { unsigned mode; bool enabled; bool sent; };
+  for (const Case c : {Case{3, true, true}, Case{2, true, true}, Case{1, true, false},
+                       Case{0, true, false}, Case{7, true, false}, Case{8, true, false},
+                       Case{9, true, false}, Case{3, false, false}}) {
+    Radio radio; configure(radio, c.mode, false);
+    MyMesh node; node._radio = &radio; node._radio2_trace_enabled = c.enabled;
+    node.cmd_frame[0] = CMD_SEND_TRACE_PATH;
+    const uint32_t tag = 17, auth = 23;
+    memcpy(node.cmd_frame + 1, &tag, 4); memcpy(node.cmd_frame + 5, &auth, 4);
+    node.cmd_frame[9] = TRACE_FLAG_RADIO2;  // 1-byte hashes
+    memcpy(node.cmd_frame + 10, route, sizeof(route));
+    node.handleTraceFrame(10 + sizeof(route));
+    if (!c.sent) {
+      assert(node.error == ERR_CODE_BAD_STATE && "radio2 trace must not fall back to the main radio");
+      assert(!node._delayed_replies.hasBinaryTrace() && node.manager.allocations == 0);
+      assert(node.manager.queued.empty() && radio.calls.empty());
+      continue;
+    }
+    assert(node.error == 0 && node._delayed_replies.hasBinaryTrace());
+    assert(node.manager.queued.size() == 1 && "radio2 trace must go on radio2 only");
+    const auto* packet = node.manager.queued.front();
+    assert(packet->radio_profile == 1 && packet->tx_radio == mesh::RADIO_TX_SECONDARY);
+    assert(packet->payload[8] == 0 && "the radio2 bit must stay off the air");
+    for (const auto& call : radio.calls) assert(call.profile == 1);
+  }
+  puts("PASS: radio2 traces go on radio2 only");
+}
+
 int main(int argc, char** argv) {
+  if (argc == 2 && strcmp(argv[1], "radio2") == 0) {
+    radio2Checks();
+    return 0;
+  }
   if (argc == 2 && strncmp(argv[1], "hop-boundary", 12) == 0) {
     hopBoundaryChecks(strlen(argv[1]) == 14 ? argv[1][13] - '0' : 0);
     return 0;

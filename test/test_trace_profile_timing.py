@@ -47,10 +47,11 @@ class TraceProfileTimingTests(unittest.TestCase):
             terminal, binary = mutation(terminal, binary)
         methods += extract_braced(companion, "uint32_t MyMesh::calcDirectTimeoutMillisFor(") + "\n"
         methods += extract_braced(companion, "void MyMesh::printTerminalError(") + "\n"
+        methods += extract_braced(companion, "bool MyMesh::radio2TraceReady() const") + "\n"
         methods += terminal + "\nvoid MyMesh::handleTraceFrame(size_t len) {\n"
         methods += binary.replace("} else if", "if", 1) + "\n}\n"
         constants = "\n".join(re.findall(
-            r"^#define (?:CMD_SEND_TRACE_PATH|ERR_CODE_BAD_STATE|ERR_CODE_ILLEGAL_ARG|ERR_CODE_TABLE_FULL|SEND_TIMEOUT_BASE_MILLIS|DIRECT_SEND_PERHOP_FACTOR|DIRECT_SEND_PERHOP_EXTRA_MILLIS)\s+.+$",
+            r"^#define (?:CMD_SEND_TRACE_PATH|TRACE_FLAG_RADIO2|ERR_CODE_BAD_STATE|ERR_CODE_ILLEGAL_ARG|ERR_CODE_TABLE_FULL|SEND_TIMEOUT_BASE_MILLIS|DIRECT_SEND_PERHOP_FACTOR|DIRECT_SEND_PERHOP_EXTRA_MILLIS)\s+.+$",
             companion, re.MULTILINE))
         compiler = shutil.which("g++") or shutil.which("clang++")
         self.assertIsNotNone(compiler, "a host C++17 compiler is required")
@@ -85,6 +86,19 @@ class TraceProfileTimingTests(unittest.TestCase):
         result = self.run_fixture(scenario="hop-boundary")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("PASS: 63-hop traces complete and 64-hop commands have no side effects", result.stdout)
+
+    def test_radio2_trace_goes_on_radio2_only_with_the_bit_off_the_air(self):
+        result = self.run_fixture(scenario="radio2")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("PASS: radio2 traces go on radio2 only", result.stdout)
+
+    def test_radio2_trace_without_the_guard_falls_back_and_fails(self):
+        def unguarded(terminal, binary):
+            changed, count = re.subn(r"if \(on_radio2 && !radio2TraceReady\(\)\)", "if (false)", binary)
+            self.assertEqual(count, 1)
+            return terminal, changed
+        result = self.run_fixture(unguarded, "radio2")
+        self.assertNotEqual(result.returncode, 0)
 
     def test_old_64_hop_admission_is_rejected_by_receivers_and_wraps_timeout(self):
         def old(terminal, binary):
