@@ -19,7 +19,7 @@ HARNESS = r'''
 #include <cstring>
 #include <vector>
 #include <algorithm>
-#include <SHA256.h>
+#include <helpers/TransportCode.h>
 #include <helpers/FleetLocation.h>
 #define MESH_ENABLE_CLOCK_SYNC 0
 #define MAX_TKS_ENTRIES 16
@@ -416,9 +416,6 @@ class FleetRoleWiringTests(unittest.TestCase):
                      "template <typename Regions, typename Region>")
         transport_code = body((ROOT / "src/helpers/TransportKeyStore.cpp").read_text(),
                               "uint16_t TransportKey::calcTransportCode(")
-        # The host SHA-256 shim has a byte-pointer output API; on-device Crypto
-        # accepts void*. Preserve the production algorithm with that cast only.
-        transport_code = transport_code.replace("&code, 2", "(uint8_t*)&code, 2")
         harness = harness.replace("@SCOPE_HELPERS@", transport_code + "\nnamespace mesh {\n" + scope + "\n}\n")
         harness = harness.replace("@REPEATER_CAPABILITY@", capabilities["Repeater"])
         harness = harness.replace("@ROOM_CAPABILITY@", capabilities["Room"])

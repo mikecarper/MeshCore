@@ -1589,6 +1589,7 @@ void Dispatcher::checkRecv() {
     }
   }
   if (pkt) {
+    pkt->received_in_sink_scope = pkt->hasBlackHoleScope();
     #if MESH_PACKET_LOGGING && !MESH_PACKET_LOGGING_COMPACT
     if (isUsbPacketLoggingAllowed()) {
       logPacketLine("RX", pkt, pkt->getRawLength(), true, score, air_time);
@@ -1928,6 +1929,7 @@ Packet* Dispatcher::obtainNewPacket() {
     pkt->radio_reply = false;
     pkt->radio_reply_force = false;
     pkt->forwarded = false;
+    pkt->received_in_sink_scope = false;
 #if defined(WITH_UDP_BRIDGE)
     pkt->udp_bridge_ingress = false;
 #endif

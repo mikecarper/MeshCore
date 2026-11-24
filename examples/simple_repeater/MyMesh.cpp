@@ -1255,7 +1255,7 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   }
   if (packet->isRouteFlood() && recv_pkt_region == NULL
       && !recv_pkt_regionless_scope_set
-      && !recv_pkt_channel_scope_bypass) {
+      && !recv_pkt_channel_scope_bypass && !_cli.allowsUnmatchedFlood(packet)) {
     MESH_DEBUG_PRINTLN("allowPacketForward: unknown transport code, or wildcard not allowed for FLOOD packet");
     return false;
   }

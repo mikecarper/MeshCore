@@ -85,7 +85,7 @@ public:
 class Mesh : public Dispatcher {
   static constexpr uint32_t REPEAT_STARTUP_MS = 45000;
   bool canForwardPacket(const Packet* packet) {
-    return !_cold_boot_repeat_hold && allowPacketForward(packet);
+    return packet && !_cold_boot_repeat_hold && !packet->received_in_sink_scope && allowPacketForward(packet);
   }
   struct DirectRetryEntry {
     Packet* packet;

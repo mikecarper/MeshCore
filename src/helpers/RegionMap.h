@@ -21,7 +21,12 @@ struct RegionEntry {
 };
 
 class RegionMap {
+public:
+  enum class UnknownScope : uint8_t { Auto = 0, Allow = 1, Deny = 2 };
+
+private:
   TransportKeyStore* _store;
+  UnknownScope unknown_scope = UnknownScope::Auto;
   uint16_t next_id, home_id, default_id;
   uint16_t num_regions;
   RegionEntry regions[MAX_REGION_ENTRIES];
@@ -29,6 +34,7 @@ class RegionMap {
 
   void printChildRegions(int indent, const RegionEntry* parent, Stream& out) const;
   bool wouldCreateCycle(uint16_t region_id, uint16_t parent_id) const;
+  bool matchesScope(const RegionEntry& region, const mesh::Packet* packet);
 
 public:
   RegionMap(TransportKeyStore& store);
@@ -40,6 +46,10 @@ public:
 
   RegionEntry* putRegion(const char* name, uint16_t parent_id, uint16_t id = 0);
   RegionEntry* findMatch(const mesh::Packet* packet, uint8_t mask);
+  UnknownScope getUnknownScope() const { return unknown_scope; }
+  void setUnknownScope(UnknownScope mode) { unknown_scope = mode; }
+  // Called only after the normal flood-allowed region lookup misses.
+  bool allowsUnmatchedFlood(const mesh::Packet* packet);
   RegionEntry& getWildcard() { return wildcard; }
   RegionEntry* findByName(const char* name);
   RegionEntry* findByNamePrefix(const char* prefix);

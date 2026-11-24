@@ -1145,6 +1145,10 @@ public:
   // Bind only after the role has loaded its saved regions, so boot-time
   // radio2 scope reconciliation does not get replaced by the region image.
   void onRegionsLoaded(FILESYSTEM* fs, bool loaded);
+  bool allowsUnmatchedFlood(const mesh::Packet* packet) const {
+    // A temporarily unreadable region file must not look like an empty table.
+    return _media_regions_ready && _region_map->allowsUnmatchedFlood(packet);
+  }
   mesh::MorseReplyHandoff& morseReply() { return _morse_reply; }
   const mesh::MorseReplyHandoff& morseReply() const { return _morse_reply; }
 #if MESH_ENABLE_FLEET_CONTROL

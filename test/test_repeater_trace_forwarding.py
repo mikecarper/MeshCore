@@ -64,6 +64,8 @@ struct MyMesh : mesh::Mesh {
     const Profiles& radioProfiles() const { return profiles; }
     mesh::MorseReplyHandoff handoff;
     bool batteryAllowsForward(bool) const { return true; }
+    bool allow_unknown = false;
+    bool allowsUnmatchedFlood(const mesh::Packet*) const { return allow_unknown; }
     bool batteryAllowsTransmit(const mesh::Packet*) const { return true; }
     mesh::MorseReplyHandoff& morseReply() { return handoff; }
     const mesh::MorseReplyHandoff& morseReply() const { return handoff; }
@@ -189,12 +191,14 @@ int main() {
   p.setPathHashSizeAndCount(1, 1);
   assert(node.allowPacketForward(&p));
   const unsigned committed = node.commits;
+  node._cli.allow_unknown = true;
   node._prefs.flood_max = 0;
   assert(!node.allowPacketForward(&p));
   node._prefs.flood_max = 64;
   node.recv_pkt_channel_scope_rejected = true;
   assert(!node.allowPacketForward(&p));
   node.recv_pkt_channel_scope_rejected = false;
+  node._cli.allow_unknown = false;
   node.recv_pkt_region = nullptr;
   assert(!node.allowPacketForward(&p));
   node.recv_pkt_region = &node;
@@ -213,6 +217,10 @@ int main() {
 #else
   (void)committed;
 #endif
+  assert(node.allowPacketForward(&p));
+  node.recv_pkt_region = nullptr;
+  node._cli.allow_unknown = true;
+  p.header = ROUTE_TYPE_TRANSPORT_FLOOD | (PAYLOAD_TYPE_GRP_TXT << PH_TYPE_SHIFT);
   assert(node.allowPacketForward(&p));
   node._prefs.disable_fwd = 1;
   assert(!node.allowPacketForward(&p));

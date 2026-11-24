@@ -68,6 +68,7 @@ public:
       : _region_map(regions), _callbacks(callbacks) {}
   void onRegionsLoaded(FILESYSTEM* fs, bool loaded);
   void recoverMediaMeshRegions();
+  #include "unmatched.inc"
 };
 
 #include "scope_under_test.inc"
@@ -119,6 +120,67 @@ static mesh::Packet media_packet() {
   std::memcpy(&packet.transport_codes[0], bytes, sizeof(bytes));
   packet.transport_codes[1] = 0;
   return packet;
+}
+
+static void unknown_forward() {
+  Scenario test;
+  auto& map = test.regions;
+  auto packet = media_packet(); // #mediamesh is initially unknown
+  packet.transport_codes[1] = 0x7351;
+  const auto original = packet.transport_codes[0];
+  auto forward = [&]() { return test.cli.allowsUnmatchedFlood(&packet); };
+  require(forward() && map.findMatch(&packet, REGION_DENY_FLOOD) == nullptr, "empty auto passes without claiming a match");
+  require(packet.transport_codes[0] == original && packet.transport_codes[1] == 0x7351, "keep both scope codes");
+  auto* local = map.putRegion("local", 0);
+  require(local && !forward(), "first named region closes auto");
+  map.setUnknownScope(RegionMap::UnknownScope::Allow);
+  require(forward(), "explicit allow alongside configured regions");
+  auto* media = map.putRegion("mediamesh", 0);
+  require(media, "add matching named region");
+  media->flags = REGION_DENY_FLOOD;
+  require(!forward(), "allow still respects a named flood denial");
+  require(map.save(&test.fs), "save allow");
+  RegionMap restarted(test.keys);
+  require(restarted.load(&test.fs) && restarted.getUnknownScope() == RegionMap::UnknownScope::Allow, "reboot retains allow");
+  require(map.removeRegion(*media) && map.removeRegion(*local), "remove named regions");
+  map.setUnknownScope(RegionMap::UnknownScope::Deny);
+  require(!forward() && map.save(&test.fs) && restarted.load(&test.fs)
+              && restarted.getUnknownScope() == RegionMap::UnknownScope::Deny, "empty deny survives reboot");
+  restarted.resetFrom(map);
+  require(restarted.getUnknownScope() == RegionMap::UnknownScope::Deny, "bulk region load preserves mode");
+  map.setUnknownScope(RegionMap::UnknownScope::Auto);
+  require(forward(), "empty auto reopens");
+  for (const uint16_t code : {0, 0xffff}) {
+    packet.transport_codes[0] = code;
+    require(!forward(), "reserved codes are outside unknown-scope policy");
+  }
+  packet.transport_codes[0] = original;
+  test.fs.files["/regions2"] = {0xff};
+  test.cli.onRegionsLoaded(&test.fs, false);
+  require(!forward(), "unreadable table does not open forwarding");
+
+  struct Gate {
+    using Packet = mesh::Packet;
+    bool _cold_boot_repeat_hold = false;
+    bool allowPacketForward(const mesh::Packet*) { return true; }
+    #include "forward.inc"
+  } gate;
+  TransportKey key;
+  test.keys.getAutoKeyFor(130, "#BlackHole86", key);
+  for (uint8_t value : {0x10, 0x20}) {
+    packet.payload[0] = value;
+    packet.transport_codes[0] = key.calcTransportCode(&packet);
+    packet.received_in_sink_scope = packet.hasBlackHoleScope();
+    require(packet.received_in_sink_scope, "recognize real sink code for each payload");
+    packet.transport_codes[0] ^= 1; // a subsequent rewrite cannot undo the receive-time veto
+    require(!gate.canForwardPacket(&packet), "received sink stays blocked after rewrite");
+    packet.received_in_sink_scope = packet.hasBlackHoleScope();
+    require(!packet.received_in_sink_scope, "other scope is eligible");
+    packet.transport_codes[0] = key.calcTransportCode(&packet);
+    require(gate.canForwardPacket(&packet), "locally assigned sink can leave once");
+  }
+  packet.header = (packet.header & ~PH_ROUTE_MASK) | ROUTE_TYPE_TRANSPORT_DIRECT;
+  require(!packet.hasBlackHoleScope() && !forward(), "direct traffic outside scoped flood policy");
 }
 
 static void scope_filter() {
@@ -366,6 +428,7 @@ int main(int argc, char** argv) {
   require(argc == 2, "select one test scenario");
   const char* name = argv[1];
   if (!std::strcmp(name, "scope-filter")) scope_filter();
+  else if (!std::strcmp(name, "unknown-forward")) unknown_forward();
   else if (!std::strcmp(name, "existing-policy")) existing_policy();
   else if (!std::strcmp(name, "full-table")) full_table();
   else if (!std::strcmp(name, "save-retry")) save_retry();

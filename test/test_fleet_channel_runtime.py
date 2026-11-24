@@ -26,7 +26,7 @@ UTILS = r'''
 #include <cstring>
 #include <cstdio>
 #include <cassert>
-#include <SHA256.h>
+#include <helpers/TransportCode.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>
 #define PUB_KEY_SIZE 32

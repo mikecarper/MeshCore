@@ -7069,6 +7069,20 @@ void CommonCLI::handleRegionCmd(char* command, char* reply) {
     savePrefs();
     bool success = _callbacks->saveRegions();
     strcpy(reply, success ? "OK" : "Err - save failed");
+  } else if (n >= 2 && strcmp(parts[1], "unknown") == 0) {
+    static const char* const modes[] = {"auto", "allow", "deny"};
+    if (n == 2) {
+      strcpy(reply, modes[static_cast<uint8_t>(_region_map->getUnknownScope())]);
+    } else {
+      for (unsigned i = 0; n == 3 && i < sizeof(modes) / sizeof(modes[0]); ++i) {
+        if (strcmp(parts[2], modes[i]) == 0) {
+          _region_map->setUnknownScope(static_cast<RegionMap::UnknownScope>(i));
+          strcpy(reply, "OK");
+          return;
+        }
+      }
+      strcpy(reply, "Err - use auto, allow or deny");
+    }
   } else if (n >= 3 && strcmp(parts[1], "allowf") == 0) {
     auto region = _region_map->findByNamePrefix(parts[2]);
     if (region) {

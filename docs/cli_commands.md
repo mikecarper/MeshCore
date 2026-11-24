@@ -6008,6 +6008,21 @@ scope through its flood rules. Region configuration does not enable repeating.
 
 ---
 
+#### Forward unknown scopes
+
+Use `region unknown` to check how a repeater, room server, or forwarding sensor handles
+scoped floods that do not match a named region. Set one of these modes and run
+`region save` to keep it after reboot.
+
+| Command | Forwarding behavior |
+| --- | --- |
+| `region unknown auto` (default) | Forward unknown scopes unchanged while the named region list is empty. Adding the first named region turns this off. |
+| `region unknown allow` | Forward unknown scopes unchanged even with named regions configured. Named flood denials still apply. |
+| `region unknown deny` | Require a matching flood-allowed region for scoped floods under the normal forwarding policy. |
+
+An incoming `#BlackHole86` flood stops in every mode, including when a rewrite rule
+matches it. The wildcard `*` controls unscoped traffic separately.
+
 #### Allow a region
 **Usage:** 
 - `region allowf <name>`

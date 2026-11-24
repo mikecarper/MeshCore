@@ -107,7 +107,9 @@ bool RegionMap::load(FILESYSTEM* _fs, const char* path) {
       uint16_t loaded_next = 1;
       uint8_t loaded_wildcard_flags = 0;
 
-      bool success = file.read(pad, 3) == 3;  // reserved header
+      uint8_t header[3];
+      bool success = file.read(header, sizeof(header)) == sizeof(header)
+          && header[0] <= static_cast<uint8_t>(UnknownScope::Deny);
       success = success && file.read((uint8_t *) &loaded_default, sizeof(loaded_default)) == sizeof(loaded_default);
       success = success && file.read((uint8_t *) &loaded_home, sizeof(loaded_home)) == sizeof(loaded_home);
       success = success && file.read((uint8_t *) &loaded_wildcard_flags, sizeof(loaded_wildcard_flags)) == sizeof(loaded_wildcard_flags);
@@ -198,6 +200,7 @@ bool RegionMap::load(FILESYSTEM* _fs, const char* path) {
         home_id = loaded_home;
         next_id = loaded_next;
         wildcard.flags = loaded_wildcard_flags;
+        unknown_scope = static_cast<UnknownScope>(header[0]);
       }
       return success;
     }
@@ -221,7 +224,9 @@ bool RegionMap::save(FILESYSTEM* _fs, const char* path) {
     uint8_t pad[128];
     memset(pad, 0, sizeof(pad));
 
-    bool success = file.write(pad, 3) == 3;  // reserved header
+    // Older writers zeroed these bytes, which selects Auto.
+    const uint8_t header[3] = {static_cast<uint8_t>(unknown_scope), 0, 0};
+    bool success = file.write(header, sizeof(header)) == sizeof(header);
     success = success && file.write((uint8_t *) &default_id, sizeof(default_id)) == sizeof(default_id);
     success = success && file.write((uint8_t *) &home_id, sizeof(home_id)) == sizeof(home_id);
     success = success && file.write((uint8_t *) &wildcard.flags, sizeof(wildcard.flags)) == sizeof(wildcard.flags);
@@ -308,6 +313,15 @@ int RegionMap::getTransportKeysFor(const RegionEntry& src, TransportKey dest[], 
   return num;
 }
 
+bool RegionMap::matchesScope(const RegionEntry& region, const mesh::Packet* packet) {
+  TransportKey keys[4];
+  const int count = getTransportKeysFor(region, keys, 4);
+  for (int i = 0; i < count; ++i) {
+    if (keys[i].calcTransportCode(packet) == packet->transport_codes[0]) return true;
+  }
+  return false;
+}
+
 RegionEntry* RegionMap::findMatch(const mesh::Packet* packet, uint8_t mask) {
   if (packet->transport_codes[0] == 0) {
     // Zero means unscoped, not an exemption from the wildcard's deny policy.
@@ -315,18 +329,21 @@ RegionEntry* RegionMap::findMatch(const mesh::Packet* packet, uint8_t mask) {
   }
   for (int i = 0; i < num_regions; i++) {
     auto region = &regions[i];
-    if ((region->flags & mask) == 0) {   // does region allow this? (per 'mask' param)
-      TransportKey keys[4];
-      int num = getTransportKeysFor(*region, keys, 4);
-      for (int j = 0; j < num; j++) {
-        uint16_t code = keys[j].calcTransportCode(packet);
-        if (packet->transport_codes[0] == code) {   // a match!!
-          return region;
-        }
-      }
-    }
+    if ((region->flags & mask) == 0 && matchesScope(*region, packet)) return region;
   }
   return NULL;  // no matches
+}
+
+bool RegionMap::allowsUnmatchedFlood(const mesh::Packet* packet) {
+  if (packet->getRouteType() != ROUTE_TYPE_TRANSPORT_FLOOD
+      || packet->transport_codes[0] == 0 || packet->transport_codes[0] == 0xFFFF) return false;
+  if (unknown_scope == UnknownScope::Auto) return num_regions == 0;
+  if (unknown_scope != UnknownScope::Allow) return false;
+  // The normal lookup skipped denied regions. Check only those keys here.
+  for (int i = 0; i < num_regions; ++i) {
+    if ((regions[i].flags & REGION_DENY_FLOOD) && matchesScope(regions[i], packet)) return false;
+  }
+  return true;
 }
 
 RegionEntry* RegionMap::findByName(const char* name) {
@@ -447,6 +464,7 @@ bool RegionMap::wouldCreateCycle(uint16_t region_id, uint16_t parent_id) const {
 }
 
 void RegionMap::resetFrom(const RegionMap& src) {
+  unknown_scope = src.unknown_scope;
   next_id = src.next_id;
   home_id = src.home_id;
   default_id = src.default_id;

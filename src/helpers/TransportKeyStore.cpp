@@ -1,20 +1,8 @@
 #include "TransportKeyStore.h"
-#include <SHA256.h>
+#include "TransportCode.h"
 
 uint16_t TransportKey::calcTransportCode(const mesh::Packet* packet) const {
-  uint16_t code;
-  SHA256 sha;
-  sha.resetHMAC(key, sizeof(key));
-  uint8_t type = packet->getPayloadType();
-  sha.update(&type, 1);
-  sha.update(packet->payload, packet->payload_len);
-  sha.finalizeHMAC(key, sizeof(key), &code, 2);
-  if (code == 0) {     // reserve codes 0000 and FFFF
-    code++;
-  } else if (code == 0xFFFF) {
-    code--;
-  }
-  return code;
+  return mesh::calculateTransportCode(key, packet->getPayloadType(), packet->payload, packet->payload_len);
 }
 
 bool TransportKey::isNull() const {

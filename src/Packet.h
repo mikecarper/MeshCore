@@ -72,6 +72,7 @@ public:
   bool w12_post_tx_retry_used = false;
 #endif
   bool forwarded = false;  // local relay ownership, copied into retries; never serialized
+  bool received_in_sink_scope = false;  // captured before any receive-side scope rewrite
   bool yielded_tx_budget = false;  // one turn for the other profile per queued send
   uint32_t radio_generation = 0;
   uint32_t radio_origin_generation = 0;
@@ -106,6 +107,7 @@ public:
   uint8_t getRouteType() const { return header & PH_ROUTE_MASK; }
 
   bool isRouteFlood() const { return getRouteType() == ROUTE_TYPE_FLOOD || getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD; }
+  bool hasBlackHoleScope() const;
   bool isRouteDirect() const { return getRouteType() == ROUTE_TYPE_DIRECT || getRouteType() == ROUTE_TYPE_TRANSPORT_DIRECT; }
 
   // TRACE gathers per-hop state and CONTROL can carry local discovery state.

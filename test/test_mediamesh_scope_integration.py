@@ -20,6 +20,8 @@ def implementation():
     region = (ROOT / "src/helpers/RegionMap.cpp").read_text(encoding="ascii")
     generated = region_implementation()
     for signature in ("int RegionMap::getTransportKeysFor(",
+                      "bool RegionMap::matchesScope(", "bool RegionMap::allowsUnmatchedFlood(",
+                      "bool RegionMap::removeRegion(", "void RegionMap::resetFrom(",
                       "RegionEntry* RegionMap::findMatch("):
         generated += "\n" + body(region, signature)
     common = (ROOT / "src/helpers/CommonCLI.cpp").read_text(encoding="ascii")
@@ -29,8 +31,6 @@ def implementation():
     generated += "\n" + body(common, "void CommonCLI::recoverMediaMeshRegions(")
     repeater = (ROOT / "examples/simple_repeater/MyMesh.cpp").read_text(encoding="ascii")
     generated += "\n" + body(repeater, "void MyMesh::onDefaultRegionChanged(")
-    packet = (ROOT / "src/Packet.cpp").read_text(encoding="ascii")
-    generated += "\nnamespace mesh {\n" + body(packet, "Packet::Packet(") + "\n}\n"
     return generated
 
 
@@ -43,6 +43,9 @@ class MediaMeshScopeIntegrationTest(unittest.TestCase):
         cls.temporary = tempfile.TemporaryDirectory(prefix="meshcore-mediamesh-scope-")
         cls.work = Path(cls.temporary.name)
         (cls.work / "scope_under_test.inc").write_text(implementation(), encoding="ascii")
+        (cls.work / "unmatched.inc").write_text(body(
+            (ROOT / "src/helpers/CommonCLI.h").read_text(), "bool allowsUnmatchedFlood("))
+        (cls.work / "forward.inc").write_text(body((ROOT / "src/Mesh.h").read_text(), "bool canForwardPacket("))
         (cls.work / "contact_transaction_under_test.h").write_text(
             (ROOT / "src/helpers/ContactFileTransaction.h").read_text(encoding="ascii"),
             encoding="ascii")
@@ -76,7 +79,7 @@ class SHA256 : public NativeSHA256 {{ public:
                 "-D" + platform + "=1", "-I", str(cls.work),
                 "-I", str(REGION_FIXTURE / "mocks"),
                 "-I", str(ROOT / "test/mocks"), "-I", str(ROOT / "src"),
-                str(FIXTURE), str(ROOT / "src/helpers/TransportKeyStore.cpp"),
+                str(FIXTURE), str(ROOT / "src/Packet.cpp"), str(ROOT / "src/helpers/TransportKeyStore.cpp"),
                 "-o", str(binary),
             ]
             result = subprocess.run(command, capture_output=True, text=True, timeout=60)
@@ -102,6 +105,9 @@ class SHA256 : public NativeSHA256 {{ public:
 
     def test_real_scope_key_filter_and_reboot_persistence(self):
         self.run_case("scope-filter")
+
+    def test_unknown_forwarding_and_blackhole_sink(self):
+        self.run_case("unknown-forward")
 
     def test_existing_hierarchy_and_nonflood_policy_are_preserved(self):
         self.run_case("existing-policy")

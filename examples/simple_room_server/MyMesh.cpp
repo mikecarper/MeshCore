@@ -1824,7 +1824,7 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
 #if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
     scope_allowed = scope_allowed || recv_pkt_regionless_scope_set;
 #endif
-    if (!scope_allowed) {
+    if (!scope_allowed && !_cli.allowsUnmatchedFlood(packet)) {
       MESH_DEBUG_PRINTLN(
           "allowPacketForward: unknown transport code, or wildcard not allowed for FLOOD packet");
       return false;

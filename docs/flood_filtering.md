@@ -204,6 +204,28 @@ the available table. Remote rule changes require room-server administrator
 access. `flood.filter.blacklist*` and `path=blacklist` are repeater-only; use
 the ordered `prefix=` condition on a room server.
 
+## Forward floods with their original scope
+
+With repeating enabled and no named regions configured, the default
+`region unknown auto` forwards eligible scoped floods with both transport codes
+intact. Adding the first named region switches to forwarding recognized,
+flood-allowed scopes. Removing the last named region restores the open behavior.
+
+To keep forwarding unknown scopes alongside your configured regions, run
+
+```text
+region unknown allow
+region save
+```
+
+Use `region unknown deny` to require a recognized scope even with an empty list.
+The wildcard `*` controls unscoped floods. Explicit flood filters and hop limits
+still apply. Forwarding an unknown scope does not make it match `in=allowed`.
+
+`#BlackHole86` is a sink in every mode. A rewrite can send a packet into that scope
+once. A node running this firmware that receives it can process it locally, but
+will neither repeat it nor forward it over a packet bridge.
+
 ## Force floods into a transport scope
 
 `flood.channel.scope` can add a scope to a received unscoped flood or replace
@@ -893,9 +915,8 @@ it. Public names up to 30 characters are accepted; private `$` scopes are not.
 `require=region` is the legacy spelling of `in=allowed`. The repeater evaluates the packet's
 original route before any rewrite in that receive pass. An incoming transport
 scope must match a locally allowed region; an unscoped flood must be allowed by
-the wildcard region. If the check fails, that row is skipped, the filter does
-not grant a region bypass, and the unchanged packet is allowed to fail
-normal region enforcement. Other independently configured scope rows still
+the wildcard region for that row to match. If the check fails, the repeater skips
+that row and evaluates the packet under its normal region policy. Other scope rows still
 apply in their normal order.
 
 When multiple scope or region rows match, the highest numeric-priority row

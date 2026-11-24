@@ -454,6 +454,7 @@ bool SensorMesh::allowPacketForward(const mesh::Packet* packet) {
   if (isTrackerModeEnabled()) return false;
   if (_prefs.disable_fwd) return false;
   if (packet->isRouteFlood() && packet->getPathHashCount() >= _prefs.flood_max) return false;
+  if (packet->isRouteFlood() && !recv_pkt_region && !_cli.allowsUnmatchedFlood(packet)) return false;
   _clock_sync.observeAcceptedFlood(packet);
   return true;
 }

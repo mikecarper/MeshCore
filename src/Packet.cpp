@@ -1,6 +1,6 @@
 #include "Packet.h"
 #include <string.h>
-#include <SHA256.h>
+#include "helpers/TransportCode.h"
 
 namespace mesh {
 
@@ -54,6 +54,14 @@ int Packet::getRawLength() const {
   return 2 + getPathByteLen() + payload_len + (hasTransportCodes() ? 4 : 0);
 }
 
+bool Packet::hasBlackHoleScope() const {
+  if (getRouteType() != ROUTE_TYPE_TRANSPORT_FLOOD || transport_codes[0] == 0) return false;
+  // First 16 bytes of SHA-256("#BlackHole86"). The on-air code depends on the payload.
+  static const uint8_t key[16] = {0xe2, 0x8d, 0x50, 0x05, 0x15, 0x21, 0x8e, 0xa6,
+                                  0xf3, 0xdd, 0xbe, 0x51, 0x87, 0xeb, 0x63, 0xd0};
+  return transport_codes[0] == calculateTransportCode(key, getPayloadType(), payload, payload_len);
+}
+
 void Packet::calculatePacketHash(uint8_t* hash) const {
   SHA256 sha;
   uint8_t t = getPayloadType();
@@ -103,6 +111,7 @@ bool Packet::readFrom(const uint8_t src[], uint8_t len) {
   tx_radio = RADIO_TX_AUTO;
   radio_reply = radio_reply_force = false;
   forwarded = false;
+  received_in_sink_scope = false;
 #if defined(WITH_UDP_BRIDGE)
   udp_bridge_ingress = false;
 #endif

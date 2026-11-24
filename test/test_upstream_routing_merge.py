@@ -12,8 +12,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class UpstreamRoutingMergeTests(unittest.TestCase):
     def test_zero_transport_code_matches_wildcard_without_key_lookup(self):
-        method = extract_braced((ROOT / "src/helpers/RegionMap.cpp").read_text(),
-                                "RegionEntry* RegionMap::findMatch(")
+        region = (ROOT / "src/helpers/RegionMap.cpp").read_text()
+        method = extract_braced(region, "bool RegionMap::matchesScope(") + "\n" + extract_braced(
+            region, "RegionEntry* RegionMap::findMatch(")
         compiler = shutil.which("g++") or shutil.which("c++")
         if not compiler:
             self.skipTest("native C++ compiler required")
@@ -35,6 +36,7 @@ public:
     ++lookups; keys[0].code = 0x1234; return 1;
   }
   RegionEntry* findMatch(const mesh::Packet*, uint8_t);
+  bool matchesScope(const RegionEntry&, const mesh::Packet*);
 };
 @METHOD@
 int main() {
@@ -229,6 +231,8 @@ struct MyMesh
     } policy;
     const Policy& radioProfiles() const { return policy; }
     bool batteryAllowsForward(bool) const { return true; }
+    bool allow_unknown = false;
+    bool allowsUnmatchedFlood(const mesh::Packet*) const { return allow_unknown; }
     bool batteryAllowsTransmit(const mesh::Packet*) const { return true; }
   } _cli;
 #if defined(ESP32_PLATFORM)
@@ -265,6 +269,11 @@ int main() {
     packet.header = route | (PAYLOAD_TYPE_TXT_MSG << PH_TYPE_SHIFT);
     packet.transport_codes[0] = route == ROUTE_TYPE_FLOOD ? 0 : 0x1234;
     assert(!room.allowPacketForward(&packet));
+    if (route == ROUTE_TYPE_TRANSPORT_FLOOD) {
+      room._cli.allow_unknown = true;
+      assert(room.allowPacketForward(&packet));
+      room._cli.allow_unknown = false;
+    }
     room.recv_pkt_region = &room;
     assert(room.allowPacketForward(&packet));
     room._prefs.disable_fwd = 1;

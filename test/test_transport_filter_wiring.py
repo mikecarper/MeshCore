@@ -21,6 +21,8 @@ struct Packet {
  uint8_t radio_profile=0,radio_origin=0,tx_radio=RADIO_TX_AUTO;
  uint32_t radio_generation=0,radio_origin_generation=0;
  bool radio_bound=false,radio_local=true,radio_reply=false,radio_reply_force=false,forwarded=false;
+ bool received_in_sink_scope=false, sink_on_wire=false;
+ bool hasBlackHoleScope() const { return sink_on_wire; }
  uint8_t getPayloadType() const { return (header >> 2) & 0x0f; }
  bool violatesRoutePolicy() const {
    const uint8_t route = header & 0x03;
@@ -216,6 +218,12 @@ int main() {
  mqtt.onPacketReceived(&p);mqtt.sendPacket(&p);
  assert(mqtt.queued==4);
  BridgeBase no_policy;no_policy.onPacketReceived(&p);assert(no_policy.manager.queued==1);
+ p.sink_on_wire=true;
+ no_policy.onPacketReceived(&p);
+ assert(p.received_in_sink_scope && no_policy.manager.queued==1 && no_policy.manager.freed==1);
+ const auto writes=serial.serial.writes;
+ serial.sendPacket(&p);
+ assert(serial.serial.writes==writes);
 }
 '''
 

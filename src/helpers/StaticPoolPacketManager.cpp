@@ -193,6 +193,7 @@ mesh::Packet* StaticPoolPacketManager::allocNew() {
 #if defined(WITH_UDP_BRIDGE)
   if (packet) packet->udp_bridge_ingress = false;
 #endif
+  if (packet) packet->received_in_sink_scope = false;
   return packet;
 }
 

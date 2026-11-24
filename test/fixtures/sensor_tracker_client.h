@@ -146,6 +146,7 @@ public:
   Milliseconds* _ms = &clock_ms;
   FakeBoard board;
   FakeRadio radio;
+  const void* recv_pkt_region = this;
   FakeRadio* _radio = &radio;
   FakeDriver radio_driver;
   FakePool pool;
@@ -179,6 +180,7 @@ public:
     } profiles;
     Profiles& radioProfiles() { return profiles; }
     bool batteryAllowsForward(bool) const { return true; }
+    bool allowsUnmatchedFlood(const mesh::Packet*) const { return false; }
     bool batteryAllowsTransmit(const mesh::Packet*) const { return true; }
     struct NoMorseReply { void complete(const void*) {} void fail(const void*) {} } morse;
     NoMorseReply& morseReply() { return morse; }

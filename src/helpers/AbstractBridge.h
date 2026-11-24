@@ -38,6 +38,7 @@ protected:
         || (_ingress_profiles && _ingress_profiles->params(profile).protocol
             != mesh::RadioProfileProtocol::MeshCore)) return false;
     packet->radio_profile = packet->radio_origin = profile;
+    packet->received_in_sink_scope = packet->hasBlackHoleScope();
     packet->radio_generation = packet->radio_origin_generation =
         _ingress_profiles ? _ingress_profiles->generation[profile] : 0;
     packet->radio_bound = false;
@@ -57,8 +58,8 @@ protected:
     // Route policy is transport-independent: a flood-framed TRACE or CONTROL
     // must never be relayed through a bridge even if the role has no custom
     // bridge filter configured.
-    return packet && !packet->violatesRoutePolicy() && (!_packet_filter
-        || _packet_filter(_packet_filter_context, packet));
+    return packet && !packet->received_in_sink_scope && !packet->violatesRoutePolicy()
+        && (!_packet_filter || _packet_filter(_packet_filter_context, packet));
   }
 
 public:
