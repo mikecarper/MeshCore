@@ -4181,6 +4181,10 @@ setting applies. Software and watchdog resets skip the wait.
 
 Room Server repeating is opt-in with `set repeat on`. Updates keep the saved value.
 
+On a Companion, enable Repeat Mode on a starting frequency (918 MHz in the US),
+then use the connected CLI to change the primary radio settings.
+[Companion Repeat Mode examples](companion_cli.md#change-frequency-in-repeat-mode).
+
 `repeat off` disables relay forwarding, not locally generated traffic or
 configuration replies. Repeaters and ESP32 Room Servers can separately opt in
 to the routed-trace exception below.

@@ -107,6 +107,7 @@ over the normal binary USB, BLE, or TCP connection:
 | `erase` | Local terminal and binary command `0x42`; reboot after erasing stored settings |
 | [`get preset [n]`; `add preset`; `load preset`; `del preset`](cli_commands.md#save-and-switch-named-radio-presets) | Local terminal and binary command `0x42` only; LoRa CLI cannot use presets on a Companion. `load preset` saves and applies at once with no revert window; omitted on STM32, ESP-NOW-only and RAK4631 Full Companion builds (`MESH_ENABLE_RADIO_PRESETS`) |
 | `set freq <MHz>` | Local terminal, binary command `0x42`, and authorized LoRa CLI; applies automatically (infrastructure waits two seconds and for the reply to drain) |
+| [`get/set repeat`](companion_cli.md#change-frequency-in-repeat-mode) | Connected Companion CLI. With Repeat Mode on, `set freq` or `set radio` can select a custom frequency. |
 | [`get public.key`](cli_commands.md#view-this-nodes-public-key) | Companion text terminal and binary command `0x42`; read-only, no private-key export feature required |
 | `get prv.key` | Local terminal and binary command `0x42`; requires private key export enabled |
 | `get password` | ESP32 WiFi Companion reports management-password status without revealing it; other Companions report no admin password; infrastructure returns its password locally |

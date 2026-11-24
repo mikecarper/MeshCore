@@ -16,6 +16,7 @@ the board and firmware profile; use `help` for the commands in your build.
 | Node name | `get name`, `set name <name>` |
 | Radio profile | `get radio`, `set radio <MHz>,<kHz>,<SF>,<CR>` |
 | Frequency | `get freq`, `set freq <MHz>` |
+| Repeat Mode | `get repeat`, `set repeat on`, `set repeat off` |
 | Transmit power | `get tx`, `set tx <dBm>` |
 | Radio apply status | `get radio.apply` |
 | Timezone, hours | `get tz.offset`, `set tz.offset <hours>` |
@@ -39,6 +40,16 @@ antenna output on amplified boards.
 See [CLI commands](cli_commands.md) for setting ranges and access restrictions,
 and [radio profiles](radio_profiles.md) for radio2, temporary profiles and
 schedules.
+
+## Change frequency in Repeat Mode
+
+1. Enable **Repeat Mode** in the app on its starting frequency (918 MHz in the US).
+2. Open the connected Companion’s **Command Line**. To change only the frequency, enter `set freq 910.525`. To set frequency, bandwidth, spreading factor and coding rate together, enter `set radio 910.525,62.5,7,5`.
+3. Enter `get radio` to check the saved settings and `get repeat` to confirm it says `on`.
+
+`set freq` keeps the current modem settings and preamble. For a 32-symbol preamble with `set radio`, append `,32`. The settings take effect without a reboot and persist after restart. Use matching settings on the nodes you want to relay.
+
+You can also enable Repeat Mode from the CLI with `set repeat on` while tuned to a starting frequency.
 
 ## Power saving
 

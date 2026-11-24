@@ -3976,9 +3976,12 @@ MyMesh::RadioSettingResult MyMesh::applyAndSaveRadioParams(
   if (remote && (_temp_radio_applied || _temp_radio_set_at || _temp_radio_revert_at))
     return RadioSettingResult::RadioRejected;
 #endif
-  if (freq < 150.0f || !CommonRadioPrefs::isValidBandwidth(bw)
+  // The startup ranges govern enabling client repeat. Once enabled, a
+  // connected client can retune it; on-air requests may reuse that channel.
+  const bool check_repeat_range = repeat && (!_prefs.client_repeat || (remote && freq != _prefs.freq));
+  if (!(freq >= 150.0f && freq <= 2500.0f) || !CommonRadioPrefs::isValidBandwidth(bw)
       || !_radio_profiles.acceptsPrimary(freq, bw, sf, cr, preamble)
-      || (repeat && !isValidClientRepeatFreq(uint32_t(freq * 1000.0f))))
+      || (check_repeat_range && !isValidClientRepeatFreq(uint32_t(freq * 1000.0f))))
     return RadioSettingResult::RadioRejected;
   uint32_t rx_us = _prefs.rx_ps_rx_us, sleep_us = _prefs.rx_ps_sleep_us;
   if (_prefs.rx_ps_level
@@ -6694,8 +6697,9 @@ void MyMesh::buildStatsJson(char* buf, size_t buf_size) {
 struct FreqRange {
   uint32_t lower_freq, upper_freq;
 };
+static_assert(sizeof(FreqRange) == 8, "Repeat frequency ranges are two wire-format kHz values");
 
-static FreqRange repeat_freq_ranges[] = {
+static const FreqRange repeat_freq_ranges[] = {
   #ifdef ALLOWED_REPEAT_FREQ_RANGE
   ALLOWED_REPEAT_FREQ_RANGE
   #else
@@ -7954,7 +7958,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     memcpy(&freq, &cmd_frame[1], 4);
     memcpy(&bw, &cmd_frame[5], 4);
     const uint8_t sf = cmd_frame[9], cr = cmd_frame[10];
-    const uint8_t repeat = len > 11 ? cmd_frame[11] : 0;
+    const uint8_t repeat = len > 11 ? cmd_frame[11] : _prefs.client_repeat;
     if (freq < 150000 || freq > 2500000 || bw < 7000 || bw > 500000
         || sf < 5 || sf > 12 || cr < 4 || cr > 8) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
@@ -8877,14 +8881,22 @@ void MyMesh::handleCmdFrame(size_t len) {
     out_frame[i++] = _prefs.autoadd_max_hops;
     _serial->writeFrame(out_frame, i);
   } else if (cmd_frame[0] == CMD_GET_ALLOWED_REPEAT_FREQ) {
-    int i = 0;
+    size_t i = 0;
     out_frame[i++] = RESP_ALLOWED_REPEAT_FREQ;
-    for (int k = 0; k < sizeof(repeat_freq_ranges)/sizeof(repeat_freq_ranges[0]) && i + 8 < sizeof(out_frame); k++) {
-      auto r = &repeat_freq_ranges[k];
-      memcpy(&out_frame[i], &r->lower_freq, 4); i += 4;
-      memcpy(&out_frame[i], &r->upper_freq, 4); i += 4;
+    // Use the same kHz value as CMD_APP_START so apps recognize a custom
+    // channel on reconnect. Stock ranges already cover their own channels.
+    const uint32_t active_khz = uint32_t(_prefs.freq * 1000.0f);
+    if (_prefs.client_repeat && !isValidClientRepeatFreq(active_khz)) {
+      memcpy(&out_frame[i], &active_khz, 4); i += 4;
+      memcpy(&out_frame[i], &active_khz, 4); i += 4;
     }
-    _serial->writeFrame(out_frame, i);
+    size_t bytes = sizeof(repeat_freq_ranges);
+    if (1 + sizeof(FreqRange) + sizeof(repeat_freq_ranges) > MAX_FRAME_SIZE) {
+      const size_t capacity = (MAX_FRAME_SIZE - i) / sizeof(FreqRange);
+      bytes = min(bytes, capacity * sizeof(FreqRange));
+    }
+    memcpy(&out_frame[i], repeat_freq_ranges, bytes);
+    _serial->writeFrame(out_frame, i + bytes);
   } else if (cmd_frame[0] == CMD_SEND_RAW_PACKET && len >= 4) {
     auto pkt = obtainNewPacket();
     if (pkt) {
@@ -11846,6 +11858,28 @@ bool MyMesh::handleDirectCommand(const char* command, char* reply, size_t reply_
 #if defined(ESP32_PLATFORM) && defined(MESH_HIL_RADIO_TRACE) && MESH_HIL_RADIO_TRACE
   if (mesh::radiotrace::handleTraceCommand(command, reply, reply_size)) return true;
 #endif
+  const char* repeat_reply = nullptr;
+  if (strcmp(command, "get repeat") == 0) {
+    repeat_reply = _prefs.client_repeat ? "> on" : "> off";
+  } else if (strncmp(command, "set repeat ", 11) == 0) {
+    const char* repeat_value = mesh::cli::skipRecentRepeaterSpaces(command + 11);
+    const bool enabled = strcmp(repeat_value, "on") == 0;
+    if (!enabled && strcmp(repeat_value, "off") != 0) {
+      repeat_reply = "Error: use on|off";
+    } else if (enabled && !_prefs.client_repeat
+               && !isValidClientRepeatFreq(uint32_t(_prefs.freq * 1000.0f))) {
+      repeat_reply = MESH_CLI_REPLY_TEXT("Error: enable Repeat Mode on a starting frequency", "Error: radio rejected");
+    } else if (enabled != (_prefs.client_repeat != 0)
+               && !savePreference(_prefs.client_repeat, uint8_t(enabled))) {
+      repeat_reply = "Error: radio not saved";
+    } else {
+      repeat_reply = "OK";
+    }
+  }
+  if (repeat_reply) {
+    snprintf(reply, reply_size, "%s", repeat_reply);
+    return true;
+  }
 #if MESH_ENABLE_ONE_KEY_DM
   if (strcmp(command, "get dm.one_key") == 0) {
     snprintf(reply, reply_size, "> %s", _prefs.one_key_dm_enabled == 1 ? "on" : "off");

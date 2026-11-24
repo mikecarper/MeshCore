@@ -301,6 +301,11 @@ replaces the pending value. No follow-up command or reconnect is needed.
 Successful settings commands are saved independently, so an error does not undo
 earlier commands.
 
+With Repeat Mode enabled, a connected client can retune the primary radio.
+`0x3C` includes the active custom frequency as a single-frequency range in kHz
+alongside the configured starting ranges. In `0x0B`, omitting the optional
+repeat byte preserves the current mode. Sending `0` explicitly switches it off.
+
 ### Private text when only the sender knows the recipient
 
 Clients continue to send an ordinary `CMD_SEND_TXT_MSG` (`0x02`) with

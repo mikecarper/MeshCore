@@ -198,7 +198,7 @@ struct MyMesh : CompanionFleetFixture {
   RadioSettingResult applyAndSaveTxPower(int8_t);
   RadioSettingResult applyAndSaveRadioParams(float,float,uint8_t,uint8_t,uint8_t,uint16_t,bool=false);
   void queueSavedRadioApply();
-  bool isValidClientRepeatFreq(uint32_t) const {return true;}
+  bool isValidClientRepeatFreq(uint32_t khz) const {return khz==918000;}
   mesh::RadioParamApplyResult tryApplyRadioParams(float,float,uint8_t,uint8_t) {return mesh::RadioParamApplyResult::APPLIED;}
   bool applySavedRadioParams(){return true;}
   bool saveAdvertName(const char*);
@@ -233,7 +233,34 @@ struct MyMesh : CompanionFleetFixture {
 '''
 
 SCENARIOS = r'''
+static void checkRepeatMode() {
+  MyMesh node;
+  char reply[160] = {};
+  assert(node.handleCommand("get repeat",0,reply) && !strcmp(reply,"> off"));
+  assert(node.handleCommand("set repeat on",0,reply) && strstr(reply,"frequency"));
+  node._prefs.freq=918;
+  assert(node.handleCommand("A7|set repeat on",0,reply) && !strcmp(reply,"A7|OK"));
+  assert(node.handleCommand("set freq 910.525",0,reply) && !strcmp(reply,"OK"));
+  assert(node._prefs.freq==910.525f && node._prefs.client_repeat==1);
+  assert(node.handleCommand("set radio 914.875,62.5,8,6",0,reply) && !strcmp(reply,"OK"));
+  assert(node._prefs.freq==914.875f && node._prefs.bw==62.5f && node._prefs.sf==8 && node._prefs.cr==6);
+  const int repeat_saves=node.saves;
+  assert(node.handleCommand("set repeat on",0,reply) && node.saves==repeat_saves);
+  node.onCLICommandRecv(ContactInfo{},nullptr,100,"set freq 910.525",reply);
+  assert(node._prefs.freq==914.875f && node.saves==repeat_saves);
+  assert(node.handleCommand("set repeat wrong",0,reply) && strstr(reply,"Error"));
+  node.onCLICommandRecv(ContactInfo{},nullptr,100,"set repeat off",reply);
+  assert(node._prefs.client_repeat==1 && node.saves==repeat_saves);
+  node.save_ok=false;
+  assert(node.handleCommand("set repeat off",0,reply) && strstr(reply,"Error"));
+  assert(node.handleCommand("get repeat",0,reply) && !strcmp(reply,"> on"));
+  node.save_ok=true;
+  assert(node.handleCommand("set repeat off",0,reply) && !strcmp(reply,"OK"));
+  assert(node.handleCommand("set repeat on",0,reply) && strstr(reply,"frequency"));
+}
+
 int main() {
+  checkRepeatMode();
   MyMesh node;
   char reply[160] = {};
   assert(node.handleCommand("set lost.reply yes",0,reply));

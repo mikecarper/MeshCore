@@ -255,6 +255,9 @@ MESH_COMPANION_HELP_BEGIN
     "  get/set radio.rxgain <on|off>\r\n"
 MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
+    "  get/set repeat <on|off>\r\n"
+MESH_COMPANION_HELP_END
+MESH_COMPANION_HELP_BEGIN
     "  get rxps.wd\r\n"
     "  get/set radio.rxps.rfrx_disabled <on|off> (boot)\r\n"
     "  clear stats\r\n"

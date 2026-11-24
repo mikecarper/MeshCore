@@ -94,7 +94,7 @@ struct MyMesh : CompanionFleetFixture {
   uint8_t radio_apply_failures=0;
   void queueSavedRadioApply();
   RadioSettingResult applyAndSaveRadioParams(float,float,uint8_t,uint8_t,uint8_t,uint16_t,bool=false);
-  bool isValidClientRepeatFreq(uint32_t) const {return true;}
+  bool isValidClientRepeatFreq(uint32_t khz) const {return khz==918000;}
   mesh::RadioParamApplyResult tryApplyRadioParams(float f,float bw,uint8_t sf,uint8_t cr) {
     radio.p.primary.freq=f;radio.p.primary.bw=bw;radio.p.primary.sf=sf;radio.p.primary.cr=cr;
     return mesh::RadioParamApplyResult::APPLIED;
@@ -264,6 +264,23 @@ int main() {
       assert(m.binary_result==0);CompanionNodePrefs loaded;m.loadSaved(loaded);
       assert(loaded.cr==cr && loaded.sf==12 && loaded.bw==500);
     } else {assert(m.binary_result==1);m.expectOriginal();}
+    ++checks;
+  }
+  { // Enable on the app preset, retune locally, then resave from an older client.
+    MyMesh m;uint8_t frame[12]={11};uint32_t khz=918000,bw=125000;
+    memcpy(frame+1,&khz,4);memcpy(frame+5,&bw,4);
+    frame[9]=7;frame[10]=5;frame[11]=1;
+    m.setRadioFrame(frame,sizeof(frame));assert(m.binary_result==0);
+    assert(!error(m.command("set radio 910.525,62.5,8,6,32")));
+    CompanionNodePrefs boot;m.loadSaved(boot);
+    assert(boot.client_repeat && boot.freq==910.525f && boot.bw==62.5f && boot.sf==8 && boot.cr==6);
+    assert(m.rebootPreamble()==32);
+    khz=910525;memcpy(frame+1,&khz,4);
+    m.setRadioFrame(frame,11);assert(m.binary_result==0);
+    m.loadSaved(boot);assert(boot.client_repeat && boot.freq==910.525f && boot.bw==125);
+    frame[11]=0;m.setRadioFrame(frame,sizeof(frame));assert(m.binary_result==0);
+    frame[11]=1;m.setRadioFrame(frame,sizeof(frame));assert(m.binary_result==1);
+    m.loadSaved(boot);assert(!boot.client_repeat && boot.freq==910.525f);
     ++checks;
   }
   { // Omitted suffix intentionally restores the automatic preamble.

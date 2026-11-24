@@ -37,23 +37,23 @@ PROFILES = {
 }
 # Complete text and print/println order, including the dynamic TERM-STOP suffix.
 GOLDEN = {
-    'rak_full': {'text': '482e6d1a78e676fe295c066e6dea9d33d16cf3d63788c4f225ca235451b9c5d0'},
-    'nrf_full': {'text': '97520f83770adbcd8bfe6f3f7c9b7b5f204b62d112aeeb9d9692ee35ba6c98a4',
-                 'calls': 'ddc85fafb3f655e589c045e2ee91fac95b3926624c4ac91b657a7de346e27098'},
-    'nrf_minimal': {'text': '633d0e5e67abed482f64ca2563011ba263f169e039e1d89190de06668f975395',
-                    'calls': 'd550ea873fb4408c2796b439736b205fea1ab985c3da58a06fb69cc557347ae5'},
-    'esp_full': {'text': 'fee8d0cc18e051da06859527ba13c87a2c8645fe89fb9d6b570e1042921bc88f',
-                 'calls': 'd772aa172ae1647c9d69f6fa23bf70b5ff4f2b2daf7fd7cc5b528c0f82a266e1'},
-    'stm32_wl_usb': {'text': 'e23a0514d2d52091196cd689b88c984db52642df8e9fd67a878c74a6312c520d'},
+    'rak_full': {'text': '4eb0693c4456d5b6410b4f4927af972ce33b1ea951fda51987a88409829653fb'},
+    'nrf_full': {'text': '4eb65302552f9e565fe0356015fd8a5998adb0981fffb00de4aab62783c58b83',
+                 'calls': '47e08a9903c8f9585f0724de5b76828ad93ebc056e02d74c89ba6ead0890f41a'},
+    'nrf_minimal': {'text': '4534a82069785cdccc306edc5d9819d8741a760faa6ea84adaee2071611d41a5',
+                    'calls': '2a89015f21bb638e0a52db8a84dd3b40da6fa427920d3f3f7f9a4531beccebf3'},
+    'esp_full': {'text': '99988d2377d48d164baf8893bda5e2c4348897a66cf85a92c02d7548984ac7ef',
+                 'calls': 'd69b5adf9d003da290af07ecbf1757b68153f16a90f57d45d232dbc231558b1e'},
+    'stm32_wl_usb': {'text': 'ea38ed43ce9be8784395d12330024dd6a98dc45f16540d9e632cc443aebd0dbd'},
 }
 # Snapshots taken before shortening the English descriptions. These bind every
 # command, alias, argument and option independently of the wording around them.
 COMMAND_INVENTORY = {
-    'rak_full': '42159b2857691728524e247f8590cbcb3972724aedffeddc5e50bd8b105e64cb',
-    'nrf_full': '90321d86ecd2a04efff4c95aee0578935c84439786a9725383a21287808ec8f0',
-    'nrf_minimal': '420617a933aec1f81c90c9b78b0457e3509b6da62b649969b4ffa9b8418538c5',
-    'stm32_wl_usb': '36e6972aefe8fc2355d937c06ecae1656224618529c2f7a18f459008856476e7',
-    'esp_full': 'ea728cc706b387dfa463cf632db0f0a0e2e64a288e487582c5942234073fa25c',
+    'rak_full': '9dc3c4c0bb5e5f8eddb9c78197c0918a0aa330c90e8b2c8671b22f3f5e74ce8a',
+    'nrf_full': '68f97f403bb2ba2335d4700292edae41a43336f41a8ece79f5522927dafc9fd4',
+    'nrf_minimal': '39e5101b65a527d69b28598123e199de3ef9b3b1489a140408a22d9a29a28bec',
+    'stm32_wl_usb': 'a4d30d5969c7311b3539d68625ae0d4bd843cdb0ec976a11abeda7fb48398d24',
+    'esp_full': '0b21075f161d65a31e46ca26d065ef26c8bf8b480ee3267ffa07aa9c34c423f0',
 }
 
 FAST_HELP = (b'  get radio.fast / get radio.fast.caps\r\n'
