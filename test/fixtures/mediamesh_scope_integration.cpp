@@ -244,6 +244,38 @@ static void scope_filter() {
   require(!test.durable_allowed(), "disabled scope survives reboot");
 }
 
+static void wildcard_except_text() {
+  Scenario test;
+  RegionEntry& wildcard = test.regions.getWildcard();
+  auto packet = media_packet();
+  auto matched = [&]() { return test.regions.findMatch(&packet, REGION_DENY_FLOOD); };
+  const uint16_t media_code = packet.transport_codes[0];
+  for (uint8_t flags : {0, REGION_DENY_FLOOD, REGION_DENY_FLOOD | REGION_EXCEPT_TEXT}) {
+    wildcard.flags = flags;
+    for (uint8_t route : {ROUTE_TYPE_FLOOD, ROUTE_TYPE_TRANSPORT_FLOOD}) {
+      // Only the transport-wrapped route has a primary code on the wire.
+      packet.transport_codes[0] = route == ROUTE_TYPE_FLOOD ? media_code : 0;
+      for (uint8_t type = 0; type <= PH_TYPE_MASK; ++type) {
+        packet.header = route | (type << PH_TYPE_SHIFT);
+        const bool text = type == PAYLOAD_TYPE_TXT_MSG || type == PAYLOAD_TYPE_GRP_TXT;
+        require((matched() == &wildcard) == (flags == 0 || ((flags & REGION_EXCEPT_TEXT) && text)),
+                "wildcard allows exactly the selected flood payloads");
+      }
+    }
+  }
+  auto* named = test.regions.putRegion("mediamesh", 0);
+  require(named, "add named region");
+  packet = media_packet(); // known group data is independent of wildcard policy
+  named->flags = 0;
+  require(matched() == named, "named allow stays effective");
+  named->flags = REGION_DENY_FLOOD;
+  require(!matched(), "named deny stays effective");
+  require(test.regions.save(&test.fs), "save text exception");
+  RegionMap reboot(test.keys);
+  require(reboot.load(&test.fs) && std::strcmp(reboot.getWildcard().floodFlag(), "except-text") == 0,
+          "wildcard text exception survives reboot");
+}
+
 static void existing_policy() {
   Scenario test;
   auto* parent = test.regions.putRegion("#parent", 0);
@@ -447,6 +479,7 @@ int main(int argc, char** argv) {
   require(argc == 2, "select one test scenario");
   const char* name = argv[1];
   if (!std::strcmp(name, "scope-filter")) scope_filter();
+  else if (!std::strcmp(name, "wildcard-except-text")) wildcard_except_text();
   else if (!std::strcmp(name, "unknown-forward")) unknown_forward();
   else if (!std::strcmp(name, "existing-policy")) existing_policy();
   else if (!std::strcmp(name, "full-table")) full_table();

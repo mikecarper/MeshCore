@@ -223,6 +223,17 @@ Use `region unknown deny` to require a recognized scope even with an empty list.
 The wildcard `*` controls unscoped floods. Explicit flood filters and hop limits
 still apply. Forwarding an unknown scope does not make it match `in=allowed`.
 
+To allow only text through the unscoped wildcard, run
+
+```text
+region denyf * except-text
+region save
+```
+
+This option covers both ordinary unscoped floods and floods with a zero primary
+transport code. It exempts `grp_txt` and `txt_msg` from the wildcard deny. Use
+`region get *` to check it. Plain `region denyf *` restores the full wildcard deny.
+
 `#BlackHole86` is a sink in every mode. A rewrite can send a packet into that scope
 once. A node running this firmware that receives it can process it locally, but
 will neither repeat it nor forward it over a packet bridge.

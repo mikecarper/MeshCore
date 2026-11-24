@@ -1445,16 +1445,9 @@ int MyMesh::handleRequest(ClientInfo *sender, uint32_t sender_timestamp, uint8_t
 #if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
 bool MyMesh::allowTransportPacket(const mesh::Packet* packet, uint8_t context) {
   if (!packet) return false;
-  RegionEntry* incoming_region = NULL;
-  bool scoped = packet->getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD
-      || packet->getRouteType() == ROUTE_TYPE_TRANSPORT_DIRECT;
-  bool incoming_allowed;
-  if (scoped) {
-    incoming_region = region_map.findMatch(packet, REGION_DENY_FLOOD);
-    incoming_allowed = incoming_region != NULL;
-  } else {
-    incoming_allowed = (region_map.getWildcard().flags & REGION_DENY_FLOOD) == 0;
-  }
+  auto* matched_region = region_map.findMatch(packet, REGION_DENY_FLOOD);
+  const bool incoming_allowed = matched_region != NULL;
+  RegionEntry* incoming_region = packet->hasTransportCodes() ? matched_region : NULL;
   // Use a local mask: bridge RX/TX callbacks can run inside mesh dispatch,
   // where recv_pkt_* still belongs to the ordinary radio forwarding phase.
   uint32_t matches = flood_rules.evaluate(packet, isAnyTempRadioActive(),
@@ -1625,15 +1618,9 @@ bool MyMesh::evaluateFloodRuleTiming(const mesh::Packet* packet,
   fast_track = false;
   if (packet == NULL || !packet->isRouteFlood()) return false;
 
-  bool incoming_region_allowed = false;
-  RegionEntry* incoming_region = NULL;
-  if (packet->getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD) {
-    incoming_region = region_map.findMatch(packet, REGION_DENY_FLOOD);
-    incoming_region_allowed = incoming_region != NULL;
-  } else if (packet->getRouteType() == ROUTE_TYPE_FLOOD) {
-    incoming_region_allowed =
-        (region_map.getWildcard().flags & REGION_DENY_FLOOD) == 0;
-  }
+  auto* matched_region = region_map.findMatch(packet, REGION_DENY_FLOOD);
+  const bool incoming_region_allowed = matched_region != NULL;
+  RegionEntry* incoming_region = packet->hasTransportCodes() ? matched_region : NULL;
 
   mesh::Packet candidate = *packet;
   uint32_t match_mask = flood_rules.evaluate(
@@ -1878,17 +1865,9 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
   recv_pkt_rule_match_mask = 0;
   pkt->flood_retry_policy = mesh::FLOOD_RETRY_POLICY_DEFAULT;
   {
-    bool incoming_region_allowed = false;
-    RegionEntry* incoming_region = NULL;
-    if (pkt->getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD
-        || pkt->getRouteType() == ROUTE_TYPE_TRANSPORT_DIRECT) {
-      incoming_region = region_map.findMatch(pkt, REGION_DENY_FLOOD);
-      incoming_region_allowed = incoming_region != NULL;
-    } else if (pkt->getRouteType() == ROUTE_TYPE_FLOOD
-        || pkt->getRouteType() == ROUTE_TYPE_DIRECT) {
-      incoming_region_allowed =
-          (region_map.getWildcard().flags & REGION_DENY_FLOOD) == 0;
-    }
+    auto* matched_region = region_map.findMatch(pkt, REGION_DENY_FLOOD);
+    const bool incoming_region_allowed = matched_region != NULL;
+    RegionEntry* incoming_region = pkt->hasTransportCodes() ? matched_region : NULL;
     recv_pkt_rule_match_mask = flood_rules.evaluate(
         pkt, isAnyTempRadioActive(), incoming_region_allowed, incoming_region);
     if (pkt->isRouteFlood() && flood_rules.hasRetryRules()) {
@@ -1903,17 +1882,7 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
     recv_pkt_regionless_scope_set = scope_set;
   }
 #endif
-  if (pkt->getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD) {
-    recv_pkt_region = region_map.findMatch(pkt, REGION_DENY_FLOOD);
-  } else if (pkt->getRouteType() == ROUTE_TYPE_FLOOD) {
-    if (region_map.getWildcard().flags & REGION_DENY_FLOOD) {
-      recv_pkt_region = NULL;
-    } else {
-      recv_pkt_region =  &region_map.getWildcard();
-    }
-  } else {
-    recv_pkt_region = NULL;
-  }
+  recv_pkt_region = pkt->isRouteFlood() ? region_map.findMatch(pkt, REGION_DENY_FLOOD) : NULL;
   mesh::DispatcherAction action = Mesh::onRecvPacket(pkt);
 #if MESH_ENABLE_ROOM_FLOOD_RULE_ENGINE
   if (scope_changed && action != ACTION_RELEASE

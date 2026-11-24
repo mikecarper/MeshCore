@@ -7058,8 +7058,8 @@ void CommonCLI::handleRegionCmd(char* command, char* reply) {
     return;
   }
 
-  const char* parts[4];
-  int n = mesh::Utils::parseTextParts(command, parts, 4, ' ');
+  const char* parts[5];
+  int n = mesh::Utils::parseTextParts(command, parts, 5, ' ');
   if (n == 1) {
     _region_map->exportTo(reply, 160);
   } else if (n >= 2 && strcmp(parts[1], "load") == 0) {
@@ -7083,18 +7083,20 @@ void CommonCLI::handleRegionCmd(char* command, char* reply) {
       }
       strcpy(reply, "Err - use auto, allow or deny");
     }
-  } else if (n >= 3 && strcmp(parts[1], "allowf") == 0) {
-    auto region = _region_map->findByNamePrefix(parts[2]);
-    if (region) {
-      region->flags &= ~REGION_DENY_FLOOD;
-      strcpy(reply, "OK");
-    } else {
-      strcpy(reply, "Err - unknown region");
+  } else if (n >= 3 && (strcmp(parts[1], "allowf") == 0 || strcmp(parts[1], "denyf") == 0)) {
+    const bool deny = strcmp(parts[1], "denyf") == 0;
+    const bool except_text = n == 4 && deny && strcmp(parts[2], "*") == 0
+        && strcmp(parts[3], "except-text") == 0;
+    if (n > 3 && !except_text) {
+      strcpy(reply, "Err - use region denyf * except-text");
+      return;
     }
-  } else if (n >= 3 && strcmp(parts[1], "denyf") == 0) {
     auto region = _region_map->findByNamePrefix(parts[2]);
     if (region) {
-      region->flags |= REGION_DENY_FLOOD;
+      if (region->isWildcard()) region->flags &= ~REGION_EXCEPT_TEXT;
+      if (deny) region->flags |= REGION_DENY_FLOOD;
+      else region->flags &= ~REGION_DENY_FLOOD;
+      if (except_text) region->flags |= REGION_EXCEPT_TEXT;
       strcpy(reply, "OK");
     } else {
       strcpy(reply, "Err - unknown region");
@@ -7104,9 +7106,9 @@ void CommonCLI::handleRegionCmd(char* command, char* reply) {
     if (region) {
       auto parent = _region_map->findById(region->parent);
       if (parent && parent->id != 0) {
-        sprintf(reply, " %s (%s) %s", region->name, parent->name, (region->flags & REGION_DENY_FLOOD) ? "" : "F");
+        sprintf(reply, " %s (%s) %s", region->name, parent->name, region->floodFlag());
       } else {
-        sprintf(reply, " %s %s", region->name, (region->flags & REGION_DENY_FLOOD) ? "" : "F");
+        sprintf(reply, " %s %s", region->name, region->floodFlag());
       }
     } else {
       strcpy(reply, "Err - unknown region");

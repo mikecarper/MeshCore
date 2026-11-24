@@ -904,14 +904,7 @@ void SensorMesh::onGroupPacketRecv(mesh::Packet* packet) {
 }
 
 mesh::DispatcherAction SensorMesh::onRecvPacket(mesh::Packet* packet) {
-  if (packet->getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD) {
-    recv_pkt_region = region_map.findMatch(packet, REGION_DENY_FLOOD);
-  } else if (packet->getRouteType() == ROUTE_TYPE_FLOOD
-             && !(region_map.getWildcard().flags & REGION_DENY_FLOOD)) {
-    recv_pkt_region = &region_map.getWildcard();
-  } else {
-    recv_pkt_region = nullptr;
-  }
+  recv_pkt_region = packet->isRouteFlood() ? region_map.findMatch(packet, REGION_DENY_FLOOD) : nullptr;
   return mesh::Mesh::onRecvPacket(packet);
 }
 

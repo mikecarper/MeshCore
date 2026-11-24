@@ -22,7 +22,9 @@ class UpstreamRoutingMergeTests(unittest.TestCase):
 #include <cassert>
 #include <cstdint>
 #include <cstddef>
-namespace mesh { struct Packet { uint16_t transport_codes[2] = {}; }; }
+#include <Packet.h>
+namespace mesh { Packet::Packet() : header(ROUTE_TYPE_TRANSPORT_FLOOD), transport_codes{} {} }
+constexpr uint8_t REGION_DENY_FLOOD = 1, REGION_EXCEPT_TEXT = 4;
 struct RegionEntry { uint8_t flags; };
 struct TransportKey {
   uint16_t code = 0x1234;
@@ -70,6 +72,7 @@ int main() {
             exe = Path(directory) / "routing"
             cpp.write_text(source)
             subprocess.run([compiler, "-std=c++11", "-Wall", "-Wextra", "-Werror",
+                            "-isystem", str(ROOT / "src"),
                             str(cpp), "-o", str(exe)], check=True, timeout=30,
                            capture_output=True)
             subprocess.run([str(exe)], check=True, timeout=10, capture_output=True)

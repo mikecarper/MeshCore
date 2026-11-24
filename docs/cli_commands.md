@@ -6037,11 +6037,15 @@ matches it. The wildcard `*` controls unscoped traffic separately.
 #### Block a region
 **Usage:** 
 - `region denyf <name>`
+- `region denyf * except-text`
 
 **Parameters:** 
 - `name`: Region name (or `*` for wildcard)
 
-**Note:** Setting on wildcard `*` drops packets without region transport codes
+Plain `region denyf *` denies all unscoped floods. The optional `except-text`
+setting allows unscoped group text (`grp_txt`) and peer text (`txt_msg`)
+through the wildcard. Named regions keep their own policy. Use `region get *`
+to check the setting and `region save` to keep it after reboot.
 
 ---
 

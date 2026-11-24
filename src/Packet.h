@@ -130,6 +130,10 @@ public:
    * \returns  one of PAYLOAD_TYPE_ values
    */
   uint8_t getPayloadType() const { return (header >> PH_TYPE_SHIFT) & PH_TYPE_MASK; }
+  bool isTextMessage() const {
+    const uint8_t type = getPayloadType();
+    return type == PAYLOAD_TYPE_GRP_TXT || type == PAYLOAD_TYPE_TXT_MSG;
+  }
 
   /**
    * \returns  one of PAYLOAD_VER_ values

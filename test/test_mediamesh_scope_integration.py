@@ -109,6 +109,9 @@ class SHA256 : public NativeSHA256 {{ public:
     def test_unknown_forwarding_and_blackhole_sink(self):
         self.run_case("unknown-forward")
 
+    def test_opt_in_unscoped_wildcard_text_exception(self):
+        self.run_case("wildcard-except-text")
+
     def test_existing_hierarchy_and_nonflood_policy_are_preserved(self):
         self.run_case("existing-policy")
 

@@ -323,9 +323,11 @@ bool RegionMap::matchesScope(const RegionEntry& region, const mesh::Packet* pack
 }
 
 RegionEntry* RegionMap::findMatch(const mesh::Packet* packet, uint8_t mask) {
-  if (packet->transport_codes[0] == 0) {
-    // Zero means unscoped, not an exemption from the wildcard's deny policy.
-    return (wildcard.flags & mask) == 0 ? &wildcard : NULL;
+  if (!packet->hasTransportCodes() || packet->transport_codes[0] == 0) {
+    const uint8_t denied = wildcard.flags & mask;
+    if (denied == REGION_DENY_FLOOD && (wildcard.flags & REGION_EXCEPT_TEXT)
+        && packet->isRouteFlood() && packet->isTextMessage()) return &wildcard;
+    return denied == 0 ? &wildcard : NULL;
   }
   for (int i = 0; i < num_regions; i++) {
     auto region = &regions[i];
@@ -337,8 +339,7 @@ RegionEntry* RegionMap::findMatch(const mesh::Packet* packet, uint8_t mask) {
 bool RegionMap::allowsUnmatchedFlood(const mesh::Packet* packet) {
   if (packet->getRouteType() != ROUTE_TYPE_TRANSPORT_FLOOD
       || packet->transport_codes[0] == 0 || packet->transport_codes[0] == 0xFFFF) return false;
-  const uint8_t type = packet->getPayloadType();
-  if (type != PAYLOAD_TYPE_GRP_TXT && type != PAYLOAD_TYPE_TXT_MSG) return false;
+  if (!packet->isTextMessage()) return false;
   if (unknown_scope == UnknownScope::Auto) return num_regions == 0;
   if (unknown_scope != UnknownScope::Allow) return false;
   // The normal lookup skipped denied regions. Check only those keys here.
@@ -480,11 +481,9 @@ void RegionMap::printChildRegions(int indent, const RegionEntry* parent, Stream&
     out.print(' ');
   }
 
-  if (parent->flags & REGION_DENY_FLOOD) {
-    out.printf("%s%s\n", skip_hash(parent->name), parent->id == home_id ? "^" : "");
-  } else {
-    out.printf("%s%s F\n", skip_hash(parent->name), parent->id == home_id ? "^" : "");
-  }
+  const char* flag = parent->floodFlag();
+  out.printf("%s%s%s%s\n", skip_hash(parent->name), parent->id == home_id ? "^" : "",
+             *flag ? " " : "", flag);
 
   for (int i = 0; i < num_regions; i++) {
     auto r = &regions[i];
