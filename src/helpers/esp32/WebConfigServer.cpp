@@ -1614,8 +1614,9 @@ void WebConfigServer::tick(uint32_t now) {
   // Browser activity and an attached station cannot extend it. requestStop()
   // tears down the AP and finalizeTeardown() powers WiFi fully off; the saved
   // bridge/output preference is deliberately left unchanged for the next boot.
+  // A retry can finish starting the AP after this tick's timestamp.
   if (WebConfigBatch::unconfiguredSetupWindowExpired(
-          _mode == MODE_SETUP, _wifi_ssid[0] != 0, now,
+          _mode == MODE_SETUP, _wifi_ssid[0] != 0, millis(),
           _setup_started_at,
           (uint32_t)WEBCONFIG_UNCONFIGURED_SETUP_TIMEOUT_MS)) {
     mesh::usbDebugPort().printf(
@@ -1627,8 +1628,11 @@ void WebConfigServer::tick(uint32_t now) {
 
   // Idle timeout: only the setup AP auto-stops (a deployed node must not be
   // left broadcasting an open AP). LAN mode runs until `stop webconfig`.
-  if (_mode == MODE_SETUP && WiFi.softAPgetStationNum() == 0 &&
-      (now - _last_activity) > WEBCONFIG_AP_IDLE_TIMEOUT_MS) {
+  if (_mode == MODE_SETUP && WiFi.softAPgetStationNum() == 0) {
+    // The HTTP task can record activity during this tick. Read its timestamp
+    // first so a fresh request cannot look like a full millis() rollover.
+    const uint32_t last_activity = _last_activity;
+    if (millis() - last_activity <= WEBCONFIG_AP_IDLE_TIMEOUT_MS) return;
     if (_retry_saved_wifi_in_setup && _wifi_ssid[0]) {
       // Close the open AP, but keep the WebConfig object alive in LAN mode so
       // its (or an external owner's) saved-network retries continue forever.

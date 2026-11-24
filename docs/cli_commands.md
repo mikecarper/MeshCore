@@ -314,7 +314,9 @@ URL. MQTT builds also show the MQTT tab and wizard step; non-MQTT builds remove
 them entirely. Sign in with the node's admin password. If the node has no saved
 WiFi SSID, the command starts the setup AP (`MC-XX` on standard display builds,
 `MeshCore-Setup-XXXX` on headless builds) at
-<http://192.168.4.1/> instead.
+<http://192.168.4.1/> instead. If your phone asks whether to keep using WiFi
+without internet, choose **Stay connected** or **Use without internet**, then
+open that address in your browser.
 
 If a saved WiFi network is unavailable and the node falls back to its setup
 AP, sign in with the existing admin password before changing settings. Joining

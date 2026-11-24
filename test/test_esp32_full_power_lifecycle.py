@@ -304,6 +304,9 @@ int main() {
   assert(node.espnow_bridge.isRunning());
   node.startupSetup(); // Execute the actual first-boot setup decision after saved defaults.
   assert(node._unconfigured_setup_espnow_suspended && node.isWebConfigActive());
+  // An automatic retry can finish the AP scan after the loop clock was sampled.
+  node._webconfig->tick(now - 3000U);
+  assert(node._webconfig->isRunning() && !node._webconfig->isStopping());
   assert(!node.isMqttBridgeRunning() && !node.espnow_bridge.isRunning());
   assert(node._prefs.bridge_enabled == 1 && node._prefs.espnow_bridge_enabled == 1);
   const auto starts = node.espnow_bridge.starts;
