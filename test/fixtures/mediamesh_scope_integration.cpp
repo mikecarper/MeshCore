@@ -127,14 +127,33 @@ static void unknown_forward() {
   auto& map = test.regions;
   auto packet = media_packet(); // #mediamesh is initially unknown
   packet.transport_codes[1] = 0x7351;
-  const auto original = packet.transport_codes[0];
+  TransportKey media_key;
+  test.keys.getAutoKeyFor(129, "#mediamesh", media_key);
+  auto set_type = [&](uint8_t type) {
+    packet.header = ROUTE_TYPE_TRANSPORT_FLOOD | (type << PH_TYPE_SHIFT);
+    packet.transport_codes[0] = media_key.calcTransportCode(&packet);
+  };
   auto forward = [&]() { return test.cli.allowsUnmatchedFlood(&packet); };
-  require(forward() && map.findMatch(&packet, REGION_DENY_FLOOD) == nullptr, "empty auto passes without claiming a match");
-  require(packet.transport_codes[0] == original && packet.transport_codes[1] == 0x7351, "keep both scope codes");
+  auto check_text_only = [&]() {
+    for (uint8_t type = 0; type <= PH_TYPE_MASK; ++type) {
+      set_type(type);
+      const auto code = packet.transport_codes[0];
+      require(forward() == (type == PAYLOAD_TYPE_GRP_TXT || type == PAYLOAD_TYPE_TXT_MSG),
+              "only group text and text messages qualify for unknown-scope forwarding");
+      require(packet.transport_codes[0] == code && packet.transport_codes[1] == 0x7351, "keep both scope codes");
+    }
+  };
+  check_text_only();
+  map.setUnknownScope(RegionMap::UnknownScope::Allow);
+  check_text_only();
+  map.setUnknownScope(RegionMap::UnknownScope::Auto);
+  set_type(PAYLOAD_TYPE_TXT_MSG);
+  require(forward() && map.findMatch(&packet, REGION_DENY_FLOOD) == nullptr, "empty auto passes text without claiming a match");
   auto* local = map.putRegion("local", 0);
   require(local && !forward(), "first named region closes auto");
   map.setUnknownScope(RegionMap::UnknownScope::Allow);
-  require(forward(), "explicit allow alongside configured regions");
+  check_text_only();
+  set_type(PAYLOAD_TYPE_GRP_TXT);
   auto* media = map.putRegion("mediamesh", 0);
   require(media, "add matching named region");
   media->flags = REGION_DENY_FLOOD;
@@ -154,7 +173,7 @@ static void unknown_forward() {
     packet.transport_codes[0] = code;
     require(!forward(), "reserved codes are outside unknown-scope policy");
   }
-  packet.transport_codes[0] = original;
+  set_type(PAYLOAD_TYPE_GRP_TXT);
   test.fs.files["/regions2"] = {0xff};
   test.cli.onRegionsLoaded(&test.fs, false);
   require(!forward(), "unreadable table does not open forwarding");

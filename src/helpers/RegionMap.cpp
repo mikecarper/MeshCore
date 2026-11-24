@@ -337,6 +337,8 @@ RegionEntry* RegionMap::findMatch(const mesh::Packet* packet, uint8_t mask) {
 bool RegionMap::allowsUnmatchedFlood(const mesh::Packet* packet) {
   if (packet->getRouteType() != ROUTE_TYPE_TRANSPORT_FLOOD
       || packet->transport_codes[0] == 0 || packet->transport_codes[0] == 0xFFFF) return false;
+  const uint8_t type = packet->getPayloadType();
+  if (type != PAYLOAD_TYPE_GRP_TXT && type != PAYLOAD_TYPE_TXT_MSG) return false;
   if (unknown_scope == UnknownScope::Auto) return num_regions == 0;
   if (unknown_scope != UnknownScope::Allow) return false;
   // The normal lookup skipped denied regions. Check only those keys here.

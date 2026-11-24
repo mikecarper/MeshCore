@@ -207,11 +207,12 @@ the ordered `prefix=` condition on a room server.
 ## Forward floods with their original scope
 
 With repeating enabled and no named regions configured, the default
-`region unknown auto` forwards eligible scoped floods with both transport codes
-intact. Adding the first named region switches to forwarding recognized,
-flood-allowed scopes. Removing the last named region restores the open behavior.
+`region unknown auto` forwards only group text (`grp_txt`) and peer text
+(`txt_msg`) floods with an unknown scope. Both transport codes stay intact.
+Adding the first named region turns off this exception. Removing the last
+named region restores it.
 
-To keep forwarding unknown scopes alongside your configured regions, run
+To keep forwarding those two text types with unknown scopes alongside your configured regions, run
 
 ```text
 region unknown allow
