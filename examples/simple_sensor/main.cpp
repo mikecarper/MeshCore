@@ -66,6 +66,12 @@ static bool armTrackerSleepWake(uint32_t seconds) {
 }
 #endif
 
+#if MESH_ENABLE_SENSOR_TRACKER && defined(MESH_TRACKER_CHECK_BUTTON)
+#include <helpers/ui/MomentaryButton.h>
+static MomentaryButton tracker_check_button(MESH_TRACKER_CHECK_BUTTON, 1500,
+    MESH_TRACKER_CHECK_ACTIVE_LOW, MESH_TRACKER_CHECK_INTERNAL_PULL, false);
+#endif
+
 #if defined(ESP32_PLATFORM)
   #include <helpers/ESP32TrueRandom.h>
   #include <helpers/esp32/ProfileIdleSleep.h>
@@ -138,6 +144,10 @@ void setup() {
   mesh::beginUsbLoggingPort();
 #endif
   board.begin();
+#if MESH_ENABLE_SENSOR_TRACKER && defined(MESH_TRACKER_CHECK_BUTTON)
+  // A button held for power-on must not also trigger a tracker check.
+  tracker_check_button.resume();
+#endif
 
 #ifdef HAS_EXTERNAL_WATCHDOG
   external_watchdog.begin();
@@ -441,6 +451,10 @@ void loop() {
   if (emergency_power.service(the_mesh, radio_driver, board,
           the_mesh.getPowerCLI(), command[0], the_mesh.emergencyPowerBusy())) return;
 #endif
+#if MESH_ENABLE_SENSOR_TRACKER && defined(MESH_TRACKER_CHECK_BUTTON)
+  if (tracker_check_button.check() == BUTTON_EVENT_LONG_PRESS)
+    the_mesh.requestTrackerCheck();
+#endif
   the_mesh.loop();
   mesh::ota::ota_nrf52_confirm_trial();
 #if MESH_WARM_RX_REFRESH
@@ -500,6 +514,10 @@ void loop() {
     && MOMENTARY_BUTTON_WAKE_FROM_SLEEP \
     && defined(PIN_USER_BTN) && defined(DISPLAY_CLASS)
   can_power_save = can_power_save && sleep_guard(!user_btn.needsPolling(), mesh::powerdiag::Reason::Button);
+#endif
+#if MESH_ENABLE_SENSOR_TRACKER && defined(MESH_TRACKER_CHECK_BUTTON)
+  can_power_save = can_power_save
+      && sleep_guard(!tracker_check_button.needsPolling(), mesh::powerdiag::Reason::Button);
 #endif
   if (can_power_save) {
 #if defined(ESP32_PLATFORM)

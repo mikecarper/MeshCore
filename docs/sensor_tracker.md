@@ -43,6 +43,20 @@ mode.
 
 ## Set up the tracker
 
+For a card-style tracker, flash the Sensor build for your exact board:
+
+| Board | Build | Check-in button |
+| --- | --- | --- |
+| Seeed Studio SenseCAP T1000-E | `t1000e_sensor` | Side button |
+| Seeed Studio MeshTracker X1 | `MeshTracker_X1_sensor` | User button |
+| LilyGo T-Echo Card | `LilyGo_T-Echo_Card_sensor` | Button C |
+
+Hold the listed button for about 1.5 seconds to request a fresh GPS check.
+This works once pet mode is enabled and an owner is configured. It does not
+change the mode, and will not start a duplicate check while one is in progress.
+A button held during power-on is ignored until released. The Sensor builds
+do not include the combined RAK firmware's phone pairing, fence, or tune features.
+
 Configure the Sensor through its local text console. Replace the key below
 with the owner's full 64-character hexadecimal public key:
 

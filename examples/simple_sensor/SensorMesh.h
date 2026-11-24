@@ -112,6 +112,9 @@ public:
     return false;
 #endif
   }
+#if MESH_ENABLE_SENSOR_TRACKER
+  const char* requestTrackerCheck();
+#endif
   void setTrackerStorageAvailable(bool available) {
 #if MESH_ENABLE_SENSOR_TRACKER
     tracker_storage_available = available;

@@ -197,7 +197,7 @@ jobs:
           python3 -B test/test_qspi_bootloader_profiles.py -v
           python3 -B test/test_endf_restamp.py -v
       - name: Compile GPS Sensor tracker on nRF52 boards
-        run: bash tools/ci/pio_retry.sh run -e t1000e_sensor -e RAK_WisMesh_Tag_sensor
+        run: bash tools/ci/pio_retry.sh run -e t1000e_sensor -e RAK_WisMesh_Tag_sensor -e MeshTracker_X1_sensor -e LilyGo_T-Echo_Card_sensor
       - name: Qualify unified T114 Repeater with screen detection and LoRa OTA
         run: >-
           bash build.sh build-firmware Heltec_t114_repeater_lora_ota_no_external_sensors

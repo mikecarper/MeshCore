@@ -106,6 +106,7 @@ static void commands() {
   SensorMesh mesh;
   assert(command(mesh, "get tracker").find("mode=off status=unknown interval=1800 lost.interval=60") == 0);
   assert(command(mesh, "tracker check") == "ERR: tracker unavailable");
+  assert(strcmp(mesh.requestTrackerCheck(), "ERR: tracker unavailable") == 0);
   assert(command(mesh, "set tracker.mode pet").find("configure tracker.owner") != std::string::npos);
   assert(command(mesh, "set tracker.owner " + std::string(64, '0')) == "ERR: invalid owner key");
   auto self = ownerKey(); memcpy(self.data(), mesh.self_id.pub_key, 32);
@@ -121,6 +122,20 @@ static void commands() {
   for (const char* value : {"get tracker", "get tracker.owner", "tracker check", "set tracker.mode off", "set tracker.interval 60"})
     assert(command(mesh, value, mesh.rtc.now) == "ERR: tracker is local-only");
   assert(mesh.tracker.generation == before.generation && mesh.fs.write_opens == writes && mesh.tracker.enabled);
+  const auto next = mesh.rtc.now + 1800;
+  mesh.tracker_next_check = next;
+  mesh.tracker_acquiring = true;
+  assert(strcmp(mesh.requestTrackerCheck(), "ERR: check already pending") == 0);
+  mesh.tracker_acquiring = false;
+  mesh.tracker_pending = true;
+  assert(strcmp(mesh.requestTrackerCheck(), "ERR: check already pending") == 0);
+  mesh.tracker_pending = false;
+  mesh.tracker_storage_fault = true;
+  assert(strcmp(mesh.requestTrackerCheck(), "ERR: tracker unavailable") == 0);
+  mesh.tracker_storage_fault = false;
+  assert(mesh.tracker_next_check == next);
+  assert(strcmp(mesh.requestTrackerCheck(), "OK scheduled") == 0);
+  assert(mesh.tracker_next_check == mesh.rtc.now && mesh.fs.write_opens == writes);
   for (const std::string& setting : {std::string("interval"), std::string("lost.interval")}) {
     for (const char* invalid : {"59", "86401", "-1", "60x", "2147483648", "", "60 61"})
       assert(command(mesh, "set tracker." + setting + " " + invalid).find("ERR:") == 0);

@@ -295,6 +295,13 @@ void SensorMesh::onSendFail(mesh::Packet* packet) {
     tracker_reply_until = futureMillis(1);
 }
 
+const char* SensorMesh::requestTrackerCheck() {
+  if (!tracker.enabled || tracker_storage_fault) return "ERR: tracker unavailable";
+  if (tracker_pending || tracker_acquiring) return "ERR: check already pending";
+  tracker_next_check = getRTCClock()->getCurrentTime();
+  return "OK scheduled";
+}
+
 bool SensorMesh::handleTrackerCommand(uint32_t sender_timestamp, const char* command, char* reply) {
   const bool getter = strcmp(command, "get tracker") == 0
       || strcmp(command, "get tracker status") == 0 || strncmp(command, "get tracker.", 12) == 0;
@@ -303,9 +310,7 @@ bool SensorMesh::handleTrackerCommand(uint32_t sender_timestamp, const char* com
   if (sender_timestamp != 0) { strcpy(reply, "ERR: tracker is local-only"); return true; }
   if (getter) return mesh::tracker::formatQuery(command, tracker, tracker_storage_fault, reply, 157);
   if (strcmp(command, "tracker check") == 0) {
-    if (!tracker.enabled || tracker_storage_fault) strcpy(reply, "ERR: tracker unavailable");
-    else if (tracker_pending || tracker_acquiring) strcpy(reply, "ERR: check already pending");
-    else { tracker_next_check = getRTCClock()->getCurrentTime(); strcpy(reply, "OK scheduled"); }
+    strcpy(reply, requestTrackerCheck());
     return true;
   }
   mesh::tracker::TrackerRecord candidate = tracker;

@@ -116,7 +116,30 @@ static void original() {
   level = LOW; Button high(7, HIGH); high.resume();
   assert(mode == INPUT_PULLDOWN && !high.isPressed());
 }
-int main() { native(); original(); }
+static void tracker() {
+  for (const bool active_low : {false, true}) {
+    for (const bool internal_pull : {false, true}) {
+      const int pressed = active_low ? LOW : HIGH;
+      const int released = active_low ? HIGH : LOW;
+      MomentaryButton check(7, 1500, active_low, internal_pull, false);
+      level = pressed;
+      check.resume();
+      assert(mode == (internal_pull ? (active_low ? INPUT_PULLUP : INPUT_PULLDOWN) : INPUT));
+      now += 2000; assert(check.check() == BUTTON_EVENT_NONE && !check.needsPolling());
+      level = released;
+      assert(check.check() == BUTTON_EVENT_NONE && check.needsPolling());
+      now += 25; assert(check.check() == BUTTON_EVENT_NONE && !check.needsPolling());
+      level = pressed; assert(check.check() == BUTTON_EVENT_NONE && check.needsPolling());
+      now += 25; assert(check.check() == BUTTON_EVENT_NONE && check.needsPolling());
+      now += 1499; assert(check.check() == BUTTON_EVENT_NONE && check.needsPolling());
+      ++now; assert(check.check() == BUTTON_EVENT_LONG_PRESS && !check.needsPolling());
+      now += 2000; assert(check.check() == BUTTON_EVENT_NONE);
+      level = released; assert(check.check() == BUTTON_EVENT_NONE);
+      now += 25; assert(check.check() == BUTTON_EVENT_NONE);
+    }
+  }
+}
+int main() { native(); original(); tracker(); }
 '''
 
 

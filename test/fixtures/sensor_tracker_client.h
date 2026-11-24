@@ -274,6 +274,7 @@ public:
   mesh::Packet* createSelfAdvert() { auto* p = pool.alloc(); p->header = PAYLOAD_TYPE_ADVERT << PH_TYPE_SHIFT; return p; }
   void sendZeroHop(mesh::Packet* p, int) { ++adverts; ++zero_hops; releasePacket(p); }
   bool isTrackerModeEnabled() const { return tracker.enabled; }
+  const char* requestTrackerCheck();
   bool handleTrackerCommand(uint32_t, const char*, char*);
   void localConsoleLease(uint32_t);
   void loop();
