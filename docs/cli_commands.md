@@ -369,7 +369,10 @@ boot, then powers WiFi off even if a client remains attached; rebooting starts
 a new automatic window unless `webui off` is saved. An administrator can
 explicitly run `start webconfig ap` again. On a repeater with a display and a
 user button, tap to **Wi-Fi Setup** and hold the button to reopen the QR screen
-without rebooting. Once an SSID is saved,
+without rebooting. On the Heltec V3 Full Repeater, hold on **Wi-Fi Setup: WPA2**
+for a protected hotspot, or tap once more and hold on **Wi-Fi Setup: Open**.
+The open hotspot adds `-Open` to its name and requires an admin login in the browser.
+Once an SSID is saved,
 the cutoff no longer applies and the selected WiFi/MQTT mode keeps reconnecting.
 Other setup sessions retain
 their profile's idle timeout.

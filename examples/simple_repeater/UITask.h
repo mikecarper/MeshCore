@@ -32,9 +32,10 @@ class UITask {
   bool _dual_radio_enabled_seen = false;
   bool _startup_complete = false;
 #ifdef WITH_WEBCONFIG
-  bool _wifi_setup_page = false;
+  enum class WiFiPage : uint8_t { Hidden, Setup, Open };
+  WiFiPage _wifi_setup_page = WiFiPage::Hidden;
   bool _setup_ap_was_active = false;
-  bool _wifi_setup_start_requested = false;
+  WiFiPage _wifi_setup_start = WiFiPage::Hidden;
   char _wifi_setup_reply[160] = {};
   bool showingWiFiSetupPage() const;
 #endif

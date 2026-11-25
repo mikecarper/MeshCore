@@ -851,7 +851,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   // Its retry loop must not revive ESP-NOW after the AP window ends.
   bool _unconfigured_setup_espnow_suspended = false;
   void suspendUnconfiguredSetupBridges();
-  bool startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup);
+  bool startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup,
+                          SetupWiFiAccess access = SetupWiFiAccess::Configured);
   bool webConfigOwnsWiFi() const;
   bool _wc_batch_active = false;
   bool _wc_restart_pending = false;
@@ -2210,6 +2211,9 @@ public:
 
 #ifdef WITH_WEBCONFIG
   bool startWebConfig(bool force_ap, char* reply) override;
+  bool startButtonSetup(SetupWiFiAccess access, char* reply) {
+    return startWebConfigImpl(true, reply, false, access);
+  }
   bool isWebConfigStopping() const { return _webconfig && _webconfig->isStopping(); }
   bool hasWirelessNetworkClient() const { return _web_terminal != nullptr; }
   bool stopWebConfig(char* reply) override;

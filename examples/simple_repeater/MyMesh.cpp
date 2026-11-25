@@ -12024,13 +12024,14 @@ bool MyMesh::webConfigOwnsWiFi() const {
       mqtt_running, mqtt_stopping, udp_enabled);
 }
 
-bool MyMesh::startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup) {
+bool MyMesh::startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup, SetupWiFiAccess access) {
   if (_cli.getBoard()->isOTAUpdateRunning()) {
     strcpy(reply, "Err: OTA server is running - 'stop ota' first");
     return true;
   }
   if (_webconfig && _webconfig->isRunning()) {
-    if (!force_ap || !_webconfig->waitingForStation()) {
+    const bool button_leaving_lan = access != SetupWiFiAccess::Configured && _webconfig->mode() == WebConfigServer::MODE_LAN;
+    if (!button_leaving_lan && (!force_ap || !_webconfig->waitingForStation())) {
       if (!automatic_setup && !_webconfig->isStopping()) {
         _webconfig->requestNetworkAccess();
       }
@@ -12086,12 +12087,10 @@ bool MyMesh::startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup
   // socket before that transition; saved UDP intent resumes in a later STA loop.
   if (udp_bridge) udp_bridge->serviceNetwork(false);
 #endif
-  bool started;
-  if (force_ap) {
-    started = _webconfig->requestStart(true, reply);
-  } else {
-    started = _webconfig->requestStart(false, reply);
+  if (access != SetupWiFiAccess::Configured && _webconfig->mode() == WebConfigServer::MODE_LAN) {
+    _webconfig->requestStop();
   }
+  const bool started = _webconfig->requestStart(force_ap, reply, access);
   if (!started) {
     // A failed portal must not consume a live operator-started transport.
     // Restore actual pre-start state, never the saved first-boot defaults.

@@ -170,6 +170,14 @@ Holding again on the QR screen closes the hotspot. This starts setup for one
 session and keeps your saved startup preference. From the admin CLI, use
 `start webconfig ap` and `get webui` to see the active address.
 
+**Heltec V3 Full Repeater button choices**
+
+1. If the screen shows a setup QR, hold the user button for one second to stop that hotspot.
+2. Tap to **Wi-Fi Setup: WPA2**. Hold to start the password-protected network (for example, `MC-9E`), or tap once more to **Wi-Fi Setup: Open** and hold to start `MC-9E-Open`.
+3. Join the displayed network and open <http://192.168.4.1/>. The open network requires the repeater's admin password in the browser. The factory password is `password`.
+
+The choice lasts for this setup session. Hold on the QR screen to close it.
+
 ESP32 management uses one saved admin password for WebConfig login, browser
 firmware uploads, and setup WiFi. Choose 8–15 printable ASCII characters so the
 hotspot can use it for WPA2. Other valid admin passwords (1–15 UTF-8 bytes,

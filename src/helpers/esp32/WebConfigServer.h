@@ -1,4 +1,5 @@
 #pragma once
+#include "SetupWiFiAccess.h"
 
 
 // Shared browser configuration portal for ESP32 infrastructure and WiFi
@@ -219,7 +220,7 @@ public:
   // Returns true when that owner may manage STA. Loop task only.
   bool prepareStationOwner();
 
-  static void formatSetupSsid(char* ssid, size_t size, const uint8_t* pub_key);
+  static void formatSetupSsid(char* ssid, size_t size, const uint8_t* pub_key, bool open_choice = false);
   // For the device display: true while a setup-mode portal is active.
   // Fills the AP SSID and portal IP; either buffer may be NULL to just poll.
   // Call from the loop task only (same task that changes the mode).
@@ -273,11 +274,11 @@ public:
   static void requestToggleFromButton();
   static bool takeButtonToggleRequest();
 
-  bool startSetupMode(char reply[]);   // open SoftAP + DNS captive portal
+  bool startSetupMode(char reply[], SetupWiFiAccess access = SetupWiFiAccess::Configured);
   bool startLanMode(char reply[]);     // bind to existing STA connection
   bool startAutoMode(char reply[]);    // use saved WiFi, or setup AP when absent
   // Accept a start through asynchronous teardown or a transient SDK failure.
-  bool requestStart(bool force_ap, char reply[]);
+  bool requestStart(bool force_ap, char reply[], SetupWiFiAccess access = SetupWiFiAccess::Configured);
   void requestRestart();              // coalesce saved credential changes
   bool isStartPending() const { return _start_mode != MODE_OFF; }
   bool reloadStandaloneWiFi();
@@ -349,6 +350,8 @@ private:
   Mode _mode = MODE_OFF;
   bool _stopping = false;
   Mode _start_mode = MODE_OFF;
+  SetupWiFiAccess _start_access = SetupWiFiAccess::Configured;
+  SetupWiFiAccess _setup_access = SetupWiFiAccess::Configured;
   uint32_t _start_retry_at = 0;
   uint32_t _start_retry_delay = 5000;
   bool _start_retryable = false;
@@ -415,10 +418,10 @@ private:
   uint32_t _terminal_auth_generation = 0;
   WebConfigLoginThrottle::Tracker _login_throttle;
 
-  // Once set (via /api/portal/exit), OS captive probes get native "success"
-  // replies so the phone's sign-in sheet can be dismissed without dropping the
-  // WiFi, letting the user continue in their real browser. async_tcp-task only.
-  volatile bool _captive_release = false;
+  // SoftAP admits four clients. Dismissing one sign-in sheet must leave
+  // captive detection available to the others and to the next setup session.
+  uint32_t _captive_released[4] = {};
+  uint8_t _next_captive_release = 0;
 
   // Save-path diagnostics: 1 Hz serial trace for 60 s after each config POST
   // (AP station count, heap, batch state) to pinpoint client drops on hardware.

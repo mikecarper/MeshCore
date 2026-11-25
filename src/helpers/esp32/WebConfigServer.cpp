@@ -17,6 +17,7 @@ static_assert(sizeof(WEBCONFIG_AP_PREFIX) <= 28,
 #include <helpers/RegulatorSettings.h>
 #include <Preferences.h>
 #include <esp_wifi.h>
+#include <esp_netif.h>
 #include <esp_arduino_version.h>
 #include <esp_system.h>
 #include <esp_heap_caps.h>
@@ -39,6 +40,8 @@ static_assert(sizeof(WEBCONFIG_AP_PREFIX) <= 28,
 #include "WebTerminalStream.h"
 #include <helpers/CLICommandUtils.h>
 #include <new>
+#include <algorithm>
+#include <iterator>
 #include "helpers/CLICommandUtils.h"
 #include "helpers/UsbLogging.h"
 #include "helpers/WebConfigKeys.h"
@@ -803,11 +806,12 @@ bool WebConfigServer::isRebootPending() {
                           toSpecState(w->_batch_state));
 }
 
-void WebConfigServer::formatSetupSsid(char* ssid, size_t size, const uint8_t* pub_key) {
+void WebConfigServer::formatSetupSsid(char* ssid, size_t size, const uint8_t* pub_key, bool open_choice) {
+  const char* suffix = open_choice ? "-Open" : "";
   if (strcmp(WEBCONFIG_AP_PREFIX, "MC") == 0) {
-    snprintf(ssid, size, "MC-%02X", pub_key[0]);
+    snprintf(ssid, size, "MC-%02X%s", pub_key[0], suffix);
   } else {
-    snprintf(ssid, size, "%s-%02X%02X", WEBCONFIG_AP_PREFIX, pub_key[0], pub_key[1]);
+    snprintf(ssid, size, "%s-%02X%02X%s", WEBCONFIG_AP_PREFIX, pub_key[0], pub_key[1], suffix);
   }
 }
 
@@ -865,6 +869,8 @@ static bool setupAccessPointReady(const char* ssid, int channel, const char* pas
   const size_t ssid_len = strlen(ssid);
   const wifi_auth_mode_t auth = password && password[0]
       ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
+  esp_netif_t* ap = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+  esp_netif_dhcp_status_t dhcp;
   return setupAccessPointStarted()
       && esp_wifi_get_mode(&mode) == ESP_OK && (mode & WIFI_MODE_AP)
       && esp_wifi_get_config(WIFI_IF_AP, &config) == ESP_OK
@@ -878,6 +884,7 @@ static bool setupAccessPointReady(const char* ssid, int channel, const char* pas
       && esp_wifi_get_protocol(WIFI_IF_AP, &protocol) == ESP_OK
       && protocol == mesh::wifi::kAccessPointProtocolMask
       && static_cast<uint32_t>(WiFi.softAPIP()) != 0
+      && ap && esp_netif_dhcps_get_status(ap, &dhcp) == ESP_OK && dhcp == ESP_NETIF_DHCP_STARTED
       && WiFi.status() != WL_CONNECTED;
 }
 
@@ -898,7 +905,7 @@ bool WebConfigServer::waitingForStation() const {
   return (_mode == MODE_CONNECTING || _mode == MODE_LAN) && WiFi.status() != WL_CONNECTED;
 }
 
-bool WebConfigServer::startSetupMode(char reply[]) {
+bool WebConfigServer::startSetupMode(char reply[], SetupWiFiAccess access) {
   _start_retryable = false;
   if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) {
     strcpy(reply, "Error: WiFi disabled; use set wifi on or set 2.4ghz on");
@@ -922,8 +929,17 @@ bool WebConfigServer::startSetupMode(char reply[]) {
     strcpy(reply, "Err: administrator credentials unavailable");
     return false;
   }
-  const char* ap_password = mesh::esp32::managementPassword::apPasswordEligible(
-      credential.password) ? credential.password : nullptr;
+  const bool open_choice = access == SetupWiFiAccess::Open;
+  const bool eligible = mesh::esp32::managementPassword::apPasswordEligible(credential.password);
+  if (access == SetupWiFiAccess::Protected && !eligible) {
+    strcpy(reply, "Admin password needs 8-15 printable ASCII characters for WPA2");
+    return false;
+  }
+  if (open_choice && !credential.password[0]) {
+    strcpy(reply, "Set an admin password before starting open setup");
+    return false;
+  }
+  const char* ap_password = !open_choice && eligible ? credential.password : nullptr;
   // Publish the foreground owner before changing interfaces. The background
   // worker must not power down the station underneath this AP startup.
   requestNetworkAccess();
@@ -940,7 +956,7 @@ bool WebConfigServer::startSetupMode(char reply[]) {
   WiFi.setAutoReconnect(false);
   bool disconnect_ok = WiFi.disconnect(false, true);
   delay(100);
-  formatSetupSsid(_ap_ssid, sizeof(_ap_ssid), _pub_key);
+  formatSetupSsid(_ap_ssid, sizeof(_ap_ssid), _pub_key, open_choice);
   const int ap_channel = mesh::wifi::accessPointChannel();
   const IPAddress ap_ip(192, 168, 4, 1);
   const IPAddress ap_mask(255, 255, 255, 0);
@@ -982,7 +998,14 @@ bool WebConfigServer::startSetupMode(char reply[]) {
           if (!ap_ok) delay(20);
         } while (!ap_ok && millis() - start_started < 300);
       }
-      if (ap_ok) break;
+      if (ap_ok) {
+        _dns = new (std::nothrow) DNSServer();
+        if (_dns && _dns->start(53, "*", ap_ip)) break;
+        delete _dns;
+        _dns = nullptr;
+        ap_ok = false;
+        mesh::usbDebugPort().println("WebConfig: captive DNS failed to start");
+      }
     }
 
     mesh::usbDebugPort().printf(
@@ -1005,9 +1028,12 @@ bool WebConfigServer::startSetupMode(char reply[]) {
   delay(100);  // let the AP netif settle before reading its IP
   IPAddress ip = WiFi.softAPIP();
 
-  _dns = new DNSServer();
-  _dns->start(53, "*", ip);  // captive portal: every name resolves to us
-
+  {
+    WCLock lock(_mux);
+    memset(_captive_released, 0, sizeof(_captive_released));
+    _next_captive_release = 0;
+  }
+  _setup_access = access;
   _mode = MODE_SETUP;
   _was_setup_ap = true;
   mesh::wifi::coordinator().setAccessPointLease(
@@ -1142,7 +1168,7 @@ bool WebConfigServer::startAutoMode(char reply[]) {
   return true;
 }
 
-bool WebConfigServer::requestStart(bool force_ap, char reply[]) {
+bool WebConfigServer::requestStart(bool force_ap, char reply[], SetupWiFiAccess access) {
   _start_retryable = false;
   if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) {
     _start_mode = MODE_OFF;
@@ -1157,7 +1183,7 @@ bool WebConfigServer::requestStart(bool force_ap, char reply[]) {
   }
   const Mode requested = force_ap ? MODE_SETUP : MODE_CONNECTING;
   if (!_stopping) {
-    if (force_ap ? startSetupMode(reply) : startAutoMode(reply)) {
+    if (force_ap ? startSetupMode(reply, access) : startAutoMode(reply)) {
       _start_mode = MODE_OFF;
       _start_retry_at = 0;
       _start_retry_delay = 5000;
@@ -1169,6 +1195,7 @@ bool WebConfigServer::requestStart(bool force_ap, char reply[]) {
     }
   }
   _start_mode = requested;
+  _start_access = access;
   _start_retry_at = WebConfigBatch::scheduleAt(millis(), _start_retry_delay);
   if (_start_retry_delay < 60000) _start_retry_delay *= 2;
   if (_start_retry_delay > 60000) _start_retry_delay = 60000;
@@ -1188,7 +1215,7 @@ void WebConfigServer::serviceStartRetry(uint32_t now) {
   if (!isStartPending() || _stopping
       || !WebConfigBatch::deadlineReached(now, _start_retry_at)) return;
   char reply[160];
-  requestStart(_start_mode == MODE_SETUP, reply);
+  requestStart(_start_mode == MODE_SETUP, reply, _start_access);
   mesh::usbDebugPort().println(reply);
 }
 
@@ -1404,8 +1431,13 @@ void WebConfigServer::serviceSetupPassword(uint32_t now) {
   mesh::esp32::managementPassword::ChangeGuard rekey;
   if (!rekey.acquired()
       || !mesh::esp32::managementPassword::snapshot(credential)) return;
-  const char* password = mesh::esp32::managementPassword::apPasswordEligible(
-      credential.password) ? credential.password : nullptr;
+  const bool eligible = mesh::esp32::managementPassword::apPasswordEligible(credential.password);
+  if ((_setup_access == SetupWiFiAccess::Protected && !eligible)
+      || (_setup_access == SetupWiFiAccess::Open && !credential.password[0])) {
+    requestStop();
+    return;
+  }
+  const char* password = _setup_access != SetupWiFiAccess::Open && eligible ? credential.password : nullptr;
   const bool ready = mesh::wifi::startAccessPoint(_ap_ssid, true, password);
   WCLock lock(_mux);
   if (ready) {
@@ -3842,8 +3874,17 @@ void WebConfigServer::handlePortalExit(AsyncWebServerRequest* req) {
   // OS sign-in sheet can be dismissed (iOS: "Done") without dropping the WiFi;
   // the user then continues at http://<softAP IP>/ in their real browser,
   // which survives the phone sleeping (the captive sheet does not).
-  if (_mode != MODE_SETUP) { req->send(404); return; }
-  _captive_release = true;
+  if (_mode != MODE_SETUP || !req->client() || req->client()->localIP() != WiFi.softAPIP()) {
+    req->send(404); return;
+  }
+  const uint32_t client = req->client()->getRemoteAddress();
+  {
+    WCLock lock(_mux);
+    if (client && std::find(std::begin(_captive_released), std::end(_captive_released), client)
+                      == std::end(_captive_released)) {
+      _captive_released[_next_captive_release++ % 4] = client;
+    }
+  }
   _last_activity = millis();
   char body[64];
   snprintf(body, sizeof(body), "{\"ok\":true,\"url\":\"http://%s/\"}",
@@ -3856,7 +3897,14 @@ void WebConfigServer::handleNotFound(AsyncWebServerRequest* req) {
   // /connecttest.txt, ...) all land here; a redirect to the portal makes the
   // phone pop its sign-in sheet.
   if (_mode == MODE_SETUP && req->method() == HTTP_GET) {
-    if (_captive_release) {
+    const uint32_t client = req->client() ? req->client()->getRemoteAddress() : 0;
+    bool released;
+    {
+      WCLock lock(_mux);
+      released = client && std::find(std::begin(_captive_released), std::end(_captive_released), client)
+                               != std::end(_captive_released);
+    }
+    if (released) {
       // Answer each OS's connectivity check natively so the sheet reports
       // success and can be closed. Deliberately does NOT bump _last_activity:
       // background probes must not hold the portal open past the idle timeout.
