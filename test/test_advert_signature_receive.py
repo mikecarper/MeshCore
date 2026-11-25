@@ -18,6 +18,87 @@ SOURCE = ROOT / "src/Mesh.cpp"
 
 
 class AdvertSignatureReceiveTests(unittest.TestCase):
+    def test_pending_verification_keeps_scanning(self):
+        compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
+        if compiler is None:
+            self.skipTest("a host C++17 compiler is required")
+        source = (ROOT / "src/helpers/AdvertVerificationTask.cpp").read_text()
+        job = extract_braced(source, "struct Verification")
+        verifier = extract_braced(source, "bool verifyAdvertWhileScanning(")
+        harness = r'''
+#include <atomic>
+#include <cassert>
+#include <cstdint>
+
+struct Identity {
+  bool expected;
+  mutable unsigned calls = 0;
+  bool verify(const uint8_t*, const uint8_t*, int) const { ++calls; return expected; }
+};
+@JOB@;
+
+static Verification* pending;
+static bool refuse_queue;
+static unsigned launches;
+using QueueHandle_t = int;
+static constexpr int pdTRUE = 1;
+static constexpr bool shares_core = true;
+static constexpr int configUSE_PREEMPTION = 1;
+static constexpr int configUSE_TIME_SLICING = 1;
+static unsigned yields;
+static void taskYIELD() { ++yields; }
+static QueueHandle_t startVerifier() { ++launches; return 1; }
+static int xQueueSend(QueueHandle_t, Verification* const* job, int) {
+  if (refuse_queue) return 0;
+  assert(!pending);
+  pending = *job;
+  return pdTRUE;
+}
+
+struct Profiles {
+  bool dual;
+  bool secondary;
+  bool enabled() const { return dual; }
+  bool secondaryOnly() const { return secondary; }
+};
+struct Radio {
+  Profiles active{};
+  unsigned scans = 0;
+  const Profiles* profiles() const { return &active; }
+  bool getProfileIdleDelay(uint32_t& ms) const { ms = 1; return scans % 2 == 0; }
+  void loop() {
+    assert(pending);
+    if (++scans % 3 != 0) return;
+    pending->valid = pending->identity.verify(pending->signature, pending->message, pending->length);
+    pending->finished.store(true, std::memory_order_release);
+    pending = nullptr;
+  }
+};
+@VERIFY@
+
+int main() {
+  Radio radio;
+  Identity valid{true}, invalid{false};
+  uint8_t byte = 0;
+  auto verify = [&](const Identity& id) { return verifyAdvertWhileScanning(radio, id, &byte, &byte, 1); };
+  assert(verify(valid) && radio.scans == 0 && launches == 0);
+  radio.active = {true, true};
+  assert(!verify(invalid) && radio.scans == 0 && launches == 0);
+  radio.active.secondary = false;
+  assert(verify(valid) && !pending && radio.scans == 3 && launches == 1);
+  assert(!verify(invalid) && !pending && radio.scans == 6 && launches == 1 && yields == 3);
+  refuse_queue = true;
+  assert(!verify(invalid) && radio.scans == 6 && !pending);
+  assert(valid.calls == 2 && invalid.calls == 3);
+}
+'''.replace("@JOB@", job).replace("@VERIFY@", verifier)
+        with tempfile.TemporaryDirectory(prefix="meshcore-advert-scanner-") as directory:
+            cpp, binary = Path(directory) / "test.cpp", Path(directory) / "test"
+            cpp.write_text(harness)
+            subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                            str(cpp), "-o", str(binary)], check=True, timeout=60)
+            subprocess.run([str(binary)], check=True, timeout=10)
+
     def test_wire_gate_precedes_both_private_verifier_callers(self):
         source = SOURCE.read_text()
         receive = extract_braced(source, "DispatcherAction Mesh::onRecvPacket(")
