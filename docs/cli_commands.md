@@ -1748,6 +1748,18 @@ power loss and firmware restarts. USB power and charging remain available.
   USB-to-UART bridge may still appear on the host. The chip's ROM downloader
   remains available during boot.
 
+On ESP32, `set usb.lock on` also encrypts the saved node identity, admin access
+list and login replay records immediately. `set usb.lock off` restores their
+ordinary file formats. Both commands preserve the node address and permissions.
+Reboot to apply the USB port change. If power fails during conversion, startup
+retries it. `get usb.lock` reports an incomplete conversion and the command to retry.
+
+Each device stores its own encryption key in flash (NVS). A full flash copy
+contains the key needed to decrypt these files. Old flash pages and earlier
+backups can retain plaintext. For a raw backup of a locked device, keep NVS and
+the filesystem together. Unlock before installing older firmware that reads
+only the original file formats. This feature uses no eFuses.
+
 Bluetooth DFU uses the authentication policy of the installed bootloader.
 Physical SWD access on nRF52 remains available on boards that expose it. Erasing the settings also clears
 the lock.

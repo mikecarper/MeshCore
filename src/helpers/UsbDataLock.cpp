@@ -9,6 +9,12 @@
 #include <InternalFileSystem.h>
 extern "C" int mesh_lfs_set_usb_lock(lfs_t*, bool);
 #else
+#if defined(ARDUINO_ARCH_ESP32)
+#include <SPIFFS.h>
+#include "IdentityStore.h"
+#include "esp32/PrivateStorage.h"
+#include "ClientACL.h"
+#endif
 #include <nvs.h>
 #include <nvs_flash.h>
 #include <soc/soc_caps.h>
@@ -51,7 +57,8 @@ bool copyLocked(unsigned copy) {
   }
   return true;
 }
-bool readSetting(bool& locked) {
+bool readSetting(bool& locked, bool* converting = nullptr) {
+  if (converting) *converting = false;
   locked = copyLocked(0) || copyLocked(1);
   return true;
 }
@@ -69,7 +76,11 @@ bool saveSetting(bool locked) {
 const char* scope() { return "app only"; }
 constexpr char settingsNamespace[] = "mesh-usb";
 constexpr char key[] = "locked";
-bool readSetting(bool& locked) {
+enum StorageState : uint8_t {
+  Unlocked = 0, LegacyLocked = 1, Unlocking = 2, Locking = 3, Locked = 4
+};
+
+bool readSetting(bool& locked, bool* converting = nullptr) {
   nvs_handle_t handle;
   uint8_t value = 0;
   esp_err_t rc = nvs_open(settingsNamespace, NVS_READONLY, &handle);
@@ -77,24 +88,61 @@ bool readSetting(bool& locked) {
     rc = nvs_get_u8(handle, key, &value);
     nvs_close(handle);
   }
-  locked = value == 1;
-  return rc == ESP_ERR_NVS_NOT_FOUND || (rc == ESP_OK && value <= 1);
+  locked = value == LegacyLocked || value == Locking || value == Locked;
+  if (converting) *converting = value == LegacyLocked || value == Locking || value == Unlocking;
+  return rc == ESP_ERR_NVS_NOT_FOUND || (rc == ESP_OK && value <= Locked);
 }
 bool loadBootSetting() {
   bool locked;
   return !readSetting(locked) || locked;
 }
-bool saveSetting(bool locked) {
-  bool saved;
-  if (readSetting(saved) && saved == locked) return true;
+bool saveSetting(bool locked, bool converting = false) {
+  bool saved, pending;
+  if (!readSetting(saved, &pending)) return false;
+  if (saved == locked && pending == converting) return true;
   nvs_handle_t handle;
   if (nvs_open(settingsNamespace, NVS_READWRITE, &handle) != ESP_OK) return false;
-  const bool ok = nvs_set_u8(handle, key, locked) == ESP_OK && nvs_commit(handle) == ESP_OK;
+  const StorageState state = locked ? (converting ? Locking : Locked)
+                                    : (converting ? Unlocking : Unlocked);
+  const bool ok = nvs_set_u8(handle, key, state) == ESP_OK && nvs_commit(handle) == ESP_OK;
   nvs_close(handle);
-  return ok && readSetting(saved) && saved == locked;
+  return ok && readSetting(saved, &pending) && saved == locked && pending == converting;
 }
 #endif
+const char* storageStatus(bool locked) {
+#if defined(ARDUINO_ARCH_ESP32)
+  return locked ? ", keys encrypted" : ", keys unencrypted";
+#else
+  (void)locked;
+  return "";
+#endif
+}
 }  // namespace
+
+#if defined(ARDUINO_ARCH_ESP32)
+bool readUsbDataLockSetting(bool& locked) {
+  return readSetting(locked);
+}
+
+// Keep the journal set until every live store and its transaction files agree.
+static bool setStorageProtection(bool locked) {
+  IdentityStore identity(SPIFFS, "/identity");
+  return identity.setStorageProtection("_main", locked)
+      && ClientACL::setStorageProtection(&SPIFFS, locked)
+      && (!locked || privateStorage::retireMigrationCopies())
+      && saveSetting(locked);
+}
+
+void resumeUsbStorageConversion(bool identityFormatChanged) {
+  bool locked, pending;
+  if (!readSetting(locked, &pending)) return;
+  if (pending || identityFormatChanged) {
+    // A full disk must leave the readable identity and ACL available for a
+    // wireless retry. Record mismatches imported from older backups as well.
+    if (!setStorageProtection(locked) && !pending) saveSetting(locked, true);
+  }
+}
+#endif
 
 #if defined(NRF52_PLATFORM)
 // The SoftDevice can deliver USB power events from its interrupt handler.
@@ -129,20 +177,30 @@ void applyUsbDataLockAtBoot() {
 
 bool handleUsbDataLockCommand(const char* command, char* reply, size_t capacity) {
   if (strcmp(command, "get usb.lock") == 0) {
-    bool saved;
-    if (readSetting(saved)) {
-      snprintf(reply, capacity, "usb.lock %s (%s)%s", saved ? "on" : "off", scope(),
-               saved == usbDataLocked() ? "" : " (pending reboot)");
-    } else snprintf(reply, capacity, "Error: USB lock storage unavailable");
+    bool saved, pending;
+    if (!readSetting(saved, &pending)) {
+      snprintf(reply, capacity, "Error: USB lock storage unavailable");
+    } else if (pending) {
+      snprintf(reply, capacity, "usb.lock %s (storage conversion incomplete - retry set usb.lock %s)",
+               saved ? "on" : "off", saved ? "on" : "off");
+    } else {
+      snprintf(reply, capacity, "usb.lock %s (%s)%s%s", saved ? "on" : "off", scope(),
+               storageStatus(saved), saved == usbDataLocked() ? "" : " (pending reboot)");
+    }
   } else if (strncmp(command, "set usb.lock ", 13) == 0 || strcmp(command, "set usb.lock") == 0) {
     const bool locked = strcmp(command, "set usb.lock on") == 0;
     if (!locked && strcmp(command, "set usb.lock off") != 0) {
       snprintf(reply, capacity, "Error: use set usb.lock on|off");
+#if defined(ARDUINO_ARCH_ESP32)
+    } else if (!saveSetting(locked, true) || !setStorageProtection(locked)) {
+      snprintf(reply, capacity, "Error: storage conversion incomplete - retry set usb.lock %s", locked ? "on" : "off");
+#else
     } else if (!saveSetting(locked)) {
       snprintf(reply, capacity, "Error: USB lock save unconfirmed");
+#endif
     } else {
-      snprintf(reply, capacity, "OK - usb.lock %s (%s)%s", locked ? "on" : "off", scope(),
-               locked == usbDataLocked() ? "" : " - reboot to apply");
+      snprintf(reply, capacity, "OK - usb.lock %s (%s)%s%s", locked ? "on" : "off", scope(),
+               storageStatus(locked), locked == usbDataLocked() ? "" : " - reboot to apply");
     }
   } else return false;
   return true;

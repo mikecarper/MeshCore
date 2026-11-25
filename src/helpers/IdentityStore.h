@@ -32,6 +32,9 @@ public:
   // Recover an interrupted non-replacing rename before deciding this is a
   // fresh identity. False means the previous image must remain protected.
   bool recover(const char* name);
+#if defined(ARDUINO_ARCH_ESP32)
+  bool setStorageProtection(const char* name, bool locked);
+#endif
   IdentityLoadResult loadResult(const char *name, mesh::LocalIdentity& id);
   IdentityLoadResult loadResult(const char *name, mesh::LocalIdentity& id,
                                 char display_name[], int max_name_sz);

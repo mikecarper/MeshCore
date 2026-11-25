@@ -2,6 +2,7 @@
 
 #if defined(ESP32_PLATFORM)
 
+#include "esp32/PrivateStorage.h"
 #include <bootloader_random.h>
 #include <esp_random.h>
 #include <esp_system.h>
@@ -99,6 +100,9 @@ void initializeESP32TrueRandom() {
   // ESP-IDF guarantees true RNG output while this SAR ADC entropy source is
   // enabled. Arduino's init hook below runs before variant and board setup.
   bootloader_random_enable();
+#if defined(ARDUINO_ARCH_ESP32)
+  privateStorage::seed();
+#endif
   esp_fill_random(true_random_pool, TRUE_RANDOM_POOL_SIZE);
   bootloader_random_disable();
 

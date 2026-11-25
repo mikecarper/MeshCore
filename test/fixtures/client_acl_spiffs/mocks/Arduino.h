@@ -32,6 +32,13 @@ public:
   explicit operator bool() const { return handle && handle->open; }
   bool isDirectory() const { return *this && handle->directory; }
   size_t size() const;
+  bool seek(size_t offset) {
+    if (!*this || offset > size()) return false;
+    handle->position = offset;
+    return true;
+  }
+  bool setBufferSize(size_t) { return bool(*this); }
+  void flush() {}
   int read(uint8_t* output, size_t length);
   size_t write(const uint8_t* input, size_t length);
   void close();
@@ -39,6 +46,7 @@ public:
 
 class FakeFilesystem {
 public:
+  bool mkdir(const char*) { return true; }
   FakeFilesystem() { metadata_filesystem = this; }
   std::map<std::string, std::vector<uint8_t>> files;
   std::set<std::string> unreadable;

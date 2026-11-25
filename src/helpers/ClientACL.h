@@ -108,6 +108,9 @@ public:
   // setup(), while the heap is still unfragmented. A failed allocation leaves
   // a zero-capacity ACL that refuses new clients rather than writing through
   // a null table; putClient() returns NULL and callers already handle that.
+#if defined(ARDUINO_ARCH_ESP32)
+  static bool setStorageProtection(FILESYSTEM* fs, bool locked);
+#endif
   ClientACL() {
     _fs = NULL;
     clients = new (std::nothrow) ClientInfo[MAX_CLIENTS];

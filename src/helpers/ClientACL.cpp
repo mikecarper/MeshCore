@@ -10,10 +10,18 @@
 #include "AtomicFileWriter.h"
 #endif
 
+#if defined(ARDUINO_ARCH_ESP32)
+#include "esp32/PrivateStorage.h"
+#include "UsbDataLock.h"
+using mesh::privateStorage::AclFile;
+#else
+using AclFile = File;
+#endif
+
 static const uint8_t CONTACT_RECORD_VERSION_ALT_PATH = 1;
 static const uint8_t EMPTY_OUT_PATH[MAX_PATH_SIZE] = {};
 
-static File openRead(FILESYSTEM* fs, const char* filename,
+static AclFile openRead(FILESYSTEM* fs, const char* filename,
                      bool* metadata_ok = nullptr) {
 #if defined(ESP32_PLATFORM)
   bool present = false;
@@ -25,7 +33,14 @@ static File openRead(FILESYSTEM* fs, const char* filename,
   File file = fs->open(filename);
   if (!file && metadata_ok) *metadata_ok = false;
   if (file && file.isDirectory()) file.close();
+#if defined(ARDUINO_ARCH_ESP32)
+  bool invalid;
+  auto reader = AclFile::open(file, filename, false, &invalid);
+  if (!reader && !invalid && metadata_ok) *metadata_ok = false;
+  return reader;
+#else
   return file;
+#endif
 #else
   (void)metadata_ok;
   return mesh::openFileRead(fs, filename);
@@ -47,7 +62,7 @@ static bool readPersistedClientPath(FILESYSTEM* fs,
 #if !defined(ESP32_PLATFORM)
   if (!fs->exists(mesh::CLIENT_ACL_PRIMARY_PATH)) return false;
 #endif
-  File file = openRead(fs, mesh::CLIENT_ACL_PRIMARY_PATH, metadata_ok);
+  AclFile file = openRead(fs, mesh::CLIENT_ACL_PRIMARY_PATH, metadata_ok);
   if (!file) return false;
 
   bool found = false;
@@ -123,7 +138,14 @@ static mesh::StoredClientPathView storedClientPathForSave(
 
 #if !defined(NRF52_PLATFORM)
 
-static File openWrite(FILESYSTEM* _fs, const char* filename) {
+static AclFile openWrite(FILESYSTEM* _fs, const char* filename, const bool* target = nullptr) {
+#if defined(ARDUINO_ARCH_ESP32)
+  bool locked;
+  if (target) locked = *target;
+  else if (!mesh::readUsbDataLockSetting(locked)) return File();
+#else
+  (void)target;
+#endif
   if (_fs == NULL) return mesh::emptyFile(_fs);
   #if defined(STM32_PLATFORM)
     _fs->remove(filename);
@@ -134,10 +156,15 @@ static File openWrite(FILESYSTEM* _fs, const char* filename) {
     File file = _fs->open(filename, "w", true);
   #endif
   if (file && file.isDirectory()) file.close();
+#if defined(ARDUINO_ARCH_ESP32)
+  if (locked) return AclFile::open(file, filename, true);
   return file;
+#else
+  return file;
+#endif
 }
 
-static bool readMatches(File& file, const uint8_t* expected, size_t length) {
+static bool readMatches(AclFile& file, const uint8_t* expected, size_t length) {
   uint8_t buffer[32];
   while (length > 0) {
     const size_t chunk = length < sizeof(buffer) ? length : sizeof(buffer);
@@ -154,7 +181,7 @@ static bool readMatches(File& file, const uint8_t* expected, size_t length) {
 static mesh::ClientACLFileValidation validateContactsFileIntegrityChecked(
     FILESYSTEM* fs, const char* filename) {
   bool metadata_ok = true;
-  File file = openRead(fs, filename, &metadata_ok);
+  AclFile file = openRead(fs, filename, &metadata_ok);
   if (!metadata_ok) return mesh::ClientACLFileValidation::MetadataError;
   if (!file) return mesh::ClientACLFileValidation::Invalid;
   const size_t size = file.size();
@@ -213,7 +240,7 @@ static bool verifyContactsFile(
     int num_clients,
     bool (*filter)(ClientInfo*),
     size_t expected_size) {
-  File file = openRead(fs, filename);
+  AclFile file = openRead(fs, filename);
   if (!file || file.size() != expected_size + 8) {
     if (file) file.close();
     return false;
@@ -254,7 +281,7 @@ static bool verifyContactsFile(
 }
 #endif
 
-static bool loginReplayRecordCount(File& file, size_t* count) {
+static bool loginReplayRecordCount(AclFile& file, size_t* count) {
   if (!file || file.isDirectory()) return false;
   const size_t size = file.size();
   if (size < mesh::CLIENT_LOGIN_REPLAY_TRAILER_SIZE) return false;
@@ -269,7 +296,7 @@ static bool loginReplayRecordCount(File& file, size_t* count) {
 
 static bool validateLoginReplayFileIntegrity(FILESYSTEM* fs,
                                              const char* filename) {
-  File file = openRead(fs, filename);
+  AclFile file = openRead(fs, filename);
   size_t record_count = 0;
   if (!loginReplayRecordCount(file, &record_count)) {
     file.close();
@@ -322,7 +349,7 @@ static bool readClientLoginReplayCeiling(
           fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH)) {
     return false;
   }
-  File file = openRead(fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
+  AclFile file = openRead(fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
   size_t record_count = 0;
   if (!loginReplayRecordCount(file, &record_count)) {
     file.close();
@@ -386,7 +413,7 @@ static bool writeClientLoginReplayCeiling(
   }
 #endif
 
-  File source = mesh::emptyFile(fs);
+  AclFile source = mesh::emptyFile(fs);
   size_t record_count = 0;
   bool source_exists = false;
   if (!mesh::filePresence(fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH, source_exists)) return false;
@@ -404,7 +431,7 @@ static bool writeClientLoginReplayCeiling(
   mesh::AtomicFileWriter destination(
       fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
 #else
-  File destination = openWrite(
+  AclFile destination = openWrite(
       fs, mesh::CLIENT_LOGIN_REPLAY_TEMP_PATH);
 #endif
   if (!destination) {
@@ -475,7 +502,7 @@ static bool writeClientLoginReplayCeiling(
 // also handles duplicate historical identities without dropping tombstones.
 template <typename Writer>
 static bool copyClampedLoginReplay(
-    File& source, Writer* destination, const uint8_t* selected_pubkey,
+    AclFile& source, Writer* destination, const uint8_t* selected_pubkey,
     uint32_t now, ClientLoginReplayClampResult& result, uint32_t& source_crc) {
   size_t record_count = 0;
   if (!loginReplayRecordCount(source, &record_count)) return false;
@@ -530,10 +557,10 @@ bool ClientACL::clampLoginReplayTimestamps(
       || !mesh::filePresence(_fs, mesh::CLIENT_LOGIN_REPLAY_BACKUP_PATH, backup)
       || !mesh::filePresence(_fs, mesh::CLIENT_LOGIN_REPLAY_TEMP_PATH, temp)) return false;
   if (primary) {
-    File source = openRead(_fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
+    AclFile source = openRead(_fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
     uint32_t original_crc = 0;
     const bool valid = copyClampedLoginReplay(
-        source, (File*)NULL, pubkey, now, pending, original_crc);
+        source, (AclFile*)NULL, pubkey, now, pending, original_crc);
     source.close();
     if (!valid) {
       login_replay_store_available = false;
@@ -551,7 +578,7 @@ bool ClientACL::clampLoginReplayTimestamps(
       mesh::AtomicFileWriter destination(
           _fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
 #else
-      File destination = openWrite(_fs, mesh::CLIENT_LOGIN_REPLAY_TEMP_PATH);
+      AclFile destination = openWrite(_fs, mesh::CLIENT_LOGIN_REPLAY_TEMP_PATH);
 #endif
       if (!destination) {
         source.close();
@@ -577,11 +604,11 @@ bool ClientACL::clampLoginReplayTimestamps(
       if (!published) {
         // Ordinary failed writes retain the old store. If rollback or a read
         // also failed, do not let a missing/corrupt image become a first login.
-        File retained = openRead(_fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
+        AclFile retained = openRead(_fs, mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH);
         ClientLoginReplayClampResult ignored = {};
         uint32_t retained_crc = 0;
         const bool retained_ok = copyClampedLoginReplay(
-            retained, (File*)NULL, pubkey, now, ignored, retained_crc)
+            retained, (AclFile*)NULL, pubkey, now, ignored, retained_crc)
             && retained_crc == original_crc;
         retained.close();
         if (!retained_ok) login_replay_store_available = false;
@@ -608,6 +635,54 @@ bool ClientACL::clampLoginReplayTimestamps(
   result = pending;
   return true;
 }
+
+#if defined(ARDUINO_ARCH_ESP32)
+// Convert the validated primary in either direction, preserving even legacy records.
+static bool migratePrivateAcl(FILESYSTEM* fs, bool replay, bool locked) {
+  const char* primary = replay ? mesh::CLIENT_LOGIN_REPLAY_PRIMARY_PATH : mesh::CLIENT_ACL_PRIMARY_PATH;
+  const char* temp = replay ? mesh::CLIENT_LOGIN_REPLAY_TEMP_PATH : mesh::CLIENT_ACL_TEMP_PATH;
+  bool exists = false;
+  if (!mesh::filePresence(fs, primary, exists)) return false;
+  if (!exists) return true;
+  auto original = openRead(fs, primary);
+  if (!original) return false;
+  if (original.sealed() == locked) return true;
+  auto dest = openWrite(fs, temp, &locked);
+  if (!dest) return false;
+  uint8_t bytes[128];
+  const size_t size = original.size();
+  for (size_t left = size; left;) {
+    const size_t n = std::min(left, sizeof(bytes));
+    if (original.read(bytes, n) != n || dest.write(bytes, n) != n) return false;
+    left -= n;
+  }
+  original.close();
+  dest.close();
+  original = openRead(fs, primary);
+  auto check = openRead(fs, temp);
+  bool ok = original && check && check.sealed() == locked && check.size() == size;
+  for (size_t left = size; ok && left;) {
+    const size_t n = std::min(left, sizeof(bytes));
+    ok = original.read(bytes, n) == n && readMatches(check, bytes, n);
+    left -= n;
+  }
+  original.close();
+  check.close();
+  return replay ? mesh::publishClientLoginReplayTemp(fs, ok, validateLoginReplayFileIntegrity)
+                : mesh::publishVerifiedClientACLTemp(fs, ok);
+}
+
+bool ClientACL::setStorageProtection(FILESYSTEM* fs, bool locked) {
+  if (!mesh::recoverClientACLFilesVerified(fs, validateContactsFileIntegrityChecked)
+      || !mesh::recoverClientLoginReplayFiles(fs, validateLoginReplayFileIntegrity)
+      || !migratePrivateAcl(fs, false, locked) || !migratePrivateAcl(fs, true, locked)) return false;
+  for (const char* path : {mesh::CLIENT_ACL_TEMP_PATH, mesh::CLIENT_ACL_BACKUP_PATH,
+                           mesh::CLIENT_LOGIN_REPLAY_TEMP_PATH, mesh::CLIENT_LOGIN_REPLAY_BACKUP_PATH}) {
+    if (!mesh::removeClientACLArtifact(fs, path)) return false;
+  }
+  return true;
+}
+#endif
 
 void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
   _fs = fs;
@@ -649,7 +724,7 @@ void ClientACL::load(FILESYSTEM* fs, const mesh::LocalIdentity& self_id) {
   if (!mesh::filePresence(_fs, mesh::CLIENT_ACL_PRIMARY_PATH, primary_exists)
       || (durable_acl_expected && !primary_exists)) return;
   if (primary_exists) {
-    File file = openRead(_fs, "/s_contacts");
+    AclFile file = openRead(_fs, "/s_contacts");
     if (file) {
       size_t remaining = file.size();
 #if !defined(NRF52_PLATFORM)
@@ -785,7 +860,7 @@ bool ClientACL::save(FILESYSTEM* fs, bool (*filter)(ClientInfo*)) {
     MESH_DEBUG_PRINTLN("ERROR: ClientACL::save recovery is incomplete");
     return false;
   }
-  File file = openWrite(_fs, mesh::CLIENT_ACL_TEMP_PATH);
+  AclFile file = openWrite(_fs, mesh::CLIENT_ACL_TEMP_PATH);
 #endif
   if (!file) {
     MESH_DEBUG_PRINTLN("ERROR: ClientACL::save could not open contacts file");
