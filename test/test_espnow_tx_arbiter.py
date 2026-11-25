@@ -86,10 +86,27 @@ void testBusyChannelReturnsGrant() {
   assert(coordinator.acquire(2515, 470, 4));
 }
 
+void testConfiguredTurnaround() {
+  Arbiter coordinator;
+  assert(coordinator.turnaround() == 8);
+  coordinator.setTurnaround(32);
+  coordinator.begin(true, 0);
+  assert(coordinator.turnaround() == 32);
+  assert(coordinator.acquire(2500, 125, 1));
+  coordinator.complete(2625);
+  assert(!coordinator.acquire(2656, 125, 2));
+  assert(coordinator.acquire(2657, 125, 2));
+  coordinator.setTurnaround(4);
+  coordinator.complete(2782);
+  assert(!coordinator.acquire(2785, 125, 3));
+  assert(coordinator.acquire(2786, 125, 3));
+}
+
 int main() {
   testLateGrant();
   testDutyCycle();
   testBusyChannelReturnsGrant();
+  testConfiguredTurnaround();
 }
 """
 
