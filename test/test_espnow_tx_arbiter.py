@@ -13,6 +13,8 @@ using Kind = Arbiter::Kind;
 
 void testLateGrant() {
   Arbiter coordinator, peer;
+  coordinator.setTurnaround(8);
+  peer.setTurnaround(8);
   coordinator.begin(true, 0);
   peer.begin(false, 0);
   assert(!coordinator.acquire(2499, 470, 1));
@@ -37,6 +39,7 @@ void testDutyCycle() {
     Arbiter::Message message;
   };
   Arbiter nodes[2];
+  for (auto& node : nodes) node.setTurnaround(8);
   nodes[0].begin(true, 0);
   nodes[1].begin(false, 0);
   std::deque<ControlFrame> link;
@@ -72,6 +75,8 @@ void testDutyCycle() {
 
 void testBusyChannelReturnsGrant() {
   Arbiter coordinator, peer;
+  coordinator.setTurnaround(8);
+  peer.setTurnaround(8);
   coordinator.begin(true, 0);
   peer.begin(false, 0);
   assert(!peer.permitted(2500, 125, 1));
@@ -88,7 +93,7 @@ void testBusyChannelReturnsGrant() {
 
 void testConfiguredTurnaround() {
   Arbiter coordinator;
-  assert(coordinator.turnaround() == 8);
+  assert(coordinator.turnaround() == 180);
   coordinator.setTurnaround(32);
   coordinator.begin(true, 0);
   assert(coordinator.turnaround() == 32);
