@@ -49,6 +49,10 @@ bool mesh::bridge::acquireEspNowTx(uint32_t now, uint32_t airtime_ms) {
 
 void mesh::bridge::yieldEspNowTx(uint32_t now) { tx_arbiter.yield(now); }
 void mesh::bridge::completeEspNowTx(uint32_t now) { tx_arbiter.complete(now); }
+uint8_t mesh::bridge::espNowTxTurnaround() { return tx_arbiter.turnaround(); }
+void mesh::bridge::setEspNowTxTurnaround(uint8_t milliseconds) {
+  tx_arbiter.setTurnaround(milliseconds);
+}
 #endif
 
 static bool stopBridgeWiFiIfUnused() {

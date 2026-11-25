@@ -70,6 +70,9 @@
 #if defined(WITH_ESPNOW_BRIDGE)
 #include "bridges/ESPNowBridgeDiagnostics.h"
 #endif
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+#include "bridges/ESPNowTxArbiter.h"
+#endif
 #include "GpsPowerPolicy.h"
 #include "FloodAdvertCLI.h"
 #include "StorageLayout.h"
@@ -3804,6 +3807,20 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
 #endif
 #if MESH_ENABLE_RADIO_DIRECTION
     if (mesh::radioDirection::handleDirectionCommand(command, reply, 157)) return;
+#endif
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+    if (!sender_timestamp && strcmp(command, "get lab.txgap") == 0) {
+      snprintf(reply, 157, "> %u", unsigned(mesh::bridge::espNowTxTurnaround()));
+      return;
+    }
+    if (!sender_timestamp && strncmp(command, "set lab.txgap ", 14) == 0) {
+      uint32_t gap;
+      if (mesh::cli::parseUnsignedIntegerStrict(command + 14, gap) && gap <= 64) {
+        mesh::bridge::setEspNowTxTurnaround(static_cast<uint8_t>(gap));
+        snprintf(reply, 157, "OK - TX gap %lu ms", (unsigned long)gap);
+      } else mesh::cli::formatError(reply, 157, "use set lab.txgap 0..64");
+      return;
+    }
 #endif
 #if MESH_ENABLE_BRIDGE_INGRESS
     if (mesh::bridge::handleIngressCommand(command, reply, 157)) return;

@@ -22,7 +22,9 @@ public:
   static constexpr uint32_t TurnaroundMs = 8;
 
   void begin(bool coordinator, uint32_t now) {
+    const uint8_t turnaround = turnaround_ms_;
     *this = EspNowTxArbiter{};
+    turnaround_ms_ = turnaround;
     ready_ = true;
     coordinator_ = coordinator;
     startup_ = next_message_ = now;
@@ -32,6 +34,8 @@ public:
 
   bool ready() const { return ready_; }
   bool coordinator() const { return coordinator_; }
+  uint8_t turnaround() const { return turnaround_ms_; }
+  void setTurnaround(uint8_t milliseconds) { turnaround_ms_ = milliseconds; }
 
   void receive(Message message, uint32_t now) {
     if (!ready_ || !message.id) return;
@@ -45,7 +49,7 @@ public:
         completed_ = remote_id_;
         remote_id_ = 0;
         remote_granted_ = false;
-        quiet_until_ = now + TurnaroundMs;
+        quiet_until_ = now + turnaround_ms_;
         quiet_ = true;
         local_priority_ = true;
         local_until_ = quiet_until_ + RetryMs;
@@ -95,7 +99,7 @@ public:
     if (!active_) return;
     active_ = false;
     quiet_ = true;
-    quiet_until_ = now + TurnaroundMs;
+    quiet_until_ = now + turnaround_ms_;
     if (!coordinator_) releasePeerTurn(now);
   }
 
@@ -154,6 +158,7 @@ private:
   bool ready_ = false, coordinator_ = false, active_ = false, quiet_ = false;
   bool have_grant_ = false, done_pending_ = false;
   bool remote_granted_ = false, local_priority_ = false;
+  uint8_t turnaround_ms_ = TurnaroundMs;
 };
 
 #if defined(MESH_ESPNOW_TXSYNC_LAB)
@@ -162,6 +167,8 @@ bool permitEspNowTx(uint32_t now, uint32_t airtime_ms);
 bool acquireEspNowTx(uint32_t now, uint32_t airtime_ms);
 void yieldEspNowTx(uint32_t now);
 void completeEspNowTx(uint32_t now);
+uint8_t espNowTxTurnaround();
+void setEspNowTxTurnaround(uint8_t milliseconds);
 #endif
 
 }}  // namespace mesh::bridge
