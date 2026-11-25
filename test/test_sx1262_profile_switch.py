@@ -14,50 +14,66 @@ class FastProfileSwitchTests(unittest.TestCase):
         src = (ROOT / "src/helpers/radiolib/CustomSX1262.h").read_text()
         begin = method(src, "int16_t begin(const ConfigLoRa_t&")
         frequency = method(src, "int16_t setFrequency(float")
+        mark_sleep = method(src, "void markFrequencyPatchSleep()")
+        restore = method(src, "void restoreFrequencyPatchForScan()")
+        state = src.split("  enum class FrequencyPatch", 1)[1].split("  void markFrequencyPatchSleep", 1)[0]
+        state = "  enum class FrequencyPatch" + state
         harness = r"""
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #define MC_SX1262_PRAM_RETUNE 1
 #define RADIOLIB_ERR_NONE 0
 #define RADIOLIB_SX126X_STANDBY_RC 0
+#define RADIOLIB_SX126X_PACKET_TYPE_LORA 1
 #define RADIOLIB_SX126X_CAL_IMG_FREQ_TRIG_MHZ 20.0f
 struct ConfigLoRa_t {};
 struct Module {
-  bool compatible = true, installs = true, accepts = true;
+  bool compatible = true, installs = true, accepts = true, patched = false;
   int uploads = 0, commands = 0;
 };
 namespace sx1262profile {
-  bool hasVersion(Module& m, const char*) { return m.compatible; }
-  bool install(Module& m) { ++m.uploads; return m.installs; }
+  bool hasVersion(Module& m, const char* version) {
+    return m.compatible && strcmp(version, m.patched ? "SX1261 V2D 2D0K" : "SX1261 V2D 2D02") == 0;
+  }
+  bool install(Module& m) { ++m.uploads; return m.patched = m.installs; }
   bool tune(Module& m, float) { ++m.commands; return m.accepts; }
 }
 struct SX1262 {
   Module mod;
   float freqMHz = 910.525f;
   int initStatus = 0, begins = 0, native = 0;
-  virtual int16_t begin(const ConfigLoRa_t&) { ++begins; return initStatus; }
+  int standbyStatus = 0, modem = RADIOLIB_SX126X_PACKET_TYPE_LORA;
+  virtual int16_t begin(const ConfigLoRa_t&) { ++begins; mod.patched = false; return initStatus; }
   virtual int16_t setFrequency(float f) { ++native; freqMHz = f; return 0; }
-  int16_t standby(int) { return 0; }
+  int16_t standby(int) { return standbyStatus; }
+  int getPacketType() { return modem; }
   Module* getMod() { return &mod; }
 };
 struct Radio : SX1262 {
-  bool _profileFrequencyReady = false;
-  struct { bool warm = false; bool canResumeFast() { return warm; } } _profileSwitch;
+  @STATE@
+  bool standbyXOSC = false;
+  struct {
+    bool warm = false, enabled = true;
+    bool canResumeFast() { return warm; }
+  } _profileSwitch;
   void invalidateMorseModemCache() { _profileSwitch.warm = false; }
   @BEGIN@
   @FREQUENCY@
+  @MARK_SLEEP@
+  @RESTORE@
 };
 int main() {
   Radio r;
   r.mod.compatible = false;
   assert(r.begin({}) == 0 && r.begins == 1 && !r.mod.uploads);
   r.mod.compatible = true; r.mod.installs = false;
-  assert(r.begin({}) == 0 && r.begins == 3 && !r._profileFrequencyReady);
+  assert(r.begin({}) == 0 && r.begins == 3 && r._frequencyPatch == Radio::FrequencyPatch::Disabled);
   r.mod.installs = true; r.initStatus = -1;
   assert(r.begin({}) == -1 && r.mod.uploads == 1);
   r.initStatus = 0;
-  assert(r.begin({}) == 0 && r._profileFrequencyReady);
+  assert(r.begin({}) == 0 && r._frequencyPatch == Radio::FrequencyPatch::Ready);
   assert(r.setFrequency(911.15f) == 0 && r.native == 1);
   r._profileSwitch.warm = true;
   assert(r.setFrequency(916.375f) == 0 && r.mod.commands == 1 && r.freqMHz == 916.375f);
@@ -65,9 +81,43 @@ int main() {
   r.mod.accepts = false;
   assert(r.setFrequency(896.5f) == 0 && r.native == 3 && r.mod.commands == 2);
   assert(r.setFrequency(896.7f) == 0 && r.native == 4 && r.mod.commands == 2);
+
+  // An actual loss gets one reload when warm scanning is requested.
+  Radio sleeping;
+  assert(sleeping.begin({}) == 0 && sleeping.mod.uploads == 1);
+  sleeping.markFrequencyPatchSleep();
+  sleeping.mod.patched = false;
+  sleeping.restoreFrequencyPatchForScan();
+  assert(sleeping.mod.uploads == 1);
+  sleeping.standbyXOSC = true;
+  sleeping.standbyStatus = -1;
+  sleeping.restoreFrequencyPatchForScan();
+  assert(sleeping.mod.uploads == 1);
+  sleeping.standbyStatus = 0;
+  sleeping.restoreFrequencyPatchForScan();
+  sleeping.restoreFrequencyPatchForScan();
+  assert(sleeping.mod.patched && sleeping.mod.uploads == 2);
+  sleeping._profileSwitch.warm = true;
+  assert(sleeping.setFrequency(911.15f) == 0 && sleeping.mod.commands == 1 && !sleeping.native);
+
+  // A short duty-cycle interval may leave the patch installed.
+  sleeping.markFrequencyPatchSleep();
+  sleeping.restoreFrequencyPatchForScan();
+  assert(sleeping.mod.uploads == 2);
+  assert(sleeping.setFrequency(910.525f) == 0 && sleeping.mod.commands == 2);
+
+  // A failed restoration permits native retunes and never retries on every hop.
+  sleeping.markFrequencyPatchSleep();
+  sleeping.mod.patched = sleeping.mod.installs = false;
+  sleeping.restoreFrequencyPatchForScan();
+  sleeping.restoreFrequencyPatchForScan();
+  assert(sleeping.mod.uploads == 3);
+  assert(sleeping.setFrequency(911.15f) == 0 && sleeping.native == 1 && sleeping.mod.commands == 2);
 }
 """
-        self.compile_run(harness.replace("@BEGIN@", begin).replace("@FREQUENCY@", frequency))
+        self.compile_run(harness.replace("@BEGIN@", begin).replace("@FREQUENCY@", frequency)
+                         .replace("@STATE@", state).replace("@MARK_SLEEP@", mark_sleep)
+                         .replace("@RESTORE@", restore))
 
     def test_fast_switch_defaults_cover_sx1262_variants_except_indicator(self):
         radio = (ROOT / "src/helpers/radiolib/CustomSX1262.h").read_text()

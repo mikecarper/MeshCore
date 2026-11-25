@@ -1479,6 +1479,10 @@ configured frequency and reads it back before resuming reception. Other ROM
 revisions, cold starts, and frequency jumps of 20 MHz or more use RadioLib’s
 native command. A failed fast retune also retries the requested frequency
 natively and disables PRAM tuning until the next LoRa initialization.
+Radio sleep and RX duty cycling can clear the patch. When warm scanning
+resumes on a supported radio, MeshCore checks the patch in standby and
+reloads it if the stock revision is present. A failed reload leaves the
+native frequency path available.
 `set radio.fast.warm off` disables warm retunes. The T1000-E uses a separate
 LR1110 synthesizer fast path.
 

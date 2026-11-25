@@ -74,7 +74,31 @@ class CustomSX1262 : public SX1262 {
       mesh::power::RegulatorMode::Dcdc};
 #endif
 #if MC_SX1262_PRAM_RETUNE
-  bool _profileFrequencyReady = false;
+  enum class FrequencyPatch { Disabled, Ready, CheckAfterSleep };
+  FrequencyPatch _frequencyPatch = FrequencyPatch::Disabled;
+
+  void markFrequencyPatchSleep() {
+    if (_frequencyPatch == FrequencyPatch::Ready) _frequencyPatch = FrequencyPatch::CheckAfterSleep;
+  }
+
+  void restoreFrequencyPatchForScan() {
+    if (_frequencyPatch != FrequencyPatch::CheckAfterSleep || !standbyXOSC
+        || !_profileSwitch.enabled) return;
+
+    // Stop any duty cycle and wait for the chip before touching patch RAM.
+    // Leave ordinary receive startup in charge of recovering a failed wake.
+    if (SX1262::standby(RADIOLIB_SX126X_STANDBY_RC) != RADIOLIB_ERR_NONE
+        || getPacketType() != RADIOLIB_SX126X_PACKET_TYPE_LORA) return;
+
+    _frequencyPatch = FrequencyPatch::Disabled;
+    auto& mod = *getMod();
+    // An interrupted duty cycle can leave the original image intact. If the
+    // stock revision returned, verify and activate a fresh copy in standby.
+    if (sx1262profile::hasVersion(mod, "SX1261 V2D 2D0K")
+        || (sx1262profile::hasVersion(mod, "SX1261 V2D 2D02") && sx1262profile::install(mod))) {
+      _frequencyPatch = FrequencyPatch::Ready;
+    }
+  }
 #endif
   uint32_t _preambleMillis = 66;
   uint32_t _maxPayloadMillis = 3934;
@@ -125,12 +149,12 @@ class CustomSX1262 : public SX1262 {
     int16_t begin(const ConfigLoRa_t& config) override {
       invalidateMorseModemCache();
 #if MC_SX1262_PRAM_RETUNE
-      _profileFrequencyReady = false;
+      _frequencyPatch = FrequencyPatch::Disabled;
       const int16_t rc = SX1262::begin(config);
       if (rc != RADIOLIB_ERR_NONE || !sx1262profile::hasVersion(*getMod(), "SX1261 V2D 2D02")) return rc;
       if (SX1262::standby(RADIOLIB_SX126X_STANDBY_RC) == RADIOLIB_ERR_NONE
           && sx1262profile::install(*getMod())) {
-        _profileFrequencyReady = true;
+        _frequencyPatch = FrequencyPatch::Ready;
         return RADIOLIB_ERR_NONE;
       }
       // A partial installation must leave the modem in a known state. A
@@ -140,21 +164,21 @@ class CustomSX1262 : public SX1262 {
     }
     int16_t beginFSK(const ConfigFSK_t& config) override {
 #if MC_SX1262_PRAM_RETUNE
-      _profileFrequencyReady = false;
+      _frequencyPatch = FrequencyPatch::Disabled;
 #endif
       invalidateMorseModemCache();
       return SX1262::beginFSK(config);
     }
     int16_t beginLRFHSS(const ConfigLRFHSS_t& config) override {
 #if MC_SX1262_PRAM_RETUNE
-      _profileFrequencyReady = false;
+      _frequencyPatch = FrequencyPatch::Disabled;
 #endif
       invalidateMorseModemCache();
       return SX1262::beginLRFHSS(config);
     }
     int16_t setModem(ModemType_t modem) override {
 #if MC_SX1262_PRAM_RETUNE
-      _profileFrequencyReady = false;
+      _frequencyPatch = FrequencyPatch::Disabled;
 #endif
       invalidateMorseModemCache();
       return SX1262::setModem(modem);
@@ -164,14 +188,14 @@ class CustomSX1262 : public SX1262 {
     int16_t setFrequency(float freq) override {
       // Native SetRfFrequency owns cold setup and image calibration for
       // large jumps, including invalid input reporting by RadioLib.
-      if (_profileFrequencyReady && _profileSwitch.canResumeFast()
+      if (_frequencyPatch == FrequencyPatch::Ready && _profileSwitch.canResumeFast()
           && freq >= 150.0f && freq <= 960.0f
           && fabsf(freq - freqMHz) < RADIOLIB_SX126X_CAL_IMG_FREQ_TRIG_MHZ) {
         if (sx1262profile::tune(*getMod(), freq)) {
           freqMHz = freq;
           return RADIOLIB_ERR_NONE;
         }
-        _profileFrequencyReady = false;
+        _frequencyPatch = FrequencyPatch::Disabled;
       }
       return SX1262::setFrequency(freq);
     }
@@ -407,7 +431,7 @@ class CustomSX1262 : public SX1262 {
     int16_t sleep() override { return sleep(true); }
     int16_t sleep(bool retainConfig) {
 #if MC_SX1262_PRAM_RETUNE
-      if (!retainConfig) _profileFrequencyReady = false;
+      markFrequencyPatchSleep();
 #endif
 #if MESH_RADIO_TRACE_ENABLED
       traceOperation(mesh::radiotrace::Recovery);
@@ -420,7 +444,7 @@ class CustomSX1262 : public SX1262 {
     }
     int16_t reset(bool verify = true) {
 #if MC_SX1262_PRAM_RETUNE
-      _profileFrequencyReady = false;
+      _frequencyPatch = FrequencyPatch::Disabled;
 #endif
 #if MESH_RADIO_TRACE_ENABLED
       traceOperation(mesh::radiotrace::Recovery);
@@ -792,6 +816,9 @@ class CustomSX1262 : public SX1262 {
       const uint64_t trace_before = tracing ? mesh::radiotrace::nowUs() : 0;
       if (tracing) traceOperation(mesh::radiotrace::Rearm);
 #endif
+#if MC_SX1262_PRAM_RETUNE
+      markFrequencyPatchSleep();
+#endif
       _profileSwitch.invalidate();
       _coldStandby = true;
       int16_t state = SX1262::startReceiveDutyCycle(rxPeriod, sleepPeriod, irqFlags, irqMask);
@@ -1020,6 +1047,9 @@ class CustomSX1262 : public SX1262 {
 #endif
         return rc;
       }
+#if MC_SX1262_PRAM_RETUNE
+      restoreFrequencyPatchForScan();
+#endif
       // Make preamble detection visible to CAD while retaining RadioLib's
       // normal RX-complete and error events.
       const int16_t rc = SX1262::startReceive(
