@@ -20,13 +20,20 @@ USA 910.525 --> center V4 (RX only) --> ESP-NOW or UDP --> outer V4 --> USA 910.
                                                             +-- RX/TX MediaMesh 911.150
 ```
 
-The outer V4 has one LoRa chip. It can also hear USA directly while scanning
-its two profiles. The center keeps listening on USA while the outer board is
-tuned to MediaMesh. Keep crossing off so a received packet stays on its own
-frequency. The center drops incoming bridge packets. Only the single-profile
-center sends raw receptions for the other board to repeat. If a dual-profile
-receiver fed a transmit-only center, its bridge address would identify both
-frequencies as the same sender.
+The outer V4's one LoRa chip sends on both frequencies. It finishes one
+packet before switching to send a packet on the other frequency. Keep
+crossing off so a received packet stays on its own frequency.
+
+Between transmissions, the outer V4 scans both profiles. The center keeps
+listening on USA even while the outer V4 transmits. An RX-only V4 can scan
+two profiles if both are enabled. Keep the center on one profile for this
+setup because the bridge route identifies the sender by MAC or IP and port.
+Two frequencies forwarded from that sender would use the same route.
+A strong nearby transmission can also interfere with the center's reception
+even when it is tuned to the other frequency. For simultaneous reception on
+both frequencies at the repeater site, use the
+[three-V4 layout](#two-receive-only-v4s-feeding-one-transmit-only-v4) with a
+dedicated receiver for each frequency and sufficient antenna isolation.
 
 ### Configure the two radios
 
@@ -135,16 +142,16 @@ both frequencies to confirm each test repeats only on its original network.
 ### Receive both frequencies on a Companion
 
 On each downstream Companion with the USA primary, run `set radio2 mediamesh`.
-The outer V4 sends one packet at a time. Its automatic MediaMesh preamble
-gives an idle Companion scanning USA time to switch back to 911.150 MHz and
-detect the packet. Each board calculates timing from its own radio switches.
+The preamble on each frequency gives an idle Companion time to switch back
+and detect the packet. Each board calculates timing from its own radio
+switches.
 
 After about two minutes of scanning, compare these readings:
 
-| Where | Command | MediaMesh value |
+| Where | Command | Values in USA, MediaMesh order |
 | --- | --- | --- |
-| Outer V4 | `get radio2.scan` | Second number in `preamble=` is the transmitted length in symbols. |
-| Each Companion | `get radio2.timing` | Second number in `need=` is that receiver's recommended length. |
+| Outer V4 | `get radio2.scan` | `preamble=` gives the transmitted lengths in symbols. |
+| Each Companion | `get radio2.timing` | `need=` gives that receiver's recommended lengths. |
 
 Leave the preset on automatic when its transmitted length meets every
 receiver's recommendation. For example, if the V4 sends 40 symbols and
@@ -156,8 +163,11 @@ set radio2 911.150,250,7,5,rxtx,48
 
 Use the largest requirement among your receivers. For traffic going the
 other way, compare the sender's preamble with the outer V4's `need=`.
-A receiver busy transmitting or finishing another packet can still miss a
-transmission. See [preamble timing](radio_profiles.md#preamble).
+The outer V4 serializes its own transmissions. Other nodes can still transmit
+at the same time, and a Companion receiving one frame stays on that frequency
+until the frame ends. It can also miss frames while transmitting.
+Simultaneous reception of independent packets on both frequencies requires
+two receivers. See [preamble timing](radio_profiles.md#preamble).
 
 ## Two receive-only V4s feeding one transmit-only V4
 
