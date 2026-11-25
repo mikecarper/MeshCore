@@ -93,7 +93,7 @@ void testBusyChannelReturnsGrant() {
 
 void testConfiguredTurnaround() {
   Arbiter coordinator;
-  assert(coordinator.turnaround() == 180);
+  assert(coordinator.turnaround() == 250);
   coordinator.setTurnaround(32);
   coordinator.begin(true, 0);
   assert(coordinator.turnaround() == 32);

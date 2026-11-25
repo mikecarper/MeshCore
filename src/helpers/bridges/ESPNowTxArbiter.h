@@ -20,7 +20,7 @@ public:
   static constexpr uint32_t ClockMarginMs = 50;
   static constexpr uint32_t RetryMs = 8;
   // Leave the downstream Companion time to resume scanning after a packet.
-  static constexpr uint8_t TurnaroundMs = 180;
+  static constexpr uint8_t TurnaroundMs = 250;
   static constexpr uint8_t MaxTurnaroundMs = 250;
 
   void begin(bool coordinator, uint32_t now) {
