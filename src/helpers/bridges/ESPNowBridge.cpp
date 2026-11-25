@@ -9,6 +9,43 @@
 #ifdef WITH_ESPNOW_BRIDGE
 #include <WiFi.h>
 
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+#include <SHA256.h>
+#include <esp_system.h>
+#include "ESPNowTxArbiter.h"
+
+namespace {
+using TxArbiter = mesh::bridge::EspNowTxArbiter;
+TxArbiter tx_arbiter;
+constexpr uint8_t sync_magic[] = {0xFE, 'M', 'C', 'T', 1};
+constexpr size_t sync_payload_size = 14;
+constexpr size_t sync_frame_size = sync_payload_size + 16;
+uint8_t local_station[6];
+
+bool isTxSyncFrame(const uint8_t* data, size_t size) {
+  return size >= sizeof(sync_magic) && memcmp(data, sync_magic, sizeof(sync_magic)) == 0;
+}
+
+void signTxSync(const char* key, const uint8_t* source, const uint8_t* dest,
+                const uint8_t* payload, uint8_t* tag) {
+  const size_t key_size = strnlen(key, 16);
+  SHA256 sha;
+  sha.resetHMAC(key, key_size);
+  sha.update(source, 6);
+  sha.update(dest, 6);
+  sha.update(payload, sync_payload_size);
+  sha.finalizeHMAC(key, key_size, tag, 16);
+}
+}
+
+bool mesh::bridge::acquireEspNowTx(uint32_t now, uint32_t airtime_ms) {
+  const uint64_t id = (uint64_t(esp_random()) << 32) | esp_random();
+  return tx_arbiter.acquire(now, airtime_ms, id);
+}
+
+void mesh::bridge::completeEspNowTx(uint32_t now) { tx_arbiter.complete(now); }
+#endif
+
 static bool stopBridgeWiFiIfUnused() {
   if (!(mesh::wireless::control().enabled() & mesh::wireless::WiFi)) {
     // WebConfig/OTA may have adopted an initially IDF-only bridge driver.
@@ -294,6 +331,13 @@ void ESPNowBridge::begin() {
 
   // Update bridge state
   _initialized = true;
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+  if (!(_active_peer[0] & 1) && strnlen(_prefs->bridge_secret, 16) >= 12
+      && esp_wifi_get_mac(WIFI_IF_STA, local_station) == ESP_OK) {
+    const int order = memcmp(local_station, _active_peer, 6);
+    if (order != 0) tx_arbiter.begin(order < 0, millis());
+  }
+#endif
   mesh::wifi::setLongRangeOwner(mesh::wifi::kLongRangeBridgeOwner, raw_format);
   mesh::wifi::bridgeEspNowChannel().store(_prefs->bridge_channel);
   _debug_dirty.store(true, std::memory_order_relaxed);
@@ -301,6 +345,9 @@ void ESPNowBridge::begin() {
 }
 
 void ESPNowBridge::end() {
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+  tx_arbiter.stop();
+#endif
   if (!_initialized && !_sdk_teardown_failed) {
     if (_wifi_sleep_preference_owned)
       stopBridgeWiFiAndReleaseSleepPreference(_wifi_sleep_preference_owned,
@@ -387,15 +434,39 @@ void ESPNowBridge::loop() {
     if (frame_len == 0) break;
 
     const bool diagnostic = mesh::bridge::diag::isProbeCandidate(frame, frame_len);
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+    const bool sync = isTxSyncFrame(frame, frame_len);
+    const bool bypass_packet_pool = diagnostic || sync;
+#else
+    const bool bypass_packet_pool = diagnostic;
+#endif
     // Diagnostic frames never consume a mesh slot, even under pool pressure.
     // Ordinary frames remain queued until an allocation succeeds.
-    mesh::Packet* packet = diagnostic ? nullptr : _mgr->allocNew();
-    if (!diagnostic && packet == nullptr) break;
+    mesh::Packet* packet = bypass_packet_pool ? nullptr : _mgr->allocNew();
+    if (!bypass_packet_pool && packet == nullptr) break;
     portENTER_CRITICAL(&_rx_mux);
     _rx_tail = static_cast<uint8_t>((_rx_tail + 1) % RX_QUEUE_DEPTH);
     _rx_count--;
     portEXIT_CRITICAL(&_rx_mux);
 
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+    if (sync) {
+      if (tx_arbiter.ready() && frame_len == sync_frame_size
+          && memcmp(source, _active_peer, 6) == 0) {
+        uint8_t tag[16];
+        signTxSync(_prefs->bridge_secret, source, local_station, frame, tag);
+        uint8_t difference = 0;
+        for (size_t i = 0; i < sizeof(tag); ++i)
+          difference |= tag[i] ^ frame[sync_payload_size + i];
+        if (difference == 0) {
+          uint64_t id = 0;
+          for (size_t i = 6; i < sync_payload_size; ++i) id = (id << 8) | frame[i];
+          tx_arbiter.receive({static_cast<TxArbiter::Kind>(frame[5]), id}, millis());
+        }
+      }
+      continue;
+    }
+#endif
     if (diagnostic) {
       mesh::bridge::diag::Probe probe;
       const bool valid = mesh::bridge::diag::decodeProbe(frame, frame_len, probe);
@@ -412,6 +483,23 @@ void ESPNowBridge::loop() {
     }
     if (!processReceivedFrame(packet, source, frame, frame_len)) _mgr->free(packet);
   }
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+  const auto message = tx_arbiter.poll(millis());
+  if (message.kind != TxArbiter::Kind::None) {
+    mesh::espnow::ESPNowRawFrames frames;
+    uint8_t* payload = frames.data[0];
+    memcpy(payload, sync_magic, sizeof(sync_magic));
+    payload[5] = static_cast<uint8_t>(message.kind);
+    for (size_t i = 6; i < sync_payload_size; ++i)
+      payload[i] = message.id >> (8 * (sync_payload_size - 1 - i));
+    signTxSync(_prefs->bridge_secret, local_station, _active_peer,
+               payload, payload + sync_payload_size);
+    frames.count = 1;
+    frames.lengths[0] = sync_frame_size;
+    const mesh::Packet unused_packet;
+    if (queueTransmitFrames(frames, unused_packet, true)) pumpTransmitQueue();
+  }
+#endif
   emitDebug();
 }
 
@@ -637,11 +725,16 @@ void ESPNowBridge::queueReceivedFrame(const uint8_t *mac, const uint8_t *data,
 
   // Wrapped deployments share the WiFi channel with unrelated ESP-NOW users.
   // Reject obvious foreign traffic before it can occupy a queue slot.
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+  if (!isTxSyncFrame(data, static_cast<size_t>(len))
+      && !mesh::bridge::diag::isProbeCandidate(data, static_cast<size_t>(len))) {
+#else
   if (!mesh::bridge::diag::isProbeCandidate(data, static_cast<size_t>(len))
       && _active_format == mesh::bridge::ESPNOW_FORMAT_WRAPPED
       && (len < BRIDGE_MAGIC_SIZE
           || data[0] != static_cast<uint8_t>(BRIDGE_PACKET_MAGIC >> 8)
           || data[1] != static_cast<uint8_t>(BRIDGE_PACKET_MAGIC & 0xFF))) {
+#endif
     mesh::bridge::diag::increment(_stats.rx.foreign);
     portEXIT_CRITICAL(&_rx_mux);
     return;
@@ -759,6 +852,10 @@ void ESPNowBridge::onDataSent(const uint8_t *mac_addr, esp_now_send_status_t sta
 }
 
 void ESPNowBridge::sendPacket(mesh::Packet *packet) {
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+  (void)packet;
+  return;  // This fixed-frequency pair uses ESP-NOW for coordination only.
+#endif
   using mesh::bridge::diag::TxStats;
   noteTx(&TxStats::requested);
   // Guard against uninitialized state

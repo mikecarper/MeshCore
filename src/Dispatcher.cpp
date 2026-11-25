@@ -2,6 +2,9 @@
 #include "helpers/HostKissHooks.h"
 #include "helpers/ota/OtaTiming.h"
 #include "helpers/RadioDirectionPolicy.h"
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+#include "helpers/bridges/ESPNowTxArbiter.h"
+#endif
 #if MESH_ENABLE_OTA_KISS_DIRECT
 #include "helpers/ota/OtaDirectWire.h"
 #endif
@@ -340,6 +343,10 @@ bool Dispatcher::deferLabPreTransmit() {
 #endif
 
 bool Dispatcher::scheduleOutboundRadioRetry() {
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+  // A timed-out physical attempt must retire its grant before another attempt.
+  return false;
+#endif
   if (outbound == NULL || outbound_radio_retry_used || outbound_cancellation != OutboundCancellation::None) return false;
   // A lost TxDone may follow a real transmission, so a denied flood must not
   // spend its reserved airtime again during radio recovery.
@@ -468,6 +475,9 @@ __attribute__((noinline))
 bool Dispatcher::queueForeignRadioFrame(const uint8_t* bytes, size_t length,
                                         uint8_t profile, uint32_t generation,
                                         RadioProfileProtocol protocol) {
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+  return false;  // Raw foreign traffic would bypass the MeshCore queue grant.
+#endif
   if (!radioDirection::radioTransmitAllowed()) return false;
 #if MESH_ENABLE_TX_BEACONS
   if (hasBeaconRadioFrame()) return false;
@@ -1161,6 +1171,9 @@ void Dispatcher::loop() {
       next_tx_time = futureMillis(txBudgetDelay(MIN_TX_BUDGET_RESERVE_MS));
 
       _radio->onSendFinished();
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+      bridge::completeEspNowTx(_ms->getMillis());
+#endif
       // RX can occur entirely between two loop observations during a TX
       // burst. Start a fresh RX recovery allowance after each successful TX;
       // otherwise a later CAD pause can trip the eight-second watchdog using
@@ -1845,6 +1858,11 @@ void Dispatcher::checkSend() {
   // a newly due higher-priority packet cannot skip its own profile, airtime,
   // and OTA pacing checks. A manager may also expire/reorder work on peek.
   if (pending && _mgr->peekNextOutbound(now) != pending) return;
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+  if (!pending) return;
+  if (allowPacketTransmit(pending) &&
+      !bridge::acquireEspNowTx(_ms->getMillis(), getTransmitAirtime(pending))) return;
+#endif
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
   // Never remove a packet unless its exact priority and age can be restored.
   if (!_mgr->supportsOutboundReservation()) { next_tx_time=futureMillis(250); return; }

@@ -14,7 +14,11 @@ inline bool hilTransmitFrequencyAllowed(float frequency_mhz) {
   static_assert(MESH_HIL_TX_FREQ_MHZ >= 150 && MESH_HIL_TX_FREQ_MHZ <= 2500,
                 "HIL TX frequency must be an explicit valid MHz value");
   return isfinite(frequency_mhz)
-      && fabsf(frequency_mhz - static_cast<float>(MESH_HIL_TX_FREQ_MHZ)) <= 0.0001f;
+      && (fabsf(frequency_mhz - static_cast<float>(MESH_HIL_TX_FREQ_MHZ)) <= 0.0001f
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+          || fabsf(frequency_mhz - 905.150f) <= 0.0001f
+#endif
+         );
 #else
   (void)frequency_mhz;
   return true;
@@ -26,9 +30,13 @@ inline bool hilTransmitFrequencyAllowed(float frequency_mhz) {
 inline bool handleHilTxFrequencyCommand(const char* command, char* reply, size_t capacity) {
 #if defined(MESH_HIL_TX_FREQ_MHZ)
   if (!command || !reply || !capacity || strcmp(command, "get lab.tx") != 0) return false;
+  #if defined(MESH_ESPNOW_TXSYNC_LAB)
+  snprintf(reply, capacity, "> HIL ESP-NOW TX sync: 904.525,905.150 MHz only");
+  #else
   snprintf(reply, capacity,
            "> HIL TX lock=%.3f MHz; off-frequency TX blocked; primary RX-only when off-frequency",
            static_cast<double>(MESH_HIL_TX_FREQ_MHZ));
+  #endif
   return true;
 #else
   (void)command;

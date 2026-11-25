@@ -4016,7 +4016,11 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       _board->reboot();  // doesn't return
     } else if (memcmp(command, "advert.zerohop", 14) == 0 && (command[14] == 0 || command[14] == ' ')) {
       // send zerohop advert
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+      _callbacks->sendSelfAdvertisement(sender_timestamp == 0 ? 0 : 1500, false);
+#else
       _callbacks->sendSelfAdvertisement(1500, false);  // longer delay, give CLI response time to be sent first
+#endif
       strcpy(reply, "OK - zerohop advert sent");
     } else if (memcmp(command, "advert", 6) == 0) {
       // send flood advert
