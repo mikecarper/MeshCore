@@ -1473,6 +1473,15 @@ physical radio and both profiles. They are shared by the same CLI roles as
 Integrated STM32WL builds omit these controls because their radio interface
 does not support the tuning features.
 
+SX1262 builds automatically use the radio’s patch RAM (PRAM) for warm receive
+profile changes on ROM revision `SX1261 V2D 2D02`. The retune accepts the
+configured frequency and reads it back before resuming reception. Other ROM
+revisions, cold starts, and frequency jumps of 20 MHz or more use RadioLib’s
+native command. A failed fast retune also retries the requested frequency
+natively and disables PRAM tuning until the next LoRa initialization.
+`set radio.fast.warm off` disables warm retunes. The T1000-E uses a separate
+LR1110 synthesizer fast path.
+
 | Control | Values | Effect when enabled |
 | --- | --- | --- |
 | `radio.fast.warm` | `on`, `off` | Retain owned continuous-RX state between profile changes |

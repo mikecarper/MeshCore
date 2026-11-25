@@ -10,6 +10,65 @@ ROOT = Path(__file__).resolve().parents[1]
 class FastProfileSwitchTests(unittest.TestCase):
     compile_run = compiler.BatchedModulationTests.compile_run
 
+    def test_frequency_patch_compatibility_calibration_and_fallback(self):
+        src = (ROOT / "src/helpers/radiolib/CustomSX1262.h").read_text()
+        begin = method(src, "int16_t begin(const ConfigLoRa_t&")
+        frequency = method(src, "int16_t setFrequency(float")
+        harness = r"""
+#include <cassert>
+#include <cmath>
+#include <cstdint>
+#define MC_SX1262_PRAM_RETUNE 1
+#define RADIOLIB_ERR_NONE 0
+#define RADIOLIB_SX126X_STANDBY_RC 0
+#define RADIOLIB_SX126X_CAL_IMG_FREQ_TRIG_MHZ 20.0f
+struct ConfigLoRa_t {};
+struct Module {
+  bool compatible = true, installs = true, accepts = true;
+  int uploads = 0, commands = 0;
+};
+namespace sx1262profile {
+  bool hasVersion(Module& m, const char*) { return m.compatible; }
+  bool install(Module& m) { ++m.uploads; return m.installs; }
+  bool tune(Module& m, float) { ++m.commands; return m.accepts; }
+}
+struct SX1262 {
+  Module mod;
+  float freqMHz = 910.525f;
+  int initStatus = 0, begins = 0, native = 0;
+  virtual int16_t begin(const ConfigLoRa_t&) { ++begins; return initStatus; }
+  virtual int16_t setFrequency(float f) { ++native; freqMHz = f; return 0; }
+  int16_t standby(int) { return 0; }
+  Module* getMod() { return &mod; }
+};
+struct Radio : SX1262 {
+  bool _profileFrequencyReady = false;
+  struct { bool warm = false; bool canResumeFast() { return warm; } } _profileSwitch;
+  void invalidateMorseModemCache() { _profileSwitch.warm = false; }
+  @BEGIN@
+  @FREQUENCY@
+};
+int main() {
+  Radio r;
+  r.mod.compatible = false;
+  assert(r.begin({}) == 0 && r.begins == 1 && !r.mod.uploads);
+  r.mod.compatible = true; r.mod.installs = false;
+  assert(r.begin({}) == 0 && r.begins == 3 && !r._profileFrequencyReady);
+  r.mod.installs = true; r.initStatus = -1;
+  assert(r.begin({}) == -1 && r.mod.uploads == 1);
+  r.initStatus = 0;
+  assert(r.begin({}) == 0 && r._profileFrequencyReady);
+  assert(r.setFrequency(911.15f) == 0 && r.native == 1);
+  r._profileSwitch.warm = true;
+  assert(r.setFrequency(916.375f) == 0 && r.mod.commands == 1 && r.freqMHz == 916.375f);
+  assert(r.setFrequency(896.375f) == 0 && r.native == 2 && r.mod.commands == 1);
+  r.mod.accepts = false;
+  assert(r.setFrequency(896.5f) == 0 && r.native == 3 && r.mod.commands == 2);
+  assert(r.setFrequency(896.7f) == 0 && r.native == 4 && r.mod.commands == 2);
+}
+"""
+        self.compile_run(harness.replace("@BEGIN@", begin).replace("@FREQUENCY@", frequency))
+
     def test_fast_switch_defaults_cover_sx1262_variants_except_indicator(self):
         radio = (ROOT / "src/helpers/radiolib/CustomSX1262.h").read_text()
         self.assertIn("#define MC_SX1262_FAST_PROFILE_SWITCH 1", radio)

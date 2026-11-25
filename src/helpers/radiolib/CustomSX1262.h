@@ -53,6 +53,13 @@
 #define SX126X_TX_BUSY_TIMEOUT_MS              1000UL
 #endif
 
+#ifndef MC_SX1262_PRAM_RETUNE
+#define MC_SX1262_PRAM_RETUNE 1
+#endif
+#if MC_SX1262_PRAM_RETUNE
+#include "SX1262ProfileFrequency.h"
+#endif
+
 class CustomSX1262 : public SX1262 {
 #if MESH_RADIO_TRACE_ENABLED
   void traceOperation(mesh::radiotrace::Reason reason) {
@@ -65,6 +72,9 @@ class CustomSX1262 : public SX1262 {
 #else
   mesh::power::RadioRegulatorState _regulator{mesh::power::REGULATOR_DCDC | mesh::power::REGULATOR_LDO,
       mesh::power::RegulatorMode::Dcdc};
+#endif
+#if MC_SX1262_PRAM_RETUNE
+  bool _profileFrequencyReady = false;
 #endif
   uint32_t _preambleMillis = 66;
   uint32_t _maxPayloadMillis = 3934;
@@ -114,20 +124,58 @@ class CustomSX1262 : public SX1262 {
     using SX1262::beginLRFHSS;
     int16_t begin(const ConfigLoRa_t& config) override {
       invalidateMorseModemCache();
+#if MC_SX1262_PRAM_RETUNE
+      _profileFrequencyReady = false;
+      const int16_t rc = SX1262::begin(config);
+      if (rc != RADIOLIB_ERR_NONE || !sx1262profile::hasVersion(*getMod(), "SX1261 V2D 2D02")) return rc;
+      if (SX1262::standby(RADIOLIB_SX126X_STANDBY_RC) == RADIOLIB_ERR_NONE
+          && sx1262profile::install(*getMod())) {
+        _profileFrequencyReady = true;
+        return RADIOLIB_ERR_NONE;
+      }
+      // A partial installation must leave the modem in a known state. A
+      // fresh native LoRa initialization resets the radio and restores config.
+#endif
       return SX1262::begin(config);
     }
     int16_t beginFSK(const ConfigFSK_t& config) override {
+#if MC_SX1262_PRAM_RETUNE
+      _profileFrequencyReady = false;
+#endif
       invalidateMorseModemCache();
       return SX1262::beginFSK(config);
     }
     int16_t beginLRFHSS(const ConfigLRFHSS_t& config) override {
+#if MC_SX1262_PRAM_RETUNE
+      _profileFrequencyReady = false;
+#endif
       invalidateMorseModemCache();
       return SX1262::beginLRFHSS(config);
     }
     int16_t setModem(ModemType_t modem) override {
+#if MC_SX1262_PRAM_RETUNE
+      _profileFrequencyReady = false;
+#endif
       invalidateMorseModemCache();
       return SX1262::setModem(modem);
     }
+#if MC_SX1262_PRAM_RETUNE
+    using SX1262::setFrequency;
+    int16_t setFrequency(float freq) override {
+      // Native SetRfFrequency owns cold setup and image calibration for
+      // large jumps, including invalid input reporting by RadioLib.
+      if (_profileFrequencyReady && _profileSwitch.canResumeFast()
+          && freq >= 150.0f && freq <= 960.0f
+          && fabsf(freq - freqMHz) < RADIOLIB_SX126X_CAL_IMG_FREQ_TRIG_MHZ) {
+        if (sx1262profile::tune(*getMod(), freq)) {
+          freqMHz = freq;
+          return RADIOLIB_ERR_NONE;
+        }
+        _profileFrequencyReady = false;
+      }
+      return SX1262::setFrequency(freq);
+    }
+#endif
     int16_t setMorseFastRssi() {
       return setSX126xMorseRssiWindow(this);
     }
@@ -358,6 +406,9 @@ class CustomSX1262 : public SX1262 {
     // retaining the requested warm policy for subsequent established RX.
     int16_t sleep() override { return sleep(true); }
     int16_t sleep(bool retainConfig) {
+#if MC_SX1262_PRAM_RETUNE
+      if (!retainConfig) _profileFrequencyReady = false;
+#endif
 #if MESH_RADIO_TRACE_ENABLED
       traceOperation(mesh::radiotrace::Recovery);
 #endif
@@ -368,6 +419,9 @@ class CustomSX1262 : public SX1262 {
       return rc == RADIOLIB_ERR_NONE ? SX1262::sleep(retainConfig) : rc;
     }
     int16_t reset(bool verify = true) {
+#if MC_SX1262_PRAM_RETUNE
+      _profileFrequencyReady = false;
+#endif
 #if MESH_RADIO_TRACE_ENABLED
       traceOperation(mesh::radiotrace::Recovery);
 #endif
