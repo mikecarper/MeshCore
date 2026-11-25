@@ -3729,13 +3729,17 @@ int16_t RadioLibWrapper::performChannelScan() {
 }
 
 int16_t RadioLibWrapper::performChannelScanWithTimeout(unsigned long timeout_ms) {
+  return runChannelScan(timeout_ms, nullptr);
+}
+
+int16_t RadioLibWrapper::runChannelScan(unsigned long timeout_ms, const ChannelScanConfig_t* config) {
 #if MESH_WARM_RX_REFRESH
   if(_rxps_pulse.pending) return RADIOLIB_ERR_SPI_CMD_TIMEOUT;
 #endif
   // RadioLib's blocking scanChannel() waits forever if the radio never raises
   // its CAD-done IRQ. Keep CAD bounded so a missing IRQ cannot starve the main
   // loop until the MCU watchdog resets the node.
-  int16_t result = _radio->startChannelScan();
+  int16_t result = config ? _radio->startChannelScan(*config) : _radio->startChannelScan();
   if (result != RADIOLIB_ERR_NONE) return result;
 
   const unsigned long started = millis();

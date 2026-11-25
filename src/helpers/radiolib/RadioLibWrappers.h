@@ -394,6 +394,7 @@ protected:
 #else
   int16_t performChannelScanWithTimeout(unsigned long timeout_ms);
 #endif
+  int16_t runChannelScan(unsigned long timeout_ms, const ChannelScanConfig_t* config);
   virtual int startReceiveMode();
   int startReceivePowerSaving();
 #if MESH_LR2021_RXPS_HOLD_AVAILABLE

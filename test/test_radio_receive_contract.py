@@ -80,11 +80,23 @@ struct Board {
   unsigned n_cad_busy = 0, services = 0;
   void serviceWatchdog() { ++services; }
 };
+struct ChannelScanConfig_t {
+  struct {
+    uint8_t symNum, detPeak, detMin, exitMode;
+    uint32_t timeout, irqFlags, irqMask;
+  } cad;
+};
 struct Radio {
   RadioInterruptEvents* events;
   int scan_result = RADIOLIB_CHANNEL_FREE, start_result = 0;
-  unsigned scans = 0;
+  unsigned scans = 0, configured_scans = 0;
+  ChannelScanConfig_t last_scan = {};
   int startChannelScan() { ++scans; return start_result; }
+  int startChannelScan(const ChannelScanConfig_t& config) {
+    ++configured_scans;
+    last_scan = config;
+    return startChannelScan();
+  }
   int getChannelScanResult() {
     if (scan_result != RADIOLIB_ERR_UNKNOWN) events->record();
     return scan_result;
@@ -179,8 +191,10 @@ struct RadioLibWrapper {
     if (inject_arm_irq) events.record();
     return arm_result;
   }
-  int16_t performChannelScan() { return performChannelScanWithTimeout(2500); }
+  unsigned long cadScanTimeoutMillis() const { return 2500; }
+  virtual int16_t performChannelScan() { return performChannelScanWithTimeout(cadScanTimeoutMillis()); }
   int16_t performChannelScanWithTimeout(unsigned long);
+  int16_t runChannelScan(unsigned long, const ChannelScanConfig_t*);
   bool isPacketPendingOrReceiving();
   bool isChannelActive();
   bool isReceivingPassive(int);
@@ -761,7 +775,8 @@ def transition_harness(source=None):
     header = (ROOT / 'src/helpers/radiolib/RadioLibWrappers.h').read_text()
     dispatcher = (ROOT / 'src/Dispatcher.h').read_text()
     rxps = (ROOT / 'src/helpers/radiolib/RXPowerSaving.h').read_text()
-    names = [('int16_t', 'performChannelScanWithTimeout'), ('bool', 'isPacketPendingOrReceiving'),
+    names = [('int16_t', 'performChannelScanWithTimeout'), ('int16_t', 'runChannelScan'),
+             ('bool', 'isPacketPendingOrReceiving'),
              ('bool', 'isChannelActive'), ('bool', 'isReceivingPassive'),
              ('bool', 'setRxPowerSaving'), ('bool', 'setRxBoostedGainMode'),
              ('mesh::RadioParamApplyResult', 'trySetRxPowerSaving'),
@@ -788,6 +803,52 @@ def transition_harness(source=None):
 
 
 class RadioReceiveContractTest(unittest.TestCase):
+    def test_sx1262_pretransmit_cad_is_two_symbols_on_one_profile(self):
+        wrapper = (ROOT / 'src/helpers/radiolib/CustomSX1262Wrapper.h').read_text()
+        harness = transition_harness().split('struct LegacyRadio {', 1)[0]
+        harness += r'''
+#define RADIOLIB_SX126X_CAD_ON_2_SYMB 0x01
+#define RADIOLIB_SX126X_CAD_PARAM_DEFAULT 0xFF
+#define RADIOLIB_SX126X_CAD_GOTO_STDBY 0x00
+#define RADIOLIB_IRQ_CAD_DEFAULT_FLAGS ((1U << 7) | (1U << 8))
+#define RADIOLIB_IRQ_CAD_DEFAULT_MASK RADIOLIB_IRQ_CAD_DEFAULT_FLAGS
+struct SX1262Wrapper : RadioLibWrapper {
+  @PRETRANSMIT_CAD@
+};
+int main() {
+  SX1262Wrapper w;
+  w._rx_ps_enabled = w._rx_ps_armed = true;
+  assert(!w.isChannelActive());
+  const auto& cad = w.radio.last_scan.cad;
+  assert(w.radio.scans == 1 && w.radio.configured_scans == 1);
+  assert(cad.symNum == RADIOLIB_SX126X_CAD_ON_2_SYMB);
+  assert(cad.detPeak == RADIOLIB_SX126X_CAD_PARAM_DEFAULT);
+  assert(cad.detMin == RADIOLIB_SX126X_CAD_PARAM_DEFAULT);
+  assert(cad.exitMode == RADIOLIB_SX126X_CAD_GOTO_STDBY && cad.timeout == 0);
+  assert(cad.irqFlags == RADIOLIB_IRQ_CAD_DEFAULT_FLAGS);
+  assert(cad.irqMask == RADIOLIB_IRQ_CAD_DEFAULT_MASK);
+  assert(w.stops == 1 && w.arms == 1 && w._rx_ps_armed);
+
+  mesh::RadioProfileConfig second;
+  second.params.freq = 910.5f;
+  second.params.bw = 62.5f;
+  second.params.sf = 7;
+  second.params.cr = 5;
+  second.mode = mesh::RadioProfileMode::Rx;
+  w._profiles.setSecondary(second, false);
+  assert(!w.isChannelActive());
+  assert(w.radio.scans == 2 && w.radio.configured_scans == 1);
+  assert(w.performChannelScanWithTimeout(100) == RADIOLIB_CHANNEL_FREE);
+  assert(w.radio.scans == 3 && w.radio.configured_scans == 1);
+}
+'''
+        with tempfile.TemporaryDirectory() as folder:
+            cpp, binary = Path(folder) / 'cad.cpp', Path(folder) / 'cad'
+            cpp.write_text(harness.replace('@PRETRANSMIT_CAD@', method(wrapper, 'int16_t performChannelScan()')))
+            subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-I', str(ROOT / 'src'),
+                            str(cpp), '-o', str(binary)], check=True)
+            subprocess.run([str(binary)], check=True)
+
     def test_packet_score_uses_receiving_spreading_factor(self):
         lib = ROOT / 'src/helpers/radiolib'
         common = method((lib / 'RadioLibWrappers.h').read_text(), 'float packetScore(')

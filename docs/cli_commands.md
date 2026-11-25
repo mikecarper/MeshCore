@@ -4669,6 +4669,7 @@ set cad <on|off>
 ```
 
 **Description:** When enabled, the radio performs a hardware Channel Activity Detection scan before transmitting and defers if the channel is busy. Runs independently of `int.thresh` - either, both, or none may be active.
+An SX1262 with `radio2` disabled uses a two-symbol check for normal transmissions.
 
 Fresh Cascade-profile builds default CAD to `off` across all roles, including
 Companion. Saved CAD settings take precedence after an upgrade. Use `set cad off`

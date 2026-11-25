@@ -66,6 +66,7 @@ struct CustomSX1276 {
   int start_result = 0, result = RADIOLIB_CHANNEL_FREE, stop_result = 0, clear_result = 0;
   unsigned starts = 0, reads = 0, stops = 0, clears = 0;
   int16_t startChannelScan() { ++starts; mod->hardware.started = now_ms; return start_result; }
+  int16_t startChannelScan(const struct ChannelScanConfig_t&) { return startChannelScan(); }
   int16_t getChannelScanResult() {
     ++reads;
     // Pinned SX127x checks CAD_DETECTED, not whether CAD_DONE occurred yet.
@@ -86,6 +87,7 @@ struct RadioLibWrapper {
   bool isChipBusy() const { return busy; }
   bool claimRadioInterrupt() { ++claimed; return false; }
   @SCAN_DECLARATION@
+  int16_t runChannelScan(unsigned long, const ChannelScanConfig_t*);
   bool isBeaconChannelBusy();
 };
 struct CustomSX1276Wrapper : RadioLibWrapper {
@@ -93,6 +95,7 @@ struct CustomSX1276Wrapper : RadioLibWrapper {
   @OVERRIDE@
 };
 @COMMON_SCAN@
+@SCAN_RUNNER@
 @BEACON@
 struct Fixture {
   CustomSX1276 chip;
@@ -189,6 +192,7 @@ class BeaconSX1276CADTest(unittest.TestCase):
                       .replace("@OVERRIDE@", body(wrapper, "int16_t performChannelScanWithTimeout("))
                       .replace("@SCAN_DECLARATION@", declaration.group(0))
                       .replace("@COMMON_SCAN@", body(common, "int16_t RadioLibWrapper::performChannelScanWithTimeout("))
+                      .replace("@SCAN_RUNNER@", body(common, "int16_t RadioLibWrapper::runChannelScan("))
                       .replace("@BEACON@", body(common, "bool RadioLibWrapper::isBeaconChannelBusy(")))
         cls.temp = tempfile.TemporaryDirectory(prefix="meshcore-sx1276-cad-")
         cls.addClassCleanup(cls.temp.cleanup)

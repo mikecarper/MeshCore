@@ -43,7 +43,7 @@ class RadioReceiveRetryTests(unittest.TestCase):
         getter = method(header, 'bool isCalibratingNoiseFloor() const')
         if mutation == 'pending_veto':
             getter = getter.replace('isInRecvMode() && !_rx_ps_armed && ', '')
-        names = [('int16_t', 'performChannelScanWithTimeout'),
+        names = [('int16_t', 'performChannelScanWithTimeout'), ('int16_t', 'runChannelScan'),
                  ('bool', 'isPacketPendingOrReceiving'), ('bool', 'isChannelActive'),
                  ('bool', 'isReceivingPassive'), ('bool', 'setRxPowerSaving'),
                  ('bool', 'setRxBoostedGainMode'), ('void', 'startRecv'),

@@ -232,6 +232,21 @@ public:
     return packetScoreInt(snr, sf, packet_len);
   }
   uint8_t getSpreadingFactor() const override { return ((CustomSX1262 *)_radio)->spreadingFactor; }
+  int16_t performChannelScan() override {
+    if (_profiles.enabled()) return RadioLibWrapper::performChannelScan();
+
+    // Shorten the fixed-channel pre-TX check. Keep RadioLib's thresholds
+    // and CAD-only exit so the caller can restore the configured RX mode.
+    ChannelScanConfig_t scan = {};
+    scan.cad.symNum = RADIOLIB_SX126X_CAD_ON_2_SYMB;
+    scan.cad.detPeak = RADIOLIB_SX126X_CAD_PARAM_DEFAULT;
+    scan.cad.detMin = RADIOLIB_SX126X_CAD_PARAM_DEFAULT;
+    scan.cad.exitMode = RADIOLIB_SX126X_CAD_GOTO_STDBY;
+    scan.cad.irqFlags = RADIOLIB_IRQ_CAD_DEFAULT_FLAGS;
+    scan.cad.irqMask = RADIOLIB_IRQ_CAD_DEFAULT_MASK;
+    return runChannelScan(cadScanTimeoutMillis(), &scan);
+  }
+
   void powerOff() {
 #if MESH_WARM_RX_REFRESH
     if(_rxps_pulse.pending) return;
