@@ -2,6 +2,7 @@
 #include <cstring>
 #include <new>
 #include <helpers/WirelessControl.h>
+#include <helpers/esp32/SetupWiFiAccess.h>
 #include <helpers/esp32/InfrastructureBridgeCoordinator.h>
 struct Worker {
   bool running = false, stopping = false;
@@ -21,12 +22,15 @@ struct WebConfigServer {
   WebConfigServer(void*, void*, bool owner, const unsigned char*,
                   const char*, const char*, const char*, const char*, bool canonical)
       : owns(owner), constructor_owns(owner) { assert(canonical); }
+  enum { MODE_OFF, MODE_LAN };
+  int mode() const { return MODE_OFF; }
+  void requestStop() {}
   bool isRunning() const { return false; }
   bool waitingForStation() const { return false; }
   bool isStopping() const { return false; }
   void updateWiFiOwnership(bool owner) { owns = owner; }
   void requestNetworkAccess() {}
-  bool requestStart(bool ap, char* reply) { return ap ? startSetupMode(reply) : startAutoMode(reply); }
+  bool requestStart(bool ap, char* reply, SetupWiFiAccess = SetupWiFiAccess::Configured) { return ap ? startSetupMode(reply) : startAutoMode(reply); }
   bool startAutoMode(char* reply) { strcpy(reply, "starting"); return true; }
   bool startSetupMode(char* reply) { strcpy(reply, "setup"); return true; }
 };
@@ -43,7 +47,7 @@ struct MyMesh {
   const char* getRole() const { return "test"; }
   bool startWebConfig(bool force_ap, char* reply);
   bool getWebUIStatus(char* reply) const { strcpy(reply, "Web UI status"); return true; }
-  bool startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup);
+  bool startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup @SETUP_ACCESS@);
   bool webConfigOwnsWiFi() const;
   void suspendUnconfiguredSetupBridges();
   void refresh() {

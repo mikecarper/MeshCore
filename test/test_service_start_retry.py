@@ -13,6 +13,7 @@ WEB = r'''
 #include <cstdint>
 #include <cstring>
 #include <helpers/WebConfigBatch.h>
+#include <helpers/esp32/SetupWiFiAccess.h>
 uint32_t now = 1000;
 uint32_t millis() { return now; }
 namespace mesh {
@@ -39,7 +40,7 @@ struct WebConfigServer {
   Endpoint server, dns; Endpoint* _server = &server; Endpoint* _dns = &dns;
   char _wifi_ssid[32] = {};
   bool fail_start = false, invalid = false;
-  unsigned starts = 0; bool last_ap = false; char last_ssid[32] = {};
+  unsigned starts = 0; SetupWiFiAccess _start_access = SetupWiFiAccess::Configured, last_access = SetupWiFiAccess::Configured; bool last_ap = false; char last_ssid[32] = {};
   bool isRunning() const { return _mode != MODE_OFF; }
   bool isStopping() const { return _stopping; }
   bool isStartPending() const { return _start_mode != MODE_OFF; }
@@ -51,16 +52,16 @@ struct WebConfigServer {
     _mode = ap ? MODE_SETUP : MODE_CONNECTING;
     strcpy(reply, "WebConfig started"); return true;
   }
-  bool startSetupMode(char* reply) { return start(true, reply); }
+  bool startSetupMode(char* reply, SetupWiFiAccess access) { last_access = access; return start(true, reply); }
   bool startAutoMode(char* reply) { return start(false, reply); }
-  bool requestStart(bool, char*);
+  bool requestStart(bool, char*, SetupWiFiAccess = SetupWiFiAccess::Configured);
   void requestRestart(); void requestStop(); void serviceStartRetry(uint32_t);
 };
 @METHODS@
 int main() {
   char reply[160]; WebConfigServer s;
   s.fail_start = true;
-  assert(s.requestStart(true, reply) && s.isStartPending() && s.starts == 1);
+  assert(s.requestStart(true, reply, SetupWiFiAccess::Open) && s.isStartPending() && s.starts == 1);
   assert(strstr(reply, "pending"));
   for (unsigned i = 0; i < 100; ++i) s.serviceStartRetry(now);
   assert(s.starts == 1);
@@ -72,7 +73,7 @@ int main() {
     assert(s._start_retry_at > now && s._start_retry_at <= now + 60000);
   }
   s.fail_start = false; now = s._start_retry_at; s.serviceStartRetry(now);
-  assert(s.isRunning() && !s.isStartPending() && s.last_ap);
+  assert(s.isRunning() && !s.isStartPending() && s.last_ap && s.last_access == SetupWiFiAccess::Open);
 
   // Off/on during teardown waits for cleanup and never loses desired on.
   s.requestStop(); const auto before = s.starts;

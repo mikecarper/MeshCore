@@ -1,3 +1,4 @@
+#include <helpers/esp32/SetupWiFiAccess.h>
 #include <cassert>
 #include <cstdint>
 #include <cstdio>

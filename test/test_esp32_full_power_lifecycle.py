@@ -34,6 +34,7 @@ FIXTURE = r'''
 #include <helpers/esp32/InfrastructureBridgeCoordinator.h>
 #include <helpers/WiFiConnectionDiagnostics.h>
 #include <helpers/WirelessControl.h>
+#include <helpers/esp32/SetupWiFiAccess.h>
 namespace mesh { namespace wifi {
 bool infrastructure_wifi_saved = true;
 bool infrastructureWiFiEnabled() { return infrastructure_wifi_saved; }
@@ -176,6 +177,7 @@ struct WebConfigServer {
   int _mode = 0;
   static constexpr int MODE_SETUP = 1;
   static constexpr int MODE_LAN = 2;
+  int mode() const { return _mode; }
   uint32_t foreground_until = 0;
   char _wifi_ssid[33] = {};
   template<class... Args> WebConfigServer(void*, void* prefs, bool owner, Args...) : owns(owner) {
@@ -207,7 +209,7 @@ struct WebConfigServer {
     return true;
   }
   bool startAutoMode(char* reply) { return startSetupMode(reply); }
-  bool requestStart(bool ap, char* reply) { return ap ? startSetupMode(reply) : startAutoMode(reply); }
+  bool requestStart(bool ap, char* reply, SetupWiFiAccess = SetupWiFiAccess::Configured) { return ap ? startSetupMode(reply) : startAutoMode(reply); }
   bool isStartPending() const { return false; }
   void requestStop() { running = false; stopping = true; }
   bool stopForOTA(char*) { running = stopping = false; WiFi.mode(WIFI_STA); return true; }
@@ -266,7 +268,7 @@ struct MyMesh {
   mesh::LocalIdentity getSelfId() { return self_id; } void* getRTCClock() { return nullptr; }
   void configureBridgeFilter(AbstractBridge*) {} void drainOutbound(unsigned) {} void otaAlert(const char*) {}
   void suspendUnconfiguredSetupBridges(); void serviceIdleWiFi();
-  bool startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup);
+  bool startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup @SETUP_ACCESS@);
   @WIFI_OWNER_DECLARATION@
   bool startWebConfig(bool force_ap, char* reply); bool stopWebConfig(char* reply);
   bool getWebUIStatus(char* reply) const { strcpy(reply, "Web UI status"); return true; }
@@ -468,6 +470,7 @@ class ESP32FullPowerLifecycleTest(unittest.TestCase):
                 .replace("@INFRA_BACKEND@", infra_backend)
                 .replace("@STOP_OWNED_WIFI@", stop_owned)
                 .replace("@SETUP_WINDOW@", window).replace("@CHECKS@", checks)
+                .replace("@SETUP_ACCESS@", ", SetupWiFiAccess = SetupWiFiAccess::Configured" if role == "simple_repeater" else "")
                 .replace("@WORKER@", worker))
 
     def test_saved_wifi_off_blocks_repeater_and_room_boot_without_changing_services(self):

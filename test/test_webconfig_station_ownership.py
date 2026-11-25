@@ -34,7 +34,8 @@ class WebConfigStationOwnershipTest(unittest.TestCase):
                     self.assertFalse(source[refresh_end:tick].strip())
                     refresh = source[refresh_start:refresh_end]
                 self.assertIn("_webconfig->updateWiFiOwnership(", refresh)
-                body = fixture.replace("@WORKER@", worker).replace("@START@", start)
+                access = ", SetupWiFiAccess = SetupWiFiAccess::Configured" if role == "simple_repeater" else ""
+                body = fixture.replace("@SETUP_ACCESS@", access).replace("@WORKER@", worker).replace("@START@", start)
                 body = body.replace("@SUSPEND@", extract_braced(source,
                     "void MyMesh::suspendUnconfiguredSetupBridges()"))
                 body = body.replace("@REFRESH@", refresh)

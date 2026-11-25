@@ -5,6 +5,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <helpers/esp32/SetupWiFiAccess.h>
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST
 #include <helpers/esp32/ManagementPassword.h>
 #include <helpers/WebConfigBatch.h>
@@ -44,6 +45,8 @@ struct WebConfigServer {
   unsigned refs = 0;
   unsigned handlerRefCount() const { return refs; }
   WebConfigServer() { password::Snapshot value; assert(password::snapshot(value)); _ap_auth_generation = value.generation; }
+  SetupWiFiAccess _setup_access = SetupWiFiAccess::Configured;
+  void requestStop() { _stopping = true; }
   void serviceSetupPassword(uint32_t now);
 };
 @METHODS@
@@ -57,6 +60,13 @@ void commit(const char* secret) {
   password::ChangeGuard change; assert(change.acquired()); assert(change.publish(secret));
 }
 int main() {
+  reset(); WebConfigServer open; open._setup_access = SetupWiFiAccess::Open;
+  open._setup_provisioning_privilege = false;
+  commit("other-key"); open.serviceSetupPassword(100); open.serviceSetupPassword(4000);
+  assert(mesh::wifi::starts == 1 && mesh::wifi::last_password.empty() && !open._setup_provisioning_privilege);
+  reset(); WebConfigServer secured; secured._setup_access = SetupWiFiAccess::Protected;
+  commit("short"); secured.serviceSetupPassword(100); secured.serviceSetupPassword(4000);
+  assert(secured._stopping && !mesh::wifi::starts);
   reset(); WebConfigServer portal;
   portal.serviceSetupPassword(100); assert(mesh::wifi::starts == 0);
   commit("next-password");

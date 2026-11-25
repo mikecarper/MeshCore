@@ -2,6 +2,9 @@
 // method are extracted verbatim from production WebConfigServer.cpp.
 #include <algorithm>
 #include <atomic>
+#include <mutex>
+#include <helpers/esp32/SetupWiFiAccess.h>
+using WCLock = std::lock_guard<std::mutex>;
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
@@ -61,7 +64,7 @@ struct wifi_config_t {
 enum class Fault {
   None, StaleSsid, HiddenSsid, WrongChannel, WrongProtocol, MissingMode,
   NotStarted, ZeroIp, DelayedStart, StaleOnce, SetterFailure, WrongAuth, WrongPassword, StillConnected,
-  ModeSetterFailure, IpConfigSetterFailure, StaProtocolSetterFailure,
+  ModeSetterFailure, IpConfigSetterFailure, StaProtocolSetterFailure, NoDhcp, DnsFailure,
   SdkModeReadFailure, SdkConfigReadFailure, SdkProtocolReadFailure
 };
 enum class ScanBehavior {
@@ -126,9 +129,8 @@ struct WiFiFake {
     return true;
   }
   bool softAP(const char* ssid, const char* password, int channel) {
-    if (expectedAuth() == WIFI_AUTH_WPA2_PSK) {
-      assert(password != nullptr && strcmp(password, TEST_ADMIN_PASSWORD) == 0);
-    } else assert(password == nullptr);
+    if (password) assert(strcmp(password, TEST_ADMIN_PASSWORD) == 0);
+    const auto auth = password ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
     assert(channel == 6);
     ++ap_calls; polls = 0;
     if (fault == Fault::SetterFailure) return false;
@@ -142,8 +144,7 @@ struct WiFiFake {
     live_config.ap.ssid_hidden = fault == Fault::HiddenSsid ? 1 : 0;
     live_config.ap.channel = fault == Fault::WrongChannel ? 11 : uint8_t(channel);
     live_config.ap.authmode = fault == Fault::WrongAuth
-        ? (expectedAuth() == WIFI_AUTH_OPEN ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN)
-        : expectedAuth();
+        ? (auth == WIFI_AUTH_OPEN ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN) : auth;
     if (password) strcpy(reinterpret_cast<char*>(live_config.ap.password),
         fault == Fault::WrongPassword ? "obsolete-key" : password);
     ap_ip = fault == Fault::ZeroIp ? IPAddress() : planned_ip;
@@ -190,6 +191,15 @@ struct WiFiFake {
   int encryptionType(int) const { return WIFI_AUTH_OPEN; }
   int channel(int) const { return 6; }
 } WiFi;
+using esp_netif_t = WiFiFake;
+enum esp_netif_dhcp_status_t { ESP_NETIF_DHCP_STOPPED, ESP_NETIF_DHCP_STARTED };
+esp_netif_t* esp_netif_get_handle_from_ifkey(const char* key) {
+  return strcmp(key, "WIFI_AP_DEF") == 0 ? &WiFi : nullptr;
+}
+esp_err_t esp_netif_dhcps_get_status(esp_netif_t* ap, esp_netif_dhcp_status_t* status) {
+  *status = ap->fault == Fault::NoDhcp ? ESP_NETIF_DHCP_STOPPED : ESP_NETIF_DHCP_STARTED;
+  return ESP_OK;
+}
 bool WiFiFake::APStatus::started() const { return WiFi.ap_started; }
 
 static uint32_t clock_ms = 100;
@@ -254,7 +264,7 @@ unsigned heap_caps_get_largest_free_block(int) { return 100000; }
 struct { unsigned getFreeHeap() const { return 100000; } } ESP;
 
 namespace mesh {
-struct DebugPort { template<class... Args> void printf(const char*, Args...) {} };
+struct DebugPort { void println(const char*) {} template<class... Args> void printf(const char*, Args...) {} };
 DebugPort& usbDebugPort() { static DebugPort port; return port; }
 namespace wireless {
 constexpr uint8_t WiFi = 1;
@@ -278,8 +288,9 @@ void stopOwnedWiFiRadio() {
 }
 struct DNSServer {
   static unsigned starts;
-  void start(int port, const char* wildcard, IPAddress ip) {
+  bool start(int port, const char* wildcard, IPAddress ip) {
     assert(port == 53 && strcmp(wildcard, "*") == 0 && ip.value != 0); ++starts;
+    return WiFi.fault != Fault::DnsFailure;
   }
 };
 unsigned DNSServer::starts = 0;
@@ -330,6 +341,10 @@ void serializeJson(DynamicJsonDocument& doc, AsyncResponseStream& response) {
 struct WebConfigServer {
   enum Mode { MODE_OFF, MODE_LAN, MODE_SETUP, MODE_CONNECTING };
   Mode _mode = MODE_OFF;
+  SetupWiFiAccess _setup_access = SetupWiFiAccess::Configured;
+  std::mutex _mux;
+  uint32_t _captive_released[4] = {42};
+  uint8_t _next_captive_release = 1;
   bool _owns_wifi = true, _stopping = false, _start_retryable = false;
   bool _retry_saved_wifi_in_setup = true, _setup_reconnect_in_progress = true;
   bool _was_setup_ap = false, _initial_setup = false;
@@ -347,10 +362,10 @@ struct WebConfigServer {
   ~WebConfigServer() { delete _dns; }
   void createServer() { ++servers; }
   void requestNetworkAccess() {}
-  static void formatSetupSsid(char* ssid, size_t size, const uint8_t* pub_key);
+  static void formatSetupSsid(char* ssid, size_t size, const uint8_t* pub_key, bool open_choice = false);
   void initializeManagementPassword();
   bool waitingForStation() const;
-  bool startSetupMode(char reply[]);
+  bool startSetupMode(char reply[], SetupWiFiAccess access = SetupWiFiAccess::Configured);
   bool checkAuth(AsyncWebServerRequest*) const { return auth_allowed; }
   void handleScan(AsyncWebServerRequest* req);
 };
@@ -394,6 +409,23 @@ void reset(Fault fault = Fault::None) {
   DNSServer::starts = 0; mesh::wireless::control().disabled = false;
 }
 int main() {
+  for (auto access : {SetupWiFiAccess::Open, SetupWiFiAccess::Protected}) {
+    reset(); WebConfigServer portal; char reply[160] = {};
+    const bool open = access == SetupWiFiAccess::Open;
+    const bool allowed = open ? TEST_ADMIN_PASSWORD[0] != 0 : expectedAuth() == WIFI_AUTH_WPA2_PSK;
+    assert(portal.startSetupMode(reply, access) == allowed);
+    if (allowed) {
+      assert(portal._setup_access == access && portal._captive_released[0] == 0);
+      assert(strcmp(portal._ap_ssid, open ? "MC-0A-Open" : "MC-0A") == 0);
+      assert(WiFi.live_config.ap.authmode == (open ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK));
+      assert(portal._setup_provisioning_privilege == !open);
+    } else assert(!WiFi.ap_calls);
+  }
+  for (auto fault : {Fault::NoDhcp, Fault::DnsFailure}) {
+    reset(fault); WebConfigServer portal; char reply[160] = {};
+    assert(!portal.startSetupMode(reply) && portal._start_retryable);
+    assert(!portal._dns && portal.servers == 0);
+  }
   // A live LR transport must remain untouched instead of being silently
   // downgraded when a conventional setup access point is requested.
   for (uint8_t owner : {mesh::wifi::kLongRangeRadioOwner, mesh::wifi::kLongRangeBridgeOwner}) {
