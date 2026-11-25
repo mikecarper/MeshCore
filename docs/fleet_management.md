@@ -425,10 +425,10 @@ Existing saved radio2 profiles are not retuned on upgrade or reboot; select the
 preset again after a saved primary change if needed. Saved MediaMesh profiles
 restore `radio2.cross off` at startup, including after a firmware update.
 Either preset preserves the primary profile and explicitly sets
-`radio2.cross off`, even if crossing was
-enabled. A later explicit `set radio2.cross auto|on|off` still works, and raw
-radio2 tuples leave crossing unchanged. New configurations default to radio2
-off and `radio2.cross off`.
+`radio2.cross off`. Changing the saved radio2 frequency, bandwidth, or SF
+also turns crossing off. For a scheduled `radioat2` change this happens when
+the schedule starts. To enable crossing again, send `set radio2.cross on` or
+`set radio2.cross auto`. New configurations start with radio2 and crossing off.
 
 ## Schedule radio changes and set clocks
 

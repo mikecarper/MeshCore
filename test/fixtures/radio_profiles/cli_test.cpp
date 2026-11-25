@@ -506,6 +506,40 @@ static void spectrumOverlap() {
   assert(roundtrips == 1000);
 }
 
+static void savedRetuneCrossing() {
+  Fixture f;
+  f.cmd("set radio2 910.5,500,8,5,rx");
+  f.cmd("set radio2.cross on");
+  f.cmd("set tempradio2 913.5,250,7,5,rx,1"); f.advance(2000);
+  assert(f.radio.p.secondary_temporary && f.radio.p.cross == mesh::RadioCrossMode::On);
+  assert(!strstr(f.cmd("set radio2 910.500,500.0,8,6,rxtx,80"), "radio2.cross"));
+  assert(f.radio.p.cross == mesh::RadioCrossMode::On);
+  f.cmd("set tempradio2 off");
+  for (const char* retune : {"set radio2 911.5,500,8,6,rxtx,80",
+                             "set radio2 911.5,250,8,6,rxtx,80",
+                             "set radio2 911.5,250,7,6,rxtx,80"}) {
+    f.cmd("set radio2.cross on");
+    assert(strstr(f.cmd(retune), "radio2.cross on -> off"));
+    assert(f.radio.p.cross == mesh::RadioCrossMode::Off);
+    assert(!strstr(f.cmd(retune), "radio2.cross"));
+  }
+  f.cmd("set radio2.cross auto");
+  assert(strstr(f.cmd("set radioat2 912.5,250,7,6,rxtx,+1"), "radio2.cross auto -> off if retuned"));
+  assert(f.radio.p.cross == mesh::RadioCrossMode::Auto);
+  f.fs.fail_write = true;
+  f.advance(60000);
+  assert(f.cli.savedSecondaryConfig().params.freq == 911.5f && f.radio.p.cross == mesh::RadioCrossMode::Auto);
+  f.fs.fail_write = false;
+  f.advance(60000);
+  Radio reboot; mesh::RadioProfileCLI restored;
+  restored.begin(&f.fs, &reboot, &f.clock);
+  assert(reboot.p.secondary.params.freq == 912.5f && reboot.p.cross == mesh::RadioCrossMode::Off);
+  f.cmd("set radioat2 912.5,250,7,5,rx,+1");
+  f.cmd("set radio2.cross on");
+  f.advance(60000);
+  assert(f.radio.p.secondary.mode == mesh::RadioProfileMode::Rx && f.radio.p.cross == mesh::RadioCrossMode::On);
+}
+
 static void mediaMeshBootIsolation() {
   for (float primary : {910.525f, 869.618f, 433.650f, 917.375f})
       for (bool range : {false, true}) for (const char* prior : {"on", "auto"}) {
@@ -574,7 +608,7 @@ static void mediaMeshBootIsolation() {
       g_mock_millis += 3000; retrying.loop();
       // The failed migration belonged to the old configuration. It must not
       // override a later successful raw tuple or explicit crossing choice.
-      const auto expected_cross = replace_profile ? previous_cross : mesh::RadioCrossMode::On;
+      const auto expected_cross = replace_profile ? mesh::RadioCrossMode::Off : mesh::RadioCrossMode::On;
       assert(failed_reboot.p.cross == expected_cross);
       if (replace_profile) {
         assert(failed_reboot.p.secondary.params.freq == 912.5f);
@@ -629,9 +663,9 @@ static void mediaMeshPresets() {
         char cross_command[40];
         snprintf(cross_command, sizeof(cross_command), "set radio2.cross %s", prior);
         f.cmd(cross_command);
-        // Explicit tuples preserve the operator's crossing choice.
         f.cmd("set radio2 912.5,500,8,5,rxtx,80"); f.advance(2000);
-        assert(f.radio.p.cross == previous_cross);
+        assert(f.radio.p.cross == mesh::RadioCrossMode::Off);
+        f.cmd(cross_command);
         f.cmd(command); f.advance(2000);
         assert(!f.radio.p.secondary.params.preamble && f.radio.p.cross == mesh::RadioCrossMode::Off);
         Radio preset_reboot; mesh::RadioProfileCLI preset_restored;
@@ -722,8 +756,8 @@ static void channelPresetTransaction() {
         ? mesh::RadioCrossMode::On : mesh::RadioCrossMode::Auto;
     char cross_command[40];
     snprintf(cross_command, sizeof(cross_command), "set radio2.cross %s", prior);
-    f.cmd(cross_command);
     f.cmd("set radio2 910.5,500,8,5,rxtx,80"); f.advance(2000);
+    f.cmd(cross_command);
     const auto primary = f.radio.p.primary;
     const auto previous = f.radio.p.secondary;
     const auto previous_image = f.fs.files["/radio_profiles"];
@@ -786,8 +820,8 @@ static void channelPresetTransaction() {
         ? mesh::RadioCrossMode::On : mesh::RadioCrossMode::Auto;
     char cross_command[40];
     snprintf(cross_command, sizeof(cross_command), "set radio2.cross %s", prior);
-    f.cmd(cross_command);
     f.cmd("set radio2 910.5,500,8,5,rx,80"); f.advance(2000);
+    f.cmd(cross_command);
     const auto before = f.fs.files;
     const auto previous = f.radio.p.secondary;
     const uint32_t intent = f.cli.secondaryIntentGeneration();
@@ -1360,6 +1394,7 @@ int main(int argc, char** argv) {
     else return 2;
     return 0;
   }
+  savedRetuneCrossing();
   for (bool damaged_primary : {false, true}) {
     Fixture f(true);
     f.cmd("set radio2 910.5,500,8,5,rxtx,80");

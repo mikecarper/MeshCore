@@ -115,6 +115,7 @@ class RadioProfileCLI {
 #if MESH_ENABLE_FLEET_CONTROL
   bool stageRemoteSchedule(unsigned slot, const Schedule& schedule);
 #endif
+  RadioCrossMode crossingAfterSavedRetune(const RadioProfileConfig& config) const;
   bool save(const RadioProfileConfig& config, uint16_t preamble, RadioCrossMode cross,
             int8_t manual_secondary = -1);
   bool prepareSavedImage(const char* path, const RadioProfileConfig& config,

@@ -33,14 +33,17 @@ static void secondaryReplies() {
           ? mesh::RadioCrossMode::On : mesh::RadioCrossMode::Auto;
       char cross_command[40];
       snprintf(cross_command, sizeof(cross_command), "set radio2.cross %s", prior);
-      f.cmd(cross_command);
       f.cmd("set radio2 910.5,500,8,5,rxtx"); f.advance(2000);
+      f.cmd(cross_command);
       const auto saved = f.fs.files["/radio_profiles"];
       const uint32_t before = f.radio.p.generation[1];
       Millis ms;
       StaticPoolPacketManager manager(8);
       Inspector inspector(f.radio, ms, manager);
       f.cli.beginReplyCommand(); f.cmd(command); f.cli.endReplyCommand();
+      const bool retunes_saved = strstr(command, "mediamesh") || strstr(command, "912.5");
+      const char* notice = !strcmp(prior, "on") ? "radio2.cross on -> off" : "radio2.cross auto -> off";
+      assert((strstr(f.reply, notice) != nullptr) == retunes_saved);
       assert(f.radio.p.primary.freq == 909.5f); // Saved region selection leaves active RF unchanged.
       assert(f.cli.hasReplyMutation());
       const uint32_t mutation = f.cli.replyMutationGeneration();
@@ -59,13 +62,13 @@ static void secondaryReplies() {
       assert(inspector.isPacketRadioCurrent(&reply));
       f.advance(10000);
       assert(before == f.radio.p.generation[1]);
-      assert(f.radio.p.cross == previous_cross); // Preset isolation also waits for its ACK.
+      assert(f.radio.p.cross == previous_cross); // Isolation also waits for its ACK.
       assert(inspector.isPacketRadioCurrent(&reply)); // origin preserved even for primary TX
       assert(f.cli.finishReplyMutation(success));
       assert(before == f.radio.p.generation[1]); // callback doesn't change radio under Dispatcher
       f.advance(1);
       assert(!f.cli.hasReplyMutation());
-      const auto expected_cross = success && strstr(command, "mediamesh")
+      const auto expected_cross = success && retunes_saved
           ? mesh::RadioCrossMode::Off : previous_cross;
       assert(f.radio.p.cross == expected_cross);
       Radio committed_reboot; mesh::RadioProfileCLI committed_restored;
@@ -93,8 +96,8 @@ static void secondaryReplies() {
         ? mesh::RadioCrossMode::On : mesh::RadioCrossMode::Auto;
     char cross_command[40];
     snprintf(cross_command, sizeof(cross_command), "set radio2.cross %s", prior);
-    f.cmd(cross_command);
     f.cmd("set radio2 910.5,500,8,5,rxtx"); f.advance(2000);
+    f.cmd(cross_command);
     const auto saved = f.fs.files["/radio_profiles"];
     f.cli.beginReplyCommand(); f.cmd(command); f.cli.endReplyCommand();
     f.fs.fail_rename = failure;
@@ -111,13 +114,13 @@ static void secondaryReplies() {
     f.advance(1); assert(!f.cli.hasReplyMutation());
     const bool preset = strstr(command, "mediamesh");
     assert(fabsf(f.radio.p.secondary.params.freq - (preset ? 911.150f : 912.5f)) < 0.0001f);
-    assert(f.radio.p.cross == (preset ? mesh::RadioCrossMode::Off : previous_cross));
+    assert(f.radio.p.cross == mesh::RadioCrossMode::Off);
     Radio retried_reboot; mesh::RadioProfileCLI retried_restored;
     retried_restored.begin(&f.fs, &retried_reboot, &f.clock);
     assert(retried_reboot.p.cross == f.radio.p.cross);
     ++checks;
   }
-  for (const char* command : {"set radio2 mediamesh", "set radio2 mediamesh-range"})
+  for (const char* command : {"set radio2 912.5,500,8,5,rxtx", "set radio2 mediamesh", "set radio2 mediamesh-range"})
       for (const char* prior : {"on", "auto"}) {
     Fixture f(true);
     const float saved_primary = 910.525f;
@@ -126,11 +129,12 @@ static void secondaryReplies() {
         ? mesh::RadioCrossMode::On : mesh::RadioCrossMode::Auto;
     char cross_command[40];
     snprintf(cross_command, sizeof(cross_command), "set radio2.cross %s", prior);
-    f.cmd(cross_command);
     f.cmd("set radio2 910.5,500,8,5,rxtx"); f.advance(2000);
+    f.cmd(cross_command);
     const auto saved = f.fs.files["/radio_profiles"];
     f.fs.fail_write = true;
     f.cli.beginReplyCommand(); f.cmd(command, false); f.cli.endReplyCommand();
+    assert(!strstr(f.reply, "-> off"));
     f.advance(2000);
     assert(!f.cli.hasReplyMutation() && saved == f.fs.files["/radio_profiles"]);
     assert(f.radio.p.secondary.params.freq == 910.5f && f.radio.p.cross == previous_cross);

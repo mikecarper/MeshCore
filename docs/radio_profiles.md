@@ -8,10 +8,11 @@
 settings. It is useful for listening to two networks, or keeping your usual
 channel available during a LoRa firmware update.
 
-The second profile and `radio2.cross` both default to `off`. Raw radio2 tuple
-commands leave the crossing policy unchanged; selecting either MediaMesh
-preset explicitly sets `radio2.cross off`. Companion
-channel aliases and Meshtext activation also select isolation as described below.
+The second profile and `radio2.cross` both default to `off`. Changing the saved
+radio2 frequency, bandwidth, or spreading factor turns crossing off. The
+command reply shows `radio2.cross on -> off` or `radio2.cross auto -> off`
+when this happens. Selecting either MediaMesh preset, saving a Companion
+`r2-` or `mt-` channel alias, or activating Meshtext also turns crossing off.
 
 There are **at most two active profiles**. `tempradio` temporarily replaces
 `radio`; `tempradio2` temporarily replaces `radio2`. These are time-shared receive
@@ -227,8 +228,7 @@ unchanged. Companions need no additional forwarding-region permission.
 Both leave the primary profile unchanged and set `radio2.cross off`, even if
 crossing was previously enabled. To opt back in, run an explicit
 `set radio2.cross auto` or `set radio2.cross on` after selecting the preset.
-Raw tuple commands do not change crossing. With a USA 910.525 MHz primary,
-the center is 625 kHz higher. Automatic preamble remains
+With a USA 910.525 MHz primary, the center is 625 kHz higher. Automatic preamble remains
 scan-aware; neither preset fixes it at 32 symbols. See [preamble](#preamble) for the
 switching measurement and recommendations.
 
@@ -1154,6 +1154,11 @@ set radio2.cross off
 This table describes MeshCore profiles. A Meshtext secondary profile is
 always isolated, including with `radio2.cross on`.
 
+Changing only the coding rate, preamble, or `rx`/`rxtx` mode of a saved
+radio2 profile preserves its crossing setting. Reapplying the same custom
+settings or running a temporary session with `tempradio2` or `tempradioat2`
+also preserves it. To enable crossing after a retune, use `set radio2.cross on`.
+
 New configurations default to `off`. Selecting a MediaMesh preset, saving a
 valid Companion `r2-`/`mt-` alias, or entering Meshtext protocol operation saves
 `off`. Existing saved MediaMesh profiles and Companion aliases
@@ -1423,8 +1428,10 @@ Replace `START` and `END` with timestamps or `+N`, and the optional `PREAMBLE`
 with a number; omit the square
 brackets. Each schedule family has four slots. Times must be in the future and
 within 24 days. Overlapping temporary second-profile sessions are rejected.
-`radioat2` changes the saved second profile when it starts; `tempradioat2`
-restores the saved profile at its end. Pending schedules do not survive reboot.
+`radioat2` checks the saved frequency, bandwidth, and SF when the schedule
+starts. If any differ, the new profile and `radio2.cross off` are saved
+together. `tempradioat2` restores the saved profile at its end. Pending
+schedules do not survive reboot.
 
 For example, `set tempradioat2 910.5,500,8,5,rxtx,+5,+15` starts in 5 minutes
 and restores in 15 minutes (10 minutes active). Both offsets are measured from

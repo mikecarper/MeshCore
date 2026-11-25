@@ -8624,11 +8624,12 @@ saved profiles do not retune when the primary changes or on upgrade; primary
 profile unchanged and explicitly set `radio2.cross off`. Saving any valid
 Companion `r2-`/`mt-` channel alias, with or without `#`, does the same, including
 key edits and identical app replays when crossing was enabled.
-Raw radio2 tuples leave crossing unchanged; you can explicitly select
-`radio2.cross auto|on|off` after applying a preset. Existing saved MediaMesh
-profiles and Companion aliases restore `radio2.cross off` at startup, including
-after firmware updates, without retuning saved RF settings. Both radio2 and
-`radio2.cross` default to `off`.
+Changing the saved radio2 frequency, bandwidth, or SF also turns crossing off.
+The reply shows the previous mode, for example `radio2.cross on -> off`.
+Use `set radio2.cross on` or `set radio2.cross auto` to enable it again.
+Existing saved MediaMesh profiles and Companion aliases restore `radio2.cross off`
+at startup, including after firmware updates, without retuning saved RF
+settings. Both radio2 and `radio2.cross` default to `off`.
 On repeaters, room servers and sensors, either preset also saves an allowed
 `#mediamesh` forwarding region. `set radio2 off` or `set radio2 auto` disables
 that permission while retaining the region entry. Default/home regions,

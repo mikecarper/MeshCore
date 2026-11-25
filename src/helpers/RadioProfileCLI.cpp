@@ -61,6 +61,9 @@ uint32_t checksum(const uint8_t* p, size_t n) {
 const char* modeName(RadioProfileMode m) {
   return m == RadioProfileMode::RxTx ? "rxtx" : m == RadioProfileMode::Rx ? "rx" : "off";
 }
+const char* crossModeName(RadioCrossMode mode) {
+  return mode == RadioCrossMode::On ? "on" : mode == RadioCrossMode::Auto ? "auto" : "off";
+}
 bool parseMode(const char* text, RadioProfileMode& mode) {
   if (!strcmp(text, "rx")) mode = RadioProfileMode::Rx;
   else if (!strcmp(text, "rxtx") || !strcmp(text, "rx&tx")) mode = RadioProfileMode::RxTx;
@@ -620,6 +623,12 @@ void RadioProfileCLI::begin(FILESYSTEM* fs, Radio* radio, RTCClock* rtc, bool in
   publish();
 }
 
+RadioCrossMode RadioProfileCLI::crossingAfterSavedRetune(const RadioProfileConfig& config) const {
+  const auto& old = saved_.params;
+  const auto& next = config.params;
+  return old.freq == next.freq && old.bw == next.bw && old.sf == next.sf ? cross_ : RadioCrossMode::Off;
+}
+
 bool RadioProfileCLI::ensureCrossingOff() {
   if (!radio_ || !radio_->profiles()) return true;
   if (cross_ == RadioCrossMode::Off) {
@@ -1104,14 +1113,16 @@ void RadioProfileCLI::loop() {
       if (s.active && !s.temporary && epoch >= s.start && (!next || s.start < next->start)) next = &s;
     }
     if (!next) break;
+    const auto crossing_mode = crossingAfterSavedRetune(next->config);
     if (!mediaMeshScopeReady(next->config)
-        || !save(next->config, primary_preamble_, cross_, true)) {
+        || !save(next->config, primary_preamble_, crossing_mode, true)) {
       // Keep the requested time and order intact. A failed earlier entry must
       // not be retried after a later one and overwrite the newer settings.
       schedule_retry_ms_ = 60000;
       break;
     }
-    saved_ = next->config; manual_secondary_ = true; noteSecondaryManualChange(); *next = {};
+    saved_ = next->config; cross_ = crossing_mode;
+    manual_secondary_ = true; noteSecondaryManualChange(); *next = {};
     updateMediaMeshScope();
   }
   for (auto& s : schedules_) {
@@ -1486,7 +1497,7 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
   }
   if (crossing) {
     if (verb == Get && !*args) {
-      snprintf(reply, capacity, "> %s", cross_ == RadioCrossMode::Auto ? "auto" : cross_ == RadioCrossMode::On ? "on" : "off");
+      snprintf(reply, capacity, "> %s", crossModeName(cross_));
     } else if (verb == Set && (!strcmp(args, "auto") || !strcmp(args, "on") || !strcmp(args, "off"))) {
       auto mode = !strcmp(args, "auto") ? RadioCrossMode::Auto : !strcmp(args, "on") ? RadioCrossMode::On : RadioCrossMode::Off;
       if (save(saved_, primary_preamble_, mode)) {
@@ -1657,7 +1668,6 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
   }
   char local[140];
   const bool media_preset = base && cli::isRadio2Preset(args);
-  const auto crossing_mode = media_preset ? RadioCrossMode::Off : cross_;
   if (media_preset) {
     const float primary = primary_frequency
         ? *primary_frequency : radio_->profiles()->primary.freq;
@@ -1742,6 +1752,8 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
       noteSecondaryManualChange(); publish();
 #endif
       snprintf(reply, capacity, "OK - %s %u queued, preamble=%u", key, i+1, preview.preamble(1, 32));
+      if (!scheduled_temp && cross_ != RadioCrossMode::Off)
+        appendReply(reply, capacity, "; radio2.cross %s -> off if retuned", crossModeName(cross_));
       appendSecondaryWarnings(reply, capacity, preview); return true;
     }
     cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("all four schedule slots occupied", "all slots full")); return true;
@@ -1763,8 +1775,14 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     snprintf(reply, capacity, "OK - tempradio2 %lud%luh%lum (%lu min); preamble=%u",
         (unsigned long)(minutes/1440), (unsigned long)(minutes/60%24),
         (unsigned long)(minutes%60), (unsigned long)minutes, preview.preamble(1, 32));
-  } else if (remote_command_ ? prepareSavedImage(ReplyPath, config, primary_preamble_, crossing_mode, true)
-                            : save(config, primary_preamble_, crossing_mode, true)) {
+  } else {
+    const auto previous_cross = cross_;
+    const auto crossing_mode = media_preset ? RadioCrossMode::Off : crossingAfterSavedRetune(config);
+    if (!(remote_command_ ? prepareSavedImage(ReplyPath, config, primary_preamble_, crossing_mode, true)
+                          : save(config, primary_preamble_, crossing_mode, true))) {
+      cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("settings could not be saved", "not saved"));
+      return true;
+    }
     if (remote_command_) {
       stageRemoteMutation(RemoteMutation::Saved, config);
       remote_cross_ = crossing_mode;
@@ -1780,8 +1798,10 @@ bool RadioProfileCLI::handle(const char* command, char* reply, size_t capacity, 
     }
     snprintf(reply, capacity, "OK - radio2 %s%s; preamble=%u", modeName(config.mode),
         remote_command_ ? " pending after reply" : "", preview.preamble(1, 32));
-  } else cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("settings could not be saved", "not saved"));
-  if (!strncmp(reply, "OK", 2)) appendSecondaryWarnings(reply, capacity, preview);
+    if (crossing_mode != previous_cross)
+      appendReply(reply, capacity, "; radio2.cross %s -> off", crossModeName(previous_cross));
+  }
+  appendSecondaryWarnings(reply, capacity, preview);
   return true;
 }
 
