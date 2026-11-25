@@ -331,7 +331,7 @@ public:
 #endif
 
 #ifdef WITH_WEBCONFIG
-  bool startWebConfig(bool force_ap, char* reply);
+  bool startWebConfig(bool force_ap, char* reply, SetupWiFiAccess access = SetupWiFiAccess::Configured);
   void stopWebConfig();
   void serviceWebConfig();
   bool isWebConfigActiveOrStopping() const;

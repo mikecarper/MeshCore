@@ -224,7 +224,7 @@ static bool drawCompactCompanionWiFiSetupPage(
     DisplayDriver& display, bool setup_active, const char* setup_ssid,
     const char* setup_ip, const char* wifi_ip,
     bool wifi_enabled, bool wifi_connected,
-    bool wifi_configured) {
+    bool wifi_configured, bool open_choice) {
   if (display.width() > 128 || display.height() > 64) return false;
 
   // Use the whole compact screen for an active setup QR. Clear the shared
@@ -267,7 +267,7 @@ static bool drawCompactCompanionWiFiSetupPage(
 
   display.drawTextCentered(
       display.width() / 2, 42,
-      setup_active ? "SETUP AP ACTIVE" : "SETUP AP INACTIVE");
+      setup_active ? "SETUP AP ACTIVE" : (open_choice ? "OPEN SETUP" : "WPA2 SETUP"));
 
   display.setColor(UIColor::warning_txt);
   display.drawTextCentered(
@@ -277,7 +277,7 @@ static bool drawCompactCompanionWiFiSetupPage(
   return true;
 }
 
-static void drawCompanionWiFiSetupPage(DisplayDriver& display) {
+static void drawCompanionWiFiSetupPage(DisplayDriver& display, bool open_choice) {
   char setup_ssid[33] = {0};
   char setup_ip[16] = {0};
   const bool setup_active = WebConfigServer::getSetupInfo(
@@ -317,7 +317,7 @@ static void drawCompanionWiFiSetupPage(DisplayDriver& display) {
 
   if (drawCompactCompanionWiFiSetupPage(
           display, setup_active, setup_ssid, setup_ip, wifi_ip, wifi_enabled,
-          wifi_connected, wifi_configured)) {
+          wifi_connected, wifi_configured, open_choice)) {
     return;
   }
 
@@ -381,6 +381,11 @@ static void drawCompanionWiFiSetupPage(DisplayDriver& display) {
     display.drawTextCentered(display.width() / 2, 90, "CONNECTING");
   }
 
+  if (!setup_active && wifi_enabled) {
+    display.setTextSize(1);
+    display.drawTextCentered(display.width() / 2, display.height() - 13,
+        open_choice ? "OPEN SETUP" : "WPA2 SETUP");
+  }
   display.setCompactText(false);
 }
 #endif
@@ -473,6 +478,7 @@ class HomeScreen : public UIScreen {
 #endif
 #if UI_WIFI_SETUP_HOME_PAGE == 1
     WIFI_SETUP,
+    WIFI_SETUP_OPEN,
 #endif
 #if !(defined(UI_NO_DISCOVER_SCREEN) && (UI_NO_DISCOVER_SCREEN + 0 != 0))
     DISCOVERY,
@@ -655,6 +661,9 @@ class HomeScreen : public UIScreen {
   }
 
   bool isPageVisible(uint8_t page) const {
+#if UI_WIFI_SETUP_HOME_PAGE == 1
+    if (page == HomePage::WIFI_SETUP_OPEN && WebConfigServer::getSetupInfo(nullptr, 0, nullptr, 0)) return false;
+#endif
 #if defined(WIO_L1_DISPLAY_UNIFIED) && WIO_L1_DISPLAY_UNIFIED && !defined(UI_NO_HIBERNATE)
     if (page == HomePage::SHUTDOWN && !display.isEink()) return false;
 #endif
@@ -997,7 +1006,7 @@ public:
   }
 
 #if UI_WIFI_SETUP_HOME_PAGE == 1
-  bool isWiFiSetupPage() const { return _page == HomePage::WIFI_SETUP; }
+  bool isWiFiSetupPage() const { return _page == HomePage::WIFI_SETUP || _page == HomePage::WIFI_SETUP_OPEN; }
 #endif
 
   void poll() override {
@@ -1609,8 +1618,8 @@ public:
       else sensors_scroll_offset = 0;
 #endif
 #if UI_WIFI_SETUP_HOME_PAGE == 1
-    } else if (_page == HomePage::WIFI_SETUP) {
-      drawCompanionWiFiSetupPage(display);
+    } else if (isWiFiSetupPage()) {
+      drawCompanionWiFiSetupPage(display, _page == HomePage::WIFI_SETUP_OPEN);
 #endif
 #if !(defined(UI_NO_DISCOVER_SCREEN) && (UI_NO_DISCOVER_SCREEN + 0 != 0))
     } else if (_page == HomePage::DISCOVERY) {
@@ -1680,7 +1689,7 @@ public:
     if (_page == HomePage::MESSAGES) return 1000;
 #endif
 #if UI_WIFI_SETUP_HOME_PAGE == 1
-    if (_page == HomePage::WIFI_SETUP) return 1000;
+    if (isWiFiSetupPage()) return 1000;
 #endif
     return 5000;
   }
@@ -1820,12 +1829,12 @@ public:
     }
 #endif
 #if UI_WIFI_SETUP_HOME_PAGE == 1
-    if (key == KEY_ENTER && _page == HomePage::WIFI_SETUP) {
+    if (key == KEY_ENTER && isWiFiSetupPage()) {
       if (WebConfigServer::getSetupInfo(nullptr, 0, nullptr, 0)) {
         requestCompanionWiFiSetupStop();
         _task->showAlert("Stopping setup AP", 1000);
       } else {
-        requestCompanionWiFiSetup();
+        requestCompanionWiFiSetup(_page == HomePage::WIFI_SETUP_OPEN ? SetupWiFiAccess::Open : SetupWiFiAccess::Protected);
         _task->showAlert("Starting setup AP", 1000);
       }
       return true;

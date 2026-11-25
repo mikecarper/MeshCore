@@ -3633,16 +3633,16 @@ void MyMesh::suspendUnconfiguredSetupBridges() {
 #endif
 }
 
-bool MyMesh::startWebConfig(bool force_ap, char* reply) {
-  return startWebConfigImpl(force_ap, reply, false);
+bool MyMesh::startWebConfig(bool force_ap, char* reply, SetupWiFiAccess access) {
+  return startWebConfigImpl(force_ap, reply, false, access);
 }
 
-bool MyMesh::startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup) {
+bool MyMesh::startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup, SetupWiFiAccess access) {
   if (_cli.getBoard()->isOTAUpdateRunning()) {
     strcpy(reply, "Err: OTA server is running - 'stop ota' first");
     return true;
   }
-  if (_webconfig && _webconfig->isRunning()) {
+  if (_webconfig && _webconfig->isRunning() && access == SetupWiFiAccess::Configured) {
     if (!automatic_setup && !_webconfig->isStopping()) {
       _webconfig->requestNetworkAccess();
     }
@@ -3694,12 +3694,7 @@ bool MyMesh::startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup
       || (!bridge->isRunning() && !bridge->isStopping()));
 #endif
 
-  bool started;
-  if (force_ap) {
-    started = _webconfig->requestStart(true, reply);
-  } else {
-    started = _webconfig->requestStart(false, reply);
-  }
+  const bool started = _webconfig->requestStart(force_ap, reply, access);
   if (!started) {
     _unconfigured_setup_espnow_suspended = setup_was_suspended;
     bool restored = true;

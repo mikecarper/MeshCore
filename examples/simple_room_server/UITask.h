@@ -2,6 +2,13 @@
 
 #include <helpers/ui/DisplayDriver.h>
 #include <helpers/CommonCLI.h>
+#ifdef ESP_PLATFORM
+  #include <helpers/esp32/WebConfigServer.h>
+#endif
+
+#if defined(WITH_WEBCONFIG) && defined(PIN_USER_BTN) && defined(MESHCORE_HAS_REAL_DISPLAY)
+  #define ROOM_WIFI_SETUP_BUTTON
+#endif
 
 #ifdef DISPLAY_ACTIVITY_DASHBOARD
   #ifndef DISPLAY_REDRAW_ON_CHANGE
@@ -29,6 +36,11 @@ class UITask {
   uint32_t _radio_profile_page_started_at = 0;
   bool _dual_radio_enabled_seen = false;
   bool _startup_complete = false;
+#ifdef ROOM_WIFI_SETUP_BUTTON
+  SetupWiFiAccess _wifi_choice = SetupWiFiAccess::Configured;
+  bool _wifi_start_requested = false;
+  char _wifi_reply[160] = {};
+#endif
 #ifdef DISPLAY_TOUCH_TOGGLE
   unsigned long _powering_off_at = 0;
 #endif

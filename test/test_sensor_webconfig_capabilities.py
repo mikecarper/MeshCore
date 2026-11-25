@@ -132,6 +132,7 @@ for value in "${BUILD_APPLICATION_EXPECTATIONS[@]}"; do printf 'A:%s\0' "$value"
         fixture = r'''
 #define MESH_MANAGEMENT_PASSWORD_HOST_TEST 1
 #include <helpers/esp32/ManagementPassword.h>
+#include <helpers/esp32/SetupWiFiAccess.h>
 #include <helpers/CLIReplyText.h>
 #include <cassert>
 #include <cstdio>
@@ -142,7 +143,9 @@ struct Callbacks {
 };
 struct SensorCallbacks : Callbacks {};
 struct PortalCallbacks : Callbacks {
-  bool startWebConfig(bool ap, char* reply) override {
+  bool startWebConfig(bool ap, char* reply, SetupWiFiAccess access) override {
+    if (access == SetupWiFiAccess::Open) { strcpy(reply, "open"); return ap; }
+    if (access == SetupWiFiAccess::Protected) { strcpy(reply, "wpa2"); return ap; }
     strcpy(reply, ap ? "portal AP started" : "portal started"); return true;
   }
   bool stopWebConfig(char* reply) override { strcpy(reply, "portal stopped"); return true; }
@@ -177,14 +180,14 @@ int main() {
   Prefs prefs;
   CLI cli{&sensor, &board, &prefs};
   char reply[160] = {};
-  for (const char* command : {"start webconfig", "start webconfig ap", "stop webconfig"}) {
+  for (const char* command : {"start webconfig", "start webconfig ap", "start webconfig ap open", "start webconfig ap wpa2", "stop webconfig"}) {
     cli.run(command, reply);
     assert(strcmp(reply, "ERR: webconfig not supported on this build") == 0);
     assert(!sensor.isWebConfigActive());
     assert(board.starts == 0 && board.stops == 0);
   }
   cli.run("start webconfig invalid", reply);
-  assert(strcmp(reply, "ERR: usage start webconfig [ap]") == 0);
+  assert(strcmp(reply, "ERR: usage start webconfig [ap [open|wpa2]]") == 0);
   cli.run("start ota", reply);
   assert(strcmp(reply, "Started: http://fixture/update") == 0);
   assert(board.starts == 1 && !board.forced);
@@ -201,6 +204,8 @@ int main() {
   assert(strcmp(reply, "portal started") == 0);
   cli.run("start webconfig ap", reply);
   assert(strcmp(reply, "portal AP started") == 0);
+  cli.run("start webconfig ap open", reply); assert(strcmp(reply, "open") == 0);
+  cli.run("start webconfig ap wpa2", reply); assert(strcmp(reply, "wpa2") == 0);
   cli.run("stop webconfig", reply);
   assert(strcmp(reply, "portal stopped") == 0);
 }

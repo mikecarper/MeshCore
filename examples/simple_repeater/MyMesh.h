@@ -2210,10 +2210,7 @@ public:
 #endif
 
 #ifdef WITH_WEBCONFIG
-  bool startWebConfig(bool force_ap, char* reply) override;
-  bool startButtonSetup(SetupWiFiAccess access, char* reply) {
-    return startWebConfigImpl(true, reply, false, access);
-  }
+  bool startWebConfig(bool force_ap, char* reply, SetupWiFiAccess access = SetupWiFiAccess::Configured) override;
   bool isWebConfigStopping() const { return _webconfig && _webconfig->isStopping(); }
   bool hasWirelessNetworkClient() const { return _web_terminal != nullptr; }
   bool stopWebConfig(char* reply) override;

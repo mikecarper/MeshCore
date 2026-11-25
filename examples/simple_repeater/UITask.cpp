@@ -415,10 +415,8 @@ void UITask::advanceRadioProfileDisplayPage() {
   if (_wifi_setup_page == WiFiPage::Hidden) {
     _radio_profile_display_page = next;
     if (next == 0) _wifi_setup_page = WiFiPage::Setup;
-#if defined(HELTEC_LORA_V3)
   } else if (_wifi_setup_page == WiFiPage::Setup && !_setup_ap_was_active) {
     _wifi_setup_page = WiFiPage::Open;
-#endif
   } else {
     _radio_profile_display_page = 0;
     _wifi_setup_page = WiFiPage::Hidden;
@@ -527,29 +525,10 @@ void UITask::renderCurrScreen() {
       const bool active = WebConfigServer::getSetupInfo(wc_ssid, sizeof(wc_ssid), wc_ip, sizeof(wc_ip));
       if (!active) {
 #ifdef REPEATER_WIFI_SETUP_BUTTON
-        _display->setTextSize(1);
-        _display->setColor(UIColor::primary_txt);
-        const int row = _display->textLineHeight() + 1;
         const bool open_choice = _wifi_setup_page == WiFiPage::Open;
-#if defined(HELTEC_LORA_V3)
-        _display->drawTextLeftAlign(0, 0, open_choice ? "Wi-Fi Setup: Open" : "Wi-Fi Setup: WPA2");
-#else
-        _display->drawTextLeftAlign(0, 0, "Wi-Fi Setup");
-#endif
-        if (_wifi_setup_start != WiFiPage::Hidden) {
-          mesh::ui::drawTextWrapped(*_display, 0, row, _display->width(),
-                                    row, _display->height() / row - 1, "Turning on Wi-Fi...");
-          return;
-        }
         WebConfigServer::formatSetupSsid(wc_ssid, sizeof(wc_ssid), the_mesh.getSelfId().pub_key, open_choice);
-        _display->drawTextEllipsized(0, row, _display->width(), wc_ssid);
-        _display->drawTextLeftAlign(0, 2 * row, "Hold to start");
-        const char* hint = _wifi_setup_reply;
-#if defined(HELTEC_LORA_V3)
-        if (!hint[0]) hint = open_choice ? "Admin login in browser" : "Tap for open Wi-Fi";
-#endif
-        mesh::ui::drawTextWrapped(*_display, 0, 3 * row, _display->width(),
-                                  row, _display->height() / row - 3, hint);
+        mesh::ui::drawWiFiSetupChoice(*_display, wc_ssid, open_choice,
+            _wifi_setup_start != WiFiPage::Hidden, _wifi_setup_reply);
 #endif
         return;
       }
@@ -1099,12 +1078,8 @@ void UITask::loop() {
   if (_wifi_setup_start != WiFiPage::Hidden && !morse_timing) {
     if (!_powering_off_at && !WebConfigServer::isRebootPending()) {
       mesh::usbConsolePort().println("Wi-Fi Setup: starting");
-#if defined(HELTEC_LORA_V3)
-      the_mesh.startButtonSetup(_wifi_setup_start == WiFiPage::Open ? SetupWiFiAccess::Open
-                                                                   : SetupWiFiAccess::Protected, _wifi_setup_reply);
-#else
-      the_mesh.startWebConfig(true, _wifi_setup_reply);
-#endif
+      the_mesh.startWebConfig(true, _wifi_setup_reply,
+          _wifi_setup_start == WiFiPage::Open ? SetupWiFiAccess::Open : SetupWiFiAccess::Protected);
       mesh::usbConsolePort().printf("Wi-Fi Setup: %s\r\n", _wifi_setup_reply);
     }
     _wifi_setup_start = WiFiPage::Hidden;

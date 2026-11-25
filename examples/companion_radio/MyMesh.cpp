@@ -5596,14 +5596,12 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
     return true;
   }
 
-  if (strcmp(command, "start webconfig") == 0
-      || strcmp(command, "start webconfig ap") == 0) {
-    startWebConfig(strcmp(command, "start webconfig ap") == 0, reply);
-    return true;
-  }
   if (strncmp(command, "start webconfig", 15) == 0
       && (command[15] == 0 || command[15] == ' ' || command[15] == '\t')) {
-    snprintf(reply, reply_size, "ERR: usage start webconfig [ap]");
+    bool force_ap;
+    SetupWiFiAccess access;
+    if (parseWebConfigStart(command + 15, force_ap, access)) startWebConfig(force_ap, reply, access);
+    else snprintf(reply, reply_size, "ERR: usage start webconfig [ap [open|wpa2]]");
     return true;
   }
   if (strcmp(command, "stop webconfig") == 0) {
@@ -6092,7 +6090,7 @@ void MyMesh::getNodeSnapshot(WebConfigServer::NodeSnapshot& s) {
   }
 }
 
-bool MyMesh::startWebConfig(bool force_ap, char* reply) {
+bool MyMesh::startWebConfig(bool force_ap, char* reply, SetupWiFiAccess access) {
   if (board.isOTAUpdateRunning()) {
     strcpy(reply, "Err: OTA server is running - 'stop ota' first");
     return false;
@@ -6114,7 +6112,7 @@ bool MyMesh::startWebConfig(bool force_ap, char* reply) {
     strcpy(reply, "Err: WebUI unavailable (not enough memory)");
     return false;
   }
-  if (_webconfig->isRunning()) {
+  if (_webconfig->isRunning() && access == SetupWiFiAccess::Configured) {
     if (force_ap && !_webconfig->isStopping()
         && _webconfig->mode() == WebConfigServer::MODE_LAN) {
 #ifdef WITH_MQTT_BRIDGE
@@ -6123,7 +6121,7 @@ bool MyMesh::startWebConfig(bool force_ap, char* reply) {
         _mqtt_started = false;
       }
 #endif
-      return _webconfig->requestStart(true, reply);
+      return _webconfig->requestStart(true, reply, access);
     }
     return WebConfigServer::formatWebUIStatus(reply, 160,
         WebConfigServer::loadEnabled(true), _webconfig);
@@ -6135,7 +6133,7 @@ bool MyMesh::startWebConfig(bool force_ap, char* reply) {
       _mqtt_started = false;
     }
 #endif
-    return _webconfig->requestStart(true, reply);
+    return _webconfig->requestStart(true, reply, access);
   }
   return _webconfig->requestStart(false, reply);
 }

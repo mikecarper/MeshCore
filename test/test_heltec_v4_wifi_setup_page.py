@@ -10,42 +10,29 @@ import test_wifi_ota_start as wifi_start
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PROFILE = ROOT / "variants" / "heltec_v4" / "platformio.ini"
-R8_PROFILE = ROOT / "variants" / "heltec_v4_r8" / "platformio.ini"
 UI = ROOT / "examples" / "companion_radio" / "ui-new" / "UITask.cpp"
 WIFI = ROOT / "examples" / "companion_radio" / "CompanionWiFi.h"
 MAIN = ROOT / "examples" / "companion_radio" / "main.cpp"
 
 
-def ini_section(source: str, name: str) -> str:
-    start = source.index(f"[env:{name}]")
-    end = source.find("\n[", start + 1)
-    return source[start:] if end < 0 else source[start:end]
-
-
 class HeltecV4WiFiSetupPageTest(unittest.TestCase):
     compile_and_run = wifi_start.WiFiOtaStartTest.compile_and_run
-    def test_only_main_v4_oled_full_profiles_enable_the_page(self):
-        profile = PROFILE.read_text(encoding="utf-8")
-        full_profiles = (
-            "heltec_v4_2_v4_3_companion_radio_full_femon",
-            "heltec_v4_3_companion_radio_full_femoff",
-        )
-        for name in full_profiles:
-            section = ini_section(profile, name)
-            self.assertIn("-D UI_WIFI_SETUP_HOME_PAGE=1", section)
-            self.assertIn("-D MESHCORE_REQUIRES_COMPANION_RADIO_FULL=1", section)
 
-        self.assertEqual(profile.count("-D UI_WIFI_SETUP_HOME_PAGE=1"), 2)
-        self.assertNotIn(
-            "UI_WIFI_SETUP_HOME_PAGE",
-            ini_section(profile, "heltec_v4_companion_radio_wifi_femon"),
-        )
-        self.assertNotIn(
-            "UI_WIFI_SETUP_HOME_PAGE",
-            ini_section(profile, "heltec_v4_tft_companion_radio_full_femon"),
-        )
-        self.assertNotIn("UI_WIFI_SETUP_HOME_PAGE", R8_PROFILE.read_text())
+    def test_setup_page_defaults_to_wifi_companions_with_displays(self):
+        source = """
+#include "CompanionWiFi.h"
+static_assert(UI_WIFI_SETUP_HOME_PAGE == EXPECT_PAGE);
+int main() {}
+"""
+        for expected, flags in (
+            (1, ["-DWIFI_SSID", "-DDISPLAY_CLASS=SSD1306Display"]),
+            (0, ["-DWIFI_SSID", "-DDISPLAY_CLASS=NullDisplayDriver"]),
+            (0, ["-DDISPLAY_CLASS=SSD1306Display"]),
+            (0, ["-DWIFI_SSID", "-DDISPLAY_CLASS=SSD1306Display", "-DWEBCONFIG_DISABLED"]),
+        ):
+            with self.subTest(flags=flags):
+                self.compile_and_run(source, "-I", str(WIFI.parent), "-DESP32",
+                                     f"-DEXPECT_PAGE={expected}", *flags)
 
     def test_compact_page_restores_qr_with_a_readable_text_fallback(self):
         ui = UI.read_text(encoding="utf-8")
@@ -55,7 +42,7 @@ class HeltecV4WiFiSetupPageTest(unittest.TestCase):
 
         self.assertIn("display.width() > 128 || display.height() > 64", compact)
         self.assertIn("display.setTextSize(1);", compact)
-        self.assertIn('"SETUP AP ACTIVE" : "SETUP AP INACTIVE"', compact)
+        self.assertIn('"OPEN SETUP" : "WPA2 SETUP"', compact)
         self.assertIn('"HOLD STOP AP" : "HOLD START AP"', compact)
         self.assertIn('snprintf(open_ip, sizeof(open_ip), "OPEN %s", setup_ip)', compact)
         self.assertIn("display.drawTextEllipsized", compact)
@@ -69,7 +56,7 @@ class HeltecV4WiFiSetupPageTest(unittest.TestCase):
 
         # Default size-one glyphs are six by eight logical pixels.
         for text in (
-            "SETUP AP INACTIVE",
+            "WPA2 SETUP", "OPEN SETUP",
             "WIFI NOT CONFIGURED",
             "OPEN 255.255.255.255",
             "HOLD START AP",
@@ -136,7 +123,7 @@ int main() {
         visible = extract_braced(home, "  bool isPageVisible(uint8_t page) const")
         main = MAIN.read_text()
         requests = "\n".join(extract_braced(main, name) for name in (
-            "  void requestCompanionWiFiSetup()", "  void requestCompanionWiFiSetupStop()"))
+            "  void requestCompanionWiFiSetup(", "  void requestCompanionWiFiSetupStop()"))
         # Execute production signed-char navigation and HOLD setup handling.
         # Rendering/radio endpoints are mocked; preferences saves are absent,
         # so an accidental permanent toggle cannot compile in this fixture.
@@ -145,6 +132,7 @@ int main() {
 #include <cstdint>
 #include <cstddef>
 #include <helpers/WirelessControl.h>
+#include <helpers/esp32/SetupWiFiAccess.h>
 #define UI_WIFI_SETUP_HOME_PAGE 1
 #define UI_NO_DISCOVER_SCREEN 1
 #define UI_NO_HIBERNATE 1
@@ -153,7 +141,8 @@ int main() {
 #define KEY_PREV 0xF2
 #define KEY_NEXT 0xF1
 #define KEY_ENTER 13
-bool companion_wifi_setup_requested = false, companion_wifi_setup_stop_requested = false;
+SetupWiFiAccess companion_wifi_setup_requested = SetupWiFiAccess::Configured;
+bool companion_wifi_setup_stop_requested = false;
 @REQUESTS@
 struct WebConfigServer {
   static bool active;
@@ -175,6 +164,7 @@ struct HomeScreen : UIScreen {
   UITask* _task;
   explicit HomeScreen(UITask* task) : _task(task) {}
   void resetRadioProfileDisplayPage() {}
+  @SETUP_PAGE@
 @VISIBLE@
 @NAVIGATION@
 @HANDLER@
@@ -182,18 +172,24 @@ struct HomeScreen : UIScreen {
 int main() {
   UITask task; HomeScreen home(&task);
   assert(home.handleInput(static_cast<char>(KEY_NEXT)));
+  assert(home._page == HomeScreen::WIFI_SETUP_OPEN);
+  assert(companion_wifi_setup_requested == SetupWiFiAccess::Configured && !companion_wifi_setup_stop_requested);
+  assert(home.handleInput(KEY_ENTER));
+  assert(companion_wifi_setup_requested == SetupWiFiAccess::Open);
+  assert(home.handleInput(static_cast<char>(KEY_NEXT)));
   assert(home._page == HomeScreen::FIRST);
-  assert(!companion_wifi_setup_requested && !companion_wifi_setup_stop_requested);
+  assert(home.handleInput(static_cast<char>(KEY_PREV)));
+  assert(home._page == HomeScreen::WIFI_SETUP_OPEN);
   assert(home.handleInput(static_cast<char>(KEY_PREV)));
   assert(home._page == HomeScreen::WIFI_SETUP);
   assert(home.handleInput(KEY_ENTER));
-  assert(companion_wifi_setup_requested && !companion_wifi_setup_stop_requested);
+  assert(companion_wifi_setup_requested == SetupWiFiAccess::Protected && !companion_wifi_setup_stop_requested);
   WebConfigServer::active = true;
   assert(home.handleInput(KEY_ENTER));
-  assert(!companion_wifi_setup_requested && companion_wifi_setup_stop_requested);
+  assert(companion_wifi_setup_requested == SetupWiFiAccess::Configured && companion_wifi_setup_stop_requested);
   assert(home.handleInput(static_cast<char>(KEY_RIGHT)));
   assert(home._page == HomeScreen::FIRST);
-  assert(!companion_wifi_setup_requested && companion_wifi_setup_stop_requested);
+  assert(companion_wifi_setup_requested == SetupWiFiAccess::Configured && companion_wifi_setup_stop_requested);
   assert(home.handleInput(static_cast<char>(KEY_LEFT)));
   assert(home._page == HomeScreen::WIFI_SETUP);
   requestCompanionWiFiSetupStop();
@@ -207,12 +203,12 @@ int main() {
   char reply[160] = {};
   mesh::wireless::control().handle("set wifi off force", reply, sizeof(reply), 0, mesh::wireless::Independent);
   mesh::wireless::control().service(250);
-  requestCompanionWiFiSetup();
-  assert(!companion_wifi_setup_requested && companion_wifi_setup_stop_requested);
+  requestCompanionWiFiSetup(SetupWiFiAccess::Open);
+  assert(companion_wifi_setup_requested == SetupWiFiAccess::Configured && companion_wifi_setup_stop_requested);
 }
 '''
         source = (source.replace("@REQUESTS@", requests).replace("@PAGES@", page_enum)
-                  .replace("@VISIBLE@", visible).replace("@NAVIGATION@", navigation)
+                  .replace("@SETUP_PAGE@", extract_braced(home, "  bool isWiFiSetupPage() const")).replace("@VISIBLE@", visible).replace("@NAVIGATION@", navigation)
                   .replace("@HANDLER@", handler))
         for char_mode in ("-fsigned-char", "-funsigned-char"):
             self.compile_and_run(source, char_mode)
@@ -241,22 +237,22 @@ int main() {
 
         main = MAIN.read_text(encoding="utf-8")
         requests = "\n".join(extract_braced(main, signature) for signature in (
-            "  void requestCompanionWiFiSetup()", "  void requestCompanionWiFiSetupStop()"))
+            "  void requestCompanionWiFiSetup(", "  void requestCompanionWiFiSetupStop()"))
         # Inspect the exact session request methods, not the unrelated permanent
         # master switch that is now defined between them and toggleCompanionWiFi.
-        self.assertIn("companion_wifi_setup_requested = true;", requests)
+        self.assertIn("companion_wifi_setup_requested = access;", requests)
         self.assertIn("companion_wifi_setup_stop_requested = true;", requests)
         self.assertNotIn("savePrefs", requests)
         self.assertNotIn("saveEnabled", requests)
 
         loop = main[main.index("\nvoid loop()") :]
         stop = loop.index("if (companion_wifi_setup_stop_requested)")
-        start = loop.index("if (companion_wifi_setup_requested)", stop)
+        start = loop.index("if (companion_wifi_setup_requested != SetupWiFiAccess::Configured)", stop)
         state_service = loop.index("serviceCompanionWiFiState();", start)
         self.assertLess(stop, start)
         self.assertLess(start, state_service)
         self.assertIn("the_mesh.stopWebConfig();", loop[stop:start])
-        self.assertIn("the_mesh.startWebConfig(true, web_reply)", loop[start:state_service])
+        self.assertIn("the_mesh.startWebConfig(true, web_reply, access)", loop[start:state_service])
         self.assertNotIn("savePrefs", loop[stop:state_service])
         self.assertNotIn("saveEnabled", loop[stop:state_service])
 

@@ -1342,10 +1342,11 @@ bool CommonCLI::handleObserverCommand(uint32_t sender_timestamp, char* command, 
   } else if (memcmp(command, "start webconfig", 15) == 0 && (command[15] == 0 || command[15] == ' ')) {
     // Web config portal: `start webconfig` binds to the LAN IP (or raises the
     // setup AP when WiFi is unconfigured); `start webconfig ap` forces the AP.
-    bool force_ap = (command[15] == ' ' && strcmp(&command[16], "ap") == 0);
-    if (command[15] == ' ' && !force_ap) {
-      strcpy(reply, "ERR: usage start webconfig [ap]");
-    } else if (!_callbacks->startWebConfig(force_ap, reply)) {
+    bool force_ap;
+    SetupWiFiAccess access;
+    if (!parseWebConfigStart(command + 15, force_ap, access)) {
+      strcpy(reply, "ERR: usage start webconfig [ap [open|wpa2]]");
+    } else if (!_callbacks->startWebConfig(force_ap, reply, access)) {
       strcpy(reply, "ERR: webconfig not supported on this build");
     }
     return true;

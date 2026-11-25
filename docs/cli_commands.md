@@ -301,6 +301,8 @@ folder transport.
 ```text
 start webconfig
 start webconfig ap
+start webconfig ap wpa2
+start webconfig ap open
 stop webconfig
 set webui on
 set webui off
@@ -367,11 +369,12 @@ LAN mode otherwise remains active until reboot. On expanded FULL builds, an
 unconfigured automatic setup AP receives one absolute 30-minute window per
 boot, then powers WiFi off even if a client remains attached; rebooting starts
 a new automatic window unless `webui off` is saved. An administrator can
-explicitly run `start webconfig ap` again. On a repeater with a display and a
-user button, tap to **Wi-Fi Setup** and hold the button to reopen the QR screen
-without rebooting. On the Heltec V3 Full Repeater, hold on **Wi-Fi Setup: WPA2**
-for a protected hotspot, or tap once more and hold on **Wi-Fi Setup: Open**.
-The open hotspot adds `-Open` to its name and requires an admin login in the browser.
+explicitly run `start webconfig ap` again. On ESP32 builds with WebConfig,
+`start webconfig ap wpa2` uses the admin password as the Wi-Fi password.
+`start webconfig ap open` adds `-Open` to the network name and requires the
+admin password in the browser. The choice lasts for the session. On a Repeater
+or Room Server with a display and user button, tap to either Wi-Fi Setup page
+and hold to start it. On a Wi-Fi Companion, select the WPA2 or open setup page.
 Once an SSID is saved,
 the cutoff no longer applies and the selected WiFi/MQTT mode keeps reconnecting.
 Other setup sessions retain

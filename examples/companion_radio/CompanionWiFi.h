@@ -1,10 +1,16 @@
 #pragma once
 
+#include <helpers/esp32/SetupWiFiAccess.h>
+#include <helpers/ui/DisplayBuildFlags.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #ifndef UI_WIFI_SETUP_HOME_PAGE
-  #define UI_WIFI_SETUP_HOME_PAGE 0
+  #if defined(ESP32) && defined(WIFI_SSID) && defined(MESHCORE_HAS_REAL_DISPLAY) && !defined(WEBCONFIG_DISABLED)
+    #define UI_WIFI_SETUP_HOME_PAGE 1
+  #else
+    #define UI_WIFI_SETUP_HOME_PAGE 0
+  #endif
 #endif
 
 #if UI_WIFI_SETUP_HOME_PAGE == 1 \
@@ -82,7 +88,7 @@ void formatCompanionWiFiStatus(char* reply, size_t reply_size);
 // WebConfig/WiFi transitions so input handling never tears down network
 // services from the UI task. Neither request changes the saved WebUI or WiFi
 // preference; the setup AP is controlled only for the current boot session.
-void requestCompanionWiFiSetup();
+void requestCompanionWiFiSetup(SetupWiFiAccess access);
 void requestCompanionWiFiSetupStop();
 
 // Reload saved credentials after a text-terminal update. The reconnect is

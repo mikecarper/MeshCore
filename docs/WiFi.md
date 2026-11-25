@@ -161,22 +161,24 @@ fresh device with no saved SSID:
 4. Select **Save & Reboot**.
 5. After reboot, check `get wifi.status` and `get mqtt.status`.
 
-**Reopen setup after a timeout.** On an ESP32 repeater with WebConfig, a
-display and a user button, tap the button until **Wi-Fi Setup** appears.
-While it says **Hold to start**, hold the button (about one second on a Heltec
-V3). Release it when **Turning on Wi-Fi...** appears. The next screen shows
-the QR and network name. Scan the QR or join the network and open <http://192.168.4.1/>.
-Holding again on the QR screen closes the hotspot. This starts setup for one
-session and keeps your saved startup preference. From the admin CLI, use
-`start webconfig ap` and `get webui` to see the active address.
+**Choose open or WPA2 setup**
 
-**Heltec V3 Full Repeater button choices**
+On ESP32 Repeater, Room Server, and Wi-Fi Companion builds with WebConfig, run one of these commands for the current session:
 
-1. If the screen shows a setup QR, hold the user button for one second to stop that hotspot.
-2. Tap to **Wi-Fi Setup: WPA2**. Hold to start the password-protected network (for example, `MC-9E`), or tap once more to **Wi-Fi Setup: Open** and hold to start `MC-9E-Open`.
-3. Join the displayed network and open <http://192.168.4.1/>. The open network requires the repeater's admin password in the browser. The factory password is `password`.
+| Command | How to join |
+| --- | --- |
+| `start webconfig ap wpa2` | Use the node’s admin password as the Wi-Fi password. WPA2 needs 8–15 printable ASCII characters. |
+| `start webconfig ap open` | Join the network ending in `-Open` without a Wi-Fi password. Enter the node’s admin password in the browser. |
 
-The choice lasts for this setup session. Hold on the QR screen to close it.
+The generic Heltec HT-CT62 profile has no user button assigned. Use the commands above on that build.
+
+To choose on the radio:
+
+1. If a QR code is showing, hold the user button to stop the current hotspot. On a touch Companion, use the page’s select action.
+2. On a Repeater or Room Server with a display and user button, tap to **Wi-Fi Setup: WPA2** or tap once more for **Wi-Fi Setup: Open**. Hold to start. On a Wi-Fi Companion, navigate to **WPA2 SETUP** or **OPEN SETUP** and select it.
+3. Scan the QR code or join the displayed network and open <http://192.168.4.1/>.
+
+`get webui` shows the active address. `stop webconfig` closes setup. The choice applies to this session. Automatic setup and `start webconfig ap` continue to choose Wi-Fi security from the saved admin password.
 
 ESP32 management uses one saved admin password for WebConfig login, browser
 firmware uploads, and setup WiFi. Choose 8–15 printable ASCII characters so the
@@ -889,7 +891,7 @@ selector remains authoritative; it does not expose `wifi.mode`.
 `get wifi.status`, `get wifi.ssid`, `get wifi.powersave`, and `get wifi.cli`
 are available on MQTT observers and on FULL non-MQTT repeater/room-server
 builds with WebConfig. ESP32 WiFi Companions also expose all four commands,
-credential setters, and `start webconfig [ap]` through their USB text terminal.
+credential setters, and `start webconfig [ap [open|wpa2]]` through their USB text terminal.
 Their browser CLI defaults to on in station/LAN mode.
 Full Companion also exposes its complete role-specific text terminal on TCP
 port 5002, including chat and streaming commands.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DisplayDriver.h"
+#include "DisplayTextLayout.h"
 #include "QrCodeVersion.h"
 #include "WiFiSetupQrPayload.h"
 #if defined(ESP_PLATFORM) || defined(ESP32_PLATFORM)
@@ -9,6 +10,22 @@
 
 namespace mesh {
 namespace ui {
+
+inline void drawWiFiSetupChoice(DisplayDriver& display, const char* ssid, bool open,
+                                bool starting, const char* reply) {
+  display.setTextSize(1);
+  display.setColor(UIColor::primary_txt);
+  const int row = display.textLineHeight() + 1;
+  display.drawTextLeftAlign(0, 0, open ? "Wi-Fi Setup: Open" : "Wi-Fi Setup: WPA2");
+  if (starting) {
+    drawTextWrapped(display, 0, row, display.width(), row, display.height() / row - 1, "Turning on Wi-Fi...");
+    return;
+  }
+  display.drawTextEllipsized(0, row, display.width(), ssid);
+  display.drawTextLeftAlign(0, 2 * row, "Hold to start");
+  if (!reply[0]) reply = open ? "Admin login in browser" : "Tap for open Wi-Fi";
+  drawTextWrapped(display, 0, 3 * row, display.width(), row, display.height() / row - 3, reply);
+}
 
 inline bool buildCurrentWiFiSetupQrPayload(char* payload, size_t payload_size,
                                           const char* ssid) {

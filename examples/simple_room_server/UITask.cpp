@@ -164,7 +164,7 @@ void UITask::begin(NodePrefs* node_prefs, const char* build_date, const char* fi
   _touch.begin();
 #endif
 #if defined(PIN_USER_BTN) && defined(DISPLAY_CLASS) \
-    && (defined(DISPLAY_TOUCH_TOGGLE) \
+    && (defined(ROOM_WIFI_SETUP_BUTTON) || defined(DISPLAY_TOUCH_TOGGLE) \
         || (defined(MOMENTARY_BUTTON_WAKE_FROM_SLEEP) \
             && MOMENTARY_BUTTON_WAKE_FROM_SLEEP))
   user_btn.begin();
@@ -260,7 +260,12 @@ void UITask::renderCurrScreen() {
     char wc_ssid[33], wc_ip[16];
     if (WebConfigServer::getSetupInfo(wc_ssid, sizeof(wc_ssid), wc_ip, sizeof(wc_ip))) {
       // setup portal active: show join instructions instead of the home screen
-      if (mesh::ui::drawWiFiSetupQr(*_display, wc_ssid, wc_ip)) {
+#ifdef ROOM_WIFI_SETUP_BUTTON
+      const char* action = "HOLD STOP";
+#else
+      const char* action = nullptr;
+#endif
+      if (mesh::ui::drawWiFiSetupQr(*_display, wc_ssid, wc_ip, false, action)) {
         return;
       }
       _display->setTextSize(1);
@@ -287,6 +292,14 @@ void UITask::renderCurrScreen() {
       _display->print(wc_ip);
       return;
     }
+#ifdef ROOM_WIFI_SETUP_BUTTON
+    if (_wifi_choice != SetupWiFiAccess::Configured) {
+      const bool open = _wifi_choice == SetupWiFiAccess::Open;
+      WebConfigServer::formatSetupSsid(wc_ssid, sizeof(wc_ssid), the_mesh.getSelfId().pub_key, open);
+      mesh::ui::drawWiFiSetupChoice(*_display, wc_ssid, open, _wifi_start_requested, _wifi_reply);
+      return;
+    }
+#endif
 #endif
 #ifdef DISPLAY_ACTIVITY_DASHBOARD
     renderDashboard();
@@ -385,6 +398,13 @@ uint32_t UITask::getFrameSignature() {
     signature = DisplayFrameSignature::append(signature, wc_ssid);
     return DisplayFrameSignature::append(signature, wc_ip);
   }
+#ifdef ROOM_WIFI_SETUP_BUTTON
+  if (_wifi_choice != SetupWiFiAccess::Configured) {
+    if (_wifi_start_requested) return DisplayFrameSignature::append(signature, "wifi-starting");
+    signature = DisplayFrameSignature::append(signature, _wifi_choice == SetupWiFiAccess::Open ? "wifi-open" : "wifi-wpa2");
+    return DisplayFrameSignature::append(signature, _wifi_reply);
+  }
+#endif
 #endif
 
   signature = DisplayFrameSignature::append(signature, "home");
@@ -555,7 +575,34 @@ void UITask::loop() {
     _rows_valid = false;
 #endif
   }
-#if defined(PIN_USER_BTN) && defined(DISPLAY_TOUCH_TOGGLE)
+#ifdef ROOM_WIFI_SETUP_BUTTON
+  const int ev = user_btn.check();
+  if (ev == BUTTON_EVENT_CLICK || ev == BUTTON_EVENT_DOUBLE_CLICK || ev == BUTTON_EVENT_LONG_PRESS) {
+    const bool awake = _display->isOn();
+    _display->wake(mesh::ui::DisplayWake::Button);
+    const bool active = WebConfigServer::getSetupInfo(nullptr, 0, nullptr, 0);
+    if (awake && _startup_complete && !_wifi_start_requested && !WebConfigServer::isRebootPending()) {
+      if (ev == BUTTON_EVENT_LONG_PRESS) {
+        if (active) {
+          the_mesh.stopWebConfig(_wifi_reply);
+          _wifi_choice = SetupWiFiAccess::Protected;
+        } else if (_wifi_choice != SetupWiFiAccess::Configured) {
+          _wifi_start_requested = true;
+#ifdef DISPLAY_TOUCH_TOGGLE
+        } else {
+          _powering_off_at = millis() + POWEROFF_DELAY;
+#endif
+        }
+      } else if (!active) {
+        _wifi_reply[0] = 0;
+        if (_wifi_choice == SetupWiFiAccess::Configured) _wifi_choice = SetupWiFiAccess::Protected;
+        else if (_wifi_choice == SetupWiFiAccess::Protected) _wifi_choice = SetupWiFiAccess::Open;
+        else _wifi_choice = SetupWiFiAccess::Configured;
+      }
+    }
+    _next_refresh = 0;
+  }
+#elif defined(PIN_USER_BTN) && defined(DISPLAY_TOUCH_TOGGLE)
   int ev = user_btn.check();
   if (ev == BUTTON_EVENT_CLICK) {
     toggleDisplay("button");
@@ -661,6 +708,14 @@ void UITask::loop() {
       _next_refresh = millis() + 1000;   // check for visible changes every second
     }
   }
+
+#ifdef ROOM_WIFI_SETUP_BUTTON
+  if (_wifi_start_requested && !morse_timing) {
+    _wifi_start_requested = false;
+    the_mesh.startWebConfig(true, _wifi_reply, _wifi_choice);
+    _next_refresh = 0;
+  }
+#endif
 
 #ifdef DISPLAY_TOUCH_TOGGLE
   if (_powering_off_at > 0 && millisReached(millis(), _powering_off_at)) {

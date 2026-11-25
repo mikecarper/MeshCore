@@ -1792,7 +1792,7 @@ static bool saveCompanionWiFiPreference(bool enabled) {
 #ifdef WITH_WEBCONFIG
   static bool companion_wifi_webconfig_start_pending = false;
 #endif
-  static volatile bool companion_wifi_setup_requested = false;
+  static SetupWiFiAccess companion_wifi_setup_requested = SetupWiFiAccess::Configured;
   static volatile bool companion_wifi_setup_stop_requested = false;
   static bool companion_wifi_credential_reload_pending = false;
   static unsigned long companion_wifi_credential_reload_at = 0;
@@ -2351,14 +2351,14 @@ static bool saveCompanionWiFiPreference(bool enabled) {
     mesh::wifi::formatCompanionWiFiStatusSnapshot(reply, reply_size, snapshot);
   }
 
-  void requestCompanionWiFiSetup() {
+  void requestCompanionWiFiSetup(SetupWiFiAccess access) {
     if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) return;
     companion_wifi_setup_stop_requested = false;
-    companion_wifi_setup_requested = true;
+    companion_wifi_setup_requested = access;
   }
 
   void requestCompanionWiFiSetupStop() {
-    companion_wifi_setup_requested = false;
+    companion_wifi_setup_requested = SetupWiFiAccess::Configured;
     companion_wifi_setup_stop_requested = true;
   }
 
@@ -3604,7 +3604,7 @@ public:
     if (service == mesh::wireless::WiFi) {
       companion_wifi_requested = on;
       if (!on) {
-        companion_wifi_setup_requested = false;
+        companion_wifi_setup_requested = SetupWiFiAccess::Configured;
         // Sockets stop before the asynchronous web teardown finishes. Keep
         // this latched so a replacement on request completes that teardown
         // before startCompanionWiFi's active-state shortcut can skip restart.
@@ -4857,10 +4857,11 @@ void loop() {
       companion_wifi_setup_stop_requested = false;
       the_mesh.stopWebConfig();
     }
-    if (companion_wifi_setup_requested) {
-      companion_wifi_setup_requested = false;
+    if (companion_wifi_setup_requested != SetupWiFiAccess::Configured) {
+      const SetupWiFiAccess access = companion_wifi_setup_requested;
+      companion_wifi_setup_requested = SetupWiFiAccess::Configured;
       char web_reply[160];
-      if (!the_mesh.startWebConfig(true, web_reply)) {
+      if (!the_mesh.startWebConfig(true, web_reply, access)) {
         WIFI_DEBUG_PRINTLN("Display WiFi setup request: %s", web_reply);
       }
     }

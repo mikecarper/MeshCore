@@ -811,7 +811,8 @@ void WebConfigServer::formatSetupSsid(char* ssid, size_t size, const uint8_t* pu
   if (strcmp(WEBCONFIG_AP_PREFIX, "MC") == 0) {
     snprintf(ssid, size, "MC-%02X%s", pub_key[0], suffix);
   } else {
-    snprintf(ssid, size, "%s-%02X%02X%s", WEBCONFIG_AP_PREFIX, pub_key[0], pub_key[1], suffix);
+    snprintf(ssid, size, "%.*s-%02X%02X%s", open_choice ? 22 : 27, WEBCONFIG_AP_PREFIX,
+             pub_key[0], pub_key[1], suffix);
   }
 }
 
@@ -919,10 +920,6 @@ bool WebConfigServer::startSetupMode(char reply[], SetupWiFiAccess access) {
   // Reuse that listener when the operator explicitly brings setup back.
   const bool waiting = waitingForStation();
   const bool promote_lan = _mode == MODE_LAN && (!_owns_wifi || waiting);
-  if ((_mode != MODE_OFF && !promote_lan && !waiting) || _stopping) {
-    strcpy(reply, "Err: webconfig busy");
-    return false;
-  }
   initializeManagementPassword();
   mesh::esp32::managementPassword::Snapshot credential;
   if (!mesh::esp32::managementPassword::snapshot(credential)) {
@@ -937,6 +934,21 @@ bool WebConfigServer::startSetupMode(char reply[], SetupWiFiAccess access) {
   }
   if (open_choice && !credential.password[0]) {
     strcpy(reply, "Set an admin password before starting open setup");
+    return false;
+  }
+  if (!_stopping && _mode != MODE_OFF && access != SetupWiFiAccess::Configured) {
+    if (_mode == MODE_SETUP && access == _setup_access) {
+      snprintf(reply, 160, "WebConfig AP: already running '%s'", _ap_ssid);
+      return true;
+    }
+    // Drain the old listener before changing the hotspot. requestStart queues
+    // this exact security choice for the loop to start after teardown.
+    requestStop();
+    _start_retryable = true;
+    return false;
+  }
+  if ((_mode != MODE_OFF && !promote_lan && !waiting) || _stopping) {
+    strcpy(reply, "Err: webconfig busy");
     return false;
   }
   const char* ap_password = !open_choice && eligible ? credential.password : nullptr;

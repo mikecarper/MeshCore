@@ -220,7 +220,7 @@ MESH_COMPANION_HELP_BEGIN
     "  set webui <on|off>\r\n"
 MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
-    "  start webconfig [ap]\r\n"
+    "  start webconfig [ap [open|wpa2]]\r\n"
 MESH_COMPANION_HELP_END
 MESH_COMPANION_HELP_BEGIN
     "  stop webconfig\r\n"

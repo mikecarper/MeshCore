@@ -65,8 +65,9 @@ static_assert(TRANSPORT == 6, "transport");
 static_assert(ADVERT == 7, "advert");
 static_assert(SENSORS == 8, "sensors");
 static_assert(WIFI_SETUP == 9, "wifi setup");
-static_assert(DISCOVERY == 10, "discovery follows setup");
-static_assert(Count == 11, "count");
+static_assert(WIFI_SETUP_OPEN == 10, "open hotspot follows WPA2");
+static_assert(DISCOVERY == 11, "discovery follows setup");
+static_assert(Count == 12, "count");
 int main() {{ return 0; }}
 """
         with tempfile.TemporaryDirectory() as temp_dir:

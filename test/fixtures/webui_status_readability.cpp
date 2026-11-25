@@ -38,7 +38,7 @@ public:
     return true;
   }
   void requestNetworkAccess() { ++requests; }
-  bool requestStart(bool force_ap, char*) {
+  bool requestStart(bool force_ap, char*, SetupWiFiAccess = SetupWiFiAccess::Configured) {
     _mode = force_ap ? MODE_SETUP : MODE_CONNECTING;
     return true;
   }
@@ -54,7 +54,7 @@ struct { bool isOTAUpdateRunning() const { return false; } } board;
 struct MyMesh {
   WebConfigServer* _webconfig = nullptr;
   bool getWebUIStatus(char*) const;
-  bool startWebConfig(bool, char*);
+  bool startWebConfig(bool, char*, SetupWiFiAccess = SetupWiFiAccess::Configured);
 };
 @ROLE_STATUS@
 @ROLE_START@

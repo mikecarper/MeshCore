@@ -363,6 +363,7 @@ struct WebConfigServer {
   void createServer() { ++servers; }
   void requestNetworkAccess() {}
   static void formatSetupSsid(char* ssid, size_t size, const uint8_t* pub_key, bool open_choice = false);
+  void requestStop() { _stopping = true; _mode = MODE_OFF; }
   void initializeManagementPassword();
   bool waitingForStation() const;
   bool startSetupMode(char reply[], SetupWiFiAccess access = SetupWiFiAccess::Configured);
@@ -409,6 +410,13 @@ void reset(Fault fault = Fault::None) {
   DNSServer::starts = 0; mesh::wireless::control().disabled = false;
 }
 int main() {
+  if (expectedAuth() == WIFI_AUTH_WPA2_PSK) {
+    reset(); WebConfigServer portal; char reply[160] = {};
+    assert(portal.startSetupMode(reply, SetupWiFiAccess::Protected));
+    assert(portal.startSetupMode(reply, SetupWiFiAccess::Protected) && !portal._stopping);
+    assert(!portal.startSetupMode(reply, SetupWiFiAccess::Open));
+    assert(portal._stopping && portal._start_retryable);
+  }
   for (auto access : {SetupWiFiAccess::Open, SetupWiFiAccess::Protected}) {
     reset(); WebConfigServer portal; char reply[160] = {};
     const bool open = access == SetupWiFiAccess::Open;

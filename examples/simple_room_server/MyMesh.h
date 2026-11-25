@@ -426,7 +426,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
                                mesh::RoomJsonWriter& json) __attribute__((noinline));
   bool _unconfigured_setup_espnow_suspended = false;
   void suspendUnconfiguredSetupBridges();
-  bool startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup);
+  bool startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup,
+                          SetupWiFiAccess access = SetupWiFiAccess::Configured);
   bool _wc_batch_active = false;
   bool _wc_restart_pending = false;
   uint8_t _wc_slot_restart_mask = 0;
@@ -1168,7 +1169,7 @@ public:
 #endif
 
 #ifdef WITH_WEBCONFIG
-  bool startWebConfig(bool force_ap, char* reply) override;
+  bool startWebConfig(bool force_ap, char* reply, SetupWiFiAccess access = SetupWiFiAccess::Configured) override;
   bool isWebConfigStopping() const { return _webconfig && _webconfig->isStopping(); }
   bool hasWirelessNetworkClient() const { return _web_terminal != nullptr; }
   bool stopWebConfig(char* reply) override;

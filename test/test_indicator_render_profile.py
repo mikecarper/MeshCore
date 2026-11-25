@@ -174,7 +174,7 @@ int main() {
         self.assertIn("static_cast<uint16_t>(renderWidth()), _compactText", display)
         self.assertIn("* profile_scale;", display)
 
-    def test_indicator_setup_is_a_normal_eighth_home_page(self):
+    def test_indicator_setup_pages_follow_normal_home_navigation(self):
         ui = UI.read_text(encoding="utf-8")
         page_start = ui.index("static void drawCompanionWiFiSetupPage")
         page_end = ui.index("\n}\n#endif\n\n#include \"icons.h\"", page_start) + 2
@@ -193,13 +193,13 @@ int main() {
         enum_start = ui.index("  enum HomePage {")
         enum = ui[enum_start : ui.index("\n  };", enum_start)]
         self.assertIn(
-            "#if UI_WIFI_SETUP_HOME_PAGE == 1\n    WIFI_SETUP,\n#endif\n"
+            "#if UI_WIFI_SETUP_HOME_PAGE == 1\n    WIFI_SETUP,\n    WIFI_SETUP_OPEN,\n#endif\n"
             "#if !(defined(UI_NO_DISCOVER_SCREEN) && (UI_NO_DISCOVER_SCREEN + 0 != 0))\n"
             "    DISCOVERY,\n#endif\n    Count",
             enum,
         )
         self.assertIn("_page == HomePage::WIFI_SETUP", ui)
-        self.assertIn("if (_page == HomePage::WIFI_SETUP) return 1000;", ui)
+        self.assertIn("if (isWiFiSetupPage()) return 1000;", ui)
         self.assertIn("wifi_setup_active && !_wifi_setup_was_active", ui)
         self.assertIn("isCompanionWiFiConnected()", page)
         self.assertIn("hasCompanionWiFiCredentials()", page)
@@ -222,7 +222,7 @@ int main() {
         mesh = (ROOT / "examples/companion_radio/MyMesh.cpp").read_text()
         self.assertIn('strcmp(command, "get display.wifi")', mesh)
         self.assertIn("_task->gotoHomeScreen();", ui)
-        self.assertIn("requestCompanionWiFiSetup();", ui)
+        self.assertIn("requestCompanionWiFiSetup(_page == HomePage::WIFI_SETUP_OPEN", ui)
         self.assertIn('strcpy(tmp, "WiFi: SETUP");', ui)
         self.assertIn('strcpy(tmp, "SETUP");', ui)
 
@@ -300,7 +300,8 @@ int main() {
         header = WEBCONFIG_HEADER.read_text(encoding="utf-8")
         self.assertIn('#define WEBCONFIG_AP_PREFIX "MeshCore-Setup"', header)
         source = WEBCONFIG_SOURCE.read_text(encoding="utf-8")
-        self.assertIn('"%s-%02X%02X%s", WEBCONFIG_AP_PREFIX, pub_key[0], pub_key[1], suffix', source)
+        self.assertIn('"%.*s-%02X%02X%s"', source)
+        self.assertIn("pub_key[0], pub_key[1], suffix", source)
         self.assertIn("sizeof(WEBCONFIG_AP_PREFIX) <= 28", source)
 
     def test_lora_fresh_install_uses_compiled_cascade_defaults(self):

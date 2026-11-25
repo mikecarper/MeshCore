@@ -268,9 +268,9 @@ struct MyMesh {
   mesh::LocalIdentity getSelfId() { return self_id; } void* getRTCClock() { return nullptr; }
   void configureBridgeFilter(AbstractBridge*) {} void drainOutbound(unsigned) {} void otaAlert(const char*) {}
   void suspendUnconfiguredSetupBridges(); void serviceIdleWiFi();
-  bool startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup @SETUP_ACCESS@);
+  bool startWebConfigImpl(bool force_ap, char* reply, bool automatic_setup, SetupWiFiAccess = SetupWiFiAccess::Configured);
   @WIFI_OWNER_DECLARATION@
-  bool startWebConfig(bool force_ap, char* reply); bool stopWebConfig(char* reply);
+  bool startWebConfig(bool force_ap, char* reply, SetupWiFiAccess = SetupWiFiAccess::Configured); bool stopWebConfig(char* reply);
   bool getWebUIStatus(char* reply) const { strcpy(reply, "Web UI status"); return true; }
   uint32_t getPowerSaveSleepMilliseconds(uint32_t) const;
   bool hasPendingWork() const; uint32_t getPowerSaveSleepSeconds(uint32_t) const;
@@ -470,7 +470,6 @@ class ESP32FullPowerLifecycleTest(unittest.TestCase):
                 .replace("@INFRA_BACKEND@", infra_backend)
                 .replace("@STOP_OWNED_WIFI@", stop_owned)
                 .replace("@SETUP_WINDOW@", window).replace("@CHECKS@", checks)
-                .replace("@SETUP_ACCESS@", ", SetupWiFiAccess = SetupWiFiAccess::Configured" if role == "simple_repeater" else "")
                 .replace("@WORKER@", worker))
 
     def test_saved_wifi_off_blocks_repeater_and_room_boot_without_changing_services(self):
@@ -691,8 +690,8 @@ int main() {
                     if mask.startswith("("):
                         # Reintroducing the manual suspension must break the
                         # exact command/replay regression, not just a source check.
-                        old = body.replace("return startWebConfigImpl(force_ap, reply, false);",
-                                           "return startWebConfigImpl(force_ap, reply, true);")
+                        old = body.replace("return startWebConfigImpl(force_ap, reply, false, access);",
+                                           "return startWebConfigImpl(force_ap, reply, true, access);")
                         self.assertNotEqual(old, body)
                         with self.assertRaises(AssertionError):
                             self.compile_and_run(old, *FLAGS, "-DESP32=1")

@@ -267,7 +267,7 @@ should use command `0x42`. See [Companion radio binary protocol](companion_proto
 | Board | [`get/set battery.profile`; `get/set battery.empty`; `get/set battery.full`; `get/set adc.multiplier`](cli_commands.md#configure-nrf52-battery-protection) | nRF52 power-management boards with a text CLI; relative ADC calibration | Feature | Feature | Feature |
 | Ethernet | [`eth.status`](cli_commands.md#view-ethernet-connection-status) | Ethernet target | Feature | Feature | No |
 | Browser OTA | [`start ota [ap]`; `stop ota`](cli_commands.md#start-or-stop-an-over-the-air-ota-firmware-update) | ESP32 browser uploader | No | No | No |
-| WebConfig | [`start webconfig [ap]`; `stop webconfig`; `get/set webui`](cli_commands.md#browser-configuration-portal-esp32-repeater-and-room-server) | ESP32 WebConfig | No | No | No |
+| WebConfig | [`start webconfig [ap [open\|wpa2]]`; `stop webconfig`; `get/set webui`](cli_commands.md#browser-configuration-portal-esp32-repeater-and-room-server) | ESP32 WebConfig | No | No | No |
 | WiFi | [`get/set wifi.ssid`; `set wifi.pwd`; `get wifi.status`; `get/set wifi.powersave`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#wifi-commands) | ESP32 WiFi | No | No | No |
 | WiFi | [`get/set wifi.cli`](cli_commands.md#browser-configuration-portal-esp32-repeater-and-room-server) | ESP32 WebConfig | No | No | No |
 | LoRa OTA | [`ota help`; `ota ?`; `ota h`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes |
@@ -448,7 +448,7 @@ should use command `0x42`. See [Companion radio binary protocol](companion_proto
 | Board | [`get pwrmgt.support`; `get pwrmgt.source`; `get pwrmgt.bootreason`; `get pwrmgt.bootmv`](nrf52_power_management.md#cli-commands) | nRF52 only | No | No | No | No | No |
 | Ethernet | [`eth.status`](cli_commands.md#view-ethernet-connection-status) | Ethernet target | Feature | Feature | No | No | Feature |
 | Browser OTA | [`start ota [ap]`; `stop ota`](cli_commands.md#start-or-stop-an-over-the-air-ota-firmware-update) | Compiled browser uploader | No | No | Yes | Feature | Feature |
-| WebConfig | [`start webconfig [ap]`; `stop webconfig`; `get/set webui`](cli_commands.md#browser-configuration-portal-esp32-repeater-and-room-server) | Compiled WebConfig | No | No | No | Feature | Feature |
+| WebConfig | [`start webconfig [ap [open\|wpa2]]`; `stop webconfig`; `get/set webui`](cli_commands.md#browser-configuration-portal-esp32-repeater-and-room-server) | Compiled WebConfig | No | No | No | Feature | Feature |
 | WiFi | [`get/set wifi.ssid`; `set wifi.pwd`; `get wifi.status`; `get/set wifi.powersave`](https://github.com/mikecarper/MeshCore/blob/keymindCascade/MQTT_IMPLEMENTATION.md#wifi-commands) | MQTT WiFi, or standalone FULL WebConfig; standalone has no `get wifi.pwd` | No | No | No | Yes | Feature |
 | WiFi | [`get/set wifi.cli`](cli_commands.md#browser-configuration-portal-esp32-repeater-and-room-server) | Compiled WebConfig | No | No | No | Feature | Feature |
 | LoRa OTA | [`ota help`; `ota ?`; `ota h`](ota_protocol.md#11-cli-surface-otaclicpp) | LoRa OTA build | No | No | Yes | Yes | Yes |

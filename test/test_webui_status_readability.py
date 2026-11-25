@@ -29,11 +29,10 @@ class WebUIStatusReadabilityTest(unittest.TestCase):
         else:
             role_status = extract_braced(role_source, "bool MyMesh::getWebUIStatus(")
             start_method = extract_braced(role_source, "bool MyMesh::startWebConfigImpl(")
-            block = extract_braced(start_method, "  if (_webconfig && _webconfig->isRunning())")
-            access = "  const auto access = SetupWiFiAccess::Configured;\n" if role == "simple_repeater" else ""
-            role_start = ("bool MyMesh::startWebConfig(bool force_ap, char* reply) {\n"
+            block = extract_braced(start_method, "  if (_webconfig && _webconfig->isRunning()")
+            role_start = ("bool MyMesh::startWebConfig(bool force_ap, char* reply, SetupWiFiAccess access) {\n"
                           "  (void)force_ap;\n"
-                          "  const bool automatic_setup = false;\n" + access + block +
+                          "  const bool automatic_setup = false;\n" + block +
                           "\n  return false;\n}")
             default_enabled = "false"
         fixture = (ROOT / "test/fixtures/webui_status_readability.cpp").read_text()

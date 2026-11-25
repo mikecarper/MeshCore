@@ -470,7 +470,9 @@ class WirelessControlTests(unittest.TestCase):
 #include <helpers/WirelessPolicyBackend.h>
 #include "examples/companion_radio/CompanionWireless.h"
 bool companion_wifi_requested=true,companion_wifi_active=true;
-bool companion_wifi_setup_requested=false,companion_wifi_disable_in_progress=false;
+#include <helpers/esp32/SetupWiFiAccess.h>
+SetupWiFiAccess companion_wifi_setup_requested=SetupWiFiAccess::Configured;
+bool companion_wifi_disable_in_progress=false;
 bool stop_pending=false;
 static bool saveCompanionWiFiPreference(bool on){
  if(!the_mesh.storage_accepts)return false;

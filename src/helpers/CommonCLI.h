@@ -21,6 +21,7 @@
 #endif
 #include <helpers/MorseReplyHandoff.h>
 #include <helpers/WirelessControl.h>
+#include <helpers/esp32/SetupWiFiAccess.h>
 #include <helpers/FleetCommand.h>
 #include <helpers/BatteryForwarding.h>
 #include <helpers/EmergencyPowerConfig.h>
@@ -764,7 +765,8 @@ public:
 
   // Browser-based configuration portal. ESP32 infrastructure roles override
   // these; force_ap=true asks for the captive SoftAP even when WiFi is set.
-  virtual bool startWebConfig(bool force_ap, char* reply) {
+  virtual bool startWebConfig(bool force_ap, char* reply, SetupWiFiAccess access = SetupWiFiAccess::Configured) {
+    (void)access;
     (void)force_ap;
     (void)reply;
     return false;
