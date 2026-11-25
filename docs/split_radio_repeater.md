@@ -132,6 +132,33 @@ for the outer V4's repeater ID on 910.525 MHz. Then send a different packet
 on MediaMesh near the outer V4 and check for its ID on 911.150 MHz. Monitor
 both frequencies to confirm each test repeats only on its original network.
 
+### Receive both frequencies on a Companion
+
+On each downstream Companion with the USA primary, run `set radio2 mediamesh`.
+The outer V4 sends one packet at a time. Its automatic MediaMesh preamble
+gives an idle Companion scanning USA time to switch back to 911.150 MHz and
+detect the packet. Each board calculates timing from its own radio switches.
+
+After about two minutes of scanning, compare these readings:
+
+| Where | Command | MediaMesh value |
+| --- | --- | --- |
+| Outer V4 | `get radio2.scan` | Second number in `preamble=` is the transmitted length in symbols. |
+| Each Companion | `get radio2.timing` | Second number in `need=` is that receiver's recommended length. |
+
+Leave the preset on automatic when its transmitted length meets every
+receiver's recommendation. For example, if the V4 sends 40 symbols and
+a Companion needs 48, run this on the **outer V4** for the USA setup:
+
+```text
+set radio2 911.150,250,7,5,rxtx,48
+```
+
+Use the largest requirement among your receivers. For traffic going the
+other way, compare the sender's preamble with the outer V4's `need=`.
+A receiver busy transmitting or finishing another packet can still miss a
+transmission. See [preamble timing](radio_profiles.md#preamble).
+
 ## Two receive-only V4s feeding one transmit-only V4
 
 The left V4 receives MediaMesh, the right V4 receives USA, and both feed the center
