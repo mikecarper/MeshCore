@@ -640,16 +640,19 @@ Bytes 34-49: Secret (16 bytes)
 **Total Length**: 50 bytes
 
 **Channel index**:
+
 - Slot count is build-specific. Read `max_channels` from byte 3 of
   `PACKET_DEVICE_INFO`; current profiles commonly expose 1, 8, or 40 slots.
 - No slot number has an intrinsic public/private meaning.
 
 **Channel Name**:
+
 - UTF-8 encoded
 - Maximum 32 bytes
 - Padded with null bytes (0x00) if shorter
 
 **Secret Field** (16 bytes):
+
 - Supply the exact 16-byte channel key. A private channel normally uses a
   cryptographically random key; known public and hashtag channels use their
   defined or derived key.
@@ -737,15 +740,18 @@ a raw byte count.
 ```
 
 **Data Type / Transport Mapping**:
+
 - `0x0000` (`DATA_TYPE_RESERVED`) is invalid and rejected with `PACKET_ERROR`.
 - `0xFFFF` (`DATA_TYPE_DEV`) is the developer namespace for experimenting and developing apps.
 - Registered application/community namespaces occupy `0x0100`-`0xFEFF`; the remaining nonzero ranges are reserved for internal or development use. See the [Registered data_type values](#registered-data_type-values) table below.
 
 **Limits**:
+
 - Maximum payload length is `MAX_GROUP_DATA_LENGTH = MAX_PACKET_PAYLOAD - CIPHER_BLOCK_SIZE - 3 = 165` bytes.
 - Larger payloads are rejected with `PACKET_ERROR` (`ERR_CODE_ILLEGAL_ARG`).
 
 **Response**: `PACKET_OK` (0x00) on success, or `PACKET_ERROR` (0x01) with one of:
+
 - `ERR_CODE_NOT_FOUND` (2) - unknown `channel_idx`
 - `ERR_CODE_ILLEGAL_ARG` (6) - invalid `path_len`, reserved `data_type` (`0x0000`), or payload larger than `MAX_GROUP_DATA_LENGTH`
 - `ERR_CODE_TABLE_FULL` (3) - outbound send queue is full; retry later
@@ -838,6 +844,7 @@ Byte 0: 0x0A
 ```
 
 **Response**: 
+
 - `PACKET_CHANNEL_MSG_RECV` (0x08) or `PACKET_CHANNEL_MSG_RECV_V3` (0x11) for channel messages
 - `PACKET_CONTACT_MSG_RECV` (0x07) or `PACKET_CONTACT_MSG_RECV_V3` (0x10) for contact messages
 - `PACKET_CHANNEL_DATA_RECV` (0x1B) for channel data datagrams
@@ -1038,6 +1045,7 @@ def parse_channel_message(data):
 Use the `SEND_CHANNEL_MESSAGE` command (see [Commands](#commands)).
 
 **Important**: 
+
 - The shared text envelope permits up to 160 UTF-8 bytes. For channel text,
   firmware prepends `<sender name>: ` inside that envelope, so the available
   message body is `160 - prefix_bytes` and varies with the configured name.

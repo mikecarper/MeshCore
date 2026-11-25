@@ -61,6 +61,7 @@ Shutdown reason codes (stored in GPREGRET2):
 | Keepteen LT1 / Minewsemi ME25LS01                 | No          | No          | No        |
 
 Notes:
+
 - "Implemented" reflects Phase 1 (boot lockout + shutdown reason capture).
 - R1 Neo has the integration compiled, but its board configuration deliberately
   sets `PWRMGT_VOLTAGE_BOOTLOCK` to `0`; automatic protective shutdown and its
@@ -118,6 +119,7 @@ The power management functionality is integrated into the `NRF52Board` base clas
 ### Early Boot Capture
 
 A static constructor with priority 101 in `NRF52Board.cpp` captures the RESETREAS and GPREGRET2 registers before:
+
 - SystemInit() (priority 102) - which clears RESETREAS
 - Static C++ constructors (default priority 65535)
 
@@ -128,61 +130,66 @@ This ensures we capture the true reset reason before any initialisation code run
 To enable power management on a board variant:
 
 1. **Enable in platformio.ini**:
-   ```ini
-   -D NRF52_POWER_MANAGEMENT
-   ```
+
+    ```ini
+    -D NRF52_POWER_MANAGEMENT
+    ```
 
 2. **Define configuration in variant.h**:
-   ```c
-   #define PWRMGT_VOLTAGE_BOOTLOCK    3300   // Won't boot below this voltage (mV)
-   #define PWRMGT_LPCOMP_AIN          7      // AIN channel for voltage sensing
-   #define PWRMGT_LPCOMP_REFSEL       2      // REFSEL (0-6=1/8..7/8, 7=ARef, 8-15=1/16..15/16)
-   ```
+
+    ```c
+    #define PWRMGT_VOLTAGE_BOOTLOCK    3300   // Won't boot below this voltage (mV)
+    #define PWRMGT_LPCOMP_AIN          7      // AIN channel for voltage sensing
+    #define PWRMGT_LPCOMP_REFSEL       2      // REFSEL (0-6=1/8..7/8, 7=ARef, 8-15=1/16..15/16)
+    ```
 
 3. **Implement in board .cpp file**:
-   ```cpp
-   #ifdef NRF52_POWER_MANAGEMENT
-   const PowerMgtConfig power_config = {
-     .lpcomp_ain_channel = PWRMGT_LPCOMP_AIN,
-     .lpcomp_refsel = PWRMGT_LPCOMP_REFSEL,
-     .voltage_bootlock = PWRMGT_VOLTAGE_BOOTLOCK
-   };
 
-   void MyBoard::initiateShutdown(uint8_t reason) {
-     // Board-specific shutdown preparation (e.g., disable peripherals)
-     bool enable_lpcomp = (reason == SHUTDOWN_REASON_LOW_VOLTAGE ||
-                           reason == SHUTDOWN_REASON_BOOT_PROTECT);
+    ```cpp
+    #ifdef NRF52_POWER_MANAGEMENT
+    const PowerMgtConfig power_config = {
+      .lpcomp_ain_channel = PWRMGT_LPCOMP_AIN,
+      .lpcomp_refsel = PWRMGT_LPCOMP_REFSEL,
+      .voltage_bootlock = PWRMGT_VOLTAGE_BOOTLOCK
+    };
 
-     if (enable_lpcomp) {
-       configureVoltageWake(power_config.lpcomp_ain_channel, power_config.lpcomp_refsel);
-     }
+    void MyBoard::initiateShutdown(uint8_t reason) {
+      // Board-specific shutdown preparation (e.g., disable peripherals)
+      bool enable_lpcomp = (reason == SHUTDOWN_REASON_LOW_VOLTAGE ||
+                            reason == SHUTDOWN_REASON_BOOT_PROTECT);
 
-     enterSystemOff(reason);
-   }
-   #endif
+      if (enable_lpcomp) {
+        configureVoltageWake(power_config.lpcomp_ain_channel, power_config.lpcomp_refsel);
+      }
 
-   void MyBoard::begin() {
-     NRF52Board::begin();  // or NRF52BoardDCDC::begin()
-     // ... board setup ...
+      enterSystemOff(reason);
+    }
+    #endif
 
-   #ifdef NRF52_POWER_MANAGEMENT
-     checkBootVoltage(&power_config);
-   #endif
-   }
-   ```
+    void MyBoard::begin() {
+      NRF52Board::begin();  // or NRF52BoardDCDC::begin()
+      // ... board setup ...
 
-   For user-initiated shutdowns, `powerOff()` remains board-specific. Power management only arms LPCOMP for automated shutdown reasons (boot protection/low voltage).
+    #ifdef NRF52_POWER_MANAGEMENT
+      checkBootVoltage(&power_config);
+    #endif
+    }
+    ```
+
+    For user-initiated shutdowns, `powerOff()` remains board-specific. Power management only arms LPCOMP for automated shutdown reasons (boot protection/low voltage).
 
 4. **Declare override in board .h file**:
-   ```cpp
-   #ifdef NRF52_POWER_MANAGEMENT
-     void initiateShutdown(uint8_t reason) override;
-   #endif
-   ```
+
+    ```cpp
+    #ifdef NRF52_POWER_MANAGEMENT
+      void initiateShutdown(uint8_t reason) override;
+    #endif
+    ```
 
 ### Voltage Wake Configuration
 
 The LPCOMP (Low Power Comparator) is configured to:
+
 - Monitor the specified AIN channel (0-7 corresponding to P0.02-P0.05, P0.28-P0.31)
 - Compare against VDD fraction reference (REFSEL: 0-6=1/8..7/8, 7=ARef, 8-15=1/16..15/16)
 - Detect UP events (voltage rising above threshold)
@@ -218,6 +225,7 @@ VBUS wake is enabled via the POWER peripheral USBDETECTED event whenever `config
 ### SoftDevice Compatibility
 
 The power management code checks whether SoftDevice is enabled and uses the appropriate API:
+
 - When SD enabled: `sd_power_*` functions
 - When SD disabled: Direct register access (NRF_POWER->*)
 

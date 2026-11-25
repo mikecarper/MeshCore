@@ -335,30 +335,31 @@ complete target inventory, storage layouts, and safety contract.
   `ota cancel` to durably discard device staging; a folder capture keeps its
   host partial for a later resume.
 - A legacy app-only internal-flash **nRF52** that still runs but reports `no EndF` can use the pre-provisioned rescue path
-  if its physical EndF is intact and only app-side validation is failing. Fetch the exact `[rescue]`
-  in-place delta with an explicit acknowledgement, obtain its 16-hex-digit `base_hash` from the package
-  metadata, then run:
+    if its physical EndF is intact and only app-side validation is failing. Fetch the exact `[rescue]`
+    in-place delta with an explicit acknowledgement, obtain its 16-hex-digit `base_hash` from the package
+    metadata, then run:
 
-  ```text
-  ota pull <mid8> flash rescue
-  # wait for ota status to say ready to install
-  ota rescue install <base_hash16>
-  ```
+    ```text
+    ota pull <mid8> flash rescue
+    # wait for ota status to say ready to install
+    ota rescue install <base_hash16>
+    ```
 
-  This is not a force option. It refuses a normally valid EndF, a different package hash, hardware or
-  target mismatch, corrupt payload, and invalid/untrusted signatures. The bootloader independently hashes
-  the running app and rejects a wrong base before writing the app. If the physical EndF is absent or the
-  rescue commands were not already in the running firmware, recover over USB.
-  Release chains should put this command in their first bridge and keep it in every bridge after that.
-  The shared-internal bootloader-update builds are intentionally excluded:
-  without valid live `EndF`, they refuse every internal pull before erase
-  because their normal application can extend through `0xED000`. Recover one
-  of those builds over USB/BLE DFU or SWD.
+    This is not a force option. It refuses a normally valid EndF, a different package hash, hardware or
+    target mismatch, corrupt payload, and invalid/untrusted signatures. The bootloader independently hashes
+    the running app and rejects a wrong base before writing the app. If the physical EndF is absent or the
+    rescue commands were not already in the running firmware, recover over USB.
+    Release chains should put this command in their first bridge and keep it in every bridge after that.
+    The shared-internal bootloader-update builds are intentionally excluded:
+    without valid live `EndF`, they refuse every internal pull before erase
+    because their normal application can extend through `0xED000`. Recover one
+    of those builds over USB/BLE DFU or SWD.
+
 - If an **install** fails, recovery depends on the board and bootloader. When
-  its recovery mode remains available:
-  - **nRF52:** it appears as a USB drive; drag a known-good firmware `.uf2` for that exact board onto it
-    to recover.
-  - **ESP32:** it keeps the previous firmware in the other slot and rolls back.
+    its recovery mode remains available:
+    - **nRF52:** it appears as a USB drive; drag a known-good firmware `.uf2` for that exact board onto it
+      to recover.
+    - **ESP32:** it keeps the previous firmware in the other slot and rolls back.
 - When in doubt, you can always re-flash over USB the normal way.
 
 ---
@@ -540,23 +541,25 @@ remote area.
 
 1. Put the firmware files (`.mota` files - see below) in a folder on the computer.
 2. Install the supported [`motatool` fork](https://github.com/mikecarper/motatool) once
-   (Rust 1.86 or newer and a native linker are required) -
-   then point it at your node and the folder - over the node's **USB serial**, over **WiFi** if it is
-   an ESP32 WiFi companion or FULL ESP32 node, or over encrypted **Bluetooth** if it is an nRF52 Full Companion:
-   ```
-   cargo install --git https://github.com/mikecarper/motatool \
-     --rev 79a3eb5e5af16cae6e792e2d32c24ce590adeb40 --locked
-   # over USB serial:
-   motatool serve --dir ./my_firmware/ --serial /dev/ttyACM0 -v
-   # ...or over WiFi: the seeder is on dedicated TCP port 5001:
-   motatool serve --dir ./my_firmware/ --tcp 192.168.1.50:5001 -v
-   # ...or over paired BLE to an nRF52 Full Companion (protocol v14):
-   python3 tools/ble_mota/ble_mota_seeder.py \
-     --device MeshCore-MyCompanion --dir ./my_firmware/
-   ```
-   It answers the node's requests; your node then advertises those updates to neighbours, who can
-   `ota get` them like any other. (A WiFi node prints its IP + seeder port to the serial log on connect.
-   Details: [scripted setup and tool checks](lora_ota_automation.md).)
+    (Rust 1.86 or newer and a native linker are required) -
+    then point it at your node and the folder - over the node's **USB serial**, over **WiFi** if it is
+    an ESP32 WiFi companion or FULL ESP32 node, or over encrypted **Bluetooth** if it is an nRF52 Full Companion:
+
+    ```
+    cargo install --git https://github.com/mikecarper/motatool \
+      --rev 79a3eb5e5af16cae6e792e2d32c24ce590adeb40 --locked
+    # over USB serial:
+    motatool serve --dir ./my_firmware/ --serial /dev/ttyACM0 -v
+    # ...or over WiFi: the seeder is on dedicated TCP port 5001:
+    motatool serve --dir ./my_firmware/ --tcp 192.168.1.50:5001 -v
+    # ...or over paired BLE to an nRF52 Full Companion (protocol v14):
+    python3 tools/ble_mota/ble_mota_seeder.py \
+      --device MeshCore-MyCompanion --dir ./my_firmware/
+    ```
+
+    It answers the node's requests; your node then advertises those updates to neighbours, who can
+    `ota get` them like any other. (A WiFi node prints its IP + seeder port to the serial log on connect.
+    Details: [scripted setup and tool checks](lora_ota_automation.md).)
 
 Check the device's attach reply or run `ota folder`: `host=X/Y` means the firmware is advertising `X` of
 the `Y` valid entries reported by the host. Serve registries are deliberately RAM-bounded on smaller builds,

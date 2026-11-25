@@ -797,6 +797,7 @@ the PIN page until Bluetooth connects or the two-minute pairing window expires.
 
 ### 6.7. Q: My RAK/T1000-E/xiao_nRF52/... device seems to be corrupted, how do I wipe it clean to start fresh?
 **A: If you're able to connect to the device from your MeshCore app**
+
 1. Navigate to Gear icon(Settings) on the upper right corner
 2. Click on `Export Settings` button, choose `Select All` and Confirm. This will save your Node configuration
 3. Now choose `Factory Reset` option
@@ -808,6 +809,7 @@ the PIN page until Bluetooth connects or the two-minute pairing window expires.
 9. Find `Reboot` button on of the Settings list
 
 **B: You're not able to connect to the App**
+
 1. Connect USB cable to your device
 2. Go to https://flasher.meshcore.io
 3. Search for your device in the list
@@ -1057,6 +1059,7 @@ limit, separate from the 33S module's 9 dBm safety ceiling.
 MeshCore supports Ethernet on RAK4631 boards using the [RAK13800](https://docs.rakwireless.com/product-categories/wisblock/rak13800/datasheet/) WisBlock Ethernet module (based on the W5100S chip).
 
 **Hardware required:**
+
 - RAK4631 WisBlock Core
 - RAK19007 or RAK19018 WisBlock Base Board (with an available IO slot)
 - RAK13800 WisBlock Ethernet module
@@ -1065,10 +1068,12 @@ MeshCore supports Ethernet on RAK4631 boards using the [RAK13800](https://docs.r
 **Firmware:**
 Flash one of the Ethernet-enabled firmware variants. RAK4631 Companion builds
 use USB or BLE instead of Ethernet.
+
 - `RAK_4631_repeater_ethernet` - Repeater with Ethernet CLI access
 - `RAK_4631_room_server_ethernet` - Room server with Ethernet CLI access
 
 **Connecting:**
+
 - The device obtains an IP address via DHCP automatically on boot.
 - For repeaters and room servers, connect to the device on TCP port 23 using any TCP client (e.g. `nc <ip> 23` or PuTTY in raw mode). This gives you the same CLI available over serial/USB.
 - Use the `eth.status` CLI command to check connection status and see the assigned IP address.

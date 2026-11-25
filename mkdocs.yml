@@ -123,6 +123,9 @@ nav:
 
 markdown_extensions:
   - md_in_html
+  - pymdownx.highlight:
+      use_pygments: false
+  - pymdownx.superfences
 
 theme:
   name: material

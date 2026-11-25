@@ -15,11 +15,12 @@ Binary frame structures for companion radio stats commands. All multi-byte integ
 ### Stats Sub-Types
 
 The `CMD_GET_STATS` command uses a 2-byte frame structure:
+
 - **Byte 0:** `CMD_GET_STATS` (56)
 - **Byte 1:** Stats sub-type:
-  - `STATS_TYPE_CORE` (0) - Get core device statistics
-  - `STATS_TYPE_RADIO` (1) - Get radio statistics
-  - `STATS_TYPE_PACKETS` (2) - Get packet statistics
+    - `STATS_TYPE_CORE` (0) - Get core device statistics
+    - `STATS_TYPE_RADIO` (1) - Get radio statistics
+    - `STATS_TYPE_PACKETS` (2) - Get packet statistics
 
 ## Response Codes
 
@@ -30,11 +31,12 @@ The `CMD_GET_STATS` command uses a 2-byte frame structure:
 ### Stats Response Sub-Types
 
 The `RESP_CODE_STATS` response uses a 2-byte header structure:
+
 - **Byte 0:** `RESP_CODE_STATS` (24)
 - **Byte 1:** Stats sub-type (matches command sub-type):
-  - `STATS_TYPE_CORE` (0) - Core device statistics response
-  - `STATS_TYPE_RADIO` (1) - Radio statistics response
-  - `STATS_TYPE_PACKETS` (2) - Packet statistics response
+    - `STATS_TYPE_CORE` (0) - Core device statistics response
+    - `STATS_TYPE_RADIO` (1) - Radio statistics response
+    - `STATS_TYPE_PACKETS` (2) - Packet statistics response
 
 ---
 

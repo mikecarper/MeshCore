@@ -26,38 +26,38 @@ channel editor. Connect to one device at a time.
 
 1. Connect the app to the rooftop device. In its Command Line, enter:
 
-   ```text
-   set mt.region us
-   ```
+    ```text
+    set mt.region us
+    ```
 
 2. Add the channel `#mt-longfast` in the app. Return to Command Line and enter:
 
-   ```text
-   set mt.rebroadcast on
-   get mt.status
-   ```
+    ```text
+    set mt.rebroadcast on
+    get mt.status
+    ```
 
 3. Check that the status says `active` and `rebroadcast=on`. Leave the device
-   powered on; the setting is saved even when the app disconnects.
+    powered on; the setting is saved even when the app disconnects.
 
 ### 2. Handheld device
 
 1. Connect the app to the handheld. In its Command Line, enter:
 
-   ```text
-   set mt.region us
-   ```
+    ```text
+    set mt.region us
+    ```
 
 2. Add the same channel: `#mt-longfast`. Return to Command Line and enter:
 
-   ```text
-   get mt.status
-   get mt.hops
-   ```
+    ```text
+    get mt.status
+    get mt.hops
+    ```
 
 3. Check that the status says `active` and hops is greater than zero. If hops
-   is zero, enter `set mt.hops 7`. You do not need to enable rebroadcasting on
-   the handheld to send messages.
+    is zero, enter `set mt.hops 7`. You do not need to enable rebroadcasting on
+    the handheld to send messages.
 
 For another region or channel, select the matching region and preset on both
 devices and on the Meshtastic radios you want to reach. See the
@@ -86,39 +86,39 @@ radio must also support the selected preset. Meshtext is not included in all
 older or smaller builds; for example, an LLCC68 radio cannot use LongFast.
 
 1. Open the [Companion's local CLI](companion_cli.md) in a compatible app or
-   terminal and select the region used by the Meshtastic devices. For example,
-   in the US:
+    terminal and select the region used by the Meshtastic devices. For example,
+    in the US:
 
-   ```text
-   set mt.region us
-   ```
+    ```text
+    set mt.region us
+    ```
 
-   Other supported values are `eu868`, `eu433`, `anz`, and `auto`. Auto can
-   infer some regions from the primary frequency; if it is ambiguous, choose
-   the correct region explicitly. Choose a preset, band, and transmit power
-   permitted for your location and supported by your radio.
+    Other supported values are `eu868`, `eu433`, `anz`, and `auto`. Auto can
+    infer some regions from the primary frequency; if it is ambiguous, choose
+    the correct region explicitly. Choose a preset, band, and transmit power
+    permitted for your location and supported by your radio.
 
 2. In the MeshCore app's channel editor, add `#mt-longfast` for the standard
-   public LongFast channel, or use another [supported preset](radio_profiles.md#meshtext-channel-chat)
-   matching the Meshtastic devices. The preset selects the matching public
-   channel name, public key, and radio2 settings automatically when radio2 is
-   available for automatic setup.
+    public LongFast channel, or use another [supported preset](radio_profiles.md#meshtext-channel-chat)
+    matching the Meshtastic devices. The preset selects the matching public
+    channel name, public key, and radio2 settings automatically when radio2 is
+    available for automatic setup.
 
 3. In the Companion CLI, check:
 
-   ```text
-   get mt.status
-   get radio2
-   ```
+    ```text
+    get mt.status
+    get radio2
+    ```
 
-   `get mt.status` must report that Meshtext is active. If radio2 was manually
-   turned off, use `set radio2 auto` and check again after two seconds. This
-   clears any saved manual radio2 profile. If another feature owns radio2,
-   resolve that conflict first. The status message explains why it cannot start.
+    `get mt.status` must report that Meshtext is active. If radio2 was manually
+    turned off, use `set radio2 auto` and check again after two seconds. This
+    clears any saved manual radio2 profile. If another feature owns radio2,
+    resolve that conflict first. The status message explains why it cannot start.
 
 4. Open the new channel in the app and send a message. The Meshtastic devices
-   must use the same region, preset, frequency slot, channel name, and key.
-   A queued message does not guarantee delivery.
+    must use the same region, preset, frequency slot, channel name, and key.
+    A queued message does not guarantee delivery.
 
 For private channels or other frequency slots, see the
 [full Meshtext reference](radio_profiles.md#meshtext-channel-chat).

@@ -21,24 +21,25 @@ not stored.
 ## Capture a phone failure
 
 1. Install the diagnostic UF2 for your exact board, or use its application DFU
-   ZIP. This does not require replacing the bootloader.
+    ZIP. This does not require replacing the bootloader.
 2. Connect with the phone normally and reproduce the failure. Keep the node
-   powered. Do not forget the Bluetooth device, reboot, or factory reset
-   before collecting the trace.
+    powered. Do not forget the Bluetooth device, reboot, or factory reset
+    before collecting the trace.
 3. Connect the node's USB cable to a computer and close other serial clients.
-   Install Python and pyserial if needed.
+    Install Python and pyserial if needed.
 4. Export the diagnostic report:
 
-   ~~~sh
-   python3 scripts/capture_nrf52_ble_debug.py --port /dev/ttyACM0 --output bluetooth-report.json
-   ~~~
+    ~~~sh
+    python3 scripts/capture_nrf52_ble_debug.py --port /dev/ttyACM0 --output bluetooth-report.json
+    ~~~
 
-   On Windows use the correct COM port instead of /dev/ttyACM0. The exporter
-   enters the Full Companion USB terminal at 115200 baud, reads diagnostics,
-   then returns it to binary mode. It does not reset or change settings.
+    On Windows use the correct COM port instead of /dev/ttyACM0. The exporter
+    enters the Full Companion USB terminal at 115200 baud, reads diagnostics,
+    then returns it to binary mode. It does not reset or change settings.
+
 5. Send the JSON report with the approximate failure time and what the phone
-   displayed. Export soon after failure because old events roll out of the
-   ring. Reboot or loss of power clears the RAM history.
+    displayed. Export soon after failure because old events roll out of the
+    ring. Reboot or loss of power clears the RAM history.
 
 If the Pi's attached T1000-E is used, its serial identity is
 34A9141999729D5D. Identify the physical board before flashing; an upstream

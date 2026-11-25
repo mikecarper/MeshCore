@@ -594,8 +594,9 @@ Match fields:
   width. Direct paths and TRACE SNR bytes never match. `path=blacklist`
   retains its separate unordered-list behavior.
 
-  Saved older prefix rules keep their start-anchored meaning. When retyping an
-  older `path=A1,B2` command, use `prefix=A1,B2` or `pa=^A1>B2` to retain it.
+    Saved older prefix rules keep their start-anchored meaning. When retyping an
+    older `path=A1,B2` command, use `prefix=A1,B2` or `pa=^A1>B2` to retain it.
+
 - `sender=` (`n=`) and `text=` (`x=`) match decrypted group text. An explicit
   authenticated channel (`public`, `#name`, or a channel key) is required;
   a raw channel hash is insufficient. See [content patterns](#content-patterns).

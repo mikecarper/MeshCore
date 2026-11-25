@@ -154,29 +154,30 @@ P1 image, not a recovery image.
 ## Install and activate
 
 1. Install the application through its normal USB UF2 or serial/Bluetooth DFU
-   route. LoRa delivery requires an already working, compatible application OTA
-   updater. An internal-only legacy receiver needs a delta from its exact
-   installed application; this image does not give a stock bootloader its first
-   LoRa update capability.
+    route. LoRa delivery requires an already working, compatible application OTA
+    updater. An internal-only legacy receiver needs a delta from its exact
+    installed application; this image does not give a stock bootloader its first
+    LoRa update capability.
 2. Leave the new application running for at least 70 seconds. It checks once
-   when radio and OTA activity are idle, then waits for the usual 1.5-second
-   grace and persistence checks before replacement and reboot. To start sooner,
-   use the local CLI or authenticated remote admin CLI:
+    when radio and OTA activity are idle, then waits for the usual 1.5-second
+    grace and persistence checks before replacement and reboot. To start sooner,
+    use the local CLI or authenticated remote admin CLI:
 
-   ```text
-   ota bootloader update
-   ```
+    ```text
+    ota bootloader update
+    ```
 
-   The command checks the installed bootloader and skips the update if a valid,
-   matching bootloader is already 2.4.12 or newer. Repeating the command while
-   it is armed is harmless. An `armed` reply means the update is queued until
-   the CLI reply and queued/in-flight radio transmissions drain.
+    The command checks the installed bootloader and skips the update if a valid,
+    matching bootloader is already 2.4.12 or newer. Repeating the command while
+    it is armed is harmless. An `armed` reply means the update is queued until
+    the CLI reply and queued/in-flight radio transmissions drain.
+
 3. After reboot, check `get bootloader.ver`. Optional diagnostics are
-   `ota bootloader embedded status` and `ota bootloader embedded audit`; save an
-   audit before installation to compare the application, filesystem, settings
-   and SoftDevice hashes afterward. The older
-   `ota bootloader embedded install HASH16` command remains available with the
-   confirmation shown by `status`.
+    `ota bootloader embedded status` and `ota bootloader embedded audit`; save an
+    audit before installation to compare the application, filesystem, settings
+    and SoftDevice hashes afterward. The older
+    `ota bootloader embedded install HASH16` command remains available with the
+    confirmation shown by `status`.
 
 Automatic installation is limited to one attempt per firmware image. A saved
 40-byte record in `/bl_auto` contains the full SHA-256 of the running image,

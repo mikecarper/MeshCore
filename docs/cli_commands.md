@@ -50,8 +50,11 @@ for radio profiles, feature switches, and other specialized commands.
 
 **Search terms:** restart, restart node, reboot device.
 
-**Usage:** 
-- `reboot`
+**Usage:**
+
+```text
+reboot
+```
 
 **Note:** No reply is sent.
 
@@ -62,6 +65,7 @@ for radio profiles, feature switches, and other specialized commands.
 **Search terms:** turn off device, shut down, power off.
 
 **Usage:**
+
 - `poweroff`, or
 - `shutdown`
 
@@ -104,7 +108,10 @@ boot selection. Automatic rollback depends on the installed bootloader.
 **Search terms:** bootloader mode, USB firmware update, UF2 mode.
 
 **Usage:**
-- `uf2reset`
+
+```text
+uf2reset
+```
 
 **Local connection only:** USB, direct network CLI, or Companion binary
 command `0x42` where the role supports the command; unavailable over LoRa.
@@ -117,42 +124,61 @@ local serial command surfaces. It is never accepted as a remote mesh command.
 
 ### Reset the clock and reboot
 **Usage:**
-- `clkreboot`
+
+```text
+clkreboot
+```
 
 **Note:** No reply is sent.
 
 ---
 
 ### Sync the clock with the remote device
-**Usage:** 
-- `clock sync`
+**Usage:**
+
+```text
+clock sync
+```
 
 ---
 
 ### Display current time in UTC
 **Usage:**
-- `clock`
+
+```text
+clock
+```
 
 ---
 
 ### Set the time to a specific timestamp
-**Usage:** 
-- `time <epoch_seconds>`
+**Usage:**
+
+```text
+time <epoch_seconds>
+```
 
 **Parameters:**
+
 - `epoch_seconds`: Unix epoch time
 
 ---
 
 ### Send a flood advert
-**Usage:** 
-- `advert`
+**Usage:**
+
+```text
+advert
+```
 
 ---
 
 ### Send a zero-hop advert
 **Usage:**
-- `advert.zerohop`
+
+```text
+advert.zerohop
+```
 
 ---
 
@@ -227,9 +253,12 @@ See the [OTA guide](ota_user_guide.md#adjust-lora-ota-speed).
 **Search terms:** WiFi OTA, wireless firmware update, OTA uploader, update firmware.
 
 **Usage:**
-- `start ota`
-- `start ota ap`
-- `stop ota`
+
+```text
+start ota
+start ota ap
+stop ota
+```
 
 On nRF52, `start ota` invokes Bluetooth DFU with the matching bootloader and
 application DFU ZIP. The WiFi/AP instructions below apply to ESP32.
@@ -269,24 +298,26 @@ folder transport.
 
 **Usage:**
 
-- `start webconfig`
-- `start webconfig ap`
-- `stop webconfig`
-- `set webui on`
-- `set webui off`
-- `get webui`
-- `get wifi.ssid`
-- `get wifi.pwd`
-- `get wifi.status`
-- `get wifi.diag`
-- `get wifi.powersave`
-- `get wifi.tx`
-- `get wifi.cli`
-- `set wifi.ssid <network name>`
-- `set wifi.pwd [password]`
-- `set wifi.powersave <none|min|max>`
-- `set wifi.tx <auto|2..21>`
-- `set wifi.cli <on|off>`
+```text
+start webconfig
+start webconfig ap
+stop webconfig
+set webui on
+set webui off
+get webui
+get wifi.ssid
+get wifi.pwd
+get wifi.status
+get wifi.diag
+get wifi.powersave
+get wifi.tx
+get wifi.cli
+set wifi.ssid <network name>
+set wifi.pwd [password]
+set wifi.powersave <none|min|max>
+set wifi.tx <auto|2..21>
+set wifi.cli <on|off>
+```
 
 `wifi.tx` accepts dBm in 0.25 steps and is saved separately from LoRa power.
 `auto` restores the normal WiFi power policy. The driver may select a different
@@ -525,8 +556,10 @@ and the primary LoRa or ESP-NOW radio remain available in every mode.
 
 **Usage:**
 
-- `get espnow.channel`
-- `set espnow.channel <channel>`
+```text
+get espnow.channel
+set espnow.channel <channel>
+```
 
 **Parameters:**
 
@@ -583,7 +616,10 @@ by the build recipe, not accepted as arbitrary CLI URLs.
 **Search terms:** factory defaults, reset settings, erase configuration.
 
 **Usage:**
-- `erase`
+
+```text
+erase
+```
 
 **Local connection only:** USB, direct network CLI, or Companion binary
 command `0x42` where the role supports the command; unavailable over LoRa.
@@ -598,8 +634,11 @@ command `0x42` where the role supports the command; unavailable over LoRa.
 
 **Search terms:** nearby nodes, neighbor list, neighbour list.
 
-**Usage:** 
-- `neighbors`
+**Usage:**
+
+```text
+neighbors
+```
 
 **Note:** The output of this command is limited to the 8 most recent adverts.
 
@@ -609,10 +648,12 @@ command `0x42` where the role supports the command; unavailable over LoRa.
 
 ### Remove a neighbor
 **Usage:** 
+
 - `neighbor.remove <pubkey_prefix>`
 - `neighbor.remove` - remove all neighbors
 
 **Parameters:** 
+
 - `pubkey_prefix`: An even-length hexadecimal prefix (up to the full 64-character
   public key). All neighbors matching it are removed. Invalid keys are rejected.
 
@@ -624,8 +665,11 @@ action. Newly heard zero-hop adverts can populate the table again.
 
 ### Discover zero hop neighbors
 
-**Usage:** 
-- `discover.neighbors`
+**Usage:**
+
+```text
+discover.neighbors
+```
 
 This command is available in every repeater build profile, including portable
 MQTT, standard, logging, OTA, unified FULL, and FULL logging-fallback artifacts. It does not
@@ -677,7 +721,10 @@ Refreshes the zero-hop neighbor table, then queries each neighbor for its region
 scopes and publishes the assembled table to the MQTT `neighbors` topic once.
 
 **Usage:**
-- `discover.scopes`
+
+```text
+discover.scopes
+```
 
 **Note:** Requires an MQTT observer build with the neighbors feature compiled in
 (all PSRAM boards, plus non-PSRAM boards built with `MQTT_NEIGHBORS_WITHOUT_PSRAM`).
@@ -745,8 +792,11 @@ RAM-only history. See [automatic advert limits](flood_filtering.md#automatic-flo
 
 <a id="stats-core"></a>
 ### System Stats - Battery, Uptime, Queue Length and Debug Flags
-**Usage:** 
-- `stats-core`
+**Usage:**
+
+```text
+stats-core
+```
 
 **Local connection only:** USB, direct network CLI, or Companion binary
 command `0x42` where the role supports the command; unavailable over LoRa.
@@ -800,29 +850,31 @@ Room servers provide local history and its CLI reads, without batch transmission
 
 **Usage:**
 
-- `get telemetry.temp [page]`
-- `get telemetry.volt [page]`
-- `get telemetry.volt.i2c [channel [page]]`
-- `get telemetry.gps [page]`
-- `get telemetry.noise [page]`
-- `get telemetry.noise2 [page]`
-- `get telemetry.minmax`
-- `get telemetry.temp minmax`
-- `get telemetry.volt minmax`
-- `set telemetry.gps <days>`
-- `get telemetry.tx`
-- `set telemetry.tx <off|direct|path>`
-- `set telemetry.tx schedule <off|1-30d>`
-- `get telemetry.tx.types`
-- `set telemetry.tx.types <on|off>`
-- `get telemetry.tx.<type>`
-- `set telemetry.tx.<type> <on|off>`
-- `send telemetry.tx now`
-- `get data.tx`
-- `get data.tx path`
-- `set data.tx path <direct|none|path>`
-- `get data.tx region`
-- `set data.tx region <auto|default|none|name>`
+```text
+get telemetry.temp [page]
+get telemetry.volt [page]
+get telemetry.volt.i2c [channel [page]]
+get telemetry.gps [page]
+get telemetry.noise [page]
+get telemetry.noise2 [page]
+get telemetry.minmax
+get telemetry.temp minmax
+get telemetry.volt minmax
+set telemetry.gps <days>
+get telemetry.tx
+set telemetry.tx <off|direct|path>
+set telemetry.tx schedule <off|1-30d>
+get telemetry.tx.types
+set telemetry.tx.types <on|off>
+get telemetry.tx.<type>
+set telemetry.tx.<type> <on|off>
+send telemetry.tx now
+get data.tx
+get data.tx path
+set data.tx path <direct|none|path>
+get data.tx region
+set data.tx region <auto|default|none|name>
+```
 
 **Parameters:**
 
@@ -2110,11 +2162,15 @@ node after the save succeeds. See [regulator recovery and hardware checks](power
 
 #### View or change this node's radio parameters
 **Usage:**
-- `get radio`
-- `get radio.preamble`
-- `set radio <freq>,<bw>,<sf>,<cr>[,<preamble|auto>]`
+
+```text
+get radio
+get radio.preamble
+set radio <freq>,<bw>,<sf>,<cr>[,<preamble|auto>]
+```
 
 **Parameters:**
+
 - `freq`: Frequency in MHz
 - `bw`: Bandwidth in kHz. Most targets allow `7.8`, `10.4`, `15.6`, `20.8`, `31.25`, `41.7`, `62.5`, `125`, `250`, `500`. LR1110 targets allow `62.5`, `125`, `250`, `500`.
 - `sf`: Spreading factor (5-12)
@@ -2156,12 +2212,16 @@ minimum and return to it exactly when it is safe.
 **Search terms:** radio preset, saved radio settings, switch frequency, private mesh.
 
 **Usage:**
-- `get preset [n]`
-- `add preset <name> <slot> <freq>,<bw>,<sf>,<cr>[,<preamble>]`
-- `load preset <slot>`
-- `del preset <slot>`
+
+```text
+get preset [n]
+add preset <name> <slot> <freq>,<bw>,<sf>,<cr>[,<preamble>]
+load preset <slot>
+del preset <slot>
+```
 
 **Parameters:**
+
 - `slot`: Preset slot (1-5)
 - `name`: 1-12 printable characters, no spaces or commas
 - `freq`, `bw`, `sf`, `cr`: Same values and validation as `set radio`
@@ -2221,10 +2281,14 @@ runtime-RAM headroom is too small for the resident table.
 **Search terms:** tx power, transmit strength, radio output power, dBm.
 
 **Usage:**
-- `get tx`
-- `set tx <dbm>`
+
+```text
+get tx
+set tx <dbm>
+```
 
 **Parameters:**
+
 - `dbm`: Requested radio-chip power in dBm. The valid range depends on the
   radio family, selected PA path, and any board-specific external-PA limit.
 
@@ -2252,12 +2316,14 @@ settings use a safe effective power without replacing the saved preference.
 
 #### Change the radio parameters for a set duration
 **Usage:** 
+
 - `tempradio <freq>,<bw>,<sf>,<cr>,<timeout_mins>`
 - `set tempradio <freq>,<bw>,<sf>,<cr>,<timeout_mins>` (alias)
 - `get tempradio`
 - `normalradio`
 
 **Parameters:**
+
 - `freq`: Frequency in MHz (150-2500)
 - `bw`: Bandwidth in kHz (same allowed values as `set radio`)
 - `sf`: Spreading factor (5-12)
@@ -2265,6 +2331,7 @@ settings use a safe effective power without replacing the saved preference.
 - `timeout_mins`: Duration in minutes (must be > 0)
 
 **Notes:**
+
 - `tempradio` is not saved to preferences and clears on reboot.
 - Application starts after two seconds and waits for the radio/reply handoff.
   `get tempradio` shows the live temporary RF tuple when active, `pending` while
@@ -2313,14 +2380,18 @@ intervals and the 24-hour watchdog policy. An explicitly saved normal-mode
 
 #### Schedule radio parameter changes
 **Usage:**
-- `set radioat <freq>,<bw>,<sf>,<cr>,<start_time>`
-- `get radioat [n|all]`
-- `del radioat [n|all]`
-- `set tempradioat <freq>,<bw>,<sf>,<cr>,<start_time>,<end_time>`
-- `get tempradioat [n|all]`
-- `del tempradioat [n|all]`
+
+```text
+set radioat <freq>,<bw>,<sf>,<cr>,<start_time>
+get radioat [n|all]
+del radioat [n|all]
+set tempradioat <freq>,<bw>,<sf>,<cr>,<start_time>,<end_time>
+get tempradioat [n|all]
+del tempradioat [n|all]
+```
 
 **Parameters:**
+
 - `freq`: Frequency in MHz (150-2500)
 - `bw`: Bandwidth in kHz (same allowed values as `set radio`)
 - `sf`: Spreading factor (5-12)
@@ -2330,6 +2401,7 @@ intervals and the 24-hour watchdog policy. An explicitly saved normal-mode
 - `n`: Scheduled entry number from `get radioat` or `get tempradioat`
 
 **Notes:**
+
 - Both relative endpoints use the same command-time snapshot of the node clock.
   For example, `set tempradioat 910.5,500,8,5,+5,+15` starts in 5 minutes
   and reverts in 15 minutes (10 minutes active). `set radioat 910.5,500,8,5,+5`
@@ -2398,10 +2470,14 @@ preamble. LoRa OTA treats v1.17.1.5 as that capability boundary.
 **Search terms:** radio frequency, LoRa frequency, MHz.
 
 **Usage:**
-- `get freq`
-- `set freq <frequency>`
+
+```text
+get freq
+set freq <frequency>
+```
 
 **Parameters:**
+
 - `frequency`: Frequency in MHz
 
 **Default:** `869.618`
@@ -2624,16 +2700,21 @@ The [Semtech LR20xx driver documents the capacitor range and step size](https://
 **Search terms:** RX boost, receive gain, receiver sensitivity, boosted reception.
 
 **Usage:**
-- `get radio.rxgain`
-- `set radio.rxgain <state>`
+
+```text
+get radio.rxgain
+set radio.rxgain <state>
+```
 
 **Parameters:**
-  - `state`: `on`|`off`
+
+- `state`: `on`|`off`
 
 **Default:** Target-specific. Most SX1262 and LR1110 targets default to `on`;
 Station G2/G3 targets default to `off`.
 
 **Notes:**
+
 - The saved setting is applied when the radio is free and persists across reboots.
   A busy radio keeps the change pending and applies it automatically; do not
   repeat the command. Unsupported hardware and failed saves remain errors.
@@ -2648,28 +2729,32 @@ Station G2/G3 targets default to `off`.
 **Search terms:** RX power saving, receiver sleep, radio power saving, RXPS.
 
 **Usage:**
-- `get radio.rxps`
-- `get radio.rxps.config`
-- `get radio.rxps.status`
-- `get radio.rxps.rfrx_disabled`
-- `get rxps.wd`
-- `set radio.rxps.rfrx_disabled <state>`
-- `set radio.rxps off`
-- `set radio.rxps on`
-- `set radio.rxps conservative`
-- `set radio.rxps balanced`
-- `set radio.rxps max`
-- `set radio.rxps max preamble <16|32>`
-- `set radio.rxps overdrive`
-- `set radio.rxps overdrive preamble <16|32>`
-- `set radio.rxps riskyWorkingMax`
-- `set radio.rxps riskyWorkingMax preamble <16|32>`
-- `set radio.rxps <1-10>`
-- `set radio.rxps level <1-10>`
-- `set radio.rxps level <1-10> preamble <16|32>`
-- `set radio.rxps <rx_us> <sleep_us>`
+
+```text
+get radio.rxps
+get radio.rxps.config
+get radio.rxps.status
+get radio.rxps.rfrx_disabled
+get rxps.wd
+set radio.rxps.rfrx_disabled <state>
+set radio.rxps off
+set radio.rxps on
+set radio.rxps conservative
+set radio.rxps balanced
+set radio.rxps max
+set radio.rxps max preamble <16|32>
+set radio.rxps overdrive
+set radio.rxps overdrive preamble <16|32>
+set radio.rxps riskyWorkingMax
+set radio.rxps riskyWorkingMax preamble <16|32>
+set radio.rxps <1-10>
+set radio.rxps level <1-10>
+set radio.rxps level <1-10> preamble <16|32>
+set radio.rxps <rx_us> <sleep_us>
+```
 
 **Parameters:**
+
 - `rx_us`, `sleep_us`: Receive and sleep durations in microseconds (`1000`-`30000000`).
 - `level`: Guarded levels `1`-`8`, followed by experimental levels `9` and `10`. Higher guarded levels allow more sleep.
 - `preamble`: RXPS timing assumption in symbols; `16` or `32`. This does not
@@ -2677,6 +2762,7 @@ Station G2/G3 targets default to `off`.
 - `state`: `on` or `off`.
 
 **Notes:**
+
 - LR1121 RXPS is supported on Waveshare ESP32-S3 LR1121 and Muzi Base Duo
   builds, using the same commands. Their existing 5000 us TCXO startup delay
   is preserved, giving a 6000 us sleep/wake transition. Fast SF/BW tuples may
@@ -2751,13 +2837,18 @@ Station G2/G3 targets default to `off`.
 
 #### View or change the LoRa FEM receive-path gain state on supported boards
 **Usage:**
-- `get radio.fem.rxgain`
-- `set radio.fem.rxgain <state>`
+
+```text
+get radio.fem.rxgain
+set radio.fem.rxgain <state>
+```
 
 **Parameters:**
+
 - `state`: `on`|`off`
 
 **Notes:**
+
 - This controls the external LoRa FEM receive-path LNA where the board supports it.
 - The default is `off`. Use `set radio.fem.rxgain on` to enable and save it;
   an explicitly saved gain choice is restored on reboot.
@@ -2770,13 +2861,18 @@ Station G2/G3 targets default to `off`.
 
 #### View or change the LoRa FEM transmit-path gain state on supported boards
 **Usage:**
-- `get radio.fem.txgain`
-- `set radio.fem.txgain <state>`
+
+```text
+get radio.fem.txgain
+set radio.fem.txgain <state>
+```
 
 **Parameters:**
+
 - `state`: `on`|`off`
 
 **Notes:**
+
 - This controls a software-selectable external LoRa FEM transmit gain where the board supports it.
 - Heltec T096 routes TX through its KCT8103L PA with no populated TX bypass. `get radio.fem.txgain` reports `on (fixed TX PA)`; `set radio.fem.txgain` cannot toggle it. Use `set tx <dBm>` to adjust SX1262 drive. The PA's `CSD` control shuts down the FEM and is not a lower-gain TX mode. See the [T096 schematic](https://resource.heltec.cn/download/Mesh_Node_T096/Schematic/Mesh_Node_T096_V0.2.pdf) and [KCT8103L product description](https://kxcomtech.com/en/product/info/1774).
 - On Station G3, remove the PA PL1 jumper to allow software control. `on` selects PA PL1 high/short and `off` selects PA PL1 low/open. The PA PL2 hardware jumper determines whether this switches between power levels 1/3 or 2/4.
@@ -2824,10 +2920,14 @@ the verified pin assignments, startup fixes, and saved amplifier settings.
 
 #### View or change this node's name
 **Usage:**
-- `get name`
-- `set name <name>`
+
+```text
+get name
+set name <name>
+```
 
 **Parameters:**
+
 - `name`: Node name
 
 **Set by build flag:** `ADVERT_NAME`
@@ -3000,8 +3100,10 @@ reboot before Bluetooth can be enabled.
 
 **Usage:**
 
-- `get bluetooth.name`
-- `set bluetooth.name <name|default>`
+```text
+get bluetooth.name
+set bluetooth.name <name|default>
+```
 
 `get ble.name` and `set ble.name ...` are accepted aliases. This command is
 specific to Companion firmware. The default is `MeshCore-<advert name>`;
@@ -3019,7 +3121,9 @@ the frame and reply format.
 
 **Usage:**
 
-- `set pin <0-999999>`
+```text
+set pin <0-999999>
+```
 
 Choose a six-digit code for a fixed Bluetooth pairing PIN. For example:
 
@@ -3049,8 +3153,10 @@ Forget the device on the phone and pair again if you need to enter the new code.
 
 **Usage:**
 
-- `get bluetooth.mac`
-- `set bluetooth.mac <address|random|random-every-boot|random-after-connect|default>`
+```text
+get bluetooth.mac
+set bluetooth.mac <address|random|random-every-boot|random-after-connect|default>
+```
 
 `get ble.mac` and `set ble.mac ...` are accepted aliases. The setting is
 available on every Companion build that includes Bluetooth.
@@ -3135,38 +3241,50 @@ for the tested XIAO handoff and host-cache caveats.
 
 #### View or change this node's latitude
 **Usage:**
-- `get lat`
-- `set lat <degrees>`
+
+```text
+get lat
+set lat <degrees>
+```
 
 **Set by build flag:** `ADVERT_LAT`
 
 **Default:** `0`
 
 **Parameters:**
+
 - `degrees`: Latitude in degrees
 
 ---
 
 #### View or change this node's longitude
 **Usage:**
-- `get lon`
-- `set lon <degrees>`
+
+```text
+get lon
+set lon <degrees>
+```
 
 **Set by build flag:** `ADVERT_LON`
 
 **Default:** `0`
 
 **Parameters:**
+
 - `degrees`: Longitude in degrees
 
 ---
 
 #### View or change this node's identity (Private Key)
 **Usage:**
-- `get prv.key`
-- `set prv.key <private_key>`
+
+```text
+get prv.key
+set prv.key <private_key>
+```
 
 **Parameters:**
+
 - `private_key`: MeshCore expanded private key in hex format (128 hex characters)
 
 **Local connection only:** `get prv.key`. Companion also requires
@@ -3194,10 +3312,14 @@ Older Companion firmware is not a safe transport for this backup flow.
 <a id="change-this-nodes-admin-password"></a>
 #### View or change this node's admin password
 **Usage:**
-- `get password`
-- `password <new_password>`
+
+```text
+get password
+password <new_password>
+```
 
 **Parameters:**
+
 - `new_password`: New admin password (on ESP32, 1–15 UTF-8 bytes without CR or LF)
 
 **Set by build flag:** `ADMIN_PASSWORD`
@@ -3275,10 +3397,14 @@ Room-server login settings are unchanged.
 
 #### View or change this node's guest password
 **Usage:**
-- `get guest.password`
-- `set guest.password <password>`
+
+```text
+get guest.password
+set guest.password <password>
+```
 
 **Parameters:**
+
 - `password`: Guest password
 
 **Set by build flag:** `ROOM_PASSWORD` (Room Server only)
@@ -3293,10 +3419,14 @@ sessions. Setting the password to `off` makes it the literal password `off`.
 
 #### View or change this node's owner info
 **Usage:**
-- `get owner.info`
-- `set owner.info <text>`
+
+```text
+get owner.info
+set owner.info <text>
+```
 
 **Parameters:**
+
 - `text`: Owner information text
 
 **Default:** `<blank>`
@@ -3352,10 +3482,14 @@ ADC offset or nonlinear calibration.
 
 #### Fine-tune the battery reading
 **Usage:**
-- `get adc.multiplier`
-- `set adc.multiplier <value>`
+
+```text
+get adc.multiplier
+set adc.multiplier <value>
+```
 
 **Parameters:**
+
 - `value`: ADC multiplier (0.0-10.0)
 
 **Default:** `0.0` (value defined by board)
@@ -3375,9 +3509,13 @@ unsupported.
 
 #### Send a repeater flood text
 **Usage:**
-- `send text.flood <message>`
+
+```text
+send text.flood <message>
+```
 
 **Parameters:**
+
 - `message`: Text to send to the shared `#repeaters` flood channel, prefixed with this node's name. Any `:` in the node name is sent as `;` so the prefix delimiter stays unambiguous.
 
 **Example:**
@@ -3389,19 +3527,25 @@ send text.flood checking ridge link
 
 #### View or change battery alert state
 **Usage:**
-- `get battery.alert`
-- `get battery.alert.region`
-- `set battery.alert on [region]`
-- `set battery.alert off`
+
+```text
+get battery.alert
+get battery.alert.region
+set battery.alert on [region]
+set battery.alert off
+```
 
 **Parameters:**
+
 - `region`: Optional named region scope. When omitted, the repeater selects the single deepest (most narrow) named region in the configured hierarchy. If multiple regions tie for deepest, specify one explicitly.
 
 **Defaults:**
+
 - `battery.alert`: `off`
 - `battery.alert.region`: `<unset>`
 
 **Notes:**
+
 - Enabling fails until at least one usable named region is defined. Alerts are never sent as unscoped floods. If the selected region is later removed, alerts stop until battery alerts are enabled again with a valid region.
 - Region hierarchy edits are not persistent until `region save` is run. After `region def west pnw wa w-wa sea`, run `region save` before enabling the alert if the hierarchy must survive a reboot.
 - A region must have a usable transport key. Public named regions derive one automatically; a private region without an available key is rejected.
@@ -3415,12 +3559,16 @@ send text.flood checking ridge link
 
 #### View or change battery alert thresholds
 **Usage:**
-- `get battery.alert.low`
-- `set battery.alert.low <1-100>`
-- `get battery.alert.critical`
-- `set battery.alert.critical <0-99>`
+
+```text
+get battery.alert.low
+set battery.alert.low <1-100>
+get battery.alert.critical
+set battery.alert.critical <0-99>
+```
 
 **Defaults:**
+
 - `battery.alert.low`: `25`
 - `battery.alert.critical`: `15`
 
@@ -3443,11 +3591,13 @@ readings remain available.
 
 **Usage:**
 
-- `get repeat.battery`
-- `set repeat.battery <off|on|1-100>`
-- `get flood.battery`
-- `set flood.battery <off|on|1-100>`
-- `get battery.forward`
+```text
+get repeat.battery
+set repeat.battery <off|on|1-100>
+get flood.battery
+set flood.battery <off|on|1-100>
+get battery.forward
+```
 
 `set repeat.battery on` enables the saved repeat threshold, initially **15%**.
 `set flood.battery on` enables the saved flood threshold, initially **25%**.
@@ -3658,15 +3808,19 @@ before relying on automatic forwarding limits.
 
 #### Enable or disable the RX inactivity watchdog (Repeater and ESP32 Room Server)
 **Usage:**
-- `get rx.watchdog`
-- `set rx.watchdog on`
-- `set rx.watchdog off`
+
+```text
+get rx.watchdog
+set rx.watchdog on
+set rx.watchdog off
+```
 
 **Default:** `on`, with a 24-hour no-RX timeout in normal mode. On ESP32 Room
 Servers the watchdog runs only while `repeat on` is active. `repeat off` pauses
 it without changing the saved watchdog preference.
 
 **Notes:**
+
 - In normal mode, the node reboots after 24 hours without a received packet passing MeshCore parsing. Each such reception restarts this timeout; checks use a sliding deadline rather than waiting for another 24-hour checkpoint.
 - While `tempradio` (or Repeater `tempradioat`) is running, windows of at least 12 hours use a 12-hour no-RX timeout. Shorter windows disable this reboot watchdog for the duration of the session. This temporary policy also overrides a saved normal-mode `off` setting, but never overrides `repeat off` on a Room Server.
 - Startup, a successful temporary-radio activation/replacement, expiry, cancellation, or manually changing this setting starts a fresh observation window. Expiry is processed before the watchdog, so a temporary window ending exactly at its watchdog deadline restores normal timing first.
@@ -3679,13 +3833,17 @@ it without changing the saved watchdog preference.
 
 #### Enable or disable the nRF52 system watchdog
 **Usage:**
-- `get system.watchdog`
-- `set system.watchdog on`
-- `set system.watchdog off`
+
+```text
+get system.watchdog
+set system.watchdog on
+set system.watchdog off
+```
 
 **Default:** `on`
 
 **Notes:**
+
 - This nRF52-only hardware watchdog resets the device if the application loop stops for 60 seconds, including an indefinite SoftDevice flash-write wait.
 - Enabling takes effect without a reboot.
 - The nRF52 hardware cannot stop a watchdog after it has started. Disabling is persisted immediately, then the current firmware stops feeding it so the board performs one watchdog restart within 60 seconds. It remains off after that restart.
@@ -3701,23 +3859,27 @@ persistent on/off behavior above applies to infrastructure firmware.
 #### Estimate and correct infrastructure-node time after startup
 
 **Usage:**
-- `get clock.sync`
-- `get clock.sync.status`
-- `get clock.sync.status.table`
-- `get clock.sync.status.<1-16>`
-- `get clock.sync.mesh`
-- `set clock.sync.mesh <on|off>`
-- `get clock.sync.mesh.edge`
-- `set clock.sync.mesh.edge <on|off>`
-- `clock.sync.mesh now`
-- `get clock.sync.internet`
-- `set clock.sync.internet <on|off>`
-- `get clock.sync.drift`
-- `set clock.sync.drift <30-86400>`
-- `get clock.sync.samples`
-- `set clock.sync.samples <3-16>`
+
+```text
+get clock.sync
+get clock.sync.status
+get clock.sync.status.table
+get clock.sync.status.<1-16>
+get clock.sync.mesh
+set clock.sync.mesh <on|off>
+get clock.sync.mesh.edge
+set clock.sync.mesh.edge <on|off>
+clock.sync.mesh now
+get clock.sync.internet
+set clock.sync.internet <on|off>
+get clock.sync.drift
+set clock.sync.drift <30-86400>
+get clock.sync.samples
+set clock.sync.samples <3-16>
+```
 
 **Defaults:**
+
 - `clock.sync.mesh`: `on` for all repeater, sensor, and room-server builds
 - `clock.sync.mesh.edge`: `on`
 - `clock.sync.internet`: `off`
@@ -3905,11 +4067,15 @@ is not required. On nRF52 Full Companion, send the query to control interface
 **Search terms:** battery saver, device power saving, low power mode.
 
 **Usage:**
-- `get powersaving`
-- `set powersaving on`
-- `set powersaving off`
+
+```text
+get powersaving
+set powersaving on
+set powersaving off
+```
 
 **Parameters:** 
+
 - `on`: enable power saving
 - `off`: disable power saving
 
@@ -4045,10 +4211,14 @@ the X1 is not opted in without that hardware confirmation.
 
 #### View or set the reboot interval (Repeater, Room Server and Sensor)
 **Usage:**
-- `get reboot.interval`
-- `set reboot.interval <hours>`
+
+```text
+get reboot.interval
+set reboot.interval <hours>
+```
 
 **Parameters:**
+
 - `hours`: `0-255`; `0` disables scheduled reboots.
 
 **Default:** `0` (disabled)
@@ -4136,18 +4306,23 @@ The pin number is the Arduino pin number used by that target (the normal GPIO nu
 
 #### View or set the direct path override for the current remote client
 **Usage:**
-- `get outpath`
-- `get outpath path`
-- `set outpath <hop1_hex,hop2_hex,...>`
-- `set outpath path`
-- `set outpath direct`
-- `set outpath clear`
-- `set outpath flood`
+
+```text
+get outpath
+get outpath path
+set outpath <hop1_hex,hop2_hex,...>
+set outpath path
+set outpath direct
+set outpath clear
+set outpath flood
+```
 
 **Parameters:**
+
 - `hopN_hex`: Hop hash with `2`, `4`, or `6` hexadecimal characters. Every hop must use the same width.
 
 **Notes:**
+
 - These commands require remote client context and update the caller's ACL entry.
 - Room Server readers and writers may manage their own `outpath` and `altpath`
   without administrator permission. See [room return routes](room_services.md#your-own-return-routes)
@@ -4171,11 +4346,15 @@ The pin number is the Arduino pin number used by that target (the normal GPIO nu
 **Search terms:** enable repeating, disable repeating, packet forwarding, stop relaying.
 
 **Usage:**
-- `get repeat`
-- `set repeat <state>`
+
+```text
+get repeat
+set repeat <state>
+```
 
 **Parameters:**
-  - `state`: `on`|`off`
+
+- `state`: `on`|`off`
 
 **Default:** `repeat on` for repeaters; `repeat off` for Room Servers.
 
@@ -4262,15 +4441,19 @@ The command was not renamed. The source correction restores the setter;
 installed images need an updated build. See the [setting-dispatch audit](test-results/cli_settings_audit.md).
 
 **Usage:**
-- `get path.hash.mode`
-- `set path.hash.mode <value>`
+
+```text
+get path.hash.mode
+set path.hash.mode <value>
+```
 
 **Parameters:**
+
 - `value`: Path hash size (0-2)
-  - `0`: 1 Byte hash size (256 unique ids)[64 max flood]
-  - `1`: 2 Byte hash size (65,536 unique ids)[32 max flood]
-  - `2`: 3 Byte hash size (16,777,216 unique ids)[21 max flood]
-  - `3`: DO NOT USE (Reserved) 
+    - `0`: 1 Byte hash size (256 unique ids)[64 max flood]
+    - `1`: 2 Byte hash size (65,536 unique ids)[32 max flood]
+    - `2`: 3 Byte hash size (16,777,216 unique ids)[21 max flood]
+    - `3`: DO NOT USE (Reserved)
 
 **Default:** `0` (1 byte). Cascade Companions use `1` (2 bytes), and Cascade
 Repeaters use `2` (3 bytes). Existing saved values are preserved.
@@ -4283,15 +4466,19 @@ Repeaters use `2` (3 bytes). Existing saved values are preserved.
 
 #### View or change this node's loop detection
 **Usage:**
-- `get loop.detect`
-- `set loop.detect <state>`
+
+```text
+get loop.detect
+set loop.detect <state>
+```
 
 **Parameters:**
+
 - `state`: 
-  - `off`: no loop detection is performed
-  - `minimal`: packets are dropped if repeater's ID/hash appears 4 or more times (1-byte), 2 or more (2-byte), 1 or more (3-byte)
-  - `moderate`: packets are dropped if repeater's ID/hash appears 2 or more times (1-byte), 1 or more (2-byte), 1 or more (3-byte)
-  - `strict`: packets are dropped if repeater's ID/hash appears 1 or more times (1-byte), 1 or more (2-byte), 1 or more (3-byte)
+    - `off`: no loop detection is performed
+    - `minimal`: packets are dropped if repeater's ID/hash appears 4 or more times (1-byte), 2 or more (2-byte), 1 or more (3-byte)
+    - `moderate`: packets are dropped if repeater's ID/hash appears 2 or more times (1-byte), 1 or more (2-byte), 1 or more (3-byte)
+    - `strict`: packets are dropped if repeater's ID/hash appears 1 or more times (1-byte), 1 or more (2-byte), 1 or more (3-byte)
   
 **Default:** `off`
 
@@ -4306,10 +4493,14 @@ Repeaters use `2` (3 bytes). Existing saved values are preserved.
 **Search terms:** flood forwarding delay, flood retransmit delay, flood TX delay.
 
 **Usage:**
-- `get txdelay`
-- `set txdelay <value>`
+
+```text
+get txdelay
+set txdelay <value>
+```
 
 **Parameters:**
+
 - `value`: Transmit delay factor (0-2)
 
 **Default:** `0.5`
@@ -4323,10 +4514,14 @@ Repeaters use `2` (3 bytes). Existing saved values are preserved.
 **Search terms:** direct forwarding delay, direct retransmit delay, direct TX delay.
 
 **Usage:**
-- `get direct.txdelay`
-- `set direct.txdelay <value>`
+
+```text
+get direct.txdelay
+set direct.txdelay <value>
+```
 
 **Parameters:**
+
 - `value`: Direct transmit delay factor (0-2)
 
 **Default:** `0.3` (Repeater) - `0.2` (Room Server, Sensor)
@@ -4337,10 +4532,14 @@ Repeaters use `2` (3 bytes). Existing saved values are preserved.
 
 #### [Experimental] View or change the processing delay for received traffic
 **Usage:**
-- `get rxdelay`
-- `set rxdelay <value>`
+
+```text
+get rxdelay
+set rxdelay <value>
+```
 
 **Parameters:**
+
 - `value`: Receive delay base (0-20)
 
 **Default:** `0.0`
@@ -4351,15 +4550,20 @@ Repeaters use `2` (3 bytes). Existing saved values are preserved.
 
 #### View or change the duty cycle limit
 **Usage:**
-- `get dutycycle`
-- `set dutycycle <value>`
+
+```text
+get dutycycle
+set dutycycle <value>
+```
 
 **Parameters:**
+
 - `value`: Duty cycle percentage (1-100)
 
 **Default:** `50%` (equivalent to airtime factor 1.0)
 
 **Examples:**
+
 - `set dutycycle 100` - no duty cycle limit
 - `set dutycycle 50` - 50% duty cycle (default)
 - `set dutycycle 10` - 10% duty cycle
@@ -4373,15 +4577,19 @@ Repeaters use `2` (3 bytes). Existing saved values are preserved.
 > **Deprecated** as of firmware v1.15.0. Use [`get/set dutycycle`](#view-or-change-the-duty-cycle-limit) instead.
 
 **Usage:**
-- `get af`
-- `set af <value>`
+
+```text
+get af
+set af <value>
+```
 
 **Parameters:**
+
 - `value`: Airtime factor (0-9). After each transmission, the repeater enforces a silent period of approximately the on-air transmission time multiplied by the value. This results in a long-term duty cycle of roughly 1 divided by (1 plus the value). For example:
-  - `af = 1` -> ~50% duty
-  - `af = 2` -> ~33% duty
-  - `af = 3` -> ~25% duty
-  - `af = 9` -> ~10% duty
+    - `af = 1` -> ~50% duty
+    - `af = 2` -> ~33% duty
+    - `af = 3` -> ~25% duty
+    - `af = 9` -> ~10% duty
   You are responsible for choosing a value that is appropriate for your jurisdiction and channel plan (for example EU 868 Mhz 10% duty cycle regulation).
 
 **Default:** `1.0`
@@ -4390,10 +4598,14 @@ Repeaters use `2` (3 bytes). Existing saved values are preserved.
 
 #### View or change the local interference threshold
 **Usage:**
-- `get int.thresh`
-- `set int.thresh <value>`
+
+```text
+get int.thresh
+set int.thresh <value>
+```
 
 **Parameters:**
+
 - `value`: Interference threshold value
 
 **Default:** `0.0`
@@ -4402,8 +4614,11 @@ Repeaters use `2` (3 bytes). Existing saved values are preserved.
 
 #### Enable or disable hardware Channel Activity Detection (CAD)
 **Usage:**
-- `get cad`
-- `set cad <on|off>`
+
+```text
+get cad
+set cad <on|off>
+```
 
 **Description:** When enabled, the radio performs a hardware Channel Activity Detection scan before transmitting and defers if the channel is busy. Runs independently of `int.thresh` - either, both, or none may be active.
 
@@ -4421,6 +4636,7 @@ Future-scheduled packets do not accelerate CAD. `get cad` includes the
 hardware busy-result count.
 
 **Parameters:**
+
 - `on|off`: Enable or disable hardware CAD
 
 **Default:** `off`
@@ -4447,11 +4663,13 @@ The command name is retained for compatibility; a completed receive refresh
 does not prove an internal AGC reset or improved sensitivity.
 
 **Usage:**
+
 - `get agc.reset.interval`
 - `set agc.reset.interval <value>`
 - `get agc` / `set agc <value>` (aliases)
 
 **Parameters:**
+
 - `value`: Interval in seconds, 0-1020, rounded down to a multiple of 4 (17 becomes 16). 0 to disable.
 
 Companion's existing primary text parser retains its 0-255-second input range;
@@ -4667,10 +4885,14 @@ limits; unavailable or invalid power skips that opportunity without transmitting
 
 #### View or change the radio watchdog interval (MQTT observer only)
 **Usage:**
-- `get radio.watchdog`
-- `set radio.watchdog <minutes>`
+
+```text
+get radio.watchdog
+set radio.watchdog <minutes>
+```
 
 **Parameters:**
+
 - `minutes`: `0` to use the standard 30-minute soft recovery interval, or `1-120` minutes to override it
 
 **Default:** `5`
@@ -4688,10 +4910,14 @@ reduce unnecessary recoveries when no traffic is expected.
 
 #### Enable or disable Multi-Acks support
 **Usage:**
-- `get multi.acks`
-- `set multi.acks <state>`
+
+```text
+get multi.acks
+set multi.acks <state>
+```
 
 **Parameters:**
+
 - `state`: `0` (disable) or `1` (enable)
 
 **Default:** `0`
@@ -4700,10 +4926,14 @@ reduce unnecessary recoveries when no traffic is expected.
 
 #### View or change the flood advert interval
 **Usage:**
-- `get flood.advert.interval`
-- `set flood.advert.interval <hours>`
+
+```text
+get flood.advert.interval
+set flood.advert.interval <hours>
+```
 
 **Parameters:**
+
 - `hours`: Interval in hours (3-168), or `0` to disable
 
 **Default:** `47` (Repeater, Room Server) - `0`, disabled (Sensor)
@@ -4729,10 +4959,14 @@ is unchanged.
 
 #### View or change the zero-hop advert interval
 **Usage:**
-- `get advert.interval`
-- `set advert.interval <minutes>`
+
+```text
+get advert.interval
+set advert.interval <minutes>
+```
 
 **Parameters:**
+
 - `minutes`: Interval in minutes rounded down to the nearest multiple of 2 (61 becomes 60) (60-240)
 
 **Default:** `2` on a factory-fresh node, then `0` (disabled) once configured.
@@ -4749,10 +4983,14 @@ adverts running, set an explicit value in the 60-240 range.
 **Search terms:** hop limit, maximum hops, max hops, flood distance.
 
 **Usage:**
-- `get flood.max`
-- `set flood.max <value>`
+
+```text
+get flood.max
+set flood.max <value>
+```
 
 **Parameters:**
+
 - `value`: Maximum flood hop count (0-64)
 
 **Default:** `64`
@@ -4761,10 +4999,14 @@ adverts running, set an explicit value in the 60-240 range.
 
 #### Limit the number of hops for an unscoped flood message
 **Usage:**
-- `get flood.max.unscoped`
-- `set flood.max.unscoped <value>`
+
+```text
+get flood.max.unscoped
+set flood.max.unscoped <value>
+```
 
 **Parameters:**
+
 - `value`: Maximum flood hop count (0-64) for a packet without a scope (no region set)
 
 **Default:** `0xFF` - indicates it hasn't been set, will track flood.max until it is.
@@ -4775,10 +5017,14 @@ adverts running, set an explicit value in the 60-240 range.
 
 #### Limit the number of hops for an advert flood message
 **Usage:**
-- `get flood.max.advert`
-- `set flood.max.advert <value>`
+
+```text
+get flood.max.advert
+set flood.max.advert <value>
+```
 
 **Parameters:**
+
 - `value`: Maximum flood hop count (0-64) for an advert packet
 
 **Default:** `8`
@@ -4787,12 +5033,16 @@ adverts running, set an explicit value in the 60-240 range.
 
 #### Forward flood group data packets (Repeater and ESP32 Room Server)
 **Usage:**
-- `get flood.channel.data`
-- `get flood.channel.data.hops`
-- `set flood.channel.data <on|off>`
-- `set flood.channel.data.hops <all|1-7>`
+
+```text
+get flood.channel.data
+get flood.channel.data.hops
+set flood.channel.data <on|off>
+set flood.channel.data.hops <all|1-7>
+```
 
 **Parameters:**
+
 - `on`: Retransmit received flood `GRP_DATA` channel packets.
 - `off`: Do not retransmit received flood `GRP_DATA` channel packets.
 - `all`: When `flood.channel.data` is `off`, block `GRP_DATA` at any received flood hop count.
@@ -4882,18 +5132,22 @@ removed. The fixed-size STM32WL FPF6 build cannot match authenticated channels.
 
 #### Force a transport scope onto floods
 **Usage:**
-- `get flood.channel.scope`
-- `get flood.channel.scope.<n>`
-- `set flood.channel.scope <channel|txt:*|login:*|other:*> <region|scope=name> [path=blacklist|path=bucket:1-6] [tx=slow]`
-- `set flood.channel.scope.<n> <channel|txt:*|login:*|other:*> <region|scope=name> [path=blacklist|path=bucket:1-6] [tx=slow]`
-- `del flood.channel.scope.<n>`
-- `del flood.channel.scope all`
+
+```text
+get flood.channel.scope
+get flood.channel.scope.<n>
+set flood.channel.scope <channel|txt:*|login:*|other:*> <region|scope=name> [path=blacklist|path=bucket:1-6] [tx=slow]
+set flood.channel.scope.<n> <channel|txt:*|login:*|other:*> <region|scope=name> [path=blacklist|path=bucket:1-6] [tx=slow]
+del flood.channel.scope.<n>
+del flood.channel.scope all
+```
 
 `fs` is the short family name for all these commands. Short options are
 `p=bl` (`path=blacklist`), `p=b1` through `p=b6` (`path=bucket:1` through
 `path=bucket:6`), and `tx=s`/`tx=f` (`tx=slow`/`tx=fast`).
 
 **Parameters:**
+
 - `n`: Slot number within the table compiled for the target. Roomy ESP32 builds
   provide `1-255`; classic ESP32 repeaters and nRF52/other
   normal constrained builds provide `1-31`; very-tight STM32WL repeaters provide
@@ -5094,12 +5348,15 @@ available for tables shared with `flood.filter path=blacklist` rules.
 #### Require valid incoming scopes only on selected channels
 
 **Usage:**
-- `get flood.channel.scope.require`
-- `get flood.channel.scope.require.<n>`
-- `set flood.channel.scope.require <public|#channel|128/256-bit-key>`
-- `set flood.channel.scope.require.<n> <public|#channel|128/256-bit-key>`
-- `del flood.channel.scope.require.<n>`
-- `del flood.channel.scope.require all`
+
+```text
+get flood.channel.scope.require
+get flood.channel.scope.require.<n>
+set flood.channel.scope.require <public|#channel|128/256-bit-key>
+set flood.channel.scope.require.<n> <public|#channel|128/256-bit-key>
+del flood.channel.scope.require.<n>
+del flood.channel.scope.require all
+```
 
 `fsr` is the short family name, with the same arguments and region/scope-manager
 permissions.
@@ -5201,12 +5458,12 @@ permitted slot range; numbered getters show rows without compact-list truncation
 - `type`: Payload type name, full `PAYLOAD_TYPE_*` name, decimal value `0-15`,
   hexadecimal value `0x00-0x0F`, or `any`.
 - `hops`: Optional; omitted means `all`.
-  - `N`: Match only at received hop count `N`.
-  - `N+`: Match at received hop count `N` and higher.
-  - `N-M`: Match the inclusive received-hop range.
-  - `all`: Match every received hop count (`0-63`).
-  - `0+`, `all`, and an omitted hop expression are equivalent. The CLI displays
-    the saved range as `all`.
+    - `N`: Match only at received hop count `N`.
+    - `N+`: Match at received hop count `N` and higher.
+    - `N-M`: Match the inclusive received-hop range.
+    - `all`: Match every received hop count (`0-63`).
+    - `0+`, `all`, and an omitted hop expression are equivalent. The CLI displays
+      the saved range as `all`.
 - `channel=*|public|#name|hash:XX|128-bit-key|256-bit-key`: Optional channel match.
   `channel=*` means no channel condition at all, so the row matches everything
   selected by `type=` (including all flood payload types with `type=any`). It
@@ -5647,23 +5904,27 @@ moderation support in that build. No partition size changes are required.
 #### Moderate flood group text by channel, sender, and source path
 
 **Usage:**
-- `get flood.moderation`
-- `get flood.moderation.<n>`
-- `set flood.moderation <channel> <sender> <action> [action...]`
-- `set flood.moderation.<n> <channel> <sender> <action> [action...]`
-- `del flood.moderation.<n>`
-- `del flood.moderation all`
+
+```text
+get flood.moderation
+get flood.moderation.<n>
+set flood.moderation <channel> <sender> <action> [action...]
+set flood.moderation.<n> <channel> <sender> <action> [action...]
+del flood.moderation.<n>
+del flood.moderation all
+```
 
 `fm` is the short family name. Options can use `d` (`drop`), `q=N`
 (`rate=N/min`), `h=N` (`hops=N`), and `p=...` (`path=...`). The short rate
 also accepts `q=N/min` or `q=N/m`; duplicate rate/drop options remain invalid.
 
 **Parameters:**
+
 - `n`: Moderation slot from `1` to `16`.
 - `channel`:
-  - `public`: Built-in Public channel.
-  - `#channel`: Derive the well-known hashtag-channel key.
-  - A 128-bit or 256-bit channel key in hex, for any other/private channel.
+    - `public`: Built-in Public channel.
+    - `#channel`: Derive the well-known hashtag-channel key.
+    - A 128-bit or 256-bit channel key in hex, for any other/private channel.
 - `sender`: Exact group-text display name. Matching is ASCII case-insensitive.
   Quote names containing spaces, for example `"Field User"`.
 - `drop`: Do not forward matching messages. Equivalent to `rate=0/min`.
@@ -5717,18 +5978,22 @@ del flood.moderation.3
 ### ACL
 
 #### Add, update or remove permissions for a companion
-**Usage:** 
-- `setperm <pubkey> <permissions>`
+**Usage:**
+
+```text
+setperm <pubkey> <permissions>
+```
 
 **Parameters:**
+
 - `pubkey`: Companion public key
 - `permissions`: 
-  - `0`: Guest
-  - `1`: Read-only
-  - `2`: Read-write
-  - `3`: Admin
-  - `4`: Region/scope manager (repeater delegated region and forced-scope management)
-  - `5`: Filter manager (repeater delegated forwarding-filter management)
+    - `0`: Guest
+    - `1`: Read-only
+    - `2`: Read-write
+    - `3`: Admin
+    - `4`: Region/scope manager (repeater delegated region and forced-scope management)
+    - `5`: Filter manager (repeater delegated forwarding-filter management)
 
 **Filter manager scope:** Permission `5` can use an explicit allowlist of
 non-secret operational/filter status commands and can change the forwarding
@@ -5906,10 +6171,14 @@ Setting a clock alone never automatically resets this table.
 
 #### View or change this room server's 'read-only' flag
 **Usage:**
-- `get allow.read.only`
-- `set allow.read.only <state>`
+
+```text
+get allow.read.only
+set allow.read.only <state>
+```
 
 **Parameters:**
+
 - `state`: `on` (enable) or `off` (disable)
 
 **Default:** `off`
@@ -5989,11 +6258,15 @@ for unscoped floods). An ESP32 Room Server can also explicitly rewrite the
 scope through its flood rules. Region configuration does not enable repeating.
 
 #### Bulk-load region lists
-**Usage:** 
-- `region load`
-- `region load <name> [flood_flag]`
+**Usage:**
+
+```text
+region load
+region load <name> [flood_flag]
+```
 
 **Parameters:**
+
 - `name`: A name of a region. `*` represents the wildcard region
 
 **Note:** `flood_flag`: Optional `F` to allow flooding
@@ -6005,8 +6278,11 @@ scope through its flood rules. Region configuration does not enable repeating.
 ---
 
 #### Save any changes to regions made since reboot
-**Usage:** 
-- `region save`
+**Usage:**
+
+```text
+region save
+```
 
 ---
 
@@ -6028,10 +6304,14 @@ every mode, including when a rewrite rule matches it. The wildcard `*` controls
 unscoped traffic separately.
 
 #### Allow a region
-**Usage:** 
-- `region allowf <name>`
+**Usage:**
+
+```text
+region allowf <name>
+```
 
 **Parameters:** 
+
 - `name`: Region name (or `*` for wildcard)
 
 **Note:** Setting on wildcard `*` allows packets without region transport codes
@@ -6039,11 +6319,15 @@ unscoped traffic separately.
 ---
 
 #### Block a region
-**Usage:** 
-- `region denyf <name>`
-- `region denyf * except-text`
+**Usage:**
+
+```text
+region denyf <name>
+region denyf * except-text
+```
 
 **Parameters:** 
+
 - `name`: Region name (or `*` for wildcard)
 
 Plain `region denyf *` denies all unscoped floods. The optional `except-text`
@@ -6054,39 +6338,55 @@ to check the setting and `region save` to keep it after reboot.
 ---
 
 #### Show information for a region
-**Usage:** 
-- `region get <name>`
+**Usage:**
+
+```text
+region get <name>
+```
 
 **Parameters:**
+
 - `name`: Region name (or `*` for wildcard)
 
 ---
 
 #### View or change the home region for this node
-**Usage:** 
-- `region home`
-- `region home <name>`
+**Usage:**
+
+```text
+region home
+region home <name>
+```
 
 **Parameters:**
+
 - `name`: Region name
 
 ---
 
 #### View or change the default scope region for this node
-**Usage:** 
-- `region default`
-- `region default {name|<null>}`
+**Usage:**
+
+```text
+region default
+region default {name|<null>}
+```
 
 **Parameters:**
+
 - `name`: Region name,  or <null> to reset/clear
 
 ---
 
 #### Create a new region
-**Usage:** 
-- `region put <name> [parent_name]`
+**Usage:**
+
+```text
+region put <name> [parent_name]
+```
 
 **Parameters:**
+
 - `name`: Region name
 - `parent_name`: Parent region name (optional, defaults to wildcard)
 
@@ -6096,7 +6396,10 @@ to check the setting and `region save` to keep it after reboot.
 
 #### Define region hierarchy (single line)
 **Usage:**
-- `region def <token> [<token> ...]`
+
+```text
+region def <token> [<token> ...]
+```
 
 **Parameters (tokens):** Space-separated. A logical **cursor** starts at the wildcard `*`.
 
@@ -6136,10 +6439,14 @@ region save
 ---
 
 #### Remove a region
-**Usage:** 
-- `region remove <name>`
+**Usage:**
+
+```text
+region remove <name>
+```
 
 **Parameters:**
+
 - `name`: Region name
 
 **Note:** Must remove all child regions before the region can be removed 
@@ -6147,12 +6454,16 @@ region save
 ---
 
 #### View all regions
-**Usage:** 
-- `region list <filter>`
+**Usage:**
+
+```text
+region list <filter>
+```
 
 **Serial Only:** Yes
 
 **Parameters:**
+
 - `filter`: `allowed`|`denied`
 
 **Note:** Requires firmware 1.12+
@@ -6160,8 +6471,11 @@ region save
 ---
 
 #### Dump all defined regions and flood permissions
-**Usage:** 
-- `region`
+**Usage:**
+
+```text
+region
+```
 
 **Serial Only:** For firmware older than 1.12.0
 
@@ -6178,6 +6492,7 @@ region save
 ```
 
 **Explanation:**
+
 - Creates a region named `#Europe` with flooding enabled
 - Packets from this region will be flooded to other nodes
 
@@ -6192,6 +6507,7 @@ region save
 ```
 
 **Explanation:**
+
 - Creates a wildcard region `*` with flooding enabled
 - Enables flooding for all regions automatically
 - Applies only to packets without transport codes
@@ -6206,6 +6522,7 @@ region load
 region save
 ```
 **Explanation:**
+
 - Creates a wildcard region `*` without flooding
 - This region exists but doesn't affect packet distribution
 - Used as a default/empty region
@@ -6227,6 +6544,7 @@ region save
 ```
 
 **Explanation:**
+
 - Creates `#Europe` region with flooding enabled
 - Adds nested child regions (`#UK`, `#France`)
 - All nested regions inherit the flooding flag from parent
@@ -6249,6 +6567,7 @@ region save
 ```
 
 **Explanation:**
+
 - Creates wildcard region `*` with flooding enabled
 - Adds nested `#NorthAmerica` hierarchy
 - Enables flooding for all child regions automatically
@@ -6278,15 +6597,20 @@ other roles do not keep the repeater reachability table they require.
 **Search terms:** enable tx retries, disable tx retries, stop direct retries, turn off retransmissions.
 
 **Usage:**
-- `get direct.retry`
-- `set direct.retry <state>`
+
+```text
+get direct.retry
+set direct.retry <state>
+```
 
 **Parameters:**
+
 - `state`: `on`|`off`
 
 **Default:** `on`
 
 **Notes:**
+
 - New installs and older preference files without direct retry settings default to `on` with the `rooftop` preset.
 
 **Examples:**
@@ -6300,10 +6624,14 @@ set direct.retry off
 
 #### View or change direct retry heard-table gate
 **Usage:**
-- `get direct.retry.heard`
-- `set direct.retry.heard <state>`
+
+```text
+get direct.retry.heard
+set direct.retry.heard <state>
+```
 
 **Parameters:**
+
 - `state`: `on`|`off`
 
 **Default:** `on`
@@ -6326,13 +6654,18 @@ set direct.retry.heard off
 **Search terms:** retry profile, retry defaults, rooftop retries, mobile retries, infrastructure retries.
 
 **Usage:**
-- `get retry.preset`
-- `set retry.preset <preset>`
+
+```text
+get retry.preset
+set retry.preset <preset>
+```
 
 **Parameters:**
+
 - `preset`: `infra`|`rooftop`|`mobile`
 
 **Notes:**
+
 - Applies shared direct retry and flood retry defaults.
 - `infra`: fewer, slower retries for stable fixed infrastructure.
 - `rooftop`: default long retry window for weak rooftop links.
@@ -6435,10 +6768,14 @@ Scheduled beacons always send once per occurrence.
 **Search terms:** flood tx retries, flood retry attempts, flood retransmissions, broadcast retries.
 
 **Usage:**
-- `get flood.retry.count`
-- `set flood.retry.count <count>`
+
+```text
+get flood.retry.count
+set flood.retry.count <count>
+```
 
 **Parameters:**
+
 - `count`: Base retry attempts after the original send, from `0` to `15`. `0` disables flood retry.
 
 **Note:** Infrastructure roles first calculate their retry count: path count 0 uses `count * 2`, path count 1 uses `count * 1.5` rounded up, and path count 2 and higher uses the configured base count, with a hard cap of `15`. Companion uses `count` directly. A shared payload policy then applies to every build: `REQ` never retries; `GRP_TXT` keeps the role-calculated count; remote-login-critical `RESPONSE`, `TXT_MSG`, `ANON_REQ`, and `PATH` packets keep up to `15` at the originating node (path count 0) and cap at `2` after entering the path; all other flood payload types cap at `1`. These caps never raise a lower role-calculated count. Setting `count` to `0` immediately removes queued and future flood retries; a packet already transmitting is allowed to finish.
@@ -6448,6 +6785,7 @@ Forwarded neighbor adverts have an additional loop guard independent of the adve
 An enabled self-originated advert retry waits at least one additional minute beyond the normal airtime-aware retry delay. Once a newer self advert has successfully entered the outbound queue, its retry sequence replaces queued or future retries for older self adverts; an older advert already transmitting is allowed to finish. Companion firmware permits this single slow retry for its own adverts while continuing to block retry attempts for neighbor adverts it forwards.
 
 **Defaults:**
+
 - `infra`: `1`
 - `rooftop`: `3`
 - `mobile`: `15`
@@ -6463,14 +6801,19 @@ set flood.retry.count 15
 
 #### View or change flood retry path gate
 **Usage:**
-- `get flood.retry.path`
-- `set flood.retry.path <count|off>`
+
+```text
+get flood.retry.path
+set flood.retry.path <count|off>
+```
 
 **Parameters:**
+
 - `count`: Maximum flood path hash count eligible for retry, from `0` to `63`.
 - `off`: Disable the path-length gate.
 
 **Defaults:**
+
 - `infra`: `1`
 - `rooftop`: `2`
 - `mobile`: `1`
@@ -6486,10 +6829,14 @@ set flood.retry.path off
 
 #### View or change the group-data flood retry path gate
 **Usage:**
-- `get flood.retry.group.path`
-- `set flood.retry.group.path <count|off>`
+
+```text
+get flood.retry.group.path
+set flood.retry.group.path <count|off>
+```
 
 **Parameters:**
+
 - `count`: Maximum flood path hash count eligible for retry for group data packets (`PAYLOAD_TYPE_GRP_DATA`/type 6), from `0` to `63`.
 - `off`: Disable only the group-data-specific gate. The general `flood.retry.path` gate still applies.
 
@@ -6510,10 +6857,14 @@ set flood.retry.group.path off
 
 #### View or change flood retry advert handling
 **Usage:**
-- `get flood.retry.advert`
-- `set flood.retry.advert <on|off>`
+
+```text
+get flood.retry.advert
+set flood.retry.advert <on|off>
+```
 
 **Parameters:**
+
 - `on`: Retry node advert floods.
 - `off`: Do not retry node advert floods.
 
@@ -6529,10 +6880,14 @@ set flood.retry.advert off
 
 #### View or change flood retry target prefixes
 **Usage:**
-- `get flood.retry.prefixes`
-- `set flood.retry.prefixes <prefixes|none|off>`
+
+```text
+get flood.retry.prefixes
+set flood.retry.prefixes <prefixes|none|off>
+```
 
 **Parameters:**
+
 - `prefixes`: Comma-separated 3-byte path hash prefixes, up to 8 entries.
 - `none` or `off`: Clear the list.
 
@@ -6551,10 +6906,14 @@ set flood.retry.prefixes none
 
 #### View or change flood retry ignored prefixes
 **Usage:**
-- `get flood.retry.ignore`
-- `set flood.retry.ignore <prefixes|none|off>`
+
+```text
+get flood.retry.ignore
+set flood.retry.ignore <prefixes|none|off>
+```
 
 **Parameters:**
+
 - `prefixes`: Comma-separated 3-byte path hash prefixes, up to 8 entries.
 - `none` or `off`: Clear the list.
 
@@ -6573,8 +6932,11 @@ set flood.retry.ignore none
 
 #### View or change flood retry bridge mode
 **Usage:**
-- `get flood.retry.bridge`
-- `set flood.retry.bridge <on|off>`
+
+```text
+get flood.retry.bridge
+set flood.retry.bridge <on|off>
+```
 
 **Note:** Bridge mode retries until each configured fresh bucket, plus the non-source `other` bucket, has been heard or the retry count is exhausted. If prefixes in different buckets share their first byte, configuration commands return a warning because a 1-byte path cannot distinguish those buckets. The configuration remains valid: an ambiguous source is treated as belonging to every matching source bucket, and an ambiguous echo credits every matching target bucket so it cannot force retry exhaustion.
 
@@ -6594,10 +6956,14 @@ set flood.retry.bridge on
 
 #### View or change flood retry bridge buckets
 **Usage:**
-- `get flood.retry.bucket.<n>`
-- `set flood.retry.bucket <n> <prefixes|none|off>`
+
+```text
+get flood.retry.bucket.<n>
+set flood.retry.bucket <n> <prefixes|none|off>
+```
 
 **Parameters:**
+
 - `n`: Bucket number from `1` to `6`.
 - `prefixes`: Comma-separated 3-byte path hash prefixes, up to 17 entries per bucket.
 - `none` or `off`: Clear the bucket.
@@ -6616,10 +6982,14 @@ set flood.retry.bucket 2 none
 **Search terms:** tx retries, transmit retries, direct retries, retry count, retry attempts, retransmission count, message retries, DM retries.
 
 **Usage:**
-- `get direct.retry.count`
-- `set direct.retry.count <count>`
+
+```text
+get direct.retry.count
+set direct.retry.count <count>
+```
 
 **Parameters:**
+
 - `count`: Maximum retry attempts after the original send, from `1` to `15`.
 
 **Default:** `15` with the `rooftop` preset
@@ -6658,15 +7028,20 @@ set direct.retry.count 15
 **Search terms:** retry delay, retry timeout, retransmission timeout, wait between retries.
 
 **Usage:**
-- `get direct.retry.base`
-- `set direct.retry.base <ms>`
+
+```text
+get direct.retry.base
+set direct.retry.base <ms>
+```
 
 **Parameters:**
+
 - `ms`: First retry wait in milliseconds, from `10` to `5000`.
 
 **Default:** `175` with the `rooftop` preset
 
 **Explanation:**
+
 - The first retry waits for `base + packet-length add-on + random forwarding jitter`
   after the preceding transmission completes.
 - TRACE and
@@ -6692,15 +7067,20 @@ set direct.retry.base 500
 **Search terms:** retry backoff, increasing retry delay, retry interval step.
 
 **Usage:**
-- `get direct.retry.step`
-- `set direct.retry.step <ms>`
+
+```text
+get direct.retry.step
+set direct.retry.step <ms>
+```
 
 **Parameters:**
+
 - `ms`: Extra milliseconds added for each subsequent retry, from `0` to `5000`.
 
 **Default:** `100` with the `rooftop` preset
 
 **Explanation:**
+
 - Retry delay is `base + packet-length add-on + random forwarding jitter + attempt_index * step`.
 - TRACE and ANON_REQ/type 7 packets
   use a 3x packet-length add-on. TXT_MSG/type 2 packets use 7x.
@@ -6728,15 +7108,20 @@ set direct.retry.step 250
 **Search terms:** retry signal threshold, retry SNR threshold, retry signal margin.
 
 **Usage:**
-- `get direct.retry.margin`
-- `set direct.retry.margin <snr_db>`
+
+```text
+get direct.retry.margin
+set direct.retry.margin <snr_db>
+```
 
 **Parameters:**
+
 - `snr_db`: Extra SNR margin above the SF receive floor, from `0` to `40`.
 
 **Default:** `5.00` with the `rooftop` preset
 
 **Notes:**
+
 - This command is repeater-only.
 - Unknown repeaters are still retried.
 - Known repeaters below the receive floor plus this margin are skipped.
@@ -6755,12 +7140,14 @@ set direct.retry.margin 10
 
 #### View or change adaptive direct retry coding rate
 **Usage:**
+
 - `get direct.retry.cr`
 - `set direct.retry.cr off`
 - `set direct.retry.cr on` (room-server and sensor)
 - `set direct.retry.cr <cr4_min>,<cr5_min>,<cr7_min>,<cr8_max>`
 
 **Parameters:**
+
 - `cr4_min`: Minimum SNR in dB to retry at CR4.
 - `cr5_min`: Minimum SNR in dB to retry at CR5.
 - `cr7_min`: Minimum SNR in dB to retry at CR7.
@@ -6769,6 +7156,7 @@ set direct.retry.margin 10
 **Default:** `10.00,7.50,2.50,2.50`
 
 **Explanation:**
+
 - Higher SNR uses faster coding rates.
 - Lower SNR uses more robust coding rates.
 - Repeater retry attempts escalate from the adaptive starting CR. CR4 starts as CR4, CR5, CR7, CR7, then CR8. CR5 starts as CR5, CR7, CR7, then CR8. CR7 gets two attempts, then CR8.
@@ -6796,6 +7184,7 @@ set direct.retry.cr 4.0,2.0,0,-4.0
 ```
 
 **Example profiles:**
+
 - Conservative weak-link profile:
 ```
 set direct.retry.cr 12.0,8.0,4.0,1.0
@@ -6817,14 +7206,18 @@ set direct.retry.cr 20.0,12.0,6.0,2.0
 
 #### View, seed, or clear the recent repeater table
 **Usage:**
-- `get recent.repeater`
-- `get recent.repeater <page>`
-- `get recent.repeaters <page>`
-- `get recent.repeaters search <prefix> [page]`
-- `set recent.repeater <prefix> [snr_db]`
-- `clear recent.repeater`
+
+```text
+get recent.repeater
+get recent.repeater <page>
+get recent.repeaters <page>
+get recent.repeaters search <prefix> [page]
+set recent.repeater <prefix> [snr_db]
+clear recent.repeater
+```
 
 **Parameters:**
+
 - `prefix`: Repeater path-hash prefix as 2, 4, or 6 hex characters.
 - `snr_db`: Optional SNR in dB. If omitted or invalid, defaults to `3.0`.
 - `page`: 1-based result page.
@@ -6837,6 +7230,7 @@ chips, 512 on nRF52, and 64 on other platforms. Builds can override it with
 heap instead of 24,576 bytes, leaving more memory for the packet pool and Wi-Fi.
 
 **Output order:**
+
 - `get recent.repeater` lists 3-byte prefixes first, then 2-byte prefixes, then 1-byte prefixes.
 - Within each prefix length, entries are sorted from highest SNR to lowest SNR.
 - `search` returns every overlapping path-hash entry. For example, searching
@@ -6847,6 +7241,7 @@ heap instead of 24,576 bytes, leaving more memory for the packet pool and Wi-Fi.
   rows so the result remains within the remote CLI reply limit.
 
 **SNR details:**
+
 - Recent repeater SNR is stored internally in quarter-dB units.
 - Heard repeater samples update an existing table entry with a weighted blend: `75%` existing SNR and `25%` new heard SNR, rounded up.
 - Direct retry success also feeds the heard echo SNR back into the same weighted table.
@@ -6877,16 +7272,21 @@ clear recent.repeater
 **Search terms:** enable GPS, disable GPS, turn GPS on, turn GPS off.
 
 **Usage:**
-- `get gps`
-- `set gps <state>`
+
+```text
+get gps
+set gps <state>
+```
 
 **Parameters:**
+
 - `state`: `on`|`off`
 
 **Default:** `off`
 
 **Note:** These command names are shared with GPS-capable Companion builds.
 Companion reports `on` or `off`; infrastructure includes receiver details:
+
 - `off, {powered|unpowered}` when GPS is manually disabled
 - `on, {powered|unpowered}, {fix|no fix}, {sat count} sats` when GPS is enabled
 
@@ -6936,8 +7336,11 @@ permission to connect two transmitters to the GPS UART.
 ---
 
 #### Sync this node's clock with GPS time
-**Usage:** 
-- `gps sync`
+**Usage:**
+
+```text
+gps sync
+```
 
 The GPS must be enabled. When GPS power saving has put an enabled receiver to
 sleep, this command schedules a sync and wakes it; after `set gps off`, it reports
@@ -6988,21 +7391,28 @@ for a fix, but do not bypass the configured clock-sync interval. Explicit
 ---
 
 #### Set this node's location based on the GPS coordinates
-**Usage:** 
-- `gps setloc`
+**Usage:**
+
+```text
+gps setloc
+```
 
 ---
 
 #### View or change the GPS advert policy
 **Usage:**
-- `gps advert`
-- `gps advert <policy>`
+
+```text
+gps advert
+gps advert <policy>
+```
 
 **Parameters:** 
+
 - `policy`: `none`|`share`|`prefs` 
-  - `none`: don't include location in adverts
-  - `share`: share gps location (from SensorManager)
-  - `prefs`: location stored in node's lat and lon settings
+    - `none`: don't include location in adverts
+    - `share`: share gps location (from SensorManager)
+    - `prefs`: location stored in node's lat and lon settings
 
 **Default:** `prefs` on every repeater, room-server, and sensor build that uses
 the common advert policy. A previously saved `none`, `share`, or `prefs` choice
@@ -7023,13 +7433,17 @@ Device-identification or calibration failures leave the sensor inactive.
 
 #### View or change telemetry access mode
 **Usage:**
-- `get telemetry.access`
-- `set telemetry.access <mode>`
+
+```text
+get telemetry.access
+set telemetry.access <mode>
+```
 
 **Parameters:**
+
 - `mode`: `all`|`acl`
-  - `all`: allow telemetry requests using the requester-provided telemetry mask
-  - `acl`: require ACL read-only or higher for telemetry, including GPS
+    - `all`: allow telemetry requests using the requester-provided telemetry mask
+    - `acl`: require ACL read-only or higher for telemetry, including GPS
 
 **Default:** `all`
 
@@ -7041,6 +7455,7 @@ Device-identification or calibration failures leave the sensor inactive.
 **Usage:** `sensor list [start]`
 
 **Parameters:**
+
 - `start`: Optional starting index (defaults to 0)
 
 **Note:** Output format: `<var_name>=<value>\n`
@@ -7048,11 +7463,15 @@ Device-identification or calibration failures leave the sensor inactive.
 ---
 
 #### View or change the value of a sensor
-**Usage:** 
-- `sensor get <key>`
-- `sensor set <key> <value>`
+**Usage:**
+
+```text
+sensor get <key>
+sensor set <key> <value>
+```
 
 **Parameters:**
+
 - `key`: Sensor setting name
 - `value`: The value to set the sensor to
 
@@ -7230,11 +7649,15 @@ Do not include `get bridge.secret` or WiFi credentials in shared debug logs.
 **Search terms:** enable bridge, disable bridge, serial bridge, RS232 bridge.
 
 **Usage:**
-- `get bridge.enabled`
-- `get bridge.running`
-- `set bridge.enabled <state>`
+
+```text
+get bridge.enabled
+get bridge.running
+set bridge.enabled <state>
+```
 
 **Parameters:**
+
 - `state`: `on`|`off`
 
 `bridge.enabled` is the saved intent. `bridge.running` reports whether the
@@ -7417,10 +7840,14 @@ updated active peer can still answer a valid incoming ping in passive mode.
 
 #### Add a delay to packets routed through this bridge
 **Usage:**
-- `get bridge.delay`
-- `set bridge.delay <ms>`
+
+```text
+get bridge.delay
+set bridge.delay <ms>
+```
 
 **Parameters:**
+
 - `ms`: Delay in milliseconds (0-10000)
 
 **Default:** `500`
@@ -7429,13 +7856,17 @@ updated active peer can still answer a valid incoming ping in passive mode.
 
 #### View or change the source of packets bridged to the external interface
 **Usage:**
-- `get bridge.source`
-- `set bridge.source <source>`
+
+```text
+get bridge.source
+set bridge.source <source>
+```
 
 **Parameters:**
+
 - `source`:
-  - `rx`: bridges received packets
-  - `tx`: bridges transmitted packets
+    - `rx`: bridges received packets
+    - `tx`: bridges transmitted packets
 
 **Default:** `tx`
 
@@ -7509,12 +7940,14 @@ the packet rather than falling back. See the [three-V4 example](split_radio_repe
 
 **Usage:**
 
-- `get mqtt.enabled`
-- `set mqtt.enabled on`
-- `set mqtt.enabled off`
-- `get mqtt.running`
-- `get mqtt.stopping`
-- `get mqtt.status`
+```text
+get mqtt.enabled
+set mqtt.enabled on
+set mqtt.enabled off
+get mqtt.running
+get mqtt.stopping
+get mqtt.status
+```
 
 These commands are the same on MQTT-capable Companion, Repeater, Room Server,
 and Sensor builds. The master switch is saved; turning it off disconnects
@@ -7548,10 +7981,14 @@ USB logging remains independent. On images with both outputs,
 **Search terms:** MQTT receive logging, MQTT RX capture, publish received packets.
 
 **Usage:**
-- `get mqtt.rx`
-- `set mqtt.rx <on|off>`
+
+```text
+get mqtt.rx
+set mqtt.rx <on|off>
+```
 
 **Parameters:**
+
 - `on`: uplink received (RX) packets to MQTT brokers
 - `off`: disable RX packet uplinking
 
@@ -7564,10 +8001,14 @@ USB logging remains independent. On images with both outputs,
 **Search terms:** MQTT transmit logging, MQTT TX capture, publish sent packets.
 
 **Usage:**
-- `get mqtt.tx`
-- `set mqtt.tx <on|off|advert>`
+
+```text
+get mqtt.tx
+set mqtt.tx <on|off|advert>
+```
 
 **Parameters:**
+
 - `on`: uplink all transmitted (TX) packets to MQTT brokers
 - `advert`: uplink only this node's own advert packets (self-originated advertisements only - forwarded adverts from other nodes are filtered out)
 - `off`: disable TX packet uplinking
@@ -7587,8 +8028,10 @@ Empty metadata remains valid.
 
 **Usage:**
 
-- `get mqtt.advert.verify`
-- `set mqtt.advert.verify <on|off>`
+```text
+get mqtt.advert.verify
+set mqtt.advert.verify <on|off>
+```
 
 **Parameters:**
 
@@ -7608,10 +8051,14 @@ default-off updates keep the existing record size.
 
 #### View or change periodic neighbors publishing (MQTT observer, neighbors feature)
 **Usage:**
-- `get mqtt.neighbors`
-- `set mqtt.neighbors <on|off>`
+
+```text
+get mqtt.neighbors
+set mqtt.neighbors <on|off>
+```
 
 **Parameters:**
+
 - `on`: periodically discover neighbor scopes and publish the neighbor table to the `neighbors` topic
 - `off`: disable periodic neighbors publishing
 
@@ -7637,10 +8084,14 @@ both defaulting to on; those switches are not in the published 1.18.0.1 images.
 
 #### View or change the neighbors publish interval (MQTT observer, neighbors feature)
 **Usage:**
-- `get mqtt.neighbors.interval`
-- `set mqtt.neighbors.interval <hours>`
+
+```text
+get mqtt.neighbors.interval
+set mqtt.neighbors.interval <hours>
+```
 
 **Parameters:**
+
 - `hours`: how often to publish the neighbor table (12-336, default 24)
 
 **Default:** `24` (hours)
@@ -7653,9 +8104,12 @@ both defaulting to on; those switches are not in the published 1.18.0.1 images.
 
 #### View or change the NTP server (MQTT observer only)
 **Usage:**
-- `get mqtt.ntp`
-- `set mqtt.ntp <hostname>`
-- `set mqtt.ntp none`
+
+```text
+get mqtt.ntp
+set mqtt.ntp <hostname>
+set mqtt.ntp none
+```
 
 **Description:** Sets the primary NTP server used for clock sync (required for JWT MQTT auth). On `set`, the device attempts an immediate sync of the just-configured server (primary only, so a typo fails fast) when WiFi is connected and the MQTT bridge is running.
 
@@ -7667,7 +8121,10 @@ both defaulting to on; those switches are not in the published 1.18.0.1 images.
 
 #### Diagnose NTP server connectivity (MQTT observer only)
 **Usage:**
-- `get mqtt.ntp.diag`
+
+```text
+get mqtt.ntp.diag
+```
 
 **Description:** Probes every configured NTP server (the custom primary, if set, plus the built-in fallbacks) and reports whether each responds. This is a pure connectivity diagnostic - it does **not** change the system clock.
 
@@ -7680,10 +8137,14 @@ Requires WiFi connected and the MQTT bridge running.
 
 #### View or change the speed of the bridge (RS-232 only)
 **Usage:**
-- `get bridge.baud`
-- `set bridge.baud <rate>`
+
+```text
+get bridge.baud
+set bridge.baud <rate>
+```
 
 **Parameters:**
+
 - `rate`: Integer baud rate from `9600` through the board's compiled
   `BRIDGE_MAX_BAUD` (commonly `500000`); for example `115200`. Stop the bridge
   with `set rs232.enabled off` in a combined MQTT image, or
@@ -7696,10 +8157,14 @@ Requires WiFi connected and the MQTT bridge running.
 
 #### View or change the UART used by the bridge (RS-232 only)
 **Usage:**
-- `get bridge.uart`
-- `set bridge.uart <port>`
+
+```text
+get bridge.uart
+set bridge.uart <port>
+```
 
 **Parameters:**
+
 - `port`: Hardware UART number compiled for the board. Most boards expose one
   fixed UART. RAK4631 accepts `1` or `2`; UART 2 is the default so UART 1 can
   remain available to the RAK12501/L76K GPS. RAK12500 GPS uses I2C rather than
@@ -7722,10 +8187,14 @@ module.
 
 #### View or change the channel used for bridging (ESPNow only)
 **Usage:**
-- `get bridge.channel`
-- `set bridge.channel <channel>`
+
+```text
+get bridge.channel
+set bridge.channel <channel>
+```
 
 **Parameters:**
+
 - `channel`: Channel number from 1 through 13 in either format. This matches
   the primary-ESP-NOW policy and the default regulatory range used by the
   supported ESP32 targets.
@@ -7738,15 +8207,19 @@ node's primary ESP-NOW mesh channel. Primary-ESP-NOW firmware uses
 
 #### View or change the ESP-NOW bridge wire format
 **Usage:**
-- `get bridge.format`
-- `set bridge.format <format>`
+
+```text
+get bridge.format
+set bridge.format <format>
+```
 
 **Parameters:**
+
 - `format`:
-  - `wrapped`: the original ESP-NOW bridge framing (magic, checksum, and XOR
-    using `bridge.secret`)
-  - `raw`: the exact serialized MeshCore packet used by primary
-    `ESPNOWRadio` firmware
+    - `wrapped`: the original ESP-NOW bridge framing (magic, checksum, and XOR
+      using `bridge.secret`)
+    - `raw`: the exact serialized MeshCore packet used by primary
+      `ESPNOWRadio` firmware
 
 **Default:** `wrapped`
 
@@ -7784,11 +8257,15 @@ them.
 ---
 
 #### Set the ESP-Now secret
-**Usage:** 
-- `get bridge.secret`
-- `set bridge.secret <secret>`
+**Usage:**
+
+```text
+get bridge.secret
+set bridge.secret <secret>
+```
 
 **Parameters:**
+
 - `secret`: ESP-NOW bridge secret, 1-15 characters
 
 **Default:** Varies by board
@@ -7993,13 +8470,18 @@ is active.
 
 #### View Ethernet connection status
 **Usage:**
-- `eth.status`
+
+```text
+eth.status
+```
 
 **Output:**
+
 - `ETH: <ip>:<port>` when connected (e.g. `ETH: 192.168.1.50:23`)
 - `ETH: not connected` when Ethernet is not active
 
 **Notes:**
+
 - Available on repeater and room server firmware only. The normal
   `_ethernet` Companion image does not expose a CLI; the combined RAK4631 Full
   profile above instead exposes `get eth` / `set eth on|off`.
