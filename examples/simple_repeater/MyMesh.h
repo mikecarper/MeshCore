@@ -1436,6 +1436,9 @@ public:
   void deleteScheduledRadioParams(bool temporary, const char* selector, char* reply) override;
   bool formatFileSystem() override;
   void sendSelfAdvertisement(int delay_millis, bool flood) override;
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+  bool sendBenchRawProbe(uint32_t length) override;
+#endif
   void updateAdvertTimer() override;
   void updateFloodAdvertTimer() override;
   void onRadio2FloodAdvertChanged(bool enabled) override { if (!enabled) radio2_flood_advert.pause(); }

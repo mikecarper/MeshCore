@@ -3809,6 +3809,14 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     if (mesh::radioDirection::handleDirectionCommand(command, reply, 157)) return;
 #endif
 #if defined(MESH_ESPNOW_TXSYNC_LAB)
+    if (!sender_timestamp && strncmp(command, "lab.raw ", 8) == 0) {
+      uint32_t length;
+      if (mesh::cli::parseUnsignedIntegerStrict(command + 8, length)
+          && _callbacks->sendBenchRawProbe(length)) {
+        snprintf(reply, 157, "OK - raw probe queued");
+      } else mesh::cli::formatError(reply, 157, "raw probe unavailable or invalid length");
+      return;
+    }
     if (!sender_timestamp && strcmp(command, "get lab.txgap") == 0) {
       snprintf(reply, 157, "> %u", unsigned(mesh::bridge::espNowTxTurnaround()));
       return;

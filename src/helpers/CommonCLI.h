@@ -574,6 +574,9 @@ public:
   virtual const char* getRole() = 0;
   virtual bool formatFileSystem() = 0;
   virtual void sendSelfAdvertisement(int delay_millis, bool flood) = 0;
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+  virtual bool sendBenchRawProbe(uint32_t) { return false; }
+#endif
   virtual void updateAdvertTimer() = 0;
   virtual void updateFloodAdvertTimer() = 0;
   virtual void onRadio2FloodAdvertChanged(bool /*enabled*/) { }

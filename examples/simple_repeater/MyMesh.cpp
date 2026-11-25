@@ -5820,6 +5820,20 @@ void MyMesh::sendSelfAdvertisementNow(uint32_t delay_millis, bool flood) {
   }
 }
 
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+bool MyMesh::sendBenchRawProbe(uint32_t length) {
+  uint8_t payload[sizeof(mesh::Packet::payload)] = {};
+  if (length < PUB_KEY_SIZE + sizeof(uint32_t) || length > sizeof(payload)) return false;
+  memcpy(payload, self_id.pub_key, PUB_KEY_SIZE);
+  const uint32_t nonce = micros();
+  memcpy(payload + PUB_KEY_SIZE, &nonce, sizeof(nonce));
+  auto* packet = createRawData(payload, length);
+  if (!packet) return false;
+  sendZeroHop(packet, 0U);
+  return true;
+}
+#endif
+
 void MyMesh::updateAdvertTimer() {
   const uint32_t minutes = radio_timing.localAdvertMinutes((uint32_t)_prefs.advert_interval * 2);
   if (minutes > 0) {
