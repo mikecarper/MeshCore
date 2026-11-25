@@ -153,16 +153,24 @@ After about two minutes of scanning, compare these readings:
 | Outer V4 | `get radio2.scan` | `preamble=` gives the transmitted lengths in symbols. |
 | Each Companion | `get radio2.timing` | `need=` gives that receiver's recommended lengths. |
 
-Leave the preset on automatic when its transmitted length meets every
-receiver's recommendation. For example, if the V4 sends 40 symbols and
-a Companion needs 48, run this on the **outer V4** for the USA setup:
+Use matching preamble lengths on the transmitter and receivers for each
+frequency. The SX1262 receiver uses its configured length to decide how long
+to wait for the packet header. A longer preamble sent to a receiver configured
+for a shorter one can cause the receiver to switch away before the header.
+
+Leave the preset on automatic when the effective lengths match and meet
+every receiver's recommendation. If the outer V4 sends 40 MediaMesh
+symbols and a Companion needs 48, apply the 48-symbol setting to the
+**outer V4 and each downstream Companion** in this USA example.
 
 ```text
 set radio2 911.150,250,7,5,rxtx,48
 ```
 
-Use the largest requirement among your receivers. For traffic going the
-other way, compare the sender's preamble with the outer V4's `need=`.
+Use the largest requirement among your receivers. After changing the USA
+preamble, recheck both recommendations because the USA length also controls
+how long each Companion listens on MediaMesh. For traffic going the other way,
+compare both lengths with the outer V4's `need=`.
 The outer V4 serializes its own transmissions. Other nodes can still transmit
 at the same time, and a Companion receiving one frame stays on that frequency
 until the frame ends. It can also miss frames while transmitting.
