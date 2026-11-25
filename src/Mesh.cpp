@@ -1,6 +1,7 @@
 #include "Mesh.h"
 #include <helpers/AdvertDataLayout.h>
 #include <helpers/AdvertSignature.h>
+#include <helpers/AdvertVerificationTask.h>
 #include <helpers/ManagementReport.h>
 #include <SHA256.h>
 #ifdef ESP_PLATFORM
@@ -63,12 +64,18 @@ static bool hasValidEncryptedPayloadLength(uint16_t payload_len, uint16_t clear_
   return ((payload_len - overhead) % CIPHER_BLOCK_SIZE) == 0;
 }
 
-static bool verifyAdvertSignature(const Packet* packet, const Identity& identity) {
+static bool verifyAdvertSignature(const Packet* packet, const Identity& identity, Radio* radio = nullptr) {
   uint8_t message[AdvertSignature::kMaxMessageLen];
   const uint8_t* signature;
   const int message_len = AdvertSignature::buildMessage(
       packet->payload, packet->payload_len, message, &signature);
-  return message_len >= 0 && identity.verify(signature, message, message_len);
+  if (message_len < 0) return false;
+#if defined(ESP32_PLATFORM) || defined(NRF52_PLATFORM)
+  if (radio) return verifyAdvertWhileScanning(*radio, identity, signature, message, message_len);
+#else
+  (void)radio;
+#endif
+  return identity.verify(signature, message, message_len);
 }
 
 bool Mesh::isTelemetryHistoryPayload(const Packet* packet) {
@@ -1258,7 +1265,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
         // for signature verification, and known duplicates remain cheap.
         if (_tables->wasSeen(pkt)) return ACTION_RELEASE;
         const Identity id(pkt->payload);
-        if (!verifyAdvertSignature(pkt, id)) {
+        if (!verifyAdvertSignature(pkt, id, _radio)) {
           MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): forged routed advertisement", getLogDateTime());
           return ACTION_RELEASE;
         }
@@ -1497,7 +1504,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
         uint8_t* app_data = &pkt->payload[i];
         int app_data_len = pkt->payload_len - i;
 
-        if (verifyAdvertSignature(pkt, id)) {
+        if (verifyAdvertSignature(pkt, id, _radio)) {
           MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): valid advertisement received!", getLogDateTime());
           if (limiter) {
             uint8_t hash[MAX_HASH_SIZE];

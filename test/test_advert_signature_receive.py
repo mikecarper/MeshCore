@@ -33,7 +33,7 @@ class AdvertSignatureReceiveTests(unittest.TestCase):
         direct_advert = extract_braced(receive[after_gate:], "if (is_advert)")
         local_advert = extract_braced(receive, "case PAYLOAD_TYPE_ADVERT:")
         for branch in (direct_advert, local_advert):
-            self.assertIn("verifyAdvertSignature(pkt, id)", branch)
+            self.assertIn("verifyAdvertSignature(pkt, id, _radio)", branch)
 
     def test_signed_bytes_match_public_builder_and_bad_layouts_stop_before_verifying(self):
         compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
@@ -57,6 +57,7 @@ class AdvertSignatureReceiveTests(unittest.TestCase):
 constexpr unsigned PAYLOAD_TYPE_ADVERT = 4;
 constexpr unsigned PAYLOAD_TYPE_TRACE = 9;
 constexpr uint32_t ACTION_RELEASE = 0;
+class Radio;
 struct Packet {
   uint8_t* payload;
   uint16_t payload_len;
