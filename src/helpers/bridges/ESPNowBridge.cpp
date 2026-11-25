@@ -38,11 +38,16 @@ void signTxSync(const char* key, const uint8_t* source, const uint8_t* dest,
 }
 }
 
-bool mesh::bridge::acquireEspNowTx(uint32_t now, uint32_t airtime_ms) {
+bool mesh::bridge::permitEspNowTx(uint32_t now, uint32_t airtime_ms) {
   const uint64_t id = (uint64_t(esp_random()) << 32) | esp_random();
-  return tx_arbiter.acquire(now, airtime_ms, id);
+  return tx_arbiter.permitted(now, airtime_ms, id);
 }
 
+bool mesh::bridge::acquireEspNowTx(uint32_t now, uint32_t airtime_ms) {
+  return tx_arbiter.acquire(now, airtime_ms, 0);
+}
+
+void mesh::bridge::yieldEspNowTx(uint32_t now) { tx_arbiter.yield(now); }
 void mesh::bridge::completeEspNowTx(uint32_t now) { tx_arbiter.complete(now); }
 #endif
 

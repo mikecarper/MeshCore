@@ -70,9 +70,26 @@ void testDutyCycle() {
     assert(sent[i] * airtime[i] >= 14400 && sent[i] * airtime[i] <= 15500);
 }
 
+void testBusyChannelReturnsGrant() {
+  Arbiter coordinator, peer;
+  coordinator.begin(true, 0);
+  peer.begin(false, 0);
+  assert(!peer.permitted(2500, 125, 1));
+  coordinator.receive(peer.poll(2500), 2502);
+  peer.receive(coordinator.poll(2502), 2504);
+  assert(peer.permitted(2504, 125, 2));
+  peer.yield(2505);
+  assert(!peer.permitted(2505, 125, 3));
+  const auto released = peer.poll(2505);
+  assert(released.kind == Kind::Done && released.id == 1);
+  coordinator.receive(released, 2507);
+  assert(coordinator.acquire(2515, 470, 4));
+}
+
 int main() {
   testLateGrant();
   testDutyCycle();
+  testBusyChannelReturnsGrant();
 }
 """
 

@@ -48,7 +48,7 @@ public:
         quiet_until_ = now + TurnaroundMs;
         quiet_ = true;
         local_priority_ = true;
-        local_until_ = quiet_until_ + 4;
+        local_until_ = quiet_until_ + RetryMs;
       }
     } else if (message.kind == Kind::Grant) {
       if (message.id == request_id_) have_grant_ = true;
@@ -56,15 +56,15 @@ public:
     }
   }
 
-  // Called only when the normal queue, airtime budget and CAD permit a send.
-  bool acquire(uint32_t now, uint32_t airtime_ms, uint64_t new_id) {
+  // Leave the chip in receive while waiting for a grant. CAD runs only when
+  // the peer has finished transmitting and this board has a turn.
+  bool permitted(uint32_t now, uint32_t airtime_ms, uint64_t new_id) {
     if (!ready_ || !airtime_ms || airtime_ms >= WindowMs - ClockMarginMs) return false;
     expire(now);
     if (active_ || quiet_) return false;
     if (coordinator_) {
       if (uint32_t(now - startup_) < WindowMs ||
           (remote_id_ && (remote_granted_ || !local_priority_))) return false;
-      local_priority_ = false;
     } else {
       if (!request_id_) {
         request_id_ = new_id;
@@ -74,9 +74,21 @@ public:
       if (!have_grant_
           || uint32_t(now - request_at_) >= WindowMs - ClockMarginMs - airtime_ms) return false;
     }
+    return true;
+  }
+
+  bool acquire(uint32_t now, uint32_t airtime_ms, uint64_t new_id) {
+    if (!permitted(now, airtime_ms, new_id)) return false;
+    local_priority_ = false;
     active_ = true;
     started_ = now;
     return true;
+  }
+
+  // A busy channel can defer a queued send after the grant has arrived.
+  // Return the unused turn without waiting for the failure deadline.
+  void yield(uint32_t now) {
+    if (!coordinator_ && !active_ && have_grant_) releasePeerTurn(now);
   }
 
   void complete(uint32_t now) {
@@ -84,13 +96,7 @@ public:
     active_ = false;
     quiet_ = true;
     quiet_until_ = now + TurnaroundMs;
-    if (!coordinator_) {
-      completed_ = request_id_;
-      request_id_ = 0;
-      have_grant_ = false;
-      done_pending_ = true;
-      next_message_ = now;
-    }
+    if (!coordinator_) releasePeerTurn(now);
   }
 
   Message poll(uint32_t now) {
@@ -117,6 +123,14 @@ public:
   }
 
 private:
+  void releasePeerTurn(uint32_t now) {
+    completed_ = request_id_;
+    request_id_ = 0;
+    have_grant_ = false;
+    done_pending_ = true;
+    next_message_ = now;
+  }
+
   void expire(uint32_t now) {
     if (quiet_ && int32_t(now - quiet_until_) >= 0) quiet_ = false;
     if (local_priority_ && int32_t(now - local_until_) >= 0) local_priority_ = false;
@@ -144,7 +158,9 @@ private:
 
 #if defined(MESH_ESPNOW_TXSYNC_LAB)
 // Implemented by the ESP-NOW bridge in the opt-in bench repeater build.
+bool permitEspNowTx(uint32_t now, uint32_t airtime_ms);
 bool acquireEspNowTx(uint32_t now, uint32_t airtime_ms);
+void yieldEspNowTx(uint32_t now);
 void completeEspNowTx(uint32_t now);
 #endif
 

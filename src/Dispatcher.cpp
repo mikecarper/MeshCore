@@ -1820,12 +1820,21 @@ void Dispatcher::checkSend() {
     return;
   }
 
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+  if (!pending) return;
+  const uint32_t sync_airtime = getTransmitAirtime(pending);
+  if (allowPacketTransmit(pending) &&
+      !bridge::permitEspNowTx(_ms->getMillis(), sync_airtime)) return;
+#endif
   // Waiting for airtime credit must leave the receive scanner free to run.
   // Only retune once this queue entry is actually eligible to transmit.
   if (pending && _radio->profiles()) {
     const auto prepared = _radio->prepareTransmitProfile(pending->radio_profile,
         pending->radio_reply && pending->radio_reply_force);
     if (prepared == RadioParamApplyResult::BUSY) {
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+      bridge::yieldEspNowTx(_ms->getMillis());
+#endif
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
       // Packet is still queued, so reschedule in place and preserve metadata.
       if (!pending->w12_pre_tx_deadline) {
@@ -1840,6 +1849,9 @@ void Dispatcher::checkSend() {
       return;
     }
     if (prepared == RadioParamApplyResult::FAILED) {
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+      bridge::yieldEspNowTx(_ms->getMillis());
+#endif
       outbound = _mgr->getNextOutbound(now);
       failOutboundTransmit();
       return;
@@ -1848,6 +1860,9 @@ void Dispatcher::checkSend() {
 
   uint32_t retry_delay;
   if (!isTransmitChannelReady(pending, retry_delay)) {
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
+    bridge::yieldEspNowTx(_ms->getMillis());
+#endif
     if (!isDualRadioActive() || !pending || !_mgr->deferOutbound(pending, futureMillis(retry_delay))) {
       next_tx_time = futureMillis(retry_delay);
     }
@@ -1857,11 +1872,15 @@ void Dispatcher::checkSend() {
   // Retuning and CAD can advance the clock. Keep the selection timestamp so
   // a newly due higher-priority packet cannot skip its own profile, airtime,
   // and OTA pacing checks. A manager may also expire/reorder work on peek.
-  if (pending && _mgr->peekNextOutbound(now) != pending) return;
+  if (pending && _mgr->peekNextOutbound(now) != pending) {
 #if defined(MESH_ESPNOW_TXSYNC_LAB)
-  if (!pending) return;
+    bridge::yieldEspNowTx(_ms->getMillis());
+#endif
+    return;
+  }
+#if defined(MESH_ESPNOW_TXSYNC_LAB)
   if (allowPacketTransmit(pending) &&
-      !bridge::acquireEspNowTx(_ms->getMillis(), getTransmitAirtime(pending))) return;
+      !bridge::acquireEspNowTx(_ms->getMillis(), sync_airtime)) return;
 #endif
 #if defined(MESH_W12_PRAM_SEQ_TX_LAB) && MESH_W12_PRAM_SEQ_TX_LAB
   // Never remove a packet unless its exact priority and age can be restored.
