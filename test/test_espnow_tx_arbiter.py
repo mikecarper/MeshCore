@@ -102,11 +102,35 @@ void testConfiguredTurnaround() {
   assert(coordinator.acquire(2786, 125, 3));
 }
 
+void testLongTurnaroundBetweenPeers() {
+  Arbiter coordinator, peer;
+  coordinator.setTurnaround(Arbiter::MaxTurnaroundMs);
+  peer.setTurnaround(Arbiter::MaxTurnaroundMs);
+  coordinator.begin(true, 0);
+  peer.begin(false, 0);
+  assert(coordinator.acquire(2500, 125, 1));
+  assert(!peer.acquire(2510, 125, 2));
+  coordinator.receive(peer.poll(2510), 2512);
+  coordinator.complete(2625);
+  assert(!coordinator.acquire(2874, 125, 3));
+  assert(coordinator.poll(2874).kind == Kind::None);
+  const auto grant = coordinator.poll(2875);
+  assert(grant.kind == Kind::Grant && grant.id == 2);
+  peer.receive(grant, 2876);
+  assert(peer.acquire(2876, 125, 2));
+  peer.complete(3001);
+  coordinator.receive(peer.poll(3001), 3002);
+  assert(!peer.acquire(3250, 125, 4));
+  assert(!coordinator.acquire(3251, 125, 3));
+  assert(coordinator.acquire(3252, 125, 3));
+}
+
 int main() {
   testLateGrant();
   testDutyCycle();
   testBusyChannelReturnsGrant();
   testConfiguredTurnaround();
+  testLongTurnaroundBetweenPeers();
 }
 """
 

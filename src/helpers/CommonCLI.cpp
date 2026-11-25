@@ -3815,10 +3815,11 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     }
     if (!sender_timestamp && strncmp(command, "set lab.txgap ", 14) == 0) {
       uint32_t gap;
-      if (mesh::cli::parseUnsignedIntegerStrict(command + 14, gap) && gap <= 64) {
+      if (mesh::cli::parseUnsignedIntegerStrict(command + 14, gap)
+          && gap <= mesh::bridge::EspNowTxArbiter::MaxTurnaroundMs) {
         mesh::bridge::setEspNowTxTurnaround(static_cast<uint8_t>(gap));
         snprintf(reply, 157, "OK - TX gap %lu ms", (unsigned long)gap);
-      } else mesh::cli::formatError(reply, 157, "use set lab.txgap 0..64");
+      } else mesh::cli::formatError(reply, 157, "use set lab.txgap 0..250");
       return;
     }
 #endif
