@@ -1,5 +1,7 @@
 #pragma once
 
+#include "UsbDataLock.h"
+
 #include <MeshCore.h>
 #include <Arduino.h>
 
@@ -312,6 +314,10 @@ public:
         : "Error: UART quiet requires a default hardware UART console");
     return harmless;
 #else
+    if (mesh::usbDataLocked()) {
+      snprintf(reply, capacity, "uart=locked");
+      return false;
+    }
     if (action == mesh::esp32::UartQuietAction::Cancel) {
       uart_quiet_start_at = 0;
       if (uart_quiet_restore_at) {

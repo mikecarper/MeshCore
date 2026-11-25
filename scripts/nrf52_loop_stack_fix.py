@@ -86,6 +86,15 @@ def patched_logging_source(source):
 def replace_core(build_env, node):
     source = Path(node.srcnode().get_abspath())
     patched = patched_logging_source(patched_source(source.read_text(encoding="utf-8")))
+    # Core calls bind inside one LTO graph. Gate startup in that same source
+    # before TinyUSB can enumerate, including the optional debug UART fallback.
+    entry = "  TinyUSB_Device_Init(0);"
+    debug = "  if(!Serial) Serial.begin(115200);"
+    if patched.count(entry) != 1 or patched.count(debug) != 1:
+        raise RuntimeError("Unrecognized nRF52 core USB startup")
+    patched = ('namespace mesh { bool usbDataLocked(); void applyUsbDataLockAtBoot(); }\n' + patched
+               .replace(entry, "  mesh::applyUsbDataLockAtBoot();\n  if (!mesh::usbDataLocked()) TinyUSB_Device_Init(0);")
+               .replace(debug, "  if (!mesh::usbDataLocked() && !Serial) Serial.begin(115200);"))
     destination = Path(build_env.subst("$BUILD_DIR")) / "patched-nrf52-core" / "main.cpp"
     destination.parent.mkdir(parents=True, exist_ok=True)
     if not destination.exists() or destination.read_text(encoding="utf-8") != patched:

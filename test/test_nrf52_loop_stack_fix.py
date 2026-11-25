@@ -33,7 +33,9 @@ static TaskHandle_t _loopHandle;
 static void loop_task(void*) {}
 static unsigned last_depth;
 constexpr unsigned TASK_PRIO_LOW = 1;
-extern "C" BaseType_t xTaskCreate(TaskFunction_t, const char*,
+// The real RTOS exports this symbol. The linker resolves __real_xTaskCreate
+// after LTO, so a whole-program test must keep the definition available.
+extern "C" __attribute__((used, externally_visible)) BaseType_t xTaskCreate(TaskFunction_t, const char*,
     configSTACK_DEPTH_TYPE depth, void*, UBaseType_t, TaskHandle_t*) {
   last_depth = depth;
   return pdPASS;

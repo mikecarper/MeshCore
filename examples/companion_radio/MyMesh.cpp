@@ -1,3 +1,4 @@
+#include <helpers/UsbDataLock.h>
 #include <helpers/CLIReplyText.h>
 #include <helpers/BleCommonPinWarning.h>
 #include <helpers/HardwareCommand.h>
@@ -4523,6 +4524,7 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
 #if defined(USE_LR2021) && defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
   if (mesh::lr2021::handleScannerCommand(command, reply, reply_size, radio_driver)) return true;
 #endif
+  if (mesh::handleUsbDataLockCommand(command, reply, reply_size)) return true;
   if (mesh::handleUsbModeCommand(command, reply, reply_size, Serial)) return true;
 #if defined(ESP32_PLATFORM) && defined(WIFI_SSID)
   if (strncmp(command, "password", 8) == 0

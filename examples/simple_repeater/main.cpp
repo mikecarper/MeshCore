@@ -1,3 +1,4 @@
+#include <helpers/UsbDataLock.h>
 #include <helpers/RegulatorSettings.h>
 #if defined(USE_LR2021)
 #include <helpers/radiolib/LR2021CalibrationSettings.h>
@@ -217,11 +218,12 @@ static void serviceRequiredPsramFailure() {
 #endif
 
 void setup() {
+  mesh::applyUsbDataLockAtBoot();
 #ifdef MESH_INFRASTRUCTURE_WIRELESS_POLICY
   mesh::wireless::control().begin(infrastructure_wireless);
 #endif
   mesh::prepareUsbLoggingPort();
-  Serial.begin(115200);
+  if (!mesh::usbDataLocked()) Serial.begin(115200);
 #if MESH_USB_CONSOLE_COOPERATIVE
   mesh::beginUsbLoggingPort();
 #endif

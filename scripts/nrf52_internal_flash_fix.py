@@ -217,7 +217,19 @@ def replace_framework_source(build_env, node):
     return build_env.File(str(destination))
 
 
+def include_usb_lock(build_env, node):
+    source = Path(node.srcnode().get_abspath())
+    extension = Path(build_env.subst("$PROJECT_DIR")) / "src/helpers/nrf52/LittleFsUsbLock.inc"
+    destination = Path(build_env.subst("$BUILD_DIR")) / "patched-nrf52-flash/lfs.c"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    content = f'#include "{source.as_posix()}"\n#include "{extension.as_posix()}"\n'
+    if not destination.exists() or destination.read_text(encoding="utf-8") != content:
+        destination.write_text(content, encoding="utf-8")
+    return build_env.File(str(destination))
+
+
 def install(build_env):
+    build_env.AddBuildMiddleware(include_usb_lock, "*Adafruit_LittleFS*littlefs*lfs.c")
     build_env.AddBuildMiddleware(
         replace_framework_source,
         "*flash_nrf5x.c",

@@ -1,4 +1,5 @@
 #include "UsbLogging.h"
+#include "UsbDataLock.h"
 #include "UsbLoggingClientActivity.h"
 #if MESH_ENABLE_HOST_KISS
 #include "UsbBinaryTextGuard.h"
@@ -1452,6 +1453,7 @@ void setUsbCompanionTxBufferCapacity(size_t capacity) {
 }
 
 void prepareUsbLoggingPort() {
+  if (usbDataLocked()) return;
 #if MESH_ESP32_HWCDC_SESSION_GUARD
   // Install before board/wireless startup, including any asynchronous WiFi
   // diagnostics which arrive after a later WiFi shutdown has completed.
@@ -1486,6 +1488,7 @@ void prepareUsbLoggingPort() {
 }
 
 void beginUsbLoggingPort() {
+  if (usbDataLocked()) return;
   // setup() calls this once before role preferences are loaded and again
   // afterwards. The first call silences framework diagnostics on a protected
   // ESP32 Companion stream; setUsbLoggingEnabled() restores them only when the
@@ -1524,6 +1527,7 @@ void beginUsbLoggingPort() {
 }
 
 void serviceUsbLoggingPort() {
+  if (usbDataLocked()) return;
 #if MESH_ESP32_TINYUSB_NONBLOCKING \
     || (defined(NRF52_PLATFORM) && defined(USE_TINYUSB) && !MESH_PRIMARY_SERIAL_IS_UART)
   // A timed reconnect retains all descriptors and never blocks the radio loop
@@ -1697,6 +1701,7 @@ static bool beginEsp32HwcdcSessionReset() {
 #endif
 
 bool resetUsbCompanionTransport() {
+  if (usbDataLocked()) return false;
 #if MESH_ESP32_TINYUSB_NONBLOCKING
   esp32_tinyusb_reset_generation.fetch_add(1, std::memory_order_acq_rel);
   serviceEsp32TinyUsbPorts();
@@ -1772,6 +1777,7 @@ static Stream& rawUsbLoggingPort() {
 }
 
 Stream& usbLoggingPort() {
+  if (usbDataLocked()) return null_usb_logging_stream;
 #if MESH_ENABLE_HOST_KISS
   static UsbBinaryTextGuard guarded(isUsbBinaryStreamOwned, beginUsbTextWrite, endUsbTextWrite);
   guarded.use(rawUsbLoggingPort());
@@ -1787,6 +1793,7 @@ Stream& usbDebugPort() {
 }
 
 Stream& usbCompanionPort() {
+  if (usbDataLocked()) return null_usb_logging_stream;
 #if MESH_PRIMARY_SERIAL_IS_UART
   return primary_uart_companion_port;
 #elif MESH_ESP32_TINYUSB_NONBLOCKING
@@ -1802,6 +1809,7 @@ Stream& usbCompanionPort() {
 
 #if defined(NRF52_PLATFORM) && (defined(ENABLE_USB_INTERFACE) || defined(USE_TINYUSB))
 bool isUsbCompanionClientConnected() {
+  if (usbDataLocked()) return false;
 #if MESH_PRIMARY_SERIAL_IS_UART
   if (primary_uart_companion_port.available() > 0) return true;
   if (!primary_uart_has_rx) return false;
@@ -1816,6 +1824,7 @@ bool isUsbCompanionClientConnected() {
 #endif
 
 Stream& usbMotaPort() {
+  if (usbDataLocked()) return null_usb_logging_stream;
 #if MESH_PRIMARY_SERIAL_IS_UART
   return primary_uart_mota_port;
 #elif MESH_ESP32_TINYUSB_NONBLOCKING
@@ -1857,6 +1866,7 @@ static Stream& rawUsbConsolePort() {
 }
 
 Stream& usbTerminalPort(bool enabled) {
+  if (usbDataLocked()) return null_usb_logging_stream;
 #if MESH_ENABLE_HOST_KISS
   static UsbBinaryTextGuard guarded(isUsbBinaryStreamOwned, beginUsbTextWrite, endUsbTextWrite);
   if (!enabled) return null_usb_logging_stream;
@@ -1868,6 +1878,7 @@ Stream& usbTerminalPort(bool enabled) {
 }
 
 Stream& usbConsolePort() {
+  if (usbDataLocked()) return null_usb_logging_stream;
 #if MESH_ENABLE_HOST_KISS
   static UsbBinaryTextGuard guarded(isUsbBinaryStreamOwned, beginUsbTextWrite, endUsbTextWrite);
   guarded.use(rawUsbConsolePort());
@@ -1878,6 +1889,7 @@ Stream& usbConsolePort() {
 }
 
 bool canAcceptUsbConsoleCommand() {
+  if (usbDataLocked()) return false;
   if (isUsbBinaryStreamOwned()) return false;
 #if MESH_ESP32_TINYUSB_NONBLOCKING
   return buffered_esp32_tinyusb_terminal_port.availableForWrite()
@@ -1895,6 +1907,7 @@ bool canAcceptUsbConsoleCommand() {
 }
 
 void serviceUsbTerminalPort() {
+  if (usbDataLocked()) return;
 #if MESH_PRIMARY_SERIAL_IS_UART
   if (primary_uart_terminal_discard_pending.exchange(false, std::memory_order_acq_rel)
       && !buffered_primary_uart_terminal_port.tryDiscardPending()) {
@@ -1976,6 +1989,7 @@ uint32_t usbTerminalDroppedBytes() {
 }
 
 bool takeUsbTerminalSessionReset() {
+  if (usbDataLocked()) return false;
 #if MESH_PRIMARY_SERIAL_IS_UART
   // A UART bridge cannot expose the host's COM open/close or USB bus reset.
   // The Companion parser uses bounded actual-input/frame activity instead.
@@ -2028,6 +2042,7 @@ static void completePrimaryUsbSessionReset(void*) {
 #endif
 
 bool tryCompleteUsbTerminalSessionReset() {
+  if (usbDataLocked()) return true;
 #if MESH_PRIMARY_SERIAL_IS_UART
   return true;
 #elif MESH_ESP32_TINYUSB_NONBLOCKING
@@ -2103,7 +2118,8 @@ const char* usbLoggingPortDescription() {
 }
 
 UsbLoggingObservation observeUsbLoggingTransport() {
-  UsbLoggingObservation result;
+  UsbLoggingObservation result{};
+  if (usbDataLocked()) return result;
   result.tx_progress = usb_logging_tx_progress.load(std::memory_order_acquire);
 #if MESH_ESP32_TINYUSB_NONBLOCKING
   result.supported = true;
@@ -2192,7 +2208,7 @@ void probeUsbLoggingTransport() {
 }
 
 UsbLoggingRecoveryResult recoverUsbLoggingTransport(uint8_t stage) {
-  if (!isUsbLoggingEnabled() || (stage != 1 && stage != 2))
+  if (usbDataLocked() || !isUsbLoggingEnabled() || (stage != 1 && stage != 2))
     return UsbLoggingRecoveryResult::Unsupported;
 #if MESH_ESP32_TINYUSB_NONBLOCKING
   if (xPortInIsrContext()) return UsbLoggingRecoveryResult::Deferred;
@@ -2360,7 +2376,7 @@ extern "C" void meshTinyUsbCdcLineStateChanged(uint8_t instance, bool dtr,
     mesh::endPrimaryUsbHostSession(true);
     cdc_line_coding_t coding;
     tud_cdc_get_line_coding(&coding);
-    if (coding.bit_rate == 1200) {
+    if (coding.bit_rate == 1200 && !mesh::usbDataLocked()) {
       if (meshRegulatorCleanReset) meshRegulatorCleanReset();
       TinyUSB_Port_EnterDFU();
     }

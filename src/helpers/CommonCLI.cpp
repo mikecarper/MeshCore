@@ -13,6 +13,7 @@
 #include "CarrierTools.h"
 #include "PacketFileLoggingConfig.h"
 #include "CommonCLI.h"
+#include "UsbDataLock.h"
 #include "AGCMaintenanceCLI.h"
 #include "AGCSettings.h"
 #include "RadioMaintenanceCLI.h"
@@ -4675,6 +4676,7 @@ void CommonCLI::handleScheduledRadio(const char* args, bool temporary, char* rep
 }
 
 void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* reply) {
+  if (mesh::handleUsbDataLockCommand(command, reply, 160)) return;
   const char* config = &command[4];
 #if defined(ESP_PLATFORM)
   if (strncmp(config, "wifi.tx", 7) == 0 &&
@@ -6325,6 +6327,7 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
 }
 
 void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* reply) {
+  if (mesh::handleUsbDataLockCommand(command, reply, 160)) return;
   if (mesh::handleUsbModeCommand(command, reply, 160, Serial)) return;
   const char* config = &command[4];
 #if defined(ESP_PLATFORM)

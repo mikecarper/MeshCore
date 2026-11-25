@@ -1,5 +1,6 @@
 #if defined(ARDUINO)
 #include "UsbLoggingWatchdog.h"
+#include "UsbDataLock.h"
 #include "UsbLoggingWatchdogPolicy.h"
 #include "UsbLogging.h"
 #include "UsbLoggingClientActivity.h"
@@ -413,6 +414,7 @@ bool handleUsbLoggingWatchdogCommand(const char* command, char* reply,
 }
 
 bool serviceUsbLoggingWatchdog(bool (*safe)(void*), void* context) {
+  if (usbDataLocked()) return false;
   const uint32_t now = millis();
   tickUptime(now);
   auto observation = observeUsbLoggingTransport();

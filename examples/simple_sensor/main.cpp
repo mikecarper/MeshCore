@@ -1,3 +1,4 @@
+#include <helpers/UsbDataLock.h>
 #include <helpers/RegulatorSettings.h>
 #if defined(USE_LR2021)
 #include <helpers/radiolib/LR2021CalibrationSettings.h>
@@ -138,8 +139,9 @@ static char command[160];
 static const unsigned long POWERSAVING_FIRST_SLEEP_SECS = 120;
 
 void setup() {
+  mesh::applyUsbDataLockAtBoot();
   mesh::prepareUsbLoggingPort();
-  Serial.begin(115200);
+  if (!mesh::usbDataLocked()) Serial.begin(115200);
 #if MESH_USB_CONSOLE_COOPERATIVE
   mesh::beginUsbLoggingPort();
 #endif

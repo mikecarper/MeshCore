@@ -160,6 +160,14 @@ def replace_driver(build_env, node):
     patcher = {"Adafruit_TinyUSB_nrf.cpp": patched_port_source,
                "cdc_device.c": patched_cdc_source}.get(source.name, patched_source)
     patched = patcher(source.read_text(encoding="utf-8"))
+    if source.name == "dcd_nrf5x.c":
+        entry = "void tusb_hal_nrf_power_event(uint32_t event) {"
+        if patched.count(entry) != 1:
+            raise RuntimeError("Unrecognized Nordic USB power event handler")
+        patched = patched.replace(entry,
+            "extern bool meshNrfUsbPowerLocked(void) __attribute__((weak));\n" + entry +
+            "\n  if (meshNrfUsbPowerLocked && meshNrfUsbPowerLocked()) return;")
+
     destination = Path(build_env.subst("$BUILD_DIR")) / "patched-nrf52-usb" / source.name
     destination.parent.mkdir(parents=True, exist_ok=True)
     if not destination.exists() or destination.read_text(encoding="utf-8") != patched:

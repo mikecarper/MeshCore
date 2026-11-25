@@ -1722,6 +1722,36 @@ For other roles, use the separately named `-ota-` artifact when required. A
 LoRa OTA, and the expanded FULL feature set. A `-full-logging-ota-` artifact is
 emitted only when that hardware/role has no matching WiFi MQTT environment.
 
+### Lock USB data from the LoRa admin CLI
+
+On an nRF52 or ESP32 Repeater, Room Server, Sensor or Companion, use a working
+wireless admin connection to send these commands separately.
+
+```text
+set usb.lock on
+reboot
+get usb.lock
+```
+
+To restore USB, send `set usb.lock off` followed by `reboot` over the same
+connection. USB data starts unlocked on a new install. The setting survives
+power loss and firmware restarts. USB power and charging remain available.
+
+- **nRF52, `app+DFU`**. The running firmware disables wired data. The matching
+  OTAFIX bootloader routes recovery, including double-reset where supported,
+  to Bluetooth DFU while locked. An ordinary reset still starts the application.
+- **nRF52, `app only`**. The running firmware disables wired data. The installed
+  bootloader retains its own flashing behavior. Install an OTAFIX build with
+  USB-lock support for BLE-only DFU.
+- **ESP32, `app only`**. MeshCore disables the primary wired console and
+  disconnects supported native USB data during application startup. An external
+  USB-to-UART bridge may still appear on the host. The chip's ROM downloader
+  remains available during boot.
+
+Bluetooth DFU uses the authentication policy of the installed bootloader.
+Physical SWD access on nRF52 remains available on boards that expose it. Erasing the settings also clears
+the lock.
+
 ### Report the USB connection mode
 
 `get usb.mode` reports the primary serial backend compiled into the running

@@ -1,3 +1,4 @@
+#include <helpers/UsbDataLock.h>
 #include <Arduino.h>
 #include <target.h>
 #include <helpers/ArduinoHelpers.h>
@@ -180,8 +181,9 @@ bool onGetRxBoostedGain() {
 }
 
 void setup() {
+  mesh::applyUsbDataLockAtBoot();
 #if KISS_UART_BOOT_TRACE
-  Serial.begin(115200);
+  if (!mesh::usbDataLocked()) Serial.begin(115200);
   KISS_BOOT_STAGE("setup.enter");
 #endif
 #if KISS_HWCDC_TRANSPORT
@@ -193,7 +195,7 @@ void setup() {
   // G3 can wait in no-radio recovery before modem construction. Bring up
   // USB now so its prefixed recovery console is reachable on an empty slot.
   mesh::prepareUsbLoggingPort();
-  Serial.begin(115200);
+  if (!mesh::usbDataLocked()) Serial.begin(115200);
   mesh::beginUsbLoggingPort();
 #endif
   KISS_BOOT_STAGE("board.before");
@@ -270,7 +272,7 @@ void setup() {
   // Allocate the USB queues before begin() enables the live driver ISR.
   mesh::prepareUsbLoggingPort();
 #endif
-  Serial.begin(115200);
+  if (!mesh::usbDataLocked()) Serial.begin(115200);
 #if KISS_HWCDC_TRANSPORT
   mesh::beginUsbLoggingPort();
 #endif

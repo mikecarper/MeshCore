@@ -95,6 +95,14 @@ def replace_source(build_env, node):
     source = Path(node.srcnode().get_abspath())
     patcher = patched_cdc_source if source.name == "USBCDC.cpp" else patched_usb_source
     patched = patcher(source.read_text(encoding="utf-8"))
+    if source.name == "USB.cpp":
+        # Arduino calls USB.begin() before initArduino() and application setup.
+        begin = "bool ESPUSB::begin(){"
+        if patched.count(begin) != 1:
+            raise RuntimeError("Unrecognized ESP32 native USB startup")
+        patched = ('extern "C" bool meshAllowNativeUsbStartup() __attribute__((weak));\n' +
+                   patched.replace(begin, begin + "\n    if (meshAllowNativeUsbStartup && !meshAllowNativeUsbStartup()) return false;"))
+
     destination = Path(build_env.subst("$BUILD_DIR")) / "patched-esp32-usb" / source.name
     destination.parent.mkdir(parents=True, exist_ok=True)
     if not destination.exists() or destination.read_text(encoding="utf-8") != patched:

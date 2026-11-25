@@ -1,3 +1,4 @@
+#include <helpers/UsbDataLock.h>
 #include <helpers/RegulatorSettings.h>
 #if defined(USE_LR2021)
 #include <helpers/radiolib/LR2021CalibrationSettings.h>
@@ -3767,6 +3768,7 @@ static void resetCompanionRtcTerminalInput() {
 #endif
 
 void setup() {
+  mesh::applyUsbDataLockAtBoot();
 #if COMPANION_RTC_TERMINAL_INPUT
   resetCompanionRtcTerminalInput();
 #endif
@@ -3780,7 +3782,7 @@ void setup() {
   // wireless preparation.  Bluefruit preserves USB power state while it
   // enables the SoftDevice; a late first Serial.begin() can leave that enable
   // path in an invalid state on native-USB boards such as the T1000-E.
-  Serial.begin(115200);
+  if (!mesh::usbDataLocked()) Serial.begin(115200);
 #if !MESH_ESP32_HWCDC_SESSION_GUARD
   mesh::prepareUsbLoggingPort();
 #endif
@@ -4373,6 +4375,7 @@ void setup() {
   // signal and keeps the assume-connected default.
   usb_serial_interface.setConnectedCheck([]() { return (bool)Serial; });
 #endif
+  if (mesh::usbDataLocked()) usb_serial_interface.setConnectedCheck([]() { return false; });
   interface_manager.addInterface(InterfaceType::USB, &usb_serial_interface);
 #if COMPANION_FEATURE_BOOKS
   the_mesh.reader_usb_route = &usb_serial_interface;

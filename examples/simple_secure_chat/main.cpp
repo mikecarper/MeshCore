@@ -1,3 +1,4 @@
+#include <helpers/UsbDataLock.h>
 #include <helpers/RadioProfileCLI.h>
 #include <helpers/BatteryChargeCLI.h>
 #include <helpers/BatteryCalibrationStore.h>
@@ -768,7 +769,8 @@ void halt() {
 }
 
 void setup() {
-  Serial.begin(115200);
+  mesh::applyUsbDataLockAtBoot();
+  if (!mesh::usbDataLocked()) Serial.begin(115200);
 #if MESH_PACKET_LOGGING
   mesh::serialLogBegin();
 #endif
