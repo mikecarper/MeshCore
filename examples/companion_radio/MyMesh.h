@@ -1175,6 +1175,8 @@ private:
   int offline_queue_head;
 #if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
   mesh::RecentChannelText<MAX_GROUP_CHANNELS> recent_channel_text;
+  bool channel_text_dedup_loaded = false;
+  bool handleChannelTextDedupCommand(const char* command, char* reply, size_t capacity);
 #endif
   // Local onboarding only: RAM-backed like the receive queue, not RF traffic.
   uint8_t pending_emergency_notices[(MAX_GROUP_CHANNELS + 7) / 8] = {};

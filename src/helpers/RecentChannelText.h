@@ -6,13 +6,39 @@
 
 namespace mesh {
 
+struct ChannelTextDedupSettings {
+  static constexpr size_t SlotCount = 64;
+  bool global_enabled = true;
+  // Zero bits represent enabled slots, including on older installations.
+  uint8_t disabled_slots[SlotCount / 8] = {};
+
+  bool channelEnabled(size_t slot) const {
+    return (disabled_slots[slot / 8] & (1U << (slot % 8))) == 0;
+  }
+
+  void setChannelEnabled(size_t slot, bool enabled) {
+    auto& flags = disabled_slots[slot / 8];
+    const uint8_t mask = 1U << (slot % 8);
+    if (enabled) flags &= uint8_t(~mask);
+    else flags |= mask;
+  }
+};
+
 // Display history lives separately from the app delivery queue so draining the
 // queue does not forget what the user already saw.
 template <size_t ChannelCount>
 class RecentChannelText {
+  static_assert(ChannelCount <= ChannelTextDedupSettings::SlotCount, "channel mask too small");
+
  public:
   static constexpr size_t FingerprintSize = 8;
   static constexpr uint32_t WindowMs = 15UL * 60 * 1000;
+
+  ChannelTextDedupSettings settings;
+
+  bool enabled(size_t index) const {
+    return settings.global_enabled && settings.channelEnabled(index);
+  }
 
   bool suppress(size_t index, const uint8_t* fingerprint, uint32_t now) {
     auto& channel = channels_[index];
@@ -38,6 +64,10 @@ class RecentChannelText {
 
   void clear(size_t index) {
     channels_[index].valid = channels_[index].next = 0;
+  }
+
+  void clearAll() {
+    for (size_t index = 0; index < ChannelCount; ++index) clear(index);
   }
 
   void expire(uint32_t now) {

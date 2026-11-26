@@ -51,6 +51,25 @@ schedules.
 
 You can also enable Repeat Mode from the CLI with `set repeat on` while tuned to a starting frequency.
 
+## Duplicate channel messages
+
+Filtering starts on for all channels. Use the Companion’s **Command Line** to
+check or change it. For example, `2` below is the channel’s numbered slot.
+
+```text
+get channel.dedup
+set channel.dedup off
+set channel.dedup on
+
+get channel.dedup.2
+set channel.dedup.2 off
+set channel.dedup.2 on
+```
+
+Global `off` pauses filtering on every channel. Global `on` restores each
+slot’s saved setting. Changes take effect immediately and survive a reboot.
+The commands are available on builds that include the duplicate text filter.
+
 ## Power saving
 
 On ESP32 Bluetooth Companions, `set powersaving on` requests a 15-30 ms

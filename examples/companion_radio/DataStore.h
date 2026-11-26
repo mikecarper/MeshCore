@@ -5,6 +5,7 @@
 #include <helpers/ChannelDetails.h>
 #include <helpers/PersistentStoreFormat.h>
 #include "NodePrefs.h"
+#include "CompanionFeatures.h"
 #if MESH_CONTACT_CACHE
 #include <helpers/ContactSecretCache.h>
 #endif
@@ -18,6 +19,9 @@ namespace mesh { class ContactFileTransaction; }
 #endif
 #if COMPANION_FEATURE_READER
 #include <helpers/bible/Reader.h>
+#endif
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+namespace mesh { struct ChannelTextDedupSettings; }
 #endif
 
 class DataStoreHost {
@@ -244,6 +248,10 @@ public:
                  double& node_lon);
   bool canSeedBrowserRadioDefaults() const;
   bool savePrefs(const CompanionNodePrefs& prefs, double node_lat, double node_lon);
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+  bool loadChannelTextDedupSettings(mesh::ChannelTextDedupSettings& settings);
+  bool saveChannelTextDedupSettings(const mesh::ChannelTextDedupSettings& settings);
+#endif
 #if UI_POCKET_GUI
   bool loadPocketGuiSettings(mesh::ui::pocket::Settings& settings);
   bool savePocketGuiSettings(const mesh::ui::pocket::Settings& settings);

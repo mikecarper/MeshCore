@@ -21,6 +21,9 @@ HARNESS = r'''
 #define ATOMIC_FILE_WRITER_IMPLEMENTATION
 #include <helpers/AtomicFileWriter.h>
 #endif
+#include <helpers/CheckedSettingsFile.h>
+#include <helpers/PersistentStoreFormat.h>
+#include <helpers/RecentChannelText.h>
 #include "examples/companion_radio/NodePrefs.h"
 #include "examples/companion_radio/PrefsStorageLayout.h"
 #if defined(RAK_4631)
@@ -32,6 +35,7 @@ struct DataStore {
  FILESYSTEM* _fs=&fs;
  bool _prefs_load_incomplete=false, _primary_storage_unavailable=false;
  bool _secondary_authority_unknown=false;
+ bool _volatile_primary_fs=false;
  const char* _prefs_recovery_source=nullptr;
  DataStore(){
 #if defined(STM32_PLATFORM) || defined(NRF52_PLATFORM)
@@ -41,16 +45,49 @@ struct DataStore {
  bool loadPrefs(CompanionNodePrefs&, double&, double&);
  bool loadPrefsInt(const char*, CompanionNodePrefs&, double&, double&);
  bool savePrefs(const CompanionNodePrefs&, double, double);
+ bool loadChannelTextDedupSettings(mesh::ChannelTextDedupSettings&);
+ bool saveChannelTextDedupSettings(const mesh::ChannelTextDedupSettings&);
 };
 File openRead(FILESYSTEM* fs,const char* path){return fs->open(path,"r");}
 File openWrite(FILESYSTEM* fs,const char* path){return fs->open(path,"w");}
 bool contactPathPresence(FILESYSTEM* fs,const char* path,bool& present){
  present=fs->exists(path);return true;
 }
+#if defined(RP2040_PLATFORM)
+bool companionPathPresence(FILESYSTEM* fs,const char* path,bool& present) {
+  return contactPathPresence(fs,path,present);
+}
+#endif
+namespace mesh {
+bool filePresence(FILESYSTEM* fs,const char* path,bool& present) {
+  return contactPathPresence(fs,path,present);
+}
+}
 @METHODS@
 int main(int argc,char** argv){
  const int scenario=argc>1?atoi(argv[1]):0;
  DataStore store;CompanionNodePrefs original;
+ if (scenario==11) {
+   mesh::ChannelTextDedupSettings settings;
+   assert(store.loadChannelTextDedupSettings(settings));
+   assert(settings.global_enabled && settings.channelEnabled(9));
+   settings.global_enabled=false;
+   settings.setChannelEnabled(9,false);
+   settings.setChannelEnabled(39,false);
+   assert(store.saveChannelTextDedupSettings(settings));
+   settings.setChannelEnabled(9,true);
+   store.fs.fail_write_after=8;
+   assert(!store.saveChannelTextDedupSettings(settings));
+   store.fs.fail_write_after=-1;
+   mesh::ChannelTextDedupSettings loaded;
+   assert(store.loadChannelTextDedupSettings(loaded));
+   assert(!loaded.global_enabled && !loaded.channelEnabled(9) &&
+          loaded.channelEnabled(10) && !loaded.channelEnabled(39));
+   store.fs.files["/channel_dedup"][5]^=1;
+   assert(!store.loadChannelTextDedupSettings(loaded));
+   assert(!loaded.channelEnabled(9));
+   return 0;
+ }
  assert(original.buzzer_quiet==1&&original.vibe_quiet==0);
  original.buzzer_quiet=0;original.vibe_quiet=1;
  strcpy(original.node_name,"durable node");original.freq=910.525f;
@@ -388,7 +425,9 @@ class CompanionPreferencesTransactionTests(unittest.TestCase):
         source = (ROOT / 'examples/companion_radio/DataStore.cpp').read_text()
         methods = esp_recovery_helpers(source) + '\n'.join(method(source, signature) for signature in (
             'bool DataStore::loadPrefs(', 'bool DataStore::loadPrefsInt(',
-            'bool DataStore::savePrefs('))
+            'bool DataStore::savePrefs(', 'namespace {\nconstexpr char ChannelTextDedupPath',
+            'bool DataStore::loadChannelTextDedupSettings(',
+            'bool DataStore::saveChannelTextDedupSettings('))
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
             # Binary preference persistence never invokes JSON blob conversion.
@@ -435,7 +474,7 @@ inline char* utoa(unsigned int value,char* output,int base){
                         str(ROOT / 'src/helpers/TxtDataHelpers.cpp'),
                         '-o', str(binary)], capture_output=True, text=True)
                     self.assertEqual(build.returncode, 0, build.stdout + build.stderr)
-                    for scenario in range(11):
+                    for scenario in range(12):
                         with self.subTest(scenario=scenario):
                             run = subprocess.run([str(binary), str(scenario)], capture_output=True, text=True)
                             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)

@@ -16,6 +16,10 @@
 #include <helpers/LazyPersistence.h>
 #include <helpers/BrowserRadioDefaults.h>
 #include <helpers/FilePresence.h>
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+#include <helpers/CheckedSettingsFile.h>
+#include <helpers/RecentChannelText.h>
+#endif
 #if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
 #include <helpers/ContactFileTransaction.h>
 #endif
@@ -1817,6 +1821,63 @@ bool DataStore::savePrefs(const CompanionNodePrefs& _prefs, double node_lat, dou
   }
   return false;
 }
+
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+namespace {
+constexpr char ChannelTextDedupPath[] = "/channel_dedup";
+// "CD1", global enable byte, 64 slot-disable bits, CRC32.
+constexpr size_t ChannelTextDedupCrcOffset = 12;
+constexpr size_t ChannelTextDedupSize = ChannelTextDedupCrcOffset + 4;
+}
+
+bool DataStore::loadChannelTextDedupSettings(mesh::ChannelTextDedupSettings& settings) {
+  if (!_fs) return false;
+#if defined(NRF52_PLATFORM)
+  if (_primary_storage_unavailable || _volatile_primary_fs) return false;
+#endif
+#if defined(ESP32_PLATFORM) || defined(RP2040_PLATFORM)
+  if (!mesh::ContactFileTransaction::recover(_fs, ChannelTextDedupPath,
+                                              companionPathPresence)) return false;
+#endif
+  bool present = false;
+  if (!mesh::filePresence(_fs, ChannelTextDedupPath, present)) return false;
+  if (!present) return true;
+
+  uint8_t image[ChannelTextDedupSize];
+  if (!mesh::storage::readFixedSettingsFile(_fs, ChannelTextDedupPath, image, sizeof(image))
+      || memcmp(image, "CD1", 3) != 0 || image[3] > 1
+      || mesh::storage::readLE32(image + ChannelTextDedupCrcOffset)
+          != mesh::storage::updateCRC32(0xffffffffU, image, ChannelTextDedupCrcOffset)) {
+    return false;
+  }
+  settings.global_enabled = image[3] != 0;
+  memcpy(settings.disabled_slots, image + 4, sizeof(settings.disabled_slots));
+  return true;
+}
+
+bool DataStore::saveChannelTextDedupSettings(const mesh::ChannelTextDedupSettings& settings) {
+  if (!_fs) return false;
+  uint8_t image[ChannelTextDedupSize] = {'C', 'D', '1', uint8_t(settings.global_enabled)};
+  memcpy(image + 4, settings.disabled_slots, sizeof(settings.disabled_slots));
+  mesh::storage::writeLE32(image + ChannelTextDedupCrcOffset,
+      mesh::storage::updateCRC32(0xffffffffU, image, ChannelTextDedupCrcOffset));
+#if defined(NRF52_PLATFORM)
+  if (_primary_storage_unavailable || _volatile_primary_fs) return false;
+  return mesh::storage::writeCheckedSettingsFile(_fs, ChannelTextDedupPath, image, sizeof(image))
+      == mesh::AtomicFileWriter::Outcome::Committed;
+#else
+#if defined(STM32_PLATFORM)
+  mesh::AtomicFileWriter file(_fs, ChannelTextDedupPath);
+#else
+  mesh::ContactFileTransaction file(_fs, ChannelTextDedupPath, companionPathPresence);
+#endif
+  if (!file || file.write(image, sizeof(image)) != sizeof(image) || !file.commit()) return false;
+  uint8_t verified[ChannelTextDedupSize];
+  return mesh::storage::readFixedSettingsFile(_fs, ChannelTextDedupPath, verified, sizeof(verified))
+      && memcmp(image, verified, sizeof(image)) == 0;
+#endif
+}
+#endif
 
 static bool serializeContactRecord(const ContactInfo& c,
                                    uint8_t out[mesh::storage::CONTACT_RECORD_SIZE]) {
