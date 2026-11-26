@@ -6,6 +6,7 @@
 #include <helpers/CompanionMeshtextChannel.h>
 #include <helpers/MeshtextDelivery.h>
 #include <helpers/CompanionFrameLimits.h>
+#include <helpers/RecentChannelText.h>
 #include <helpers/UTF8Helpers.h>
 #include <cmath>
 #include <limits>
@@ -13,12 +14,22 @@ using std::isfinite;
 @CONSTANTS@
 #define MAX_GROUP_CHANNELS 8
 #define COMPANION_FEATURE_NOTIFICATIONS 1
+#define COMPANION_FEATURE_CHANNEL_TEXT_DEDUP 1
 #define COMPANION_FEATURE_TEXT_TERMINAL 0
 #define TXT_TYPE_PLAIN 0
 
 void mesh::Utils::sha256(uint8_t* out, size_t size, const uint8_t* data, int length) {
   assert(length >= 0 && size <= 32);
   SHA256 hash; hash.update(data, length); hash.finalize(out, size);
+}
+
+void mesh::Utils::sha256(uint8_t* out, size_t size, const uint8_t* a, int a_len,
+                         const uint8_t* b, int b_len) {
+  assert(a_len >= 0 && b_len >= 0 && size <= 32);
+  SHA256 hash;
+  hash.update(a, a_len);
+  hash.update(b, b_len);
+  hash.finalize(out, size);
 }
 
 struct Preferences {
@@ -136,6 +147,7 @@ public:
   std::vector<std::vector<uint8_t>> foreign,offline;
   size_t offline_capacity=4;
   int offline_queue_len=0;
+  mesh::RecentChannelText<MAX_GROUP_CHANNELS> recent_channel_text;
   uint8_t pending_emergency_notices[(MAX_GROUP_CHANNELS+7)/8]={};
   Serial serial; Serial* _serial=&serial; UI ui; UI* _ui=&ui; Notifications _notifications;
   uint8_t out_frame[MAX_FRAME_SIZE]={}; uint8_t app_target_ver=3;

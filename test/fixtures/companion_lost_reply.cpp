@@ -9,12 +9,14 @@
 #include <string>
 #include <vector>
 #include <helpers/RadioMaintenanceCLI.h>
+#include <helpers/RecentChannelText.h>
 
 #define PUB_KEY_SIZE 32
 #define MAX_HASH_SIZE 8
 #define MAX_TEXT_LEN 150
 #define MAX_FRAME_SIZE 172
 #define MAX_GROUP_CHANNELS 40
+static uint32_t millis() { return 1000; }
 #define EXPECTED_ACK_TABLE_SIZE 8
 #define TXT_TYPE_PLAIN 0
 #define TXT_TYPE_CLI_COMMAND 1
@@ -35,7 +37,7 @@
 struct BatteryBoard {} board;
 namespace mesh {
 struct Identity { uint8_t pub_key[PUB_KEY_SIZE] = {}; };
-struct GroupChannel { uint8_t secret[16] = {}; };
+struct GroupChannel { uint8_t secret[PUB_KEY_SIZE] = {}; };
 struct Packet {
   static bool isValidPathLen(uint8_t value) { return value != 254; }
   uint8_t path_len = 0;
@@ -152,6 +154,7 @@ public:
   TerminalDisplay _terminal_display;
   uint8_t held_dm_count = 0;
   unsigned offline_queue_len = 0;
+  mesh::RecentChannelText<MAX_GROUP_CHANNELS> recent_channel_text;
   struct Held { uint8_t sender_key[32] = {}, id[ONE_KEY_DM_ID_SIZE] = {}; } held_dms[1];
 
   MyMesh() { contacts.reserve(8); }

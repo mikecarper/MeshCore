@@ -46,6 +46,9 @@ class CompanionMeshtextTest(unittest.TestCase):
         utils = (ROOT / "test/mocks/Utils.h").read_text(encoding="utf-8")
         fake_sha = body(utils, "static void sha256(")
         utils = utils.replace(fake_sha, "static void sha256(uint8_t*, size_t, const uint8_t*, int);")
+        utils = utils.replace("static void sha256(uint8_t*, size_t, const uint8_t*, int);",
+                              "static void sha256(uint8_t*, size_t, const uint8_t*, int);\n"
+                              "  static void sha256(uint8_t*, size_t, const uint8_t*, int, const uint8_t*, int);")
         utils = utils.replace("#define CIPHER_MAC_SIZE 16", "#ifndef CIPHER_MAC_SIZE\n#define CIPHER_MAC_SIZE 16\n#endif")
         utils = utils.replace("class Utils {", "class Utils {\npublic:\n  static bool isHexChar(char);\n  static bool fromHex(uint8_t*, int, const char*);\n  static bool isZeroes(const uint8_t* p, size_t n) {\n    for (size_t i=0;i<n;++i) { if(p[i]) return false; }\n    return true;\n  }")
         (work / "Utils.h").write_text(utils, encoding="utf-8")

@@ -196,9 +196,9 @@ class Stm32PackedReplyOutputTest(unittest.TestCase):
         self.assertEqual(len(self.codec.pairs), 128)
         self.assertEqual(self.codec.max_depth, self.pack.MANIFEST['max_depth'])
         self.assertLessEqual(self.codec.max_depth, BPE.MAX_DEPTH)
-        self.assertEqual(len(self.records), 222)
+        self.assertEqual(len(self.records), 221)
         texts = {text for record in self.records for text in record['texts']}
-        self.assertEqual(len(texts), 200)
+        self.assertEqual(len(texts), 199)
         self.assertEqual(set(self.arrays), texts)
         retrained = BPE.train(self.pack.MANIFEST['training'])
         self.assertEqual(self.codec.pairs, retrained.pairs)

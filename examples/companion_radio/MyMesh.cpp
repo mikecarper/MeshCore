@@ -1914,7 +1914,16 @@ bool MyMesh::setChannel(int channel_idx, const ChannelDetails& channel) {
   if (_ethernet_settings.enabled && channel.name[0]
       && parseCompanionChannelAlias(channel.name).kind != CompanionChannelKind::MeshCore) return false;
 #endif
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+  ChannelDetails previous{};
+  const bool same_channel = BaseChatMesh::getChannel(channel_idx, previous)
+      && strncmp(previous.name, channel.name, sizeof(previous.name)) == 0
+      && memcmp(previous.channel.secret, channel.channel.secret, sizeof(channel.channel.secret)) == 0;
+#endif
   const bool saved = BaseChatMesh::setChannel(channel_idx, channel);
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+  if (saved && !same_channel) recent_channel_text.clear(channel_idx);
+#endif
 #if MESH_ENABLE_MESHTEXT_CHAT
   if (saved) _mt_delivery_config_dirty = true;
 #endif
@@ -2525,6 +2534,21 @@ bool MyMesh::queueChannelText(uint8_t channel_idx, const uint8_t secret[32], flo
                             uint8_t path_len, uint32_t timestamp, const char* text,
                             bool is_emergency_channel, bool notify) {
   if (!text || channel_idx >= MAX_GROUP_CHANNELS) return false;
+  int tlen = strlen(text);
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+  const bool check_duplicate = notify && recent_channel_text.enabled(channel_idx);
+  uint8_t fingerprint[mesh::RecentChannelText<MAX_GROUP_CHANNELS>::FingerprintSize];
+  uint32_t received_at = 0;
+  if (check_duplicate) {
+    // The text includes the sender name. Use the full text and channel key,
+    // with local receive time instead of the sender's timestamp.
+    mesh::Utils::sha256(fingerprint, sizeof(fingerprint), secret, PUB_KEY_SIZE,
+                        reinterpret_cast<const uint8_t*>(text), tlen);
+    received_at = millis();
+    // A suppressed receive is still handled for retry and relay bookkeeping.
+    if (recent_channel_text.suppress(channel_idx, fingerprint, received_at)) return true;
+  }
+#endif
   int i = 0;
   if (app_target_ver >= 3) {
     out_frame[i++] = RESP_CODE_CHANNEL_MSG_RECV_V3;
@@ -2542,7 +2566,6 @@ bool MyMesh::queueChannelText(uint8_t channel_idx, const uint8_t secret[32], flo
   out_frame[i++] = TXT_TYPE_PLAIN;
   memcpy(&out_frame[i], &timestamp, 4);
   i += 4;
-  int tlen = strlen(text); // TODO: UTF-8 ??
   if (i + tlen > MAX_FRAME_SIZE) {
     tlen = MAX_FRAME_SIZE - i;
     while (tlen > 0 && (uint8_t(text[tlen]) & 0xc0) == 0x80) --tlen;
@@ -2551,6 +2574,9 @@ bool MyMesh::queueChannelText(uint8_t channel_idx, const uint8_t secret[32], flo
   i += tlen;
   const bool queued = addToOfflineQueue(out_frame, i);
   if (!queued) return false;
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+  if (check_duplicate) recent_channel_text.remember(channel_idx, fingerprint, received_at);
+#endif
 
 #if CARDPUTER_ADV_UI
   onUiChannelMessage(channel_idx, text);
@@ -3458,6 +3484,9 @@ void MyMesh::begin(bool has_display, bool radio_available,
 #endif
   const bool prefs_ready =
       _store->loadPrefs(_prefs, sensors.node_lat, sensors.node_lon);
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+  channel_text_dedup_loaded = _store->loadChannelTextDedupSettings(recent_channel_text.settings);
+#endif
   // Before any saved-radio apply or automatic traffic. A normal update, an
   // unreadable store, or an existing preamble always keeps its saved intent.
 #if MESH_ENABLE_BROWSER_RADIO_DEFAULTS
@@ -11804,6 +11833,9 @@ void MyMesh::handleTerminalCommand(char* command, bool reader_prompt,
 #undef MESH_COMPANION_HELP_LINE_BEGIN
 #undef MESH_COMPANION_HELP_LINE_END
 #endif
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+    output.print("  get/set channel.dedup[.<slot>] <on|off>\r\n");
+#endif
     if (_terminal_mode) {
       output.print("  +++MESHCORE-TERM-STOP\r\n");
     } else {
@@ -11856,6 +11888,79 @@ static bool isCompanionRadioPrefsCommand(const char* command) {
 
 // Called only for directly attached USB/BLE/TCP/browser clients. Commands
 // received over LoRa use handleCommand() with a nonzero sender timestamp.
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+bool MyMesh::handleChannelTextDedupCommand(const char* command, char* reply, size_t capacity) {
+  const bool set = strncmp(command, "set ", 4) == 0;
+  if (!set && strncmp(command, "get ", 4) != 0) return false;
+
+  const char* arg = command + 4;
+  while (*arg == ' ' || *arg == '\t') ++arg;
+  const char name[] = "channel.dedup";
+  if (strncmp(arg, name, sizeof(name) - 1) != 0) return false;
+  arg += sizeof(name) - 1;
+  if (*arg != '.' && *arg != ' ' && *arg != '\t' && *arg != '\0') return false;
+
+  int slot = -1;
+  if (*arg == '.') {
+    ++arg;
+    unsigned index = 0;
+    const char* digits = arg;
+    while (*arg >= '0' && *arg <= '9' && index < MAX_GROUP_CHANNELS) {
+      index = index * 10 + (*arg++ - '0');
+    }
+    if (arg == digits || index >= MAX_GROUP_CHANNELS
+        || (*arg && *arg != ' ' && *arg != '\t')) {
+      mesh::cli::formatError(reply, capacity, "invalid channel slot");
+      return true;
+    }
+    ChannelDetails channel{};
+    if (!getChannel(index, channel) || !channel.name[0]) {
+      mesh::cli::formatError(reply, capacity, "channel slot is empty");
+      return true;
+    }
+    slot = static_cast<int>(index);
+  }
+
+  while (*arg == ' ' || *arg == '\t') ++arg;
+  const auto& settings = recent_channel_text.settings;
+  const bool enabled = slot < 0 ? settings.global_enabled : settings.channelEnabled(slot);
+  if (set) {
+    const bool requested = strcmp(arg, "on") == 0;
+    if (!requested && strcmp(arg, "off") != 0) {
+      mesh::cli::formatError(reply, capacity, "expected on or off");
+      return true;
+    }
+    if (!channel_text_dedup_loaded) {
+      mesh::cli::formatError(reply, capacity, "channel dedup settings unavailable");
+      return true;
+    }
+    if (requested != enabled) {
+      auto changed = settings;
+      if (slot < 0) changed.global_enabled = requested;
+      else changed.setChannelEnabled(slot, requested);
+      if (!_store->saveChannelTextDedupSettings(changed)) {
+        mesh::cli::formatError(reply, capacity, "channel dedup save unconfirmed");
+        return true;
+      }
+      recent_channel_text.settings = changed;
+      if (slot < 0) recent_channel_text.clearAll();
+      else recent_channel_text.clear(slot);
+    }
+  } else if (*arg) {
+    mesh::cli::formatError(reply, capacity, "unexpected channel dedup argument");
+    return true;
+  }
+
+  const bool active = slot < 0 ? settings.global_enabled : recent_channel_text.enabled(slot);
+  const char* status = active ? "> on" : "> off";
+  if (slot >= 0 && !settings.global_enabled && settings.channelEnabled(slot)) {
+    status = "> off (global off, channel on)";
+  }
+  snprintf(reply, capacity, "%s", status);
+  return true;
+}
+#endif
+
 bool MyMesh::handleDirectCommand(const char* command, char* reply, size_t reply_size) {
   if (mesh::cli::deferForRadioMaintenance(_radio && _radio->isAGCMaintenancePending(),
           command, reply, reply_size)) return true;
@@ -11877,6 +11982,9 @@ bool MyMesh::handleDirectCommand(const char* command, char* reply, size_t reply_
 #endif
 #if defined(ESP32_PLATFORM) && defined(MESH_HIL_RADIO_TRACE) && MESH_HIL_RADIO_TRACE
   if (mesh::radiotrace::handleTraceCommand(command, reply, reply_size)) return true;
+#endif
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+  if (handleChannelTextDedupCommand(command, reply, reply_size)) return true;
 #endif
   const char* repeat_reply = nullptr;
   if (strcmp(command, "get repeat") == 0) {
@@ -12818,6 +12926,9 @@ void MyMesh::loop() {
 #endif
 #if MESH_WARM_RX_REFRESH
   if (_radio && _radio->serviceAGCMaintenanceFastLane()) return;
+#endif
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+  recent_channel_text.expire(millis());
 #endif
 #if CARDPUTER_ADV_UI
   // Apply saved output masks before the first received packet, not only at

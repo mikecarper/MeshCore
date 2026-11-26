@@ -22,7 +22,14 @@ HARNESS = r'''
 #include <string>
 #include <vector>
 #include <helpers/CompanionChannelAlias.h>
+#include <helpers/CLICommandUtils.h>
 #include <helpers/CLIReplyText.h>
+#ifndef COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+#define COMPANION_FEATURE_CHANNEL_TEXT_DEDUP 1
+#endif
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+#include <helpers/RecentChannelText.h>
+#endif
 using std::isfinite;
 #define MESH_ENABLE_ONE_KEY_DM 1
 #define ONE_KEY_DM_SHARED_OFFLINE_QUEUE 0
@@ -43,7 +50,8 @@ using std::isfinite;
 #define RESP_CODE_CHANNEL_MSG_RECV 0x83
 #define PUSH_CODE_MSG_WAITING 0x80
 #define MSG_SEND_FAILED 0
-static unsigned long millis() { return 1234; }
+static uint32_t test_millis = 1234;
+static unsigned long millis() { return test_millis; }
 enum class UIEventType { contactMessage, channelMessage };
 namespace mesh {
 struct Packet {
@@ -52,6 +60,16 @@ struct Packet {
   bool isRouteFlood() const { return true; }
 };
 struct GroupChannel { uint8_t secret[32]{}; uint8_t tx_radio = 0; };
+struct Utils {
+  static void sha256(uint8_t* out, size_t size, const uint8_t* a, int a_len,
+                     const uint8_t* b, int b_len) {
+    uint64_t hash = 0;
+    for (int i = 0; i < a_len; ++i) hash = hash * 131 + a[i];
+    for (int i = 0; i < b_len; ++i) hash = hash * 131 + b[i];
+    assert(size == sizeof(hash));
+    memcpy(out, &hash, size);
+  }
+};
 }
 struct ContactInfo { struct { uint8_t pub_key[32]{}; } id; char name[32] = "Alice"; };
 struct ChannelDetails { char name[32]{}; mesh::GroupChannel channel; };
@@ -79,6 +97,21 @@ struct MyMesh {
   Serial* _serial = &serial;
   UI* _ui = &ui;
   int app_target_ver = 3, offline_queue_len = 0;
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+  mesh::RecentChannelText<MAX_GROUP_CHANNELS> recent_channel_text;
+  bool channel_text_dedup_loaded = true;
+  struct {
+    mesh::ChannelTextDedupSettings saved;
+    bool writable = true;
+    bool saveChannelTextDedupSettings(const mesh::ChannelTextDedupSettings& settings) {
+      if (!writable) return false;
+      saved = settings;
+      return true;
+    }
+  } store;
+  decltype(store)* _store = &store;
+  bool handleChannelTextDedupCommand(const char*, char*, size_t);
+#endif
   uint8_t out_frame[MAX_FRAME_SIZE]{};
   bool accept = true, delivered = false;
   int contact_history = 0, channel_history = 0;
@@ -110,7 +143,7 @@ struct MyMesh {
   bool millisHasNowPassed(unsigned long) const { return false; }
   bool addToOfflineQueue(const uint8_t*, int) { if (accept) ++offline_queue_len; return accept; }
   void onUiContactMessage(const ContactInfo&, const char*) { ++contact_history; }
-  void onUiChannelMessage(uint8_t slot, const char*) { assert(slot == 9); ++channel_history; }
+  void onUiChannelMessage(uint8_t slot, const char*) { assert(slot == 9 || slot == 10); ++channel_history; }
   int channel_sent_history = 0;
   size_t last_history_length = 0;
   void onUiChannelMessageSent(uint8_t slot, const char*, size_t length) {
@@ -214,12 +247,82 @@ int main() {
 #else
   assert(m.channel_history == 0 && m.ui.received == 0);
 #endif
+
+  MyMesh duplicate;
+  auto channel = [&duplicate, &key](uint8_t slot, uint32_t sent, const char* text) {
+    return duplicate.queueChannelText(slot, key, 1, 0, sent, text, false);
+  };
+  const char* warning = "AstaWX: Coastal Flood Warning";
+  duplicate.accept = false;
+  assert(!channel(9, 100, warning));
+  duplicate.accept = true;
+  assert(channel(9, 101, warning) && duplicate.offline_queue_len == 1);
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+  const int displayed = duplicate.ui.received;
+  const int notifications = duplicate.ui.sounds;
+  duplicate.offline_queue_len = 0;  // The phone downloaded the first message.
+  ++test_millis;
+  assert(channel(9, 102, warning) && duplicate.offline_queue_len == 0);
+  assert(duplicate.ui.received == displayed && duplicate.ui.sounds == notifications);
+  assert(channel(10, 102, warning) && duplicate.offline_queue_len == 1);
+  assert(channel(9, 102, "OtherWX: Coastal Flood Warning") && duplicate.offline_queue_len == 2);
+  assert(channel(9, 102, "AstaWX: Coastal Flood Warning extended") && duplicate.offline_queue_len == 3);
+  const auto window = mesh::RecentChannelText<MAX_GROUP_CHANNELS>::WindowMs;
+  test_millis += window - 1;
+  assert(channel(9, 103, warning) && duplicate.offline_queue_len == 3);
+  test_millis += window;
+  assert(channel(9, 103, warning) && duplicate.offline_queue_len == 4);
+  for (const char* text : {"AstaWX: 1", "AstaWX: 2", "AstaWX: 3", "AstaWX: 4", "AstaWX: 5"})
+    assert(channel(9, 104, text));
+  assert(channel(9, 105, warning) && duplicate.offline_queue_len == 9);
+  assert(channel(9, 104, "AstaWX: 6"));
+  assert(channel(9, 106, warning) && duplicate.offline_queue_len == 11);
+
+  strcpy(duplicate.configured.name, "#weather");
+  char reply[160];
+  auto command = [&](const char* text) {
+    assert(duplicate.handleChannelTextDedupCommand(text, reply, sizeof(reply)));
+    return std::string(reply);
+  };
+  assert(command("get channel.dedup") == "> on");
+  assert(command("get channel.dedup.9") == "> on");
+  assert(command("set channel.dedup.40 off").find("invalid channel slot") != std::string::npos);
+  assert(command("set channel.dedup.10 off").find("channel slot is empty") != std::string::npos);
+  assert(command("set channel.dedup.9 anything").find("expected on or off") != std::string::npos);
+  assert(command("set channel.dedup.9 off") == "> off");
+  assert(!duplicate.store.saved.channelEnabled(9) && duplicate.store.saved.channelEnabled(10));
+  assert(channel(9, 107, warning) && channel(9, 108, warning));
+  assert(duplicate.offline_queue_len == 13);
+  assert(channel(10, 107, "AstaWX: other warning") && channel(10, 108, "AstaWX: other warning"));
+  assert(duplicate.offline_queue_len == 14);
+
+  assert(command("set channel.dedup off") == "> off");
+  assert(command("set channel.dedup.9 on") == "> off (global off, channel on)");
+  assert(channel(9, 109, warning) && channel(9, 110, warning));
+  assert(channel(10, 109, "AstaWX: other warning"));
+  assert(duplicate.offline_queue_len == 17);
+  assert(command("set channel.dedup.9 off") == "> off");
+  assert(command("set channel.dedup on") == "> on");
+  assert(command("get channel.dedup.9") == "> off");
+  assert(channel(10, 110, "AstaWX: other warning") && channel(10, 111, "AstaWX: other warning"));
+  assert(duplicate.offline_queue_len == 18);
+
+  duplicate.store.writable = false;
+  assert(command("set channel.dedup.9 on").find("save unconfirmed") != std::string::npos);
+  assert(command("get channel.dedup.9") == "> off");
+  duplicate.store.writable = true;
+  assert(command("set channel.dedup.9 on") == "> on");
+  assert(channel(9, 111, warning) && channel(9, 112, warning));
+  assert(duplicate.offline_queue_len == 19);
+#else
+  assert(channel(9, 102, warning) && duplicate.offline_queue_len == 2);
+#endif
 }
 '''
 
 
 class CardputerDeliveryTests(unittest.TestCase):
-    def run_cpp(self, cardputer=True, meshtext=True):
+    def run_cpp(self, cardputer=True, meshtext=True, channel_dedup=True):
         source = SOURCE.read_text()
         signatures = [
             "void MyMesh::onMessageRecv(",
@@ -228,9 +331,12 @@ class CardputerDeliveryTests(unittest.TestCase):
         ]
         if cardputer:
             signatures.append("bool MyMesh::sendUiChannelMessage(")
+        if channel_dedup:
+            signatures.append("bool MyMesh::handleChannelTextDedupCommand(")
         code = HARNESS.replace("@METHODS@", "\n".join(body(source, sig) for sig in signatures))
         self.run_program(code, f"-DCARDPUTER_ADV_UI={int(cardputer)}",
-                         f"-DMESH_ENABLE_MESHTEXT_CHAT={int(meshtext)}")
+                         f"-DMESH_ENABLE_MESHTEXT_CHAT={int(meshtext)}",
+                         f"-DCOMPANION_FEATURE_CHANNEL_TEXT_DEDUP={int(channel_dedup)}")
 
     def run_program(self, code, *defines):
         with tempfile.TemporaryDirectory(prefix="meshcore-cardputer-delivery-") as temp:
@@ -254,6 +360,9 @@ class CardputerDeliveryTests(unittest.TestCase):
 
     def test_headless_delivery_keeps_its_existing_behavior(self):
         self.run_cpp(cardputer=False)
+
+    def test_channel_text_filter_can_be_compiled_out(self):
+        self.run_cpp(cardputer=False, channel_dedup=False)
 
     def test_contact_origin_hooks_and_saved_notification_masks(self):
         source = SOURCE.read_text()
