@@ -68,7 +68,8 @@ set channel.dedup.2 on
 
 Global `off` pauses filtering on every channel. Global `on` restores each
 slot’s saved setting. Changes take effect immediately and survive a reboot.
-The commands are available on builds that include the duplicate text filter.
+The Wio-E5, Wio-E5 Mini, RAK 3x72, and Tiny Relay USB Companion builds
+omit the filter and its commands to preserve their 32 KiB filesystem.
 
 ## Power saving
 
