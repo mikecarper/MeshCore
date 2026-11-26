@@ -98,6 +98,19 @@ TEST(AlertFaultPolicy, DurationAndCadenceSurviveMillisRollover) {
   EXPECT_TRUE(Alert::checkDue(500U, 400U));
 }
 
+TEST(AlertFaultPolicy, NewerOutageSnapshotDoesNotFireEarly) {
+  const uint32_t now = 500000U;
+  const uint32_t threshold = Alert::thresholdMs(1);
+  const auto snapshot = down(now + 1);
+  EXPECT_EQ(0U, Alert::downDurationMs(now, snapshot));
+  EXPECT_EQ(Alert::Action::None,
+            Alert::tick(okFault(), now, snapshot, threshold, 0).action);
+  EXPECT_EQ(Alert::Action::FireDown,
+            Alert::tick(okFault(), now + 1 + threshold, snapshot, threshold, 0).action);
+  EXPECT_EQ(0U, Alert::downDurationMs(UINT32_MAX - 1U, down(3U)));
+  EXPECT_EQ(5U, Alert::downDurationMs(3U, down(UINT32_MAX - 1U)));
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

@@ -126,7 +126,10 @@ static inline uint32_t thresholdMs(uint16_t minutes) {
 
 static inline uint32_t downDurationMs(uint32_t now,
                                      const OutageSnapshot& snapshot) {
-  return snapshot.down ? elapsedMs(now, snapshot.started_ms) : 0;
+  constexpr uint32_t max_start_skew_ms = 60000;
+  // The Wi-Fi or MQTT event task can stamp an outage after the caller read its clock.
+  if (!snapshot.down || elapsedMs(snapshot.started_ms, now) <= max_start_skew_ms) return 0;
+  return elapsedMs(now, snapshot.started_ms);
 }
 
 static inline bool rateLimitAllows(uint32_t now, uint32_t fired_at_ms,
