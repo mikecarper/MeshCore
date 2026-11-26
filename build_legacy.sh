@@ -4811,7 +4811,7 @@ apply_companion_radio_full_profile() {
       # independent; the saved WiFi/BLE selection applies on the next boot.
       # Only CPU-owned retained frames use RTC; the borrowed OTA context
       # stays in ordinary DRAM and keeps 128 receive frames while active.
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_EXCLUSIVE_WIFI_BLE=1 -DOTA_SHARED_COMPANION_QUEUE=1 -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=36"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_EXCLUSIVE_WIFI_BLE=1 -DOTA_SHARED_COMPANION_QUEUE=1 -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=34 -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=36 -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=1024"
       record_build_reduction \
         "Cardputer Full: USB plus selected WiFi or Bluetooth; 256 offline frames normally, 128 during mOTA"
       ;;

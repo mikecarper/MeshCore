@@ -386,7 +386,7 @@ class CompanionRtcQueueTests(unittest.TestCase):
                 ('MKE_s3_companion_radio_full', 32, 32, 350, 256),
                 ('ThinkNode_M2_companion_radio_full', 0, 0, 350, 256),
                 ('ThinkNode_M5_companion_radio_full', 0, 0, 350, 256),
-                ('M5Stack_Cardputer_Adv_companion_radio_full', 32, 36, 350, 256),
+                ('M5Stack_Cardputer_Adv_companion_radio_full', 34, 36, 350, 256),
                 ('Meshadventurer_companion_radio_full', 0, 4, 100, 16),
                 ('Meshadventurer_m33s_companion_radio_full', 0, 4, 100, 16),
                 ('Meshadventurer_sx1262_companion_radio_full', 0, 0, 100, 16),
