@@ -49,6 +49,42 @@ int main(int argc, char** argv) {
                     self.assertEqual(run.returncode, -signal.SIGABRT)
 
 
+class CompactRxDelayTest(unittest.TestCase):
+    def test_compact_log_and_receive_delays_match_libm(self):
+        fixture = r"""
+#include <cmath>
+#include <limits>
+#include <stdint.h>
+#include "helpers/stm32/CompanionRxDelay.h"
+
+int main() {
+  using mesh::stm32::rxDelayLog;
+  for (int power = -149; power <= 4; ++power) {
+    const float base = std::ldexp(1.0f, power);
+    if (std::abs(rxDelayLog(base) - std::log(base)) > 0.00001f) return 1;
+  }
+  for (int n = 1; n <= 20000; ++n) {
+    const float base = n / 1000.0f;
+    for (int percent = 0; percent <= 100; ++percent) {
+      const float exponent = 0.85f - percent / 100.0f;
+      const float reference = std::pow(base, exponent);
+      const float compact = std::exp(rxDelayLog(base) * exponent);
+      const int reference_delay = (reference - 1.0f) * 32000;
+      const int compact_delay = (compact - 1.0f) * 32000;
+      if (std::abs(reference_delay - compact_delay) > 1) return 2;
+    }
+  }
+  return 0;
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            binary = Path(directory) / "rx-delay"
+            subprocess.run(["c++", "-std=c++17", "-O2", "-I", str(ROOT / "src"),
+                            "-x", "c++", "-", "-o", str(binary)],
+                           input=fixture, text=True, check=True)
+            subprocess.run([str(binary)], check=True)
+
+
 class CompactSTM32WLCompanionAgcTest(unittest.TestCase):
     def test_rak_size_flag_is_scoped_to_compile_and_lto_link(self):
         config = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=(';',))
