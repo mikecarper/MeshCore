@@ -666,7 +666,7 @@
     ]
   ],
   "max_depth": 5,
-  "array_count": 200,
+  "array_count": 199,
   "format_capacity": 97,
   "sources": {
     "examples/companion_radio/MyMesh.cpp": {
@@ -682,13 +682,13 @@
       }
     },
     "src/helpers/RadioProfileCLI.cpp": {
-      "input_sha": "24592ae0055265cc78dea7e83e8b9ee6cc4bd065aff86771531bcb903d470ac2",
-      "output_sha": "7a9bad00dabdef9550eae843f3d729e2d63d413b29f8101237c29ba43c5a6e5a",
-      "call_count": 69,
+      "input_sha": "40e37120be38d1c7aa369b8ec3200c1c77b7635bde13739bd04a16d0909bdf11",
+      "output_sha": "06b3aa181c56903099155e0a653be4762da6626a60978b2845c54eaf9c54f8f4",
+      "call_count": 68,
       "function_counts": {
         "strcpy": 0,
         "sprintf": 0,
-        "snprintf": 34,
+        "snprintf": 33,
         "formatError": 22,
         "appendReply": 13
       }
