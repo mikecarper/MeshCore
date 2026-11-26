@@ -5,9 +5,25 @@
 
 #include <Wire.h>
 
+// A reset during an RTC read can leave SDA held low. Release the clock line
+// between pulses so the RTC can finish its byte without bus contention.
+static void recoverRtcBus() {
+  pinMode(PIN_WIRE_SDA, INPUT_PULLUP);
+  pinMode(PIN_WIRE_SCL, INPUT_PULLUP);
+  for (uint8_t pulse = 0; pulse < 9 && digitalRead(PIN_WIRE_SDA) == LOW; ++pulse) {
+    if (digitalRead(PIN_WIRE_SCL) == LOW) break;
+    digitalWrite(PIN_WIRE_SCL, LOW);
+    pinMode(PIN_WIRE_SCL, OUTPUT);
+    delayMicroseconds(5);
+    pinMode(PIN_WIRE_SCL, INPUT_PULLUP);
+    delayMicroseconds(5);
+  }
+}
+
 void ThinkNodeM6Board::begin() {
   NRF52Board::begin();
 
+  recoverRtcBus();
   Wire.begin();
 
 #ifdef P_LORA_TX_LED
