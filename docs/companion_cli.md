@@ -117,3 +117,7 @@ The upstream `ui.*` settings are not aliases in this fork.
 
 For sound, vibration and custom notification rules, see
 [notifications](notifications.md).
+
+On boards with a buzzer, `get buzzer` shows its current state. Use
+`set buzzer on` or `set buzzer off` to change the saved setting. The device UI
+uses the same setting.

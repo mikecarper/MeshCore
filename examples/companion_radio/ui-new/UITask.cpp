@@ -1508,7 +1508,8 @@ public:
         display.drawTextLeftAlign(0, y, "Can't access GPS");
       } else {
         display.setColor(UIColor::primary_txt);
-        strcpy(buf, nmea->isValid()?"fix":"no fix");
+        const bool has_fix = nmea->isValid();
+        strcpy(buf, has_fix ? "fix" : "no fix");
         display.drawTextRightAlign(display.width()-1, y, buf);
         y += row_height > 12 ? row_height : 12;
         display.setColor(UIColor::secondary_txt);
@@ -1516,20 +1517,21 @@ public:
         display.setColor(UIColor::primary_txt);
         sprintf(buf, "%d", nmea->satellitesCount());
         display.drawTextRightAlign(display.width()-1, y, buf);
-        y += row_height > 12 ? row_height : 12;
-        display.setColor(UIColor::secondary_txt);
-        display.drawTextLeftAlign(0, y, "pos");
-        display.setColor(UIColor::primary_txt);
-        sprintf(buf, "%.4f %.4f",
-          nmea->getLatitude()/1000000., nmea->getLongitude()/1000000.);
-        display.drawTextRightAlign(display.width()-1, y, buf);
-        y += row_height > 12 ? row_height : 12;
-        display.setColor(UIColor::secondary_txt);
-        display.drawTextLeftAlign(0, y, "alt");
-        display.setColor(UIColor::primary_txt);
-        sprintf(buf, "%.2f", nmea->getAltitude()/1000.);
-        display.drawTextRightAlign(display.width()-1, y, buf);
-        y += row_height > 12 ? row_height : 12;
+        if (has_fix) {
+          y += row_height > 12 ? row_height : 12;
+          display.setColor(UIColor::secondary_txt);
+          display.drawTextLeftAlign(0, y, "pos");
+          display.setColor(UIColor::primary_txt);
+          sprintf(buf, "%.4f %.4f",
+            nmea->getLatitude()/1000000., nmea->getLongitude()/1000000.);
+          display.drawTextRightAlign(display.width()-1, y, buf);
+          y += row_height > 12 ? row_height : 12;
+          display.setColor(UIColor::secondary_txt);
+          display.drawTextLeftAlign(0, y, "alt");
+          display.setColor(UIColor::primary_txt);
+          sprintf(buf, "%.2f", nmea->getAltitude()/1000.);
+          display.drawTextRightAlign(display.width()-1, y, buf);
+        }
       }
 #endif
 #if UI_SENSORS_PAGE == 1
@@ -2103,7 +2105,7 @@ public:
       snprintf(origin, sizeof(origin), "%s [direct]:", from_name);
     } else {
       snprintf(origin, sizeof(origin), "%s [%uh]:", from_name,
-               (unsigned int)path_len);
+               static_cast<unsigned>(path_len & 0x3f));  // high bits encode the hash size
     }
     history.add(companionMessageNowMillis(), channel_idx, channel_name,
                 origin, msg, queue_index);

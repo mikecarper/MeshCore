@@ -807,6 +807,17 @@ stats-core
 **Local connection only:** USB, direct network CLI, or Companion binary
 command `0x42` where the role supports the command; unavailable over LoRa.
 
+`stats-core` reports `battery_mv`, `uptime_secs`, `errors`, and `queue_len`.
+The `errors` field is a bitmask shown as Debug flags in the repeater status.
+
+| Value | Flag | Meaning |
+|-------|------|---------|
+| 1 | `ERR_EVENT_FULL` | The packet pool was full when allocating a packet. |
+| 2 | `ERR_EVENT_CAD_TIMEOUT` | The transmit wait expired while the channel was still busy. |
+| 4 | `ERR_EVENT_STARTRX_TIMEOUT` | The dispatcher timed out waiting to enter receive mode. |
+
+Flags stay set until the node reboots or you run `clear stats`.
+
 ---
 
 <a id="stats-radio"></a>
