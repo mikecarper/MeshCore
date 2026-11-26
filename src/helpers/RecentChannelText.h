@@ -14,12 +14,15 @@ class RecentChannelText {
   static constexpr size_t FingerprintSize = 8;
   static constexpr uint32_t WindowMs = 15UL * 60 * 1000;
 
-  bool contains(size_t index, const uint8_t* fingerprint, uint32_t now) const {
-    const auto& channel = channels_[index];
+  bool suppress(size_t index, const uint8_t* fingerprint, uint32_t now) {
+    auto& channel = channels_[index];
     for (uint8_t i = 0; i < Depth; ++i) {
-      const auto& entry = channel.entries[i];
-      if ((channel.valid & (1U << i)) && now - entry.shown_at < WindowMs
-          && memcmp(entry.fingerprint, fingerprint, FingerprintSize) == 0) return true;
+      auto& entry = channel.entries[i];
+      if ((channel.valid & (1U << i)) && now - entry.last_seen < WindowMs
+          && memcmp(entry.fingerprint, fingerprint, FingerprintSize) == 0) {
+        entry.last_seen = now;
+        return true;
+      }
     }
     return false;
   }
@@ -28,7 +31,7 @@ class RecentChannelText {
     auto& channel = channels_[index];
     auto& entry = channel.entries[channel.next];
     memcpy(entry.fingerprint, fingerprint, FingerprintSize);
-    entry.shown_at = now;
+    entry.last_seen = now;
     channel.valid |= uint8_t(1U << channel.next);
     channel.next = (channel.next + 1) % Depth;
   }
@@ -44,7 +47,7 @@ class RecentChannelText {
     // can wrap all the way back to their original timestamps.
     for (auto& channel : channels_) {
       for (uint8_t i = 0; i < Depth; ++i) {
-        if (now - channel.entries[i].shown_at >= WindowMs)
+        if (now - channel.entries[i].last_seen >= WindowMs)
           channel.valid &= uint8_t(~(1U << i));
       }
     }
@@ -53,7 +56,7 @@ class RecentChannelText {
  private:
   static constexpr uint8_t Depth = 6;
   struct Entry {
-    uint32_t shown_at;
+    uint32_t last_seen;
     uint8_t fingerprint[FingerprintSize];
   };
   struct Channel {

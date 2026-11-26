@@ -2540,7 +2540,7 @@ bool MyMesh::queueChannelText(uint8_t channel_idx, const uint8_t secret[32], flo
                         reinterpret_cast<const uint8_t*>(text), tlen);
     received_at = millis();
     // A suppressed receive is still handled for retry and relay bookkeeping.
-    if (recent_channel_text.contains(channel_idx, fingerprint, received_at)) return true;
+    if (recent_channel_text.suppress(channel_idx, fingerprint, received_at)) return true;
   }
   int i = 0;
   if (app_target_ver >= 3) {

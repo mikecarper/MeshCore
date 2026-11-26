@@ -211,6 +211,7 @@ int main(int argc, char** argv) {
 
 RUNTIME_HARNESS = r'''
 #include <RadioProfiles.h>
+#include <helpers/RecentChannelText.h>
 #define MAX_GROUP_CHANNELS 5
 #define MAX_PACKET_PAYLOAD 255
 namespace mesh {
@@ -257,6 +258,7 @@ public:
 class MyMesh : public BaseChatMesh {
 public:
   Radio radio; Radio* _radio = &radio;
+  mesh::RecentChannelText<MAX_GROUP_CHANNELS> recent_channel_text;
   bool isAliasRadio2Defined() const;
   bool resolveChannelAlias(ChannelDetails&) const;
   bool getChannel(int, ChannelDetails&);
@@ -286,6 +288,15 @@ int main() {
   assert(node.setChannel(0, ordinary));
   assert(node.setChannel(1, secondary));
   assert(node.setChannel(2, mt));
+  uint8_t fingerprint[mesh::RecentChannelText<MAX_GROUP_CHANNELS>::FingerprintSize] = {1};
+  node.recent_channel_text.remember(0, fingerprint, 100);
+  assert(node.setChannel(0, ordinary));
+  assert(node.recent_channel_text.suppress(0, fingerprint, 101));
+  auto renamed = ordinary;
+  strcpy(renamed.name, "#replaced");
+  assert(node.setChannel(0, renamed));
+  assert(!node.recent_channel_text.suppress(0, fingerprint, 102));
+  assert(node.setChannel(0, ordinary));
   ChannelDetails wire, raw;
   assert(node.getChannel(1, wire));
   assert(wire.channel.tx_radio == mesh::RADIO_TX_SECONDARY);
