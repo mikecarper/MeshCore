@@ -221,7 +221,12 @@ static constexpr uint32_t RX_POWERSAVING_MIN_SLEEP_US =
 // Initial settings for companions. Build flags can override the defaults;
 // roles with runtime RXPS controls persist the operator's selection afterward.
 #ifndef RXPS_FIXED_ENABLED
+#if defined(MESH_TRACKER_X1)
+// Fresh X1 Companions start in continuous RX unless the build opts in.
+#define RXPS_FIXED_ENABLED                0
+#else
 #define RXPS_FIXED_ENABLED                1
+#endif
 #endif
 #ifndef RXPS_FIXED_LEVEL
 #define RXPS_FIXED_LEVEL                  RX_POWERSAVING_BALANCED_LEVEL
@@ -270,6 +275,10 @@ constexpr uint8_t RX_POWERSAVING_MAX_CONFIG_LEVEL = RX_POWERSAVING_RISKY_WORKING
 #endif
 
 inline uint32_t rxPowerSavingDefaultTransitionUs() {
+#if defined(MESH_TRACKER_X1) && MESH_LR2021_RXPS_AVAILABLE
+  // Use the X1's board allowance even before the radio driver is initialized.
+  return MESH_LR2021_RXPS_TRANSITION_US;
+#else
 #if defined(MESH_RADIO_AUTO_LR1121) && MESH_RADIO_AUTO_LR1121
   // The single-radio Muzi build shares both drivers. Before identification,
   // use the longer LR1121 startup allowance; afterward preserve each chip.
@@ -292,6 +301,7 @@ inline uint32_t rxPowerSavingDefaultTransitionUs() {
   return LR11X0_DIO3_TCXO_VOLTAGE > 0.0f ? tcxo_delay_us + 1000UL : 1000UL;
 #else
   return tcxo_delay_us + 1000UL;
+#endif
 #endif
 }
 

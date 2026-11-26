@@ -2815,6 +2815,11 @@ set radio.rxps <rx_us> <sleep_us>
   builds, using the same commands. Their existing 5000 us TCXO startup delay
   is preserved, giving a 6000 us sleep/wake transition. Fast SF/BW tuples may
   use continuous receive; `get radio.rxps.status` reports the actual mode.
+- The MeshTracker X1 offers experimental native LR2021 RXPS with levels
+  1–10 and a 10 ms sleep/wake allowance. Fresh standard Companion builds
+  start in continuous receive. Level 8 was tested at SF7, 62.5 kHz and a
+  32-symbol preamble at room temperature. Use `get radio.rxps.status` to
+  check whether duty cycling is active for the selected radio settings.
 - The `RAK_3401_repeater` build also accepts `set radio.rxps level 11`. This
   experimental mode uses two-symbol CAD every 32 ms at SF7 and 62.5 kHz with
   a 32-symbol on-air preamble. The scan interval leaves room to enter RX and

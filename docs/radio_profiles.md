@@ -97,8 +97,9 @@ the radio remains active while scanning. Current consumption has not been
 measured.
 
 The X1 scanner has not yet been verified on hardware. Its nRF52 CPU does not
-use the W12's radio-owned sleep integration. X1 RXPS and W12 crystal
-calibration are not enabled by the scanner.
+use the W12's radio-owned sleep integration. The X1's experimental single-profile
+RXPS setting uses native LR2021 duty cycling and is suspended during radio2
+scanning. W12 crystal calibration is configured separately.
 
 Full W12 Repeater images require the board's PSRAM for the full-capacity
 repeater tables. If PSRAM is unavailable, LoRa startup stops and the USB

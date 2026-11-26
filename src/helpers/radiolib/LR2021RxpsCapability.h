@@ -15,6 +15,11 @@
 // Existing, hardware-tested W12 crystal configuration.
 #define MESH_LR2021_RXPS_AVAILABLE 1
 #define MESH_LR2021_RXPS_TRANSITION_US 1000
+#elif defined(MESH_TRACKER_X1) && defined(MESH_X1_RXPS_EXPERIMENT) && MESH_X1_RXPS_EXPERIMENT
+// X1 bench configuration. Reserve 10 ms for the TCXO and radio to wake.
+// The wider temperature range has not been qualified.
+#define MESH_LR2021_RXPS_AVAILABLE 1
+#define MESH_LR2021_RXPS_TRANSITION_US 10000
 #else
 #define MESH_LR2021_RXPS_AVAILABLE 0
 #endif

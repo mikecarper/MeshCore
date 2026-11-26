@@ -70,6 +70,9 @@ int main() {
         include = '#include <helpers/radiolib/LR2021RxpsCapability.h>\n'
         cases = [
             ('#define MESH_TRACKER_X1 1\n#define USE_LR2021 1\n', 'static_assert(!MESH_LR2021_RXPS_AVAILABLE);', True),
+            ('#define MESH_TRACKER_X1 1\n#define MESH_X1_RXPS_EXPERIMENT 1\n',
+             'static_assert(MESH_LR2021_RXPS_AVAILABLE && MESH_LR2021_RXPS_HOLD_AVAILABLE && MESH_LR2021_RXPS_TRANSITION_US == 10000);', True),
+            ('#define MESH_X1_RXPS_EXPERIMENT 1\n', 'static_assert(!MESH_LR2021_RXPS_AVAILABLE);', True),
             ('#define MESHNOLOGY_W12 1\n#define MESH_W12_RXPS_EXPERIMENT 1\n#define MESH_W12_PRAM_EXPERIMENT 1\n',
              'static_assert(MESH_LR2021_RXPS_AVAILABLE && MESH_LR2021_RXPS_TRANSITION_US == 1000);', True),
             ('#define MESH_LR2021_RXPS_ENABLE 1\n', '', False),
@@ -118,6 +121,30 @@ int main() {
 }
 '''.replace('METHOD', method)
         result = compile_cpp(harness)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_x1_level_uses_board_transition_allowance(self):
+        result = compile_cpp(r'''
+#define MESH_TRACKER_X1 1
+#define MESH_X1_RXPS_EXPERIMENT 1
+#define USE_LR2021 1
+#include <helpers/radiolib/RXPowerSaving.h>
+#include <cassert>
+
+int main() {
+  static_assert(RXPS_FIXED_ENABLED == 0);
+  uint32_t rx = 0, sleep = 0;
+  uint32_t expected_rx = 0, expected_sleep = 0;
+  assert(rxPowerSavingDefaultTransitionUs() == 10000);
+  assert(recalcRxPowerSavingFromLevel(8, 7, 62.5f, 32, &rx, &sleep));
+  assert(calcRxPowerSavingLevelAtOrAbove(8, 7, 62.5f, 32, 10000,
+                                         &expected_rx, &expected_sleep));
+  assert(rx == expected_rx && sleep == expected_sleep);
+  assert(!rxPowerSavingUsesContinuousFallback(rx, sleep));
+  assert(recalcRxPowerSavingFromLevel(8, 5, 500.0f, 32, &rx, &sleep));
+  assert(rxPowerSavingUsesContinuousFallback(rx, sleep));
+}
+''')
         self.assertEqual(result.returncode, 0, result.stderr)
 
 
