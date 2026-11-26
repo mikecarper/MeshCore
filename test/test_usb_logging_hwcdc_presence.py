@@ -31,6 +31,7 @@ using esp_event_base_t = int;
 static bool in_isr = false;
 static bool xPortInIsrContext() { return in_isr; }
 namespace mesh {
+bool usbDataLocked() { return false; }
 static bool logging_enabled = true;
 static unsigned bool_samples = 0, probes = 0;
 static std::vector<uint8_t> recoveries;

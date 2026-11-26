@@ -96,6 +96,7 @@ struct Device {
 } TinyUSBDevice;
 static void delay(unsigned value) { assert(!attached); delay_ms += value; }
 namespace mesh {
+static bool usbDataLocked() { return false; }
 static std::atomic<bool> usb_logging_preference_known{false};
 static bool enabled = false, dedicated_usb_logging_port_started = false;
 static bool dedicated_usb_logging_port_configured = false;
@@ -257,7 +258,6 @@ struct Device {
   void attach() { ++attach_count; attached = true; registers.USBPULLUP = 1; }
 } TinyUSBDevice;
 namespace mesh {
-static bool usbDataLocked() { return false; }
 static void clearUsbLoggingClientActivity() {}
 static bool isUsbLoggingPacketStream() { return false; }
 @DEDICATED@

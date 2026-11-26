@@ -32,6 +32,7 @@ static mesh::UsbLoggingObservation observation{true, false, false, false, 0};
 static bool pending_attach = false;
 static bool logger_active = false;
 namespace mesh {
+bool usbDataLocked() { return false; }
 bool isUsbLoggingEnabled() { return true; }
 bool isUsbLoggingClientActive() { return logger_active; }
 void clearUsbLoggingClientActivity() {}

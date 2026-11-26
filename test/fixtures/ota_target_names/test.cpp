@@ -51,7 +51,7 @@ static const char* lookup(uint32_t id, char* buffer, size_t capacity, unsigned c
   hash_calls = decoded_count = allocation_calls = 0;
   const char* result = ota_target_env_name(id, buffer, capacity);
   assert(!active_allocation);
-#if defined(OTA_RAK15002_SD_STORE) && defined(COMPANION_RADIO_FULL)
+#if OTA_TARGET_NAME_FINGERPRINTS || (defined(OTA_RAK15002_SD_STORE) && defined(COMPANION_RADIO_FULL))
   assert(hash_calls <= candidates && decoded_count <= 3);
   if (result) assert(hash_calls > 0 && allocation_calls == 1);
 #else

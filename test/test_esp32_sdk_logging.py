@@ -109,6 +109,7 @@ static int sdk_format(char* dest, size_t size, const char* format, va_list args)
 }
 
 namespace mesh {
+static bool usbDataLocked() { return false; }
 static std::atomic<bool> usb_logging_enabled{false}, usb_debug_enabled{false};
 static std::atomic<bool> usb_logging_preference_known{false};
 static std::atomic<bool> usb_logging_tx_waiting{false};

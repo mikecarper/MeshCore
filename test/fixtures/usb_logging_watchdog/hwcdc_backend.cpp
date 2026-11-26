@@ -28,6 +28,7 @@ using esp_event_base_t = int;
 enum { ARDUINO_HW_CDC_BUS_RESET_EVENT = 1, ARDUINO_HW_CDC_RX_EVENT, ARDUINO_HW_CDC_TX_EVENT };
 
 namespace mesh {
+bool usbDataLocked() { return false; }
 static bool logging_enabled = true, client_active = false;
 bool isUsbLoggingEnabled() { return logging_enabled; }
 bool isUsbDebugEnabled() { return false; }

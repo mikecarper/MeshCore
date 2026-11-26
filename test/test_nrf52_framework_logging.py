@@ -85,6 +85,7 @@ static void SEGGER_RTT_Write(unsigned, const void*, size_t size) { rtt_bytes += 
 static bool in_isr = false;
 static bool isInISR() { return in_isr; }
 namespace mesh {
+static bool usbDataLocked() { return false; }
 static bool logging = true, debug = true, packet_stream = false;
 static bool dedicated_usb_logging_port_started = true;
 static std::atomic<bool> dedicated_usb_logging_port_connected{true};

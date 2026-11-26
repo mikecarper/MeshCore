@@ -36,6 +36,7 @@ static uint32_t event_clock = 1772323200;
 static uint32_t read_event_clock() { return event_clock; }
 
 namespace mesh {
+bool usbDataLocked() { return false; }
 bool isUsbLoggingEnabled() { return logging_enabled; }
 bool isUsbLoggingTransportRecoveryPending() { return recovery_pending; }
 bool isUsbLoggingClientActive() { return client_active; }
