@@ -389,7 +389,7 @@ int main() {
         self.assertIn("endPrimaryUsbHostSession(true);", bridge)
         self.assertIn("if (instance == 0 && !dtr)", bridge)
         self.assertIn("tud_cdc_get_line_coding(&coding);", bridge)
-        self.assertIn("if (coding.bit_rate == 1200)", bridge)
+        self.assertIn("if (coding.bit_rate == 1200 && !mesh::usbDataLocked())", bridge)
         self.assertIn("TinyUSB_Port_EnterDFU();", bridge)
         self.assertIn("const bool was_open =", bridge)
         self.assertIn("primary_usb_line_state_dtr.load(", bridge)
