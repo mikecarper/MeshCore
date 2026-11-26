@@ -4840,6 +4840,10 @@ apply_companion_radio_full_profile() {
           export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=34 -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=1024"
         elif [[ "${env_name,,}" == heltec_ct62_companion_radio_full ]]; then
           export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32"
+        elif [[ "${env_name,,}" == heltec_tracker_v2_companion_radio_full_* ]]; then
+          export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048"
+          record_build_reduction \
+            "web.terminal initial scrollback 2048 bytes; grows up to 32768 bytes when memory permits"
         fi
       else
         # Keep all 224 frames during OTA too; RTC FAST holds 32 existing
