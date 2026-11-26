@@ -220,7 +220,11 @@ public:
     return ((CustomSX1276 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE;
   }
 
-  bool isReceivingPacket() override { 
+  bool isTransmitChannelBusy() override {
+    return _profiles.enabled() ? isReceiving() : isChannelActive(true);
+  }
+
+  bool isReceivingPacket() override {
     return ((CustomSX1276 *)_radio)->isReceiving();
   }
   float getCurrentRSSI() override {

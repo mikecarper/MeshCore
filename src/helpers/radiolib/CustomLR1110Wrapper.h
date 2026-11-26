@@ -147,6 +147,10 @@ protected:
   }
 
 public:
+  bool isTransmitChannelBusy() override {
+    return _profiles.enabled() ? isReceiving() : isChannelActive(true);
+  }
+
   bool setCodingRate(uint8_t cr) override {
     if (isCarrierWaveActive()) return false;
     return ((CustomLR1110 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE;
@@ -200,6 +204,15 @@ protected:
 
   int16_t armDutyCycle(RadioLibIrqFlags_t irq_flags, RadioLibIrqFlags_t irq_mask,
       uint32_t* effective_rx_us, uint32_t* effective_sleep_us) override {
+#if MESH_LR1110_CAD_RXPS
+    if (rxPowerSavingUsesCad(_rx_ps_rx_us, _rx_ps_sleep_us)) {
+      if (_profiles.enabled() || _cur_sf != 7 || _cur_bw != 250.0f || currentPreambleLength() != 32)
+        return RX_POWERSAVING_ERR_TIMING;
+      *effective_rx_us = 1024;  // Two SF7 symbols at 250 kHz.
+      *effective_sleep_us = CustomLR1110::CAD_RX_SLEEP_US + rxPowerSavingTransitionUs();
+      return static_cast<CustomLR1110*>(_radio)->startCadRxDutyCycle(irq_flags, irq_mask);
+    }
+#endif
     *effective_sleep_us = _rx_ps_sleep_us;
     return ((CustomLR1110*)_radio)->startReceiveDutyCycle(
         _rx_ps_rx_us, _rx_ps_sleep_us, irq_flags, irq_mask, effective_rx_us);

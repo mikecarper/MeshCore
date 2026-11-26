@@ -244,7 +244,7 @@ inline bool rxPowerSavingUsesContinuousFallback(uint32_t rx_us, uint32_t sleep_u
       && sleep_us == RX_POWERSAVING_CONTINUOUS_FALLBACK_US;
 }
 
-#if MESH_RAK3401_CAD_RXPS || MESH_LR2021_CAD_RXPS
+#if MESH_RAK3401_CAD_RXPS || MESH_LR2021_CAD_RXPS || MESH_LR1110_CAD_RXPS
 #define MESH_RXPS_CAD_AVAILABLE 1
 #define RX_POWERSAVING_LEVEL_RANGE "1-11"
 constexpr uint8_t RX_POWERSAVING_CAD_LEVEL = 11;
@@ -263,7 +263,12 @@ inline bool rxPowerSavingUsesCad(uint32_t rx_us, uint32_t sleep_us) {
 inline bool calcCadRxPowerSaving(uint8_t sf, float bw, uint8_t preamble,
                                 uint32_t* rx_us, uint32_t* sleep_us) {
   if (preamble != 0 && preamble != 32) return false;
-  if (sf == 7 && bw == 62.5f) {
+#if MESH_LR1110_CAD_RXPS
+  constexpr float cad_bandwidth = 250.0f;
+#else
+  constexpr float cad_bandwidth = 62.5f;
+#endif
+  if (sf == 7 && bw == cad_bandwidth) {
     *rx_us = RX_POWERSAVING_CAD_SELECTOR_US;
     *sleep_us = RX_POWERSAVING_CAD_PERIOD_US;
   } else {

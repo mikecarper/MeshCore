@@ -432,7 +432,25 @@ class CustomLR1110 : public LR1110 {
       if ((sleepPeriodRaw & 0xFF000000) || (sleepPeriodRaw == 0)) {
         return RADIOLIB_ERR_INVALID_SLEEP_PERIOD;
       }
+      return launchRxDutyCycle(rxPeriodRaw, sleepPeriodRaw, irqFlags, irqMask,
+                               RADIOLIB_LR11X0_RX_DUTY_CYCLE_MODE_RX);
+    }
 
+#if MESH_LR1110_CAD_RXPS
+    // SF7/BW250, two-symbol CAD and a 32-symbol on-air preamble on T1000-E.
+    static constexpr uint32_t CAD_RX_SLEEP_US = 7000;
+
+    int16_t startCadRxDutyCycle(RadioLibIrqFlags_t irqFlags, RadioLibIrqFlags_t irqMask) {
+      constexpr uint32_t rx_ticks = 12000UL * 32768 / 1000000;
+      constexpr uint32_t sleep_ticks = CAD_RX_SLEEP_US * 32768 / 1000000;
+      return launchRxDutyCycle(rx_ticks, sleep_ticks, irqFlags, irqMask,
+                               RADIOLIB_LR11X0_RX_DUTY_CYCLE_MODE_CAD);
+    }
+#endif
+
+    int16_t launchRxDutyCycle(uint32_t rx_ticks, uint32_t sleep_ticks,
+                              RadioLibIrqFlags_t irqFlags, RadioLibIrqFlags_t irqMask,
+                              uint8_t mode) {
       // Semtech requires Standby RC and an explicitly configured RTC source
       // before SetRxDutyCycle. RadioLib does neither in its LoRa RXPS path.
       int16_t state = standby(RADIOLIB_LR11X0_STANDBY_RC);
@@ -453,9 +471,17 @@ class CustomLR1110 : public LR1110 {
       state = this->stageMode(RADIOLIB_RADIO_MODE_RX, &cfg);
       RADIOLIB_ASSERT(state);
 
+#if MESH_LR1110_CAD_RXPS
+      if (mode == RADIOLIB_LR11X0_RX_DUTY_CYCLE_MODE_CAD) {
+        mod->setRfSwitchState(Module::MODE_RX);
+        constexpr uint32_t cad_timeout_ticks = 3277;  // 100 ms
+        state = setCadParams(2, 58, 10, RADIOLIB_LR11X0_CAD_EXIT_MODE_RX, cad_timeout_ticks);
+        RADIOLIB_ASSERT(state);
+      }
+#endif
       // Send the already converted values. RadioLib 7.7.1 converts them again
       // with 32-bit arithmetic, which overflows for periods above about 131 ms.
-      state = this->setRxDutyCycle(rxPeriodRaw, sleepPeriodRaw, RADIOLIB_LR11X0_RX_DUTY_CYCLE_MODE_RX);
+      state = this->setRxDutyCycle(rx_ticks, sleep_ticks, mode);
       if (state == RADIOLIB_ERR_NONE) {
         _activityAt = 0;
         _headerSeen = false;

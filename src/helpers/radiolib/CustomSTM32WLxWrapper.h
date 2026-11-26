@@ -28,6 +28,10 @@ protected:
   }
 
 public:
+  bool isTransmitChannelBusy() override {
+    return _profiles.enabled() ? isReceiving() : isChannelActive(true);
+  }
+
   bool lastRxHadCRC() override {
     bool crc = false;
     return static_cast<CustomSTM32WLx*>(_radio)->getLoRaRxHeaderInfo(nullptr, &crc) == RADIOLIB_ERR_NONE

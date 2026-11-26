@@ -2820,11 +2820,15 @@ set radio.rxps <rx_us> <sleep_us>
   start in continuous receive. Level 8 was tested at SF7, 62.5 kHz and a
   32-symbol preamble at room temperature. Use `get radio.rxps.status` to
   check whether duty cycling is active for the selected radio settings.
-- The X1 also offers experimental level `11` for a single SF7, 62.5 kHz
-  profile with a 32-symbol on-air preamble. The LR2021 runs two-symbol CAD and
-  switches to receive on detection inside the radio. The scan interval was
-  approximately 50 ms at room temperature. Use `set radio.rxps level 11` to
-  select it. Other tuples use continuous receive.
+- X1 and RXPS-capable W12 builds also offer experimental level `11` for a
+  single SF7, 62.5 kHz profile with a 32-symbol on-air preamble. The LR2021 runs
+  two-symbol CAD and switches to receive on detection inside the radio. The
+  scan interval was approximately 50 ms on X1 at room temperature. Use
+  `set radio.rxps level 11` to select it. Other tuples use continuous receive.
+- The T1000-E offers experimental level `11` for a single SF7, 250 kHz
+  profile with a 32-symbol on-air preamble. The LR1110 runs two-symbol CAD
+  approximately every 9 ms on the tested board. At 62.5 kHz or another tuple,
+  selecting level `11` leaves the radio in continuous receive.
 - The `RAK_3401_repeater` build also accepts `set radio.rxps level 11`. This
   experimental mode uses two-symbol CAD every 32 ms at SF7 and 62.5 kHz with
   a 32-symbol on-air preamble. The scan interval leaves room to enter RX and
@@ -4687,6 +4691,9 @@ set cad <on|off>
 
 **Description:** When enabled, the radio performs a hardware Channel Activity Detection scan before transmitting and defers if the channel is busy. Runs independently of `int.thresh` - either, both, or none may be active.
 An SX1262 with `radio2` disabled uses a two-symbol check for normal transmissions.
+For a single profile, SX1262, SX1268, SX1276, LR1110, LR1121, LR2021 and STM32WL
+leave the radio in standby after a clear CAD result so transmit can start
+without a receive restart.
 
 Fresh Cascade-profile builds default CAD to `off` across all roles, including
 Companion. Saved CAD settings take precedence after an upgrade. Use `set cad off`

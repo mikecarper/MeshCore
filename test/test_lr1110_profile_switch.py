@@ -11,6 +11,77 @@ ROOT = Path(__file__).resolve().parents[1]
 class LR1110ProfileSwitchTests(unittest.TestCase):
     compile_run = compiler.BatchedModulationTests.compile_run
 
+    def test_t1000_native_cad_uses_the_verified_250_khz_plan(self):
+        source = (ROOT / "src/helpers/radiolib/CustomLR1110.h").read_text()
+        harness = r'''
+#define MESH_LR1110_CAD_RXPS 1
+#include <helpers/radiolib/RXPowerSaving.h>
+#include <cassert>
+
+using RadioLibIrqFlags_t = uint32_t;
+constexpr int RADIOLIB_ERR_NONE = 0;
+constexpr int RADIOLIB_LR11X0_STANDBY_RC = 0;
+constexpr int RADIOLIB_LR11X0_LF_CLK_RC = 1;
+constexpr int RADIOLIB_LR11X0_LF_BUSY_RELEASE_ENABLED = 2;
+constexpr int RADIOLIB_LR11X0_RX_TIMEOUT_INF = 0xffffff;
+constexpr int RADIOLIB_RADIO_MODE_RX = 3;
+constexpr int RADIOLIB_LR11X0_RX_DUTY_CYCLE_MODE_CAD = 1;
+constexpr int RADIOLIB_LR11X0_CAD_EXIT_MODE_RX = 1;
+#define RADIOLIB_ASSERT(state) if ((state) != RADIOLIB_ERR_NONE) return (state)
+
+struct RadioModeConfig_t {
+    struct { uint32_t timeout, irqFlags, irqMask, len; } receive;
+};
+struct Module {
+    static constexpr int MODE_RX = 1;
+    bool in_rx = false;
+    void setRfSwitchState(int mode) { in_rx = mode == MODE_RX; }
+};
+struct Chip {
+    static constexpr uint32_t CAD_RX_SLEEP_US = 7000;
+    bool _lfClockRestoreNeeded = false, _headerSeen = true;
+    uint32_t _activityAt = 123, rx = 0, sleep = 0;
+    int cad = 0, clock = 0;
+    Module module;
+    Module* mod = &module;
+    int standby(int mode) { assert(mode == RADIOLIB_LR11X0_STANDBY_RC); return 0; }
+    int configLfClock(int value) { clock = value; return 0; }
+    int stageMode(int mode, RadioModeConfig_t* cfg) {
+        assert(mode == RADIOLIB_RADIO_MODE_RX && cfg->receive.irqFlags == 19);
+        assert(cfg->receive.irqMask == 7 && cfg->receive.timeout == 0xffffff);
+        return 0;
+    }
+    int setCadParams(int symbols, int peak, int min, int exit_mode, uint32_t timeout) {
+        assert(module.in_rx && symbols == 2 && peak == 58 && min == 10);
+        assert(exit_mode == RADIOLIB_LR11X0_CAD_EXIT_MODE_RX && timeout == 3277);
+        ++cad;
+        return 0;
+    }
+    int setRxDutyCycle(uint32_t rx_ticks, uint32_t sleep_ticks, int mode) {
+        assert(mode == RADIOLIB_LR11X0_RX_DUTY_CYCLE_MODE_CAD && cad == 1);
+        rx = rx_ticks;
+        sleep = sleep_ticks;
+        return 0;
+    }
+    @ARM@
+    @LAUNCH@
+};
+int main() {
+    uint32_t rx = 0, sleep = 0;
+    assert(recalcRxPowerSavingFromLevel(11, 7, 62.5f, 32, &rx, &sleep));
+    assert(rxPowerSavingUsesContinuousFallback(rx, sleep));
+    assert(recalcRxPowerSavingFromLevel(11, 7, 250.0f, 0, &rx, &sleep));
+    assert(rxPowerSavingUsesCad(rx, sleep));
+    Chip radio;
+    assert(radio.startCadRxDutyCycle(19, 7) == 0);
+    assert(radio.rx == 393 && radio.sleep == 229);
+    assert(radio._lfClockRestoreNeeded && radio.clock == 3);
+    assert(radio._activityAt == 0 && !radio._headerSeen);
+}
+'''
+        self.compile_run(harness.replace('@ARM@', method(source, 'int16_t startCadRxDutyCycle('))
+                         .replace('@LAUNCH@', method(source, 'int16_t launchRxDutyCycle(')))
+
     def test_fast_profile_switch_is_enabled_for_every_lr1110_target(self):
         source = (ROOT / "src/helpers/radiolib/CustomLR1110.h").read_text()
         self.assertIn("#define MC_LR1110_FAST_PROFILE_SWITCH 1", source)

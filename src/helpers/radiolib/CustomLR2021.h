@@ -688,7 +688,7 @@ class CustomLR2021 : public LR2021 {
     }
 
 #if MESH_LR2021_CAD_RXPS
-    // X1 bench timings for SF7, BW62.5 and a 32-symbol on-air preamble.
+    // LR2021 timings measured on X1 at SF7/BW62.5 with a 32-symbol preamble.
     static constexpr uint32_t CAD_RX_TIMEOUT_TICKS = 1520;
     static constexpr uint32_t CAD_RX_CYCLE_TICKS = 1550;
     static constexpr uint32_t CAD_RX_TIMEOUT_US = CAD_RX_TIMEOUT_TICKS * 1000000ULL / 32768;

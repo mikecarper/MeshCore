@@ -806,6 +806,47 @@ def transition_harness(source=None):
 
 
 class RadioReceiveContractTest(unittest.TestCase):
+    def test_single_profile_tx_handoff_preserves_lora_receive(self):
+        harness = transition_harness().split('struct LegacyRadio {', 1)[0]
+        harness += r'''
+struct Driver : RadioLibWrapper {
+  @TRANSMIT_BUSY@
+};
+int main() {
+  Driver fixed;
+  fixed._rx_ps_enabled = fixed._rx_ps_armed = true;
+  assert(!fixed.isTransmitChannelBusy());
+  assert(fixed.radio.scans == 1 && fixed.radio.configured_scans == 0);
+  assert(fixed.state == STATE_IDLE && fixed.arms == 0 && fixed.stops == 1);
+  fixed.startRecv();
+  assert(fixed.state == STATE_RX && fixed._rx_ps_armed && fixed.arms == 1);
+
+  Driver occupied;
+  occupied.radio.scan_result = 1;
+  assert(occupied.isTransmitChannelBusy());
+  assert(occupied.state == STATE_RX && occupied.arms == 1);
+
+  mesh::RadioProfileConfig second;
+  second.params.freq = 910.5f;
+  second.params.bw = 62.5f;
+  second.params.sf = 7;
+  second.params.cr = 5;
+  second.mode = mesh::RadioProfileMode::Rx;
+  fixed._profiles.setSecondary(second, false);
+  assert(!fixed.isTransmitChannelBusy());
+  assert(fixed.state == STATE_RX && fixed.arms == 2);
+}
+'''
+        for family in ('LR1110', 'LR1121', 'SX1268', 'SX1276', 'STM32WLx'):
+            with self.subTest(family=family), tempfile.TemporaryDirectory() as folder:
+                wrapper = (ROOT / f'src/helpers/radiolib/Custom{family}Wrapper.h').read_text()
+                cpp, binary = Path(folder) / 'cad.cpp', Path(folder) / 'cad'
+                cpp.write_text(harness.replace(
+                    '@TRANSMIT_BUSY@', method(wrapper, 'bool isTransmitChannelBusy()')))
+                subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-I', str(ROOT / 'src'),
+                                str(cpp), '-o', str(binary)], check=True)
+                subprocess.run([str(binary)], check=True)
+
     def test_sx1262_pretransmit_cad_is_two_symbols_on_one_profile(self):
         wrapper = (ROOT / 'src/helpers/radiolib/CustomSX1262Wrapper.h').read_text()
         harness = transition_harness().split('struct LegacyRadio {', 1)[0]

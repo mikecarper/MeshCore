@@ -74,7 +74,7 @@ int main() {
              'static_assert(MESH_LR2021_RXPS_AVAILABLE && MESH_LR2021_RXPS_HOLD_AVAILABLE && MESH_LR2021_CAD_RXPS && MESH_LR2021_RXPS_TRANSITION_US == 10000);', True),
             ('#define MESH_X1_RXPS_EXPERIMENT 1\n', 'static_assert(!MESH_LR2021_RXPS_AVAILABLE);', True),
             ('#define MESHNOLOGY_W12 1\n#define MESH_W12_RXPS_EXPERIMENT 1\n#define MESH_W12_PRAM_EXPERIMENT 1\n',
-             'static_assert(MESH_LR2021_RXPS_AVAILABLE && !MESH_LR2021_CAD_RXPS && MESH_LR2021_RXPS_TRANSITION_US == 1000);', True),
+             'static_assert(MESH_LR2021_RXPS_AVAILABLE && MESH_LR2021_CAD_RXPS && MESH_LR2021_RXPS_TRANSITION_US == 1000);', True),
             ('#define MESH_LR2021_RXPS_ENABLE 1\n', '', False),
             ('#define MESH_LR2021_RXPS_ENABLE 1\n#define MESH_LR2021_RXPS_QUALIFIED 1\n', '', False),
             ('#define MESH_LR2021_RXPS_ENABLE 1\n#define MESH_LR2021_RXPS_QUALIFIED 1\n#define MESH_LR2021_RXPS_TRANSITION_US 999\n', '', False),

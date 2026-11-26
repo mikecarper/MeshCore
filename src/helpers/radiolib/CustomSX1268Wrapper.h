@@ -95,6 +95,10 @@ protected:
   }
 
 public:
+  bool isTransmitChannelBusy() override {
+    return _profiles.enabled() ? isReceiving() : isChannelActive(true);
+  }
+
   bool setCodingRate(uint8_t cr) override {
     if (isCarrierWaveActive()) return false;
     return ((CustomSX1268 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE;
