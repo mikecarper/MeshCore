@@ -4835,9 +4835,9 @@ apply_companion_radio_full_profile() {
       if [[ "${env_name,,}" != generic_espnow_companion_radio_full ]]; then
         export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_SHARED_COMPANION_QUEUE=1 -DONE_KEY_DM_COMPACT_HELD=1"
         if [[ "${env_name,,}" == xiao_c3_companion_radio_full ]]; then
-          # Use 36 CPU-only RTC slots and let terminal scrollback grow on demand.
+          # Use 34 CPU-only RTC slots and let terminal scrollback grow on demand.
           # All 224 normal frames and 128 active-OTA frames remain available.
-          export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=36 -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=1024"
+          export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=34 -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=1024"
         elif [[ "${env_name,,}" == heltec_ct62_companion_radio_full ]]; then
           export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32"
         fi

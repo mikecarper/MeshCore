@@ -374,7 +374,7 @@ class CompanionRtcQueueTests(unittest.TestCase):
         for target, fast, slow, contacts, queue in (
                 ('Generic_ESPNOW_companion_radio_full', 32, 0, 100, 224),
                 ('Heltec_WSL3_companion_radio_full', 32, 32, 350, 256),
-                ('Xiao_C3_companion_radio_full', 36, 0, 100, 224),
+                ('Xiao_C3_companion_radio_full', 34, 0, 100, 224),
                 ('Heltec_CT62_companion_radio_full', 32, 0, 100, 224),
                 ('Heltec_v3_companion_radio_full', 32, 32, 100, 256),
                 ('Heltec_v3_companion_radio_usb', 0, 0, 350, 256),
