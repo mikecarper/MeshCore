@@ -244,7 +244,9 @@ inline bool rxPowerSavingUsesContinuousFallback(uint32_t rx_us, uint32_t sleep_u
       && sleep_us == RX_POWERSAVING_CONTINUOUS_FALLBACK_US;
 }
 
-#if MESH_RAK3401_CAD_RXPS
+#if MESH_RAK3401_CAD_RXPS || MESH_LR2021_CAD_RXPS
+#define MESH_RXPS_CAD_AVAILABLE 1
+#define RX_POWERSAVING_LEVEL_RANGE "1-11"
 constexpr uint8_t RX_POWERSAVING_CAD_LEVEL = 11;
 constexpr uint32_t RX_POWERSAVING_CAD_PERIOD_US = 32000;
 constexpr uint32_t RX_POWERSAVING_CAD_LISTEN_US = 5120;
@@ -271,6 +273,8 @@ inline bool calcCadRxPowerSaving(uint8_t sf, float bw, uint8_t preamble,
 }
 constexpr uint8_t RX_POWERSAVING_MAX_CONFIG_LEVEL = RX_POWERSAVING_CAD_LEVEL;
 #else
+#define MESH_RXPS_CAD_AVAILABLE 0
+#define RX_POWERSAVING_LEVEL_RANGE "1-10"
 constexpr uint8_t RX_POWERSAVING_MAX_CONFIG_LEVEL = RX_POWERSAVING_RISKY_WORKING_MAX_LEVEL;
 #endif
 
@@ -624,7 +628,7 @@ inline bool recalcRxPowerSavingFromLevel(uint8_t level, uint8_t sf, float bw, ui
                                          uint8_t *effective_preamble = nullptr,
                                          uint32_t transition_us = rxPowerSavingDefaultTransitionUs(),
                                          float capture_cost_symbols = rxPowerSavingDefaultCaptureCost()) {
-#if MESH_RAK3401_CAD_RXPS
+#if MESH_RXPS_CAD_AVAILABLE
   if (level == RX_POWERSAVING_CAD_LEVEL) {
     if (!calcCadRxPowerSaving(sf, bw, preamble, rx_ps_rx_us, rx_ps_sleep_us)) return false;
     if (effective_level) *effective_level = level;

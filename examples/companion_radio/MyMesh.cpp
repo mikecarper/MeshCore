@@ -3653,7 +3653,7 @@ void MyMesh::begin(bool has_display, bool radio_available,
           || _prefs.cad_scan_timeout_ms > mesh::CAD_SCAN_MAX_TIMEOUT_MS)) {
     _prefs.cad_scan_timeout_ms = 0;
   }
-  _prefs.rx_ps_level = constrain(_prefs.rx_ps_level, 0, 10);
+  _prefs.rx_ps_level = constrain(_prefs.rx_ps_level, 0, RX_POWERSAVING_MAX_CONFIG_LEVEL);
   if (_prefs.rx_ps_preamble != 16 && _prefs.rx_ps_preamble != 32) {
     _prefs.rx_ps_preamble = 0;
   }
@@ -10312,7 +10312,9 @@ bool MyMesh::applyAndSaveRxPowerSaving(const char* value, char* reply) {
 
   mesh::cli::RxPowerSavingArguments parsed = {};
   if (!mesh::cli::parseRxPowerSavingArgumentsStrict(value, parsed)) {
-    mesh::cli::formatError(reply, 160, MESH_CLI_REPLY_TEXT("use off, level 1-10, or RX_US SLEEP_US", "off | level 1-10 | RX_US SLEEP_US"));
+    mesh::cli::formatError(reply, 160, MESH_RXPS_CAD_AVAILABLE
+        ? "use off, level 1-11, or RX_US SLEEP_US"
+        : MESH_CLI_REPLY_TEXT("use off, level 1-10, or RX_US SLEEP_US", "off | level 1-10 | RX_US SLEEP_US"));
     return false;
   }
 
@@ -10330,17 +10332,29 @@ bool MyMesh::applyAndSaveRxPowerSaving(const char* value, char* reply) {
     preamble = RX_POWERSAVING_PROFILE_PREAMBLE;
     level_requested = true;
   } else if (parsed.mode == mesh::cli::RxPowerSavingArgumentMode::Level) {
-    if (parsed.level < 1 || parsed.level > 10) {
-      strcpy(reply, parsed.preamble == 0
-          ? MESH_CLI_REPLY_TEXT("Error: level must be 1-10", "Error: level 1-10")
-          : "Error: level 1-10; preamble 16 or 32");
+    if (parsed.level < 1 || parsed.level > RX_POWERSAVING_MAX_CONFIG_LEVEL) {
+      if (parsed.preamble == 0) {
+        strcpy(reply, MESH_RXPS_CAD_AVAILABLE ? "Error: level must be 1-11"
+            : MESH_CLI_REPLY_TEXT("Error: level must be 1-10", "Error: level 1-10"));
+      } else {
+        strcpy(reply, "Error: level " RX_POWERSAVING_LEVEL_RANGE "; preamble 16 or 32");
+      }
       return false;
     }
     if (parsed.preamble != 0
         && parsed.preamble != 16 && parsed.preamble != 32) {
-      mesh::cli::formatError(reply, 160, "level 1-10; preamble 16 or 32");
+      mesh::cli::formatError(reply, 160, "level " RX_POWERSAVING_LEVEL_RANGE "; preamble 16 or 32");
       return false;
     }
+#if MESH_RXPS_CAD_AVAILABLE
+    if (parsed.level == RX_POWERSAVING_CAD_LEVEL) {
+      if (parsed.preamble != 0 && parsed.preamble != 32) {
+        mesh::cli::formatError(reply, 160, "level 11 requires a 32-symbol preamble");
+        return false;
+      }
+      parsed.preamble = 32;
+    }
+#endif
     enabled = 1;
     level = static_cast<uint8_t>(parsed.level);
     preamble = static_cast<uint8_t>(parsed.preamble);
@@ -10364,11 +10378,11 @@ bool MyMesh::applyAndSaveRxPowerSaving(const char* value, char* reply) {
   }
 
   if (level_requested) {
-    if (level < 1 || level > 10
+    if (level < 1 || level > RX_POWERSAVING_MAX_CONFIG_LEVEL
         || (preamble != 0 && preamble != 16 && preamble != 32)
         || !recalcRxPowerSavingFromLevel(level, _prefs.sf, _prefs.bw, preamble,
                                          &rx_us, &sleep_us)) {
-      mesh::cli::formatError(reply, 160, "level 1-10; preamble auto, 16 or 32");
+      mesh::cli::formatError(reply, 160, "level " RX_POWERSAVING_LEVEL_RANGE "; preamble auto, 16 or 32");
       return false;
     }
   }
@@ -10412,6 +10426,12 @@ bool MyMesh::applyAndSaveRxPowerSaving(const char* value, char* reply) {
     return false;
   }
   if (result == mesh::RadioParamApplyResult::BUSY) queueSavedRadioApply();
+#if MESH_RXPS_CAD_AVAILABLE
+  if (level_requested && level == RX_POWERSAVING_CAD_LEVEL) {
+    strcpy(reply, "OK - level 11 (CAD); check get radio.rxps.status");
+    return true;
+  }
+#endif
   snprintf(reply, 160, "OK - %s,%lu,%lu",
            enabled ? "on" : "off", (unsigned long)rx_us,
            (unsigned long)sleep_us);

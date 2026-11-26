@@ -2820,6 +2820,11 @@ set radio.rxps <rx_us> <sleep_us>
   start in continuous receive. Level 8 was tested at SF7, 62.5 kHz and a
   32-symbol preamble at room temperature. Use `get radio.rxps.status` to
   check whether duty cycling is active for the selected radio settings.
+- The X1 also offers experimental level `11` for a single SF7, 62.5 kHz
+  profile with a 32-symbol on-air preamble. The LR2021 runs two-symbol CAD and
+  switches to receive on detection inside the radio. The scan interval was
+  approximately 50 ms at room temperature. Use `set radio.rxps level 11` to
+  select it. Other tuples use continuous receive.
 - The `RAK_3401_repeater` build also accepts `set radio.rxps level 11`. This
   experimental mode uses two-symbol CAD every 32 ms at SF7 and 62.5 kHz with
   a 32-symbol on-air preamble. The scan interval leaves room to enter RX and

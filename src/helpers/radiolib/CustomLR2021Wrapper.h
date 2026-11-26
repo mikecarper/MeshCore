@@ -1215,6 +1215,15 @@ protected:
     _lab_busy_high=_lab_busy_low=_lab_busy_edges=0;
     _lab_busy_seen=false;
 #endif
+#if MESH_LR2021_CAD_RXPS
+    if (rxPowerSavingUsesCad(_rx_ps_rx_us, _rx_ps_sleep_us)) {
+      if (_profiles.enabled() || _cur_sf != 7 || _cur_bw != 62.5f || currentPreambleLength() != 32)
+        return RX_POWERSAVING_ERR_TIMING;
+      *effective_rx_us = CustomLR2021::CAD_RX_TIMEOUT_US;
+      *effective_sleep_us = CustomLR2021::CAD_RX_CYCLE_US - *effective_rx_us;
+      return static_cast<CustomLR2021*>(_radio)->startCadRxDutyCycle(flags, mask);
+    }
+#endif
     *effective_rx_us = _rx_ps_rx_us;
     *effective_sleep_us = _rx_ps_sleep_us;
     return static_cast<CustomLR2021*>(_radio)->labStartRxDutyCycle(

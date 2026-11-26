@@ -139,6 +139,20 @@ int main() {
         assert(node.durable.rx_ps_level == 0 && node.durable.rx_ps_rx_us == 65625 && node.durable.rx_ps_sleep_us == 60000);
     }
   }
+#if MESH_LR2021_CAD_RXPS
+  {
+    MyMesh node;
+    node._prefs.bw = 62.5f;
+    assert(error(node.run("set radio.rxps level 11 preamble 16")));
+    assert(node.saves == 0 && radio_driver.calls == 0);
+    node.serial.current = &node.serial.requester;
+    const std::string reply = node.run("B2|set radio.rxps level 11");
+    assert(reply == "B2|OK - level 11 (CAD); check get radio.rxps.status");
+    assert(node.saves == 1 && same(node._prefs, node.durable));
+    assert(node.durable.rx_ps_level == 11 && node.durable.rx_ps_preamble == 32);
+    assert(radio_driver.enabled && rxPowerSavingUsesCad(radio_driver.rx, radio_driver.sleep));
+  }
+#endif
   for (const char* command : {"set radio.rxps", "set radio.rxps on extra", "set radio.rxps level 0",
        "set radio.rxps level 3 preamble 17", "set radio.rxps 1000 -1"}) {
     MyMesh node;

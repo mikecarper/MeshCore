@@ -261,6 +261,8 @@ int main() {
         # Keep the real local entry validation/space handling and registration;
         # unrelated setters/transport helpers are not part of this fixture.
         entry = local[:local.index("  if (mesh::powerdiag::handleCommand")]
+        entry = entry.replace(
+            "  if (mesh::handleUsbDataLockCommand(command, reply, reply_size)) return true;\n", "")
         entry += signature + "\n  return false;\n}\n"
         terminal = extract_braced(source, "void MyMesh::handleTerminalCommand(")
         ascii_adapter = extract_braced(terminal, "if (handleRxPowerSavingGetCommand(command, local_reply, sizeof(local_reply)))")
@@ -312,6 +314,8 @@ int main() {
         # Keep the actual entry validation and command recognition. Unrelated
         # hardware/transport handlers need no boundaries in this RXPS fixture.
         entry = local[:local.index("#if defined(ESP32_PLATFORM)")]
+        entry = entry.replace(
+            "  if (mesh::handleUsbDataLockCommand(command, reply, reply_size)) return true;\n", "")
         entry += setter + "\n  return false;\n}\n"
         shared = extract_braced(source, "bool MyMesh::handleCommand(")
         adapter = shared[:shared.index("#if defined(ESP32_PLATFORM)")]
@@ -336,14 +340,15 @@ int main() {
         with tempfile.TemporaryDirectory(prefix="meshcore-rxps-setter-routes-") as directory:
             work = Path(directory)
             cpp, binary = work / "routes.cpp", work / "routes"
-            for removed_route in (False, True):
-                with self.subTest(removed_route=removed_route):
+            for removed_route, x1 in ((False, False), (False, True), (True, False)):
+                with self.subTest(removed_route=removed_route, x1=x1):
                     # The old firmware had the parser and save helper but
                     # omitted this dispatch registration. It must fail here.
                     cpp.write_text(fixture.replace(setter, "", 1) if removed_route else fixture,
                                    encoding="ascii")
+                    x1_flags = ["-DMESH_TRACKER_X1=1", "-DMESH_X1_RXPS_EXPERIMENT=1"] if x1 else []
                     built = subprocess.run([
-                        compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", *sanitizers,
+                        compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", *sanitizers, *x1_flags,
                         "-DCOMPANION_FEATURE_TEMP_RADIO=0", "-I", str(ROOT / "src"),
                         "-I", str(ROOT / "test/fixtures"),
                         "-isystem", str(ROOT / "test/mocks"), str(cpp),

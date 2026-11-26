@@ -16,7 +16,7 @@ bool RXPowerSavingCLI::set(const char* value, uint8_t sf, float bw,
   if (!config || !reply || !reply_size) return false;
   mesh::cli::RxPowerSavingArguments args = {};
   if (!mesh::cli::parseRxPowerSavingArgumentsStrict(value, args)) {
-    snprintf(reply, reply_size, "ERROR: use off|on|conservative|balanced|max|overdrive|riskyWorkingMax|level <1-10>|<rx_us> <sleep_us>");
+    snprintf(reply, reply_size, "ERROR: use off|on|conservative|balanced|max|overdrive|riskyWorkingMax|level <" RX_POWERSAVING_LEVEL_RANGE ">|<rx_us> <sleep_us>");
     return false;
   }
   RxPowerSavingConfig proposed = *config;
@@ -37,9 +37,15 @@ bool RXPowerSavingCLI::set(const char* value, uint8_t sf, float bw,
     if (args.level > RX_POWERSAVING_MAX_CONFIG_LEVEL ||
         proposed.level < 1 || proposed.level > RX_POWERSAVING_MAX_CONFIG_LEVEL ||
         (preamble != 0 && (preamble > 128 || !isRxPowerSavingPreamble(preamble)))) {
-      snprintf(reply, reply_size, "ERROR: level range is 1-10; preamble is 16,32,64,128");
+      snprintf(reply, reply_size, "ERROR: level range is " RX_POWERSAVING_LEVEL_RANGE "; preamble is 16,32,64,128");
       return false;
     }
+#if MESH_RXPS_CAD_AVAILABLE
+    if (proposed.level == RX_POWERSAVING_CAD_LEVEL && preamble != 0 && preamble != 32) {
+      snprintf(reply, reply_size, "ERROR: level 11 requires a 32-symbol preamble");
+      return false;
+    }
+#endif
     proposed.preamble = static_cast<uint8_t>(preamble);
   }
   if (proposed.enabled && !normalizeRxPowerSavingConfig(&proposed, sf, bw,
@@ -97,15 +103,20 @@ void RXPowerSavingCLI::get(const RxPowerSavingConfig& config,
              tenths < 0 ? -(tenths % 10) : tenths % 10);
   }
 
-#if MESH_RAK3401_CAD_RXPS
+#if MESH_RXPS_CAD_AVAILABLE
   const bool cad = rxPowerSavingUsesCad(config.rx_us, config.sleep_us);
   if (config.level == RX_POWERSAVING_CAD_LEVEL || cad) {
     const char* effective = status.armed ? (cad ? "cad" : "armed")
         : status.suspended ? "scan" : status.receiving ? "continuous" : "inactive";
+#if MESH_RAK3401_CAD_RXPS
+    const uint32_t period_us = RX_POWERSAVING_CAD_PERIOD_US;
+#else
+    const uint32_t period_us = status.effective_rx_us + status.effective_sleep_us;
+#endif
     snprintf(reply, reply_size,
              "> desired=%s,effective=%s,level=%u,preamble=32,period_us=%lu,err=%d",
              config.enabled ? "on" : "off", effective, unsigned(config.level),
-             (unsigned long)RX_POWERSAVING_CAD_PERIOD_US, (int)status.last_error);
+             (unsigned long)period_us, (int)status.last_error);
     return;
   }
 #endif

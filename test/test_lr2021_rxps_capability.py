@@ -71,10 +71,10 @@ int main() {
         cases = [
             ('#define MESH_TRACKER_X1 1\n#define USE_LR2021 1\n', 'static_assert(!MESH_LR2021_RXPS_AVAILABLE);', True),
             ('#define MESH_TRACKER_X1 1\n#define MESH_X1_RXPS_EXPERIMENT 1\n',
-             'static_assert(MESH_LR2021_RXPS_AVAILABLE && MESH_LR2021_RXPS_HOLD_AVAILABLE && MESH_LR2021_RXPS_TRANSITION_US == 10000);', True),
+             'static_assert(MESH_LR2021_RXPS_AVAILABLE && MESH_LR2021_RXPS_HOLD_AVAILABLE && MESH_LR2021_CAD_RXPS && MESH_LR2021_RXPS_TRANSITION_US == 10000);', True),
             ('#define MESH_X1_RXPS_EXPERIMENT 1\n', 'static_assert(!MESH_LR2021_RXPS_AVAILABLE);', True),
             ('#define MESHNOLOGY_W12 1\n#define MESH_W12_RXPS_EXPERIMENT 1\n#define MESH_W12_PRAM_EXPERIMENT 1\n',
-             'static_assert(MESH_LR2021_RXPS_AVAILABLE && MESH_LR2021_RXPS_TRANSITION_US == 1000);', True),
+             'static_assert(MESH_LR2021_RXPS_AVAILABLE && !MESH_LR2021_CAD_RXPS && MESH_LR2021_RXPS_TRANSITION_US == 1000);', True),
             ('#define MESH_LR2021_RXPS_ENABLE 1\n', '', False),
             ('#define MESH_LR2021_RXPS_ENABLE 1\n#define MESH_LR2021_RXPS_QUALIFIED 1\n', '', False),
             ('#define MESH_LR2021_RXPS_ENABLE 1\n#define MESH_LR2021_RXPS_QUALIFIED 1\n#define MESH_LR2021_RXPS_TRANSITION_US 999\n', '', False),
@@ -91,9 +91,6 @@ int main() {
         method = source[source.index('    int16_t labStartRxDutyCycle('):
                         source.index('#endif // MESH_LR2021_RXPS_AVAILABLE', source.index('    int16_t labStartRxDutyCycle('))]
         harness = r'''
-#define MESH_LR2021_RXPS_ENABLE 1
-#define MESH_LR2021_RXPS_QUALIFIED 1
-#define MESH_LR2021_RXPS_TRANSITION_US 6000
 #include <helpers/radiolib/LR2021RxpsCapability.h>
 #include <helpers/radiolib/W12RxDutyTiming.h>
 #include <cassert>
@@ -102,11 +99,18 @@ using RadioLibIrqFlags_t = uint32_t;
 constexpr int RADIOLIB_ERR_NONE=0, RADIOLIB_ERR_INVALID_RX_PERIOD=-1;
 constexpr int RADIOLIB_LR2021_RX_TIMEOUT_INF=0xFFFFFF;
 constexpr int RADIOLIB_RADIO_MODE_RX=1, RADIOLIB_LR2021_CMD_SET_RX_DUTY_CYCLE=0x0210;
+constexpr int RADIOLIB_LR2021_RX_DUTY_CYCLE_MODE_CAD=1;
 struct RadioModeConfig_t { struct { uint32_t timeout=0, irqFlags=0, irqMask=0; } receive; };
 struct Driver {
   uint32_t _activityAt=99; bool _headerSeen=true;
   int calls=0; uint8_t bytes[7]={};
+  int cad_calls=0;
   int stageMode(int, RadioModeConfig_t*) { return 0; }
+  int setLoRaCadParams(uint8_t symbols,bool preamble_only,uint8_t delta,uint8_t exit_mode,uint32_t timeout,uint8_t peak) {
+    assert(symbols==2 && preamble_only && delta==0 && exit_mode==1 && timeout==3200000 && peak==56);
+    ++cad_calls;
+    return 0;
+  }
   int SPIcommand(int, bool, uint8_t* data, size_t n) { ++calls; for (size_t i=0;i<n;++i) bytes[i]=data[i]; return 0; }
 METHOD
 };
@@ -115,13 +119,27 @@ int main() {
   assert(d.labStartRxDutyCycle(65625,6000,1,1)==-1 && d.calls==0);
   assert(d.labStartRxDutyCycle(65625,60000,1,1)==0 && d.calls==1);
   mesh::w12rxps::Timing expected;
-  assert(mesh::w12rxps::encode(65625,60000,6000,expected));
+  assert(mesh::w12rxps::encode(65625,60000,MESH_LR2021_RXPS_TRANSITION_US,expected));
   uint32_t cycle=(uint32_t(d.bytes[3])<<16)|(uint32_t(d.bytes[4])<<8)|d.bytes[5];
-  assert(cycle==expected.cycle_ticks);
+  assert(cycle==expected.cycle_ticks && d.bytes[6]==0 && d.cad_calls==0);
+#if MESH_LR2021_CAD_RXPS
+  assert(d.startCadRxDutyCycle(1,1)==0 && d.calls==2 && d.cad_calls==1);
+  uint32_t rx=(uint32_t(d.bytes[0])<<16)|(uint32_t(d.bytes[1])<<8)|d.bytes[2];
+  cycle=(uint32_t(d.bytes[3])<<16)|(uint32_t(d.bytes[4])<<8)|d.bytes[5];
+  assert(rx==d.CAD_RX_TIMEOUT_TICKS && cycle==d.CAD_RX_CYCLE_TICKS);
+  assert(cycle>=rx && d.bytes[6]==RADIOLIB_LR2021_RX_DUTY_CYCLE_MODE_CAD);
+#endif
 }
 '''.replace('METHOD', method)
-        result = compile_cpp(harness)
-        self.assertEqual(result.returncode, 0, result.stderr)
+        configs = [
+            '#define MESH_LR2021_RXPS_ENABLE 1\n#define MESH_LR2021_RXPS_QUALIFIED 1\n'
+            '#define MESH_LR2021_RXPS_TRANSITION_US 6000\n',
+            '#define MESH_TRACKER_X1 1\n#define MESH_X1_RXPS_EXPERIMENT 1\n',
+        ]
+        for defines in configs:
+            with self.subTest(defines=defines):
+                result = compile_cpp(defines + harness)
+                self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_x1_level_uses_board_transition_allowance(self):
         result = compile_cpp(r'''
@@ -142,6 +160,11 @@ int main() {
   assert(rx == expected_rx && sleep == expected_sleep);
   assert(!rxPowerSavingUsesContinuousFallback(rx, sleep));
   assert(recalcRxPowerSavingFromLevel(8, 5, 500.0f, 32, &rx, &sleep));
+  assert(rxPowerSavingUsesContinuousFallback(rx, sleep));
+  assert(recalcRxPowerSavingFromLevel(11, 7, 62.5f, 32, &rx, &sleep));
+  assert(rxPowerSavingUsesCad(rx, sleep));
+  assert(!recalcRxPowerSavingFromLevel(11, 7, 62.5f, 16, &rx, &sleep));
+  assert(recalcRxPowerSavingFromLevel(11, 8, 62.5f, 32, &rx, &sleep));
   assert(rxPowerSavingUsesContinuousFallback(rx, sleep));
 }
 ''')

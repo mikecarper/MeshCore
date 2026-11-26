@@ -7,6 +7,7 @@
 #if !defined(MESH_LR2021_RXPS_QUALIFIED) || !MESH_LR2021_RXPS_QUALIFIED
 #error "LR2021 RXPS requires board-specific timing qualification"
 #endif
+
 #if !defined(MESH_LR2021_RXPS_TRANSITION_US) || MESH_LR2021_RXPS_TRANSITION_US < 1000 || MESH_LR2021_RXPS_TRANSITION_US > 30000000
 #error "LR2021 RXPS requires a qualified transition in microseconds"
 #endif
@@ -22,6 +23,12 @@
 #define MESH_LR2021_RXPS_TRANSITION_US 10000
 #else
 #define MESH_LR2021_RXPS_AVAILABLE 0
+#endif
+
+#if MESH_LR2021_RXPS_AVAILABLE && defined(MESH_TRACKER_X1) && defined(MESH_X1_RXPS_EXPERIMENT) && MESH_X1_RXPS_EXPERIMENT
+#define MESH_LR2021_CAD_RXPS 1
+#else
+#define MESH_LR2021_CAD_RXPS 0
 #endif
 
 // Preserve the W12 hold when only its RXPS control is compiled, and expose

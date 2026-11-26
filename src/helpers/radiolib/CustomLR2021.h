@@ -684,14 +684,42 @@ class CustomLR2021 : public LR2021 {
       // The transition is specific to the qualified board and oscillator.
       if (!mesh::w12rxps::encode(rx_us, sleep_us, MESH_LR2021_RXPS_TRANSITION_US, t))
         return RADIOLIB_ERR_INVALID_RX_PERIOD;
+      return launchRxDutyCycle(t, flags, mask, 0);
+    }
+
+#if MESH_LR2021_CAD_RXPS
+    // X1 bench timings for SF7, BW62.5 and a 32-symbol on-air preamble.
+    static constexpr uint32_t CAD_RX_TIMEOUT_TICKS = 1520;
+    static constexpr uint32_t CAD_RX_CYCLE_TICKS = 1550;
+    static constexpr uint32_t CAD_RX_TIMEOUT_US = CAD_RX_TIMEOUT_TICKS * 1000000ULL / 32768;
+    static constexpr uint32_t CAD_RX_CYCLE_US = CAD_RX_CYCLE_TICKS * 1000000ULL / 32768;
+
+    int16_t startCadRxDutyCycle(RadioLibIrqFlags_t flags, RadioLibIrqFlags_t mask) {
+      return launchRxDutyCycle({CAD_RX_TIMEOUT_TICKS, CAD_RX_CYCLE_TICKS}, flags, mask,
+                               RADIOLIB_LR2021_RX_DUTY_CYCLE_MODE_CAD);
+    }
+#endif
+
+    int16_t launchRxDutyCycle(mesh::w12rxps::Timing t, RadioLibIrqFlags_t flags,
+                              RadioLibIrqFlags_t mask, uint8_t mode) {
       RadioModeConfig_t cfg = {};
       cfg.receive.timeout = RADIOLIB_LR2021_RX_TIMEOUT_INF;
       cfg.receive.irqFlags = flags;
       cfg.receive.irqMask = mask;
       const int16_t staged = stageMode(RADIOLIB_RADIO_MODE_RX, &cfg);
       if (staged != RADIOLIB_ERR_NONE) return staged;
+#if MESH_LR2021_CAD_RXPS
+      if (mode == RADIOLIB_LR2021_RX_DUTY_CYCLE_MODE_CAD) {
+        constexpr uint8_t lora_cad_exit_rx = 1;  // LoRa CAD exit, not RSSI CAD.
+        constexpr uint32_t cad_timeout_32mhz_ticks = 100000UL * 32;
+        constexpr uint8_t sf7_two_symbol_det_peak = 56;
+        const int16_t configured = setLoRaCadParams(
+            2, true, 0, lora_cad_exit_rx, cad_timeout_32mhz_ticks, sf7_two_symbol_det_peak);
+        if (configured != RADIOLIB_ERR_NONE) return configured;
+      }
+#endif
       uint8_t bytes[] = {uint8_t(t.rx_ticks >> 16), uint8_t(t.rx_ticks >> 8), uint8_t(t.rx_ticks),
-                         uint8_t(t.cycle_ticks >> 16), uint8_t(t.cycle_ticks >> 8), uint8_t(t.cycle_ticks), 0};
+                         uint8_t(t.cycle_ticks >> 16), uint8_t(t.cycle_ticks >> 8), uint8_t(t.cycle_ticks), mode};
       // Include the arm command and RadioLib's immediate status verification:
       // a subsequent NSS pulse may wake/cancel the duty-cycle state machine.
 #if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT && defined(MESH_W12_RXPS_EXPERIMENT) && MESH_W12_RXPS_EXPERIMENT
