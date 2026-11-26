@@ -260,15 +260,22 @@ inline bool rxPowerSavingUsesCad(uint32_t rx_us, uint32_t sleep_us) {
       && sleep_us == RX_POWERSAVING_CAD_PERIOD_US;
 }
 
+inline bool rxPowerSavingCadProfileSupported(uint8_t sf, float bw) {
+#if defined(USE_LR1110) || defined(USE_LR1120) || defined(USE_LR1121)
+  // The LR1110 bench saw CAD hits without preamble detection at 62.5 kHz.
+  if (bw == 62.5f) return false;
+#endif
+#if MESH_LR1110_CAD_RXPS
+  return sf == 7 && bw == 250.0f;
+#else
+  return sf == 7 && bw == 62.5f;
+#endif
+}
+
 inline bool calcCadRxPowerSaving(uint8_t sf, float bw, uint8_t preamble,
                                 uint32_t* rx_us, uint32_t* sleep_us) {
   if (preamble != 0 && preamble != 32) return false;
-#if MESH_LR1110_CAD_RXPS
-  constexpr float cad_bandwidth = 250.0f;
-#else
-  constexpr float cad_bandwidth = 62.5f;
-#endif
-  if (sf == 7 && bw == cad_bandwidth) {
+  if (rxPowerSavingCadProfileSupported(sf, bw)) {
     *rx_us = RX_POWERSAVING_CAD_SELECTOR_US;
     *sleep_us = RX_POWERSAVING_CAD_PERIOD_US;
   } else {

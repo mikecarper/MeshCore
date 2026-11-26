@@ -14,6 +14,7 @@ class LR1110ProfileSwitchTests(unittest.TestCase):
     def test_t1000_native_cad_uses_the_verified_250_khz_plan(self):
         source = (ROOT / "src/helpers/radiolib/CustomLR1110.h").read_text()
         harness = r'''
+#define USE_LR1110 1
 #define MESH_LR1110_CAD_RXPS 1
 #include <helpers/radiolib/RXPowerSaving.h>
 #include <cassert>
@@ -68,10 +69,12 @@ struct Chip {
 };
 int main() {
     uint32_t rx = 0, sleep = 0;
-    assert(recalcRxPowerSavingFromLevel(11, 7, 62.5f, 32, &rx, &sleep));
-    assert(rxPowerSavingUsesContinuousFallback(rx, sleep));
     assert(recalcRxPowerSavingFromLevel(11, 7, 250.0f, 0, &rx, &sleep));
     assert(rxPowerSavingUsesCad(rx, sleep));
+    assert(recalcRxPowerSavingFromLevel(11, 7, 62.5f, 32, &rx, &sleep));
+    assert(rxPowerSavingUsesContinuousFallback(rx, sleep));
+    assert(recalcRxPowerSavingFromLevel(8, 7, 62.5f, 32, &rx, &sleep));
+    assert(!rxPowerSavingUsesContinuousFallback(rx, sleep));
     Chip radio;
     assert(radio.startCadRxDutyCycle(19, 7) == 0);
     assert(radio.rx == 393 && radio.sleep == 229);
@@ -81,6 +84,22 @@ int main() {
 '''
         self.compile_run(harness.replace('@ARM@', method(source, 'int16_t startCadRxDutyCycle('))
                          .replace('@LAUNCH@', method(source, 'int16_t launchRxDutyCycle(')))
+
+    def test_lr11xx_cannot_inherit_the_narrow_band_cad_profile(self):
+        # Keep the LR11xx exclusion effective even if a build inherits a CAD opt-in.
+        harness = r'''
+#define MESH_RAK3401_CAD_RXPS 1
+#include <helpers/radiolib/RXPowerSaving.h>
+#include <cassert>
+int main() {
+    uint32_t rx = 0, sleep = 0;
+    assert(recalcRxPowerSavingFromLevel(11, 7, 62.5f, 0, &rx, &sleep));
+    assert(rxPowerSavingUsesContinuousFallback(rx, sleep));
+}
+'''
+        for radio in ('LR1110', 'LR1120', 'LR1121'):
+            with self.subTest(radio=radio):
+                self.compile_run(f'#define USE_{radio} 1\n' + harness)
 
     def test_fast_profile_switch_is_enabled_for_every_lr1110_target(self):
         source = (ROOT / "src/helpers/radiolib/CustomLR1110.h").read_text()

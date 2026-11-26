@@ -206,7 +206,8 @@ protected:
       uint32_t* effective_rx_us, uint32_t* effective_sleep_us) override {
 #if MESH_LR1110_CAD_RXPS
     if (rxPowerSavingUsesCad(_rx_ps_rx_us, _rx_ps_sleep_us)) {
-      if (_profiles.enabled() || _cur_sf != 7 || _cur_bw != 250.0f || currentPreambleLength() != 32)
+      if (_profiles.enabled() || !rxPowerSavingCadProfileSupported(_cur_sf, _cur_bw)
+          || currentPreambleLength() != 32)
         return RX_POWERSAVING_ERR_TIMING;
       *effective_rx_us = 1024;  // Two SF7 symbols at 250 kHz.
       *effective_sleep_us = CustomLR1110::CAD_RX_SLEEP_US + rxPowerSavingTransitionUs();

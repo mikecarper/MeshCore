@@ -2825,10 +2825,11 @@ set radio.rxps <rx_us> <sleep_us>
   two-symbol CAD and switches to receive on detection inside the radio. The
   scan interval was approximately 50 ms on X1 at room temperature. Use
   `set radio.rxps level 11` to select it. Other tuples use continuous receive.
-- The T1000-E offers experimental level `11` for a single SF7, 250 kHz
-  profile with a 32-symbol on-air preamble. The LR1110 runs two-symbol CAD
-  approximately every 9 ms on the tested board. At 62.5 kHz or another tuple,
-  selecting level `11` leaves the radio in continuous receive.
+- CAD-based level `11` is disabled at 62.5 kHz on the LR11xx family (LR1110,
+  LR1120, and LR1121). The T1000-E offers experimental level `11` for a single
+  SF7, 250 kHz profile with a 32-symbol on-air preamble. The LR1110 runs
+  two-symbol CAD approximately every 9 ms on the tested board. Other profiles
+  use continuous receive when level `11` is selected on the T1000-E.
 - The `RAK_3401_repeater` build also accepts `set radio.rxps level 11`. This
   experimental mode uses two-symbol CAD every 32 ms at SF7 and 62.5 kHz with
   a 32-symbol on-air preamble. The scan interval leaves room to enter RX and
