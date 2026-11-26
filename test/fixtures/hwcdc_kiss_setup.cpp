@@ -27,6 +27,8 @@ struct TestSerial : Stream {
 TestSerial* TestSerial::primary = &Serial;
 static Stream guarded_port;
 namespace mesh {
+void applyUsbDataLockAtBoot() {}
+bool usbDataLocked() { return false; }
 void setUsbLoggingEnabled(bool value) { usb_logging = value; calls.push_back("logging.gate"); }
 void setUsbDebugEnabled(bool value) { usb_debug = value; calls.push_back("debug.gate"); }
 void prepareUsbLoggingPort() {

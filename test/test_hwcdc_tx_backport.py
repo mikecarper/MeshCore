@@ -28,6 +28,8 @@ HARNESS=r'''
 #include <functional>
 #include <mutex>
 #include <vector>
+
+inline bool usbDataLocked() { return false; }
 using UBaseType_t=unsigned;using portBASE_TYPE=int;
 using portMUX_TYPE=std::recursive_mutex;
 #define portMUX_INITIALIZER_UNLOCKED {}

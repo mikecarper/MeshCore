@@ -9,6 +9,8 @@
 #include "MeshCore.h"
 #include "helpers/SerialPacketLog.h"
 
+namespace mesh { bool usbDataLocked() { return false; } }
+
 MockSerial Serial;
 static bool connected = true;
 static bool mounted = true, attached = true, arm_packets = false;

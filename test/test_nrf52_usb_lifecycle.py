@@ -257,6 +257,7 @@ struct Device {
   void attach() { ++attach_count; attached = true; registers.USBPULLUP = 1; }
 } TinyUSBDevice;
 namespace mesh {
+static bool usbDataLocked() { return false; }
 static void clearUsbLoggingClientActivity() {}
 static bool isUsbLoggingPacketStream() { return false; }
 @DEDICATED@
