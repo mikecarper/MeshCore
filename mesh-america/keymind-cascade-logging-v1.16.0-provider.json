@@ -3971,21 +3971,28 @@
                   "url": "https://github.com/mikecarper/MeshCore/releases/download/full-profiles-v1.18.0.2-halo-keymind-cascade-dev-a723af94/heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.2-halo-keymind-cascade-dev-a723af94.bin"
                 }
               ]
-            },
+            }
+          }
+        },
+        {
+          "role": "repeater",
+          "title": "Repeater Preview",
+          "subTitle": "heltec_v4_repeater-full-usb-wifi-ota - Full profile",
+          "version": {
             "v1.18.0.3-halo-keymind-cascade-dev-ccb76da9": {
-              "notes": "Heltec V4 OLED Full Repeater 1.18.0.3 RX hotfix. Auto uses 80 MHz. The external LNA defaults to off on fresh installs. Updates keep the saved gain and radio settings.\n\nEXACT TARGET - heltec_v4_repeater. OLED Heltec V4 Full Repeater. Tested on a V4.3 OLED.\n\nPROFILE - Full profile. USA Cascade frequency 910.525 MHz, bandwidth 62.5 kHz, SF7, CR5.\n\nINSTALL - Use the app-only .bin when the Full partition layout is already present. Use the merged .bin for a fresh USB install.\n\nSETUP - https://mikecarper.github.io/MeshCore/firmware_picker/?hardware=heltec_v4\n\nCAPABILITIES - https://github.com/mikecarper/MeshCore/releases/download/heltec-v4-oled-repeater-v1.18.0.3-rx-fix/heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.3-halo-keymind-cascade-dev-ccb76da9.capabilities.json\n\nMEMORY - https://github.com/mikecarper/MeshCore/releases/download/heltec-v4-oled-repeater-v1.18.0.3-rx-fix/heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.3-halo-keymind-cascade-dev-ccb76da9.memory.json\n\nSOURCE - https://github.com/mikecarper/MeshCore/tree/ccb76da93ece79b57018ea50f03a1b1e434f8034\n\nRELEASE - https://github.com/mikecarper/MeshCore/releases/tag/heltec-v4-oled-repeater-v1.18.0.3-rx-fix",
+              "notes": "Heltec V4 OLED Full Repeater 1.18.0.3 RX preview. Auto uses 80 MHz. The external LNA defaults to off on fresh installs. Updates keep the saved gain and radio settings.\n\nEXACT TARGET - heltec_v4_repeater. OLED Heltec V4 Full Repeater. Tested on a V4.3 OLED.\n\nPROFILE - Full profile. USA Cascade frequency 910.525 MHz, bandwidth 62.5 kHz, SF7, CR5.\n\nINSTALL - Use the app-only .bin when the Full partition layout is already present. Use the merged .bin for a fresh USB install.\n\nSETUP - https://mikecarper.github.io/MeshCore/firmware_picker/?hardware=heltec_v4\n\nCAPABILITIES - https://github.com/mikecarper/MeshCore/releases/download/heltec-v4-oled-repeater-v1.18.0.3-rx-fix/heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.3-halo-keymind-cascade-dev-ccb76da9.capabilities.json\n\nMEMORY - https://github.com/mikecarper/MeshCore/releases/download/heltec-v4-oled-repeater-v1.18.0.3-rx-fix/heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.3-halo-keymind-cascade-dev-ccb76da9.memory.json\n\nSOURCE - https://github.com/mikecarper/MeshCore/tree/ccb76da93ece79b57018ea50f03a1b1e434f8034\n\nRELEASE - https://github.com/mikecarper/MeshCore/releases/tag/heltec-v4-oled-repeater-v1.18.0.3-rx-fix",
               "files": [
                 {
                   "type": "flash-wipe",
                   "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.3-halo-keymind-cascade-dev-ccb76da9-merged.bin",
-                  "title": "USB full install (bootloader + partitions + app)",
+                  "title": "Preview - USB full install (bootloader + partitions + app)",
                   "url": "https://github.com/mikecarper/MeshCore/releases/download/heltec-v4-oled-repeater-v1.18.0.3-rx-fix/heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.3-halo-keymind-cascade-dev-ccb76da9-merged.bin",
                   "sha256": "f2fe8d623cc9d2f4193cbac751ca2f18d2461c474178777cb6aee0dc93db6133"
                 },
                 {
                   "type": "flash-update",
                   "name": "heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.3-halo-keymind-cascade-dev-ccb76da9.bin",
-                  "title": "App update (matching Full partition layout only)",
+                  "title": "Preview - App update (matching Full partition layout only)",
                   "url": "https://github.com/mikecarper/MeshCore/releases/download/heltec-v4-oled-repeater-v1.18.0.3-rx-fix/heltec_v4_repeater-full-usb-wifi-ota-v1.18.0.3-halo-keymind-cascade-dev-ccb76da9.bin",
                   "sha256": "082453b5edc2584e44f08fe7dd7c5ea2df80014087bfdfef4a07d45d1f62ccc2"
                 }
