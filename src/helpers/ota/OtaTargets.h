@@ -19,7 +19,7 @@
 
 #if OTA_TARGET_NAME_TABLE && OTA_TARGET_NAME_FRONT_CODED
   #include "tinf/tinf.h"
-  #if defined(OTA_RAK15002_SD_STORE) && defined(COMPANION_RADIO_FULL)
+  #if OTA_TARGET_NAME_FINGERPRINTS || (defined(OTA_RAK15002_SD_STORE) && defined(COMPANION_RADIO_FULL))
     #include <stdlib.h>
     #include "Utils.h"
   #endif
@@ -35,7 +35,7 @@ enum { OTA_TARGET_ENV_NAME_CAPACITY = 69 };
 inline const char* ota_target_env_name(uint32_t target_id, char* buffer, size_t capacity) {
   if (!buffer || !capacity) return nullptr;
   buffer[0] = 0;
-#if defined(OTA_RAK15002_SD_STORE) && defined(COMPANION_RADIO_FULL)
+#if OTA_TARGET_NAME_FINGERPRINTS || (defined(OTA_RAK15002_SD_STORE) && defined(COMPANION_RADIO_FULL))
   // Fingerprints filter candidates only. Reconstructed names must match the entire
   // existing SHA-256:4 target ID, so collisions never produce a wrong target name.
   static const uint8_t FINGERPRINTS[] = {

@@ -120,6 +120,7 @@ class OtaTargetNameTest(unittest.TestCase):
         ids = [target for target, _ in self.rows] + [0, 0xffffffff]
         expected = [name for _, name in self.rows] + ["?", "?"]
         for flags in ([], ["-DOTA_TARGET_NAME_FRONT_CODED=1"],
+                      ["-DOTA_TARGET_NAME_FRONT_CODED=1", "-DOTA_TARGET_NAME_FINGERPRINTS=1"],
                       ["-DOTA_TARGET_NAME_FRONT_CODED=1", "-DOTA_RAK15002_SD_STORE=1", "-DCOMPANION_RADIO_FULL=1"]):
             with self.subTest(flags=flags):
                 self.assertEqual(self.compile_and_lookup(flags, ids), expected)
