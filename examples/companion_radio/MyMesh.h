@@ -171,6 +171,13 @@ namespace mesh { class BeaconManager; }
 
 #include <helpers/CompanionRtcQueue.h>
 
+#if COMPANION_CHANNEL_TEXT_HISTORY_RTC > 0 && \
+    (!COMPANION_RTC_SLOW_OFFLINE_FRAMES || COMPANION_RTC_CLASSIC_MESHADVENTURER)
+#define COMPANION_RTC_TEXT_HISTORY_SLOTS COMPANION_CHANNEL_TEXT_HISTORY_RTC
+#else
+#define COMPANION_RTC_TEXT_HISTORY_SLOTS 0
+#endif
+
 static_assert(OFFLINE_QUEUE_SIZE > 0, "OFFLINE_QUEUE_SIZE must be positive");
 #if ONE_KEY_DM_SHARED_OFFLINE_QUEUE
 static_assert(OFFLINE_QUEUE_SIZE >= 15, "Shared DM queue needs 15 frame slots");
@@ -1177,11 +1184,7 @@ private:
   int offline_queue_len;
   int offline_queue_head;
 #if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
-#if COMPANION_CHANNEL_TEXT_HISTORY_RTC > 0 && !COMPANION_RTC_SLOW_OFFLINE_FRAMES
-  mesh::RecentChannelText<MAX_GROUP_CHANNELS, COMPANION_CHANNEL_TEXT_HISTORY_RTC> recent_channel_text;
-#else
-  mesh::RecentChannelText<MAX_GROUP_CHANNELS> recent_channel_text;
-#endif
+  mesh::RecentChannelText<MAX_GROUP_CHANNELS, COMPANION_RTC_TEXT_HISTORY_SLOTS> recent_channel_text;
   bool channel_text_dedup_loaded = false;
   bool handleChannelTextDedupCommand(const char* command, char* reply, size_t capacity);
 #endif

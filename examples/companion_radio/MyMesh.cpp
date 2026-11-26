@@ -587,10 +587,10 @@ alignas(4) RTC_FAST_ATTR MyMesh::Frame MyMesh::rtc_fast_offline_frames[COMPANION
 #if COMPANION_RTC_SLOW_OFFLINE_FRAMES
 alignas(4) RTC_SLOW_ATTR MyMesh::Frame MyMesh::rtc_slow_offline_frames[COMPANION_RTC_SLOW_OFFLINE_FRAMES];
 #endif
-#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP && COMPANION_CHANNEL_TEXT_HISTORY_RTC > 0 && !COMPANION_RTC_SLOW_OFFLINE_FRAMES
-using RtcChannelText = mesh::RecentChannelText<MAX_GROUP_CHANNELS, COMPANION_CHANNEL_TEXT_HISTORY_RTC>;
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP && COMPANION_RTC_TEXT_HISTORY_SLOTS
+using RtcChannelText = mesh::RecentChannelText<MAX_GROUP_CHANNELS, COMPANION_RTC_TEXT_HISTORY_SLOTS>;
 template<> RTC_SLOW_ATTR RtcChannelText::Channel
-    RtcChannelText::external_channels_[COMPANION_CHANNEL_TEXT_HISTORY_RTC] = {};
+    RtcChannelText::external_channels_[COMPANION_RTC_TEXT_HISTORY_SLOTS] = {};
 #endif
 
 bool MyMesh::Frame::isChannelMsg() const {
@@ -3490,7 +3490,7 @@ void MyMesh::begin(bool has_display, bool radio_available,
   const bool prefs_ready =
       _store->loadPrefs(_prefs, sensors.node_lat, sensors.node_lon);
 #if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
-#if COMPANION_CHANNEL_TEXT_HISTORY_RTC > 0 && !COMPANION_RTC_SLOW_OFFLINE_FRAMES
+#if COMPANION_RTC_TEXT_HISTORY_SLOTS
   // A new Companion session starts with empty display history after reset.
   recent_channel_text.clearAll();
 #endif

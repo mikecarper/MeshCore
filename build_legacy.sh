@@ -4905,11 +4905,12 @@ apply_companion_radio_full_profile() {
       append_platformio_build_unflags "-DMAX_CONTACTS=160 -DMAX_GROUP_CHANNELS=40 -DOFFLINE_QUEUE_SIZE=128"
       export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMAX_CONTACTS=100 -DMAX_GROUP_CHANNELS=30 -DOFFLINE_QUEUE_SIZE=16"
       # The universal Full BLE base already retains its notification settings
-      # in RTC slow RAM. Place four existing message slots there as well;
-      # preserve all 16 slots and leave the BLE-only recipe unchanged.
+      # in RTC slow RAM. Keep four existing queue frames and the duplicate
+      # history for 29 of the 30 channels in that bank as well.
       if [[ "${env_name,,}" == meshadventurer_companion_radio_full ||
             "${env_name,,}" == meshadventurer_m33s_companion_radio_full ]]; then
-        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=4"
+        append_platformio_build_unflags "-DCOMPANION_CHANNEL_TEXT_HISTORY_RTC=39"
+        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=4 -DCOMPANION_CHANNEL_TEXT_HISTORY_RTC=29"
       fi
       record_build_reduction \
         "companion.capacity limited to 100 contacts, 30 channels, and 16 queued frames by measured internal DRAM"
