@@ -5,6 +5,8 @@
 #include <cstring>
 #include <cstdio>
 #include <functional>
+namespace mesh { bool usbDataLocked() { return false; } }
+
 MockUart Serial1;
 UnusedNativeUsb Serial;
 void yield() {}

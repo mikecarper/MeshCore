@@ -39,6 +39,7 @@ std::atomic<bool> dedicated_usb_logging_port_connected{false};
 Endpoint dedicated_usb_logging_port,nonblocking_dedicated_usb_logging_port;
 Endpoint nonblocking_primary_usb_logging_port,null_usb_logging_stream;
 bool isUsbLoggingEnabled(){return logging;}
+bool usbDataLocked(){return false;}
 bool isUsbDebugLoggingEnabled(){return false;}
 void setPlatformDebugOutputEnabled(bool){}
 void setUsbDebugEnabled(bool){}

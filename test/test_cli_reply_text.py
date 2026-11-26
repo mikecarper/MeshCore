@@ -96,6 +96,10 @@ class CliReplyTextTests(unittest.TestCase):
                 self.assertEqual(new, UNCERTAIN_STORAGE_REPLIES[old])
                 self.assertIn('save unconfirmed', new)
                 protected = protected.replace('save unconfirmed', '')
+            if (row['file'] == 'examples/companion_radio/MyMesh.cpp'
+                    and old == 'channel dedup save unconfirmed'):
+                self.assertEqual(new, 'save unconfirmed')
+                protected = protected.replace('save unconfirmed', '')
             if (row['file'] == 'src/helpers/WirelessControl.h'
                     and old == 'OK - WiFi setting saved; reboot to apply'):
                 self.assertEqual(new, 'OK - saved; reboot to apply')

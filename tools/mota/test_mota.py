@@ -112,6 +112,14 @@ def test_internal_bootloader_target_wiring_is_central_and_not_duplicated():
         "R1Neo_repeater_lora_ota_no_external_sensors",
         "GAT562_Mesh_EVB_Pro_repeater_lora_ota_no_external_sensors",
         "RAK_WisMesh_Tag_repeater_lora_ota_no_external_sensors",
+        "MeshTracker_X1_repeater",
+        "MeshTracker_X1_room_server",
+        "GAT562_30S_Mesh_Kit_repeater",
+        "GAT562_30S_Mesh_Kit_room_server",
+        "Heltec_t114_repeater",
+        "Heltec_t114_room_server",
+        "Heltec_t114_without_display_repeater",
+        "Heltec_t114_without_display_room_server",
     }
     assert set(inventory) == expected_inventory
     assert {

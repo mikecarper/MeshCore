@@ -1953,18 +1953,43 @@
       "file": "src/helpers/CarrierWaveCLI.h",
       "verbose": "Error: CW transition failed; check radio recovery",
       "concise": "Error: CW failed; check radio recovery"
+    },
+    {
+      "file": "examples/companion_radio/MyMesh.cpp",
+      "verbose": "channel dedup save unconfirmed",
+      "concise": "save unconfirmed"
+    },
+    {
+      "file": "examples/companion_radio/MyMesh.cpp",
+      "verbose": "channel dedup settings unavailable",
+      "concise": "settings unavailable"
+    },
+    {
+      "file": "examples/companion_radio/MyMesh.cpp",
+      "verbose": "channel slot is empty",
+      "concise": "empty slot"
+    },
+    {
+      "file": "examples/companion_radio/MyMesh.cpp",
+      "verbose": "invalid channel slot",
+      "concise": "invalid slot"
+    },
+    {
+      "file": "examples/companion_radio/MyMesh.cpp",
+      "verbose": "unexpected channel dedup argument",
+      "concise": "unexpected argument"
     }
   ],
   "noncompact_tokens_sha256": {
-    "src/helpers/CommonCLI.cpp": "5b2c858fc47f3c73836bffbe6a9fe01ad81ee7e0032334150c40b360509b3e46",
-    "examples/simple_repeater/MyMesh.cpp": "eaf3de9f4a4665c01b121d22acea5680c8ae5ab6661278db007aa99188e2eff5",
-    "src/helpers/RadioProfileCLI.cpp": "177b1082fcd17cba6e074c686950413b5c96145e85cf716867acc38e6efd527c",
+    "src/helpers/CommonCLI.cpp": "18676506ed562038589826c8a1c57e040ecd450fb7b9c0fddd7566c7e6348621",
+    "examples/simple_repeater/MyMesh.cpp": "88acaf11d8935db004218fe4989b2ab5774175db355ceceeaeb57ce707cb0621",
+    "src/helpers/RadioProfileCLI.cpp": "71c76ac0f3f2b5726295d34f83bf60a256539eac2979671b3e58b348ba3d4afb",
     "src/helpers/WirelessControl.h": "4d6bb50c5192bc9934723ba2fe3550da8cfe44e0ff17288aff2883c2ea415cdc",
     "src/helpers/PowerSavingDiagnostics.h": "18b78f5780046ea8c772c4ce6c337741ae0c027039d9399c94c5f4205d114000",
     "src/helpers/FloodAdvertCLI.h": "0f378e4d0f6c3b9b79991068a4b4208139484d2144ee1d7c5094d39043463be4",
     "src/helpers/LedSettings.cpp": "df0681234ca1337148ad59caa935857bc692f98bf18603ca6d099c0382028400",
     "src/helpers/StorageLayout.cpp": "5dd1c8bcbe2902e1f22d14f9ab425465bdc38926fae23989987d850b484cbb18",
-    "examples/companion_radio/MyMesh.cpp": "c0120ebf1eccc45405e8644e5c94db1928343b008c3b66ed77f6d8e7a16f20b2",
+    "examples/companion_radio/MyMesh.cpp": "fdf97ab798f6964917a4e0a32b6da444d87510fc1f84f2d6590023af5271709e",
     "src/helpers/CommonRadioPrefs.cpp": "31bf24fd88f1657eee7d1ee013f414dd175e781383165baf9cd71e3e329b8cbc",
     "examples/companion_radio/CompanionRetry.h": "e0ae10c7b2f778346f4645c4e147d87e1fbc7f8b99484752a8eed914bb21380f",
     "examples/companion_radio/Notifications.cpp": "74983770da7bcdf89af1b3e231bcf8058864e486cb99a425a369db859bd0ae43",

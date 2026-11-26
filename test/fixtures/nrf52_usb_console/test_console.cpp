@@ -8,6 +8,9 @@
 #include <functional>
 #include <string>
 
+// This fixture starts with USB data unlocked.
+namespace mesh { bool usbDataLocked() { return false; } }
+
 MockSerial Serial;
 MockUsbDevice TinyUSBDevice;
 MockNrfUsbd mock_usbd;
