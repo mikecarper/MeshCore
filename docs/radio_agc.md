@@ -42,6 +42,26 @@ receive SX1262-specific register writes. See the
 The [T1000-E and W12 sleep checks](test-results/lr_sleep_checks_2026-11-12.md)
 record observations for those separate radio families.
 
+## How the noise floor is measured
+
+`stats-radio` reports the latest published idle RSSI estimate. The firmware
+avoids sampling during packet reception. Received-packet RSSI appears
+separately as `last_rssi`.
+
+- **Heltec V4 and V4 R8 with one profile and RXPS off.** The Agessaman collector
+  takes readings at loop speed and averages 64 accepted whole-dBm samples.
+  It accepts readings strictly below the published floor plus 14 dB. With a
+  floor of −105 dBm, −92 dBm passes and −91 dBm is rejected.
+- **Other builds using the shared RadioLib wrapper, including radio2 and
+  RXPS on V4.** The guarded estimator spaces samples at least 50 ms apart
+  and uses the 12.5th percentile of 64 readings. When a previous estimate is
+  valid, it blends 25% of that estimate with 75% of the new one. A rise of
+  more than 15 dB must persist across three complete blocks before it is
+  accepted. Radio2 keeps a separate estimate for each profile.
+
+Use packet reception tests to compare sensitivity. A cached RSSI estimate
+also reflects the estimator, the local RF activity, and the receiver gain.
+
 ## Automatic selection
 
 With the saved default `agc.old auto`, the primary interval selects the method
