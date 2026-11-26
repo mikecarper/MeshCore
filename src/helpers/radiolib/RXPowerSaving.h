@@ -2,7 +2,8 @@
 #include <stdint.h>
 #include "LR2021RxpsCapability.h"
 #include <math.h>
-#if defined(MESH_RADIO_AUTO_LR1121) && MESH_RADIO_AUTO_LR1121
+#if (defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY) \
+    || (defined(MESH_RADIO_AUTO_LR1121) && MESH_RADIO_AUTO_LR1121)
 #include <helpers/LoRaRadioFamily.h>
 #endif
 
@@ -105,26 +106,36 @@ static constexpr uint8_t RX_POWERSAVING_MAX_LEVEL = RX_POWERSAVING_GUARDED_LEVEL
 static constexpr float RX_POWERSAVING_CAPTURE_COST_SYMBOLS = 6.0f;
 static constexpr float RX_POWERSAVING_CAPTURE_COST_SYMBOLS_LR11X0 = 8.0f;
 
-// TCXO startup delay handed to SetDIO3AsTCXOCtrl (SX126x DS 13.3.6) /
-// SetTcxoMode (LR11x0 UM 6.3.2). RadioLib defaults it to 5000 us and nothing
-// overrode it, so every board paid 5 ms on every duty-cycle wake whatever
-// crystal was fitted. Measured lowest working value on five modules: T096 400,
-// Tracker V2 300, Waveshare 150, ThinkNode M3 200, T1000-E 200 us - so 1600
-// keeps 4x margin over the worst of them.
-//
-// One knob for the whole tree, in `arduino_base`, because it is a property of
-// the parts MeshCore is built with rather than of any one board. A variant that
-// needs its own value defines it in its own build_flags and the later -D wins.
-#ifndef MC_TCXO_DELAY_US
+// SX1262 uses an 800 us TCXO delay. The RAK3401/RAK13302 bench completed 20/20
+// packets at that setting. Boards can supply their own qualified override.
+#ifdef MC_TCXO_DELAY_US
+static constexpr uint32_t SX1262_TCXO_DELAY_US = MC_TCXO_DELAY_US;
+#else
+static constexpr uint32_t SX1262_TCXO_DELAY_US = 800;
   #define MC_TCXO_DELAY_US 1600
 #endif
+
+// Some variants declare USE_SX1262 only in variant.h. Identify fixed-radio
+// builds by the driver selected in their build flags.
+#define MC_RXPS_SX1262_CustomSX1262 1
+#define MC_RXPS_IS_SX1262_(driver) MC_RXPS_SX1262_##driver
+#define MC_RXPS_IS_SX1262(driver) MC_RXPS_IS_SX1262_(driver)
+#if (defined(RADIO_CLASS) && MC_RXPS_IS_SX1262(RADIO_CLASS)) \
+    || (!defined(RADIO_CLASS) && defined(USE_SX1262))
+static constexpr uint32_t RX_POWERSAVING_DEFAULT_TCXO_DELAY_US = SX1262_TCXO_DELAY_US;
+#else
+static constexpr uint32_t RX_POWERSAVING_DEFAULT_TCXO_DELAY_US = MC_TCXO_DELAY_US;
+#endif
+#undef MC_RXPS_IS_SX1262
+#undef MC_RXPS_IS_SX1262_
+#undef MC_RXPS_SX1262_CustomSX1262
 
 // Sleep -> RX transition: RadioLib subtracts tcxoDelay + 1000 us from the
 // requested sleep before writing the register, and the hardware spends that
 // long saving context, restarting the XTAL and locking the PLL. Everything
 // below derives from it. Callers can supply the resolved transition delay so
 // both the sleep floor and the timer guard follow it.
-static constexpr uint32_t RX_POWERSAVING_TRANSITION_US = MC_TCXO_DELAY_US + 1000;
+static constexpr uint32_t RX_POWERSAVING_TRANSITION_US = RX_POWERSAVING_DEFAULT_TCXO_DELAY_US + 1000;
 
 // Slack the timer guard leaves on top of the datasheet condition, in symbols.
 //
@@ -172,7 +183,7 @@ static constexpr float RX_POWERSAVING_HEADER_SYMBOLS = 8.0f;
 // chip needs roughly 200 us of *programmed* sleep, i.e. ~12 register ticks, so
 // this leaves 250 us of margin on top of the transition time.
 //
-// The default follows MC_TCXO_DELAY_US; a caller can supply another transition.
+// The default follows the selected family's TCXO delay.
 static constexpr uint32_t RX_POWERSAVING_MIN_SLEEP_US =
     RX_POWERSAVING_TRANSITION_US + RX_POWERSAVING_MIN_SLEEP_MARGIN_US;
 
@@ -233,14 +244,17 @@ inline uint32_t rxPowerSavingDefaultTransitionUs() {
   // The single-radio Muzi build shares both drivers. Before identification,
   // use the longer LR1121 startup allowance; afterward preserve each chip.
   const uint32_t tcxo_delay_us = mesh::autoLoRaRxPowerSavingFamily()
-      == mesh::LoRaRadioFamily::SX126x ? MC_TCXO_DELAY_US : 5000UL;
+      == mesh::LoRaRadioFamily::SX126x ? SX1262_TCXO_DELAY_US : 5000UL;
+#elif defined(MESH_RADIO_AUTO_FAMILY) && MESH_RADIO_AUTO_FAMILY
+  const uint32_t tcxo_delay_us = mesh::autoLoRaRxPowerSavingFamily()
+      == mesh::LoRaRadioFamily::SX126x ? SX1262_TCXO_DELAY_US : MC_TCXO_DELAY_US;
 #elif defined(USE_LR1121)
   // Retain RadioLib's existing 5 ms LR1121 TCXO startup time. The shorter
   // LR1110 setting has not been qualified for these boards. Driver arming
   // uses its actual cached delay; CLI/default calculations must agree.
   const uint32_t tcxo_delay_us = 5000UL;
 #else
-  const uint32_t tcxo_delay_us = MC_TCXO_DELAY_US;
+  const uint32_t tcxo_delay_us = RX_POWERSAVING_DEFAULT_TCXO_DELAY_US;
 #endif
 #if defined(SX126X_DIO3_TCXO_VOLTAGE)
   return SX126X_DIO3_TCXO_VOLTAGE > 0.0f ? tcxo_delay_us + 1000UL : 1000UL;

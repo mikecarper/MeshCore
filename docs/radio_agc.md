@@ -184,10 +184,9 @@ half; they do not measure the subsequent full calibration.
 
 ## Timing and V4 test evidence
 
-The V4's default compensated sleep request is **3116 microseconds** with a
-1600-microsecond TCXO startup allowance. This encodes 33 sleep-timer ticks
-after transition compensation. It is not the duration of the whole operation
-or a measured RF outage.
+The V4 test used a compensated sleep request of **3116 microseconds** with a
+1600-microsecond TCXO startup allowance. This encoded 33 sleep-timer ticks
+after transition compensation.
 
 In the [November 5 V4 test](test-results/heltec_v4_rxps_half_ms_margin_2026-11-05.md),
 sampled BUSY-high spans were 3.041-3.082 ms. Whole operations took about

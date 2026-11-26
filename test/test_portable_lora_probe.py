@@ -229,7 +229,8 @@ class PortableLoRaProbeTest(unittest.TestCase):
 #include <helpers/LoRaRadioFamily.h>
 void setFamily(unsigned value) {
   mesh::autoLoRaRxPowerSavingFamily() = value==1 ? mesh::LoRaRadioFamily::SX126x
-      : value==2 ? mesh::LoRaRadioFamily::LR1121 : mesh::LoRaRadioFamily::None;
+      : value==2 ? mesh::LoRaRadioFamily::LR1121
+      : value==3 ? mesh::LoRaRadioFamily::SX1268 : mesh::LoRaRadioFamily::None;
 }
 const void* writerAddress(){return &mesh::autoLoRaRxPowerSavingFamily();}
 ''')
@@ -255,10 +256,10 @@ uint32_t defaultTransition();float defaultCost();
 int main() {
   assert(writerAddress()==readerAddress());
   assert(readerAddress()==&mesh::autoLoRaRxPowerSavingFamily());
-  for(unsigned family : {0,1,2,1,0}) {
+  for(unsigned family : {0U, 1U, MESH_RADIO_AUTO_LR1121 ? 2U : 3U, 1U, 0U}) {
     setFamily(family);
-    const float expected_cost=family==1?6.0f:8.0f;
-    const uint32_t expected_transition=family==1?2600:6000;
+    const float expected_cost = family == 1 || !MESH_RADIO_AUTO_LR1121 ? 6.0f : 8.0f;
+    const uint32_t expected_transition = family == 1 ? 1800 : MESH_RADIO_AUTO_LR1121 ? 6000 : 2600;
     assert(defaultTransition()==expected_transition && defaultCost()==expected_cost);
     for(unsigned level=1;level<=10;++level) for(unsigned sf=5;sf<=12;++sf)
       for(float bw : {62.5f,125.0f,250.0f,500.0f}) {
@@ -274,15 +275,44 @@ int main() {
             binary = work / ("test.exe" if os.name == "nt" else "test")
             sanitize = [] if os.name == "nt" else ["-fsanitize=address,undefined",
                 "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"]
-            compiled = subprocess.run([compiler, "-std=c++11", "-Wall", "-Wextra", "-Werror",
-                "-O2", "-flto", *sanitize, "-DMESH_RADIO_AUTO_LR1121=1", "-DUSE_SX1262=1",
-                "-DUSE_LR1121=1", "-DSX126X_DIO3_TCXO_VOLTAGE=3.3",
-                "-DLR11X0_DIO3_TCXO_VOLTAGE=3.0", "-I" + str(ROOT / "src"),
-                str(source), str(writer), str(reader), "-o", str(binary)],
-                capture_output=True, text=True, timeout=60)
-            self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
-            tested = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
-            self.assertEqual(tested.returncode, 0, tested.stdout + tested.stderr)
+            for family_flags in (("-DMESH_RADIO_AUTO_LR1121=1", "-DUSE_LR1121=1"),
+                                 ("-DMESH_RADIO_AUTO_SX1268=1", "-DUSE_SX1268=1")):
+                with self.subTest(family_flags=family_flags):
+                    compiled = subprocess.run([compiler, "-std=c++11", "-Wall", "-Wextra", "-Werror",
+                        "-O2", "-flto", *sanitize, "-DMESH_RADIO_AUTO_FAMILY=1",
+                        "-DRADIO_CLASS=UniversalLoRaRadio", *family_flags, "-DUSE_SX1262=1",
+                        "-DSX126X_DIO3_TCXO_VOLTAGE=3.3", "-DLR11X0_DIO3_TCXO_VOLTAGE=3.0",
+                        "-I" + str(ROOT / "src"), str(source), str(writer), str(reader), "-o", str(binary)],
+                        capture_output=True, text=True, timeout=60)
+                    self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+                    tested = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)
+                    self.assertEqual(tested.returncode, 0, tested.stdout + tested.stderr)
+
+    def test_fixed_radio_tcxo_default_and_override(self):
+        compiler = os.environ.get("CXX") or shutil.which("g++") or shutil.which("clang++")
+        with tempfile.TemporaryDirectory(prefix="meshcore-radio-tcxo-") as directory:
+            source = Path(directory) / "main.cpp"
+            binary = source.with_suffix(".exe" if os.name == "nt" else "")
+            source.write_text(r'''
+#include <cassert>
+#include <helpers/radiolib/RXPowerSaving.h>
+int main() {
+  assert(rxPowerSavingDefaultTransitionUs() == EXPECT_TRANSITION);
+}
+''')
+            cases = [
+                (1800, "-DRADIO_CLASS=CustomSX1262"),
+                (2200, "-DRADIO_CLASS=CustomSX1262", "-DMC_TCXO_DELAY_US=1200"),
+                (1000, "-DRADIO_CLASS=CustomSX1262", "-DSX126X_DIO3_TCXO_VOLTAGE=0.0"),
+                (2600, "-DRADIO_CLASS=CustomSX1268", "-DUSE_SX1262=1"),
+                (2600, "-DRADIO_CLASS=CustomLR1110", "-DUSE_LR1110=1"),
+            ]
+            for transition, *flags in cases:
+                with self.subTest(flags=flags):
+                    subprocess.run([compiler, "-std=c++11", "-I" + str(ROOT / "src"),
+                        f"-DEXPECT_TRANSITION={transition}", *flags, str(source), "-o", str(binary)],
+                        check=True, timeout=30)
+                    subprocess.run([str(binary)], check=True, timeout=10)
 
 
 if __name__ == "__main__":

@@ -666,7 +666,7 @@ class CustomSX1262 : public SX1262 {
     // supply on DIO3 for a board that has none would be worse than a long delay.
     int16_t applyMeshCoreTcxoDelay() {
       if (tcxoVoltage <= 0.0f) return RADIOLIB_ERR_NONE;
-      int16_t state = setTCXO(tcxoVoltage, MC_TCXO_DELAY_US);
+      int16_t state = setTCXO(tcxoVoltage, SX1262_TCXO_DELAY_US);
       RADIOLIB_ASSERT(state);
       state = calibrate(RADIOLIB_SX126X_CALIBRATE_ALL);
       RADIOLIB_ASSERT(state);

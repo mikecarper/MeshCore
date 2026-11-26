@@ -18,7 +18,7 @@ TEST(RxPowerSaving, WirePreamblesStayCompatibleRegardlessOfLocalPowerSaving) {
 TEST(RxPowerSaving, GuardedProfilesCoverActualWireHeaderAndPromisedCatch) {
   for (float bw : {7.8f, 15.6f, 31.25f, 62.5f, 125.0f, 250.0f, 500.0f}) {
     for (uint8_t sf = 5; sf <= 12; ++sf) {
-      for (uint32_t transition : {1000U, 2600U, 6000U}) {
+      for (uint32_t transition : {1000U, 1800U, 2600U, 6000U}) {
         for (uint8_t requested = 1; requested <= 8; ++requested) {
           for (uint8_t assumption : {16, 32, 64, 128}) {
             SCOPED_TRACE(::testing::Message() << "sf=" << int(sf) << " bw=" << bw

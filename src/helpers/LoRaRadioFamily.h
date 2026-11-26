@@ -20,14 +20,12 @@
 namespace mesh {
 enum class LoRaRadioFamily : uint8_t { None, SX126x, SX127x, SX1268, LR1121 };
 
-#if MESH_RADIO_AUTO_LR1121
-// Muzi has one physical radio. Legacy RXPS timing helpers have no radio
-// argument; publish its positively identified family for their default policy.
+// A universal build has one physical radio. Publish its positively identified
+// family for the RXPS timing helpers that do not take a radio argument.
 inline LoRaRadioFamily& autoLoRaRxPowerSavingFamily() {
   static LoRaRadioFamily family = LoRaRadioFamily::None;
   return family;
 }
-#endif
 
 inline float autoLoRaInitialFrequency(LoRaRadioFamily family, float preferred) {
   // A universal image can contain a 900 MHz preset, but an SX1268 cannot.

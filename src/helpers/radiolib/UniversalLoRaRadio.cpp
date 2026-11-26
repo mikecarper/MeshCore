@@ -36,10 +36,8 @@ UniversalLoRaRadio::UniversalLoRaRadio(Module& sx126_module, Module& sx127_modul
       board_(board) {}
 
 UniversalLoRaRadio::~UniversalLoRaRadio() {
-#if MESH_RADIO_AUTO_LR1121
   if (mesh::autoLoRaRxPowerSavingFamily() == family_)
     mesh::autoLoRaRxPowerSavingFamily() = mesh::LoRaRadioFamily::None;
-#endif
   if (family_ == mesh::LoRaRadioFamily::SX126x) {
     static_cast<SX1262Backend*>(backend_)->~SX1262Backend();
     static_cast<CustomSX1262*>(physical_)->~CustomSX1262();
@@ -124,9 +122,7 @@ bool UniversalLoRaRadio::selectFamily(mesh::LoRaRadioFamily family) {
   }
 #endif
   family_ = family;
-#if MESH_RADIO_AUTO_LR1121
   mesh::autoLoRaRxPowerSavingFamily() = family;
-#endif
   return true;
 }
 

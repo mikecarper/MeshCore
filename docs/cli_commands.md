@@ -2476,18 +2476,18 @@ del tempradioat [n|all]
   available. Returning to slower settings recalculates from the saved RXPS
   minimum.
 
-With the measured SX126x/LR1110 RXPS model and the default 1600 us TCXO startup delay
-(2600 us total transition), a requested minimum level 1 gives:
+On an SX1262 with the default 800 us TCXO startup delay and 1800 us total
+transition allowance, a requested minimum level of 1 gives the following timings.
 
 | SF | BW (kHz) | Wire preamble | Effective timing preamble | Effective RXPS level | RX / sleep |
 |---:|---------:|--------------:|--------------------------:|---------------------:|-----------:|
-| 7 | 500 | 32 | 32 | 2 | 5594 / 3022 us |
-| 6 | 250 | 32 | 32 | 2 | 5844 / 3022 us |
-| 5 | 125 | 32 | 32 | 2 | 5844 / 3022 us |
-| 5 | 250 | 64 | 64 | 1 | 3829 / 5100 us |
-| 6 | 500 | 64 | 64 | 1 | 3829 / 5100 us |
-| 5 | 500 | 128 | 128 | 1 | 2563 / 6647 us |
-| 5 | 62.5 | 32 | 16 | 6 | 11922 / 2975 us |
+| 7 | 500 | 32 | 32 | 2 | 5188 / 3019 us |
+| 6 | 250 | 32 | 32 | 2 | 5454 / 3019 us |
+| 5 | 125 | 32 | 32 | 2 | 5454 / 3019 us |
+| 5 | 250 | 64 | 64 | 1 | 3438 / 5097 us |
+| 6 | 500 | 64 | 64 | 1 | 3438 / 5097 us |
+| 5 | 500 | 128 | 128 | 1 | 2172 / 6644 us |
+| 5 | 62.5 | 32 | 16 | 5 | 11782 / 2457 us |
 
 These values include the actual transmitted preamble, explicit header, and a
 one-symbol timer margin. SF5/SF6 need two more sync symbols than SF7, so their
@@ -2866,10 +2866,9 @@ set radio.rxps <rx_us> <sleep_us>
   reliable delivery. They are never selected by automatic level adjustment.
 - Named experimental profiles accept `preamble 32`; numeric levels keep the
   existing automatic-preamble selection. Manual timings bypass the level model.
-- `MC_TCXO_DELAY_US` defaults to 1600 us. Initialization applies it and checks
-  TCXO/calibration errors on the qualified SX126x/LR1110 paths. A board can
-  override it for its oscillator. LR1121 retains RadioLib's 5000 us setting;
-  it does not inherit the LR1110 hardware timing qualification.
+- SX1262 defaults to an 800 us TCXO delay during LoRa initialization. LR1110
+  defaults to 1600 us and LR1121 uses RadioLib's 5000 us setting. SX1262 and
+  LR1110 boards can override their delay with `MC_TCXO_DELAY_US` at build time.
 - Fresh Cascade-profile builds start with RXPS on at level `8` and a 16-symbol preamble. Saved operator settings still take precedence after an upgrade.
 - Level-based settings automatically recalculate their timings when the spreading factor or bandwidth changes. Custom `<rx_us> <sleep_us>` timings remain fixed.
 - `get radio.rxps` keeps the legacy on/off, RX, and sleep reply. The new
