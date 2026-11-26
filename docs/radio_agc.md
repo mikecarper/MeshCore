@@ -62,6 +62,23 @@ separately as `last_rssi`.
 Use packet reception tests to compare sensitivity. A cached RSSI estimate
 also reflects the estimator, the local RF activity, and the receiver gain.
 
+### Heltec V4.3 weak reception on 1.18.0.2
+
+Check the external amplifier setting with `get radio.fem.rxgain`. If the
+V4.3 receives nearby nodes and misses weaker ones, try
+`set radio.fem.rxgain off`. The command saves the setting across reboots.
+`radio.rxgain` controls the separate internal SX1262 gain.
+
+On the same V4.3 at 904.525 MHz, 62.5 kHz, SF7 and CR5, 1.18.0.2 received
+2 of 10 weak probes with external gain on and 10 of 10 with it off.
+1.17.1.8 received 10 of 10 with either setting.
+
+With the external LNA on, alternating the CPU speed in 1.18.0.2 gave 18 of
+20 weak packets at 80 MHz and 5 of 20 at 160 MHz. The updated Full OLED V4
+repeater uses 80 MHz for Auto. On 1.18.0.2, use `set cpu.freq 80` to try
+the same clock if you need to keep the LNA enabled. See
+[Heltec V4 receive issue #29](https://github.com/mikecarper/MeshCore/issues/29).
+
 ## Automatic selection
 
 With the saved default `agc.old auto`, the primary interval selects the method
