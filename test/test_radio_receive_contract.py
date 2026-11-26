@@ -869,6 +869,47 @@ int main() {
                             str(cpp), '-o', str(binary)], check=True)
             subprocess.run([str(binary)], check=True)
 
+    def test_lr2021_preserves_receive_rearm_for_multisf_and_scanners(self):
+        wrapper = (ROOT / 'src/helpers/radiolib/CustomLR2021Wrapper.h').read_text()
+        harness = transition_harness().split('struct LegacyRadio {', 1)[0] + r'''
+#define MESH_W12_MULTISF_EXPERIMENT 1
+#define MESH_W12_PRAM_EXPERIMENT 1
+#define MESH_W12_PRAM_SEQUENTIAL_LAB 1
+struct LR2021Wrapper : RadioLibWrapper {
+  unsigned _numSideDet = 0;
+  bool _multi_sf_enabled = false;
+  bool _lab_scan_active = false;
+  bool _lab_uncertain = false;
+  bool _lab_seq_requested = false;
+  @TRANSMIT_BUSY@
+};
+int main() {
+  LR2021Wrapper single_channel;
+  assert(!single_channel.isTransmitChannelBusy());
+  assert(single_channel.state == STATE_IDLE && single_channel.radio.clears == 1);
+  assert(single_channel.arms == 0 && !single_channel.hasPendingRadioInterrupt());
+
+  for (auto setting : {&LR2021Wrapper::_multi_sf_enabled, &LR2021Wrapper::_lab_scan_active,
+                       &LR2021Wrapper::_lab_uncertain, &LR2021Wrapper::_lab_seq_requested}) {
+    LR2021Wrapper scanner;
+    scanner.*setting = true;
+    assert(!scanner.isTransmitChannelBusy());
+    assert(scanner.state == STATE_RX && scanner.arms == 1 && scanner.radio.clears == 0);
+  }
+
+  LR2021Wrapper side_detector;
+  side_detector._numSideDet = 1;
+  assert(!side_detector.isTransmitChannelBusy());
+  assert(side_detector.state == STATE_RX && side_detector.arms == 1);
+}
+'''
+        with tempfile.TemporaryDirectory() as folder:
+            cpp, binary = Path(folder) / 'lr2021_cad.cpp', Path(folder) / 'lr2021_cad'
+            cpp.write_text(harness.replace('@TRANSMIT_BUSY@', method(wrapper, 'bool isTransmitChannelBusy()')))
+            subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-I', str(ROOT / 'src'),
+                            str(cpp), '-o', str(binary)], check=True)
+            subprocess.run([str(binary)], check=True)
+
     def test_packet_score_uses_receiving_spreading_factor(self):
         lib = ROOT / 'src/helpers/radiolib'
         common = method((lib / 'RadioLibWrappers.h').read_text(), 'float packetScore(')

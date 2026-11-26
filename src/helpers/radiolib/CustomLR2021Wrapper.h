@@ -1077,6 +1077,20 @@ protected:
   }
 
 public:
+  bool isTransmitChannelBusy() override {
+    if (_profiles.enabled() || _numSideDet != 0) return isReceiving();
+#if defined(MESH_W12_MULTISF_EXPERIMENT) && MESH_W12_MULTISF_EXPERIMENT
+    if (_multi_sf_enabled) return isReceiving();
+#endif
+#if defined(MESH_W12_PRAM_EXPERIMENT) && MESH_W12_PRAM_EXPERIMENT
+    if (_lab_scan_active || _lab_uncertain) return isReceiving();
+#if defined(MESH_W12_PRAM_SEQUENTIAL_LAB) && MESH_W12_PRAM_SEQUENTIAL_LAB
+    if (_lab_seq_requested) return isReceiving();
+#endif
+#endif
+    return isChannelActive(true);
+  }
+
   bool isReceivingPacket() override {
     return ((CustomLR2021 *)_radio)->isReceiving();
   }
