@@ -105,6 +105,7 @@ struct MQTTBridge {
   struct Slot {
     PsychicMqttClient* client = nullptr;
     bool enabled = true, connected = false, circuit_breaker_tripped = false;
+    bool wifi_link_recovery = false;
     uint32_t connected_at_ms = 0, last_reconnect_attempt = 0;
     uint32_t current_outage_started_ms = 0;
     uint8_t reconnect_backoff = 0;

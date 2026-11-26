@@ -182,6 +182,7 @@ struct MQTTBridge {
     unsigned long last_reconnect_attempt = 0, connected_at_ms = 0;
     uint8_t reconnect_backoff = 0, max_backoff_failures = 0;
     bool circuit_breaker_tripped = false;
+    bool wifi_link_recovery = false;
     uint32_t start_failures = 0;
     uint32_t connect_failures = 0, disconnect_count = 0;
     unsigned long first_disconnect_time = 0, current_outage_started_ms = 0;
@@ -559,6 +560,7 @@ int main() {
     assert(bridge.clients[i].isInitialized() && !bridge.clients[i].isStarted());
     assert(bridge.clients[i].stops == 1 && !bridge._slots[i].connected);
     assert(!bridge._slot_attempt_pending[i]);
+    assert(bridge._slots[i].wifi_link_recovery);
   }
   bridge.maintainSlotConnections();
   for (int i = 0; i < 3; ++i) assert(bridge.clients[i].starts == 0);
@@ -579,11 +581,13 @@ int main() {
   for (int i = 0; i < 3; ++i) {
     assert(bridge.clients[i].starts == 0 && bridge._slots[i].last_reconnect_attempt == 0);
     assert(bridge._slots[i].reconnect_backoff == 0 && bridge._slots[i].start_failures == 0);
+    assert(bridge._slots[i].wifi_link_recovery);
   }
 
   dma_free = 42376; dma_largest = floor + Admission::kRestartAllowanceBytes;
   bridge.maintainSlotConnections();
   assert(bridge.clients[0].starts == 1 && dma_free == 35840);
+  assert(bridge._slots[0].reconnect_backoff == 0 && !bridge._slots[0].wifi_link_recovery);
   assert(bridge.hasPendingSlotConnection());
   clock_ms += 60000;
   bridge.maintainSlotConnections();

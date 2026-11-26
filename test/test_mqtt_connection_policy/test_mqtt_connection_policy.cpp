@@ -110,6 +110,16 @@ TEST(MQTTConnectionPolicy, ReconnectDueUsesDelayBoundaryAndWrapSafeElapsedTime) 
   EXPECT_TRUE(Policy::reconnectDue(5000U, last, 0, 0));
 }
 
+TEST(MQTTConnectionPolicy, AttributesOnlyRecentDisconnectsOnStableWifiToTheLink) {
+  EXPECT_TRUE(Policy::outageCausedByStableLink(60000, 10000, true, 0));
+  EXPECT_TRUE(Policy::outageCausedByStableLink(60000, 10000, false, 50000));
+  EXPECT_TRUE(Policy::outageCausedByStableLink(60000, 10000, false, 60001));
+  EXPECT_FALSE(Policy::outageCausedByStableLink(35000, 10000, true, 0));
+  EXPECT_FALSE(Policy::outageCausedByStableLink(70000, 10000, false, 35000));
+  EXPECT_FALSE(Policy::outageCausedByStableLink(43000, 10000, false, 38000));
+  EXPECT_TRUE(Policy::outageCausedByStableLink(10000, UINT32_MAX - 40000, false, 1000));
+}
+
 TEST(MQTTConnectionPolicy, BackoffAdvanceClimbsThenCountsFailuresAtMaximum) {
   Policy::BackoffAdvance first = Policy::advanceBackoff(0, 0);
   EXPECT_EQ(1, first.reconnect_backoff);

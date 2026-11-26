@@ -2501,6 +2501,7 @@ void MQTTBridge::teardownSlot(int index, bool force) {
   slot.reconnect_backoff = 0;
   slot.max_backoff_failures = 0;
   slot.circuit_breaker_tripped = false;
+  slot.wifi_link_recovery = false;
   slot.last_reconnect_attempt = 0;
   slot.last_log_time = 0;
   slot.last_deferred_log_ms = 0;
@@ -2530,7 +2531,9 @@ esp_err_t MQTTBridge::reconnectSlotClient(int index) {
   } else {
     result = slot.client->reconnect();
   }
-  if (result != ESP_OK) {
+  if (result == ESP_OK) {
+    slot.wifi_link_recovery = false;
+  } else {
     if (MQTTConnectionHealth::clearPendingAfterRejectedRequest(starting, was_pending)) {
       _slot_attempt_pending[index] = false;
       slot.transport_health.completeAttempt();
@@ -2931,8 +2934,9 @@ void MQTTBridge::maintainSlotConnection(int index, unsigned long now_millis, uns
             static_cast<uint32_t>(now_millis), static_cast<uint32_t>(slot.last_reconnect_attempt),
             slot.reconnect_backoff, static_cast<uint8_t>(index))) {
       slot.last_reconnect_attempt = now_millis;
-      MQTTConnectionPolicy::BackoffAdvance advance = MQTTConnectionPolicy::advanceBackoff(
-          slot.reconnect_backoff, slot.max_backoff_failures);
+      const auto advance = slot.wifi_link_recovery
+          ? MQTTConnectionPolicy::BackoffAdvance{slot.reconnect_backoff, slot.max_backoff_failures, false, true}
+          : MQTTConnectionPolicy::advanceBackoff(slot.reconnect_backoff, slot.max_backoff_failures);
       slot.reconnect_backoff = advance.reconnect_backoff;
       slot.max_backoff_failures = advance.max_backoff_failures;
       slot.circuit_breaker_tripped = advance.circuit_breaker_tripped;
@@ -3445,9 +3449,15 @@ bool MQTTBridge::handleWiFiConnection(unsigned long now) {
             (uint32_t)now, false, wifiOutage(), true);
     setWifiOutage(snapshot);
     if (last_connected) {
+      const uint32_t link_up_ms = static_cast<uint32_t>(s_wifi_connected_at);
       s_wifi_connected_at = 0;
       // Disconnect all slot clients when WiFi drops
       for (int i = 0; i < RUNTIME_MQTT_SLOTS; i++) {
+        MQTTSlot& slot = _slots[i];
+        slot.wifi_link_recovery = slot.enabled && slot.initial_connect_done
+            && MQTTConnectionPolicy::outageCausedByStableLink(
+                static_cast<uint32_t>(now), link_up_ms, slot.connected,
+                static_cast<uint32_t>(slot.current_outage_started_ms));
         // Include pending handshakes, not just sessions that reached CONNACK.
         if (_slots[i].client && _slots[i].client->isStarted()) {
           _slot_transport_fault_pending[i].store(true, std::memory_order_release);

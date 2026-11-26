@@ -111,6 +111,24 @@ struct BackoffAdvance {
   bool should_reconnect;
 };
 
+// Allow for a delayed Wi-Fi status poll when attributing a failed session.
+// Only a stable link earns a retry without advancing the broker's backoff.
+static inline bool outageCausedByStableLink(uint32_t now, uint32_t link_up_ms,
+                                            bool connected, uint32_t outage_ms) {
+  constexpr uint32_t attribution_ms = 20000;
+  constexpr uint32_t stable_link_ms = 30000;
+  constexpr uint32_t poll_slack_ms = 10000;
+  const bool saw_session_end = !connected && outage_ms != 0 && link_up_ms != 0
+      && elapsedMs(outage_ms, link_up_ms) <= elapsedMs(now, link_up_ms);
+  const uint32_t link_end = saw_session_end ? outage_ms : now;
+  if (link_up_ms != 0
+      && elapsedMs(link_end, link_up_ms) < stable_link_ms + (saw_session_end ? 0 : poll_slack_ms)) {
+    return false;
+  }
+  return connected || (outage_ms != 0 &&
+      (elapsedMs(now, outage_ms) <= attribution_ms || elapsedMs(outage_ms, now) <= attribution_ms));
+}
+
 // Advance the ladder immediately before a due reconnect. The first visit to
 // the 300-second rung changes level 4 to the saturated marker 5. Three later
 // failures at that rung trip the breaker; the third does not launch another

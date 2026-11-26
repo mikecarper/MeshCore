@@ -141,6 +141,7 @@ private:
     uint8_t reconnect_backoff;      // 0..4 index into backoff table
     uint8_t max_backoff_failures;   // consecutive failures at max backoff level
     bool circuit_breaker_tripped;   // true = stop reconnecting until reconfigured
+    bool wifi_link_recovery = false; // next accepted attempt follows a stable Wi-Fi link loss
     unsigned long connected_at_ms;  // millis() of last successful connect (0 = not connected);
                                     // gates the stability-based backoff reset in maintenance
     unsigned long last_reconnect_attempt;
