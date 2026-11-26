@@ -13,11 +13,11 @@ import re
 
 SOURCES = {
     'examples/simple_repeater/MyMesh.cpp': (
-        '2a43f538a3a8a7aeae609e6d56b0bbc5d72ff1a6bbd6d36e7cff8b9a535545d0',
-        'a52b04476fd66ea62b28d20dc00dae0a2cdb27923eff5ac54ec629a5da5f8919'),
+        '9d425f0da0b738cc2a3d6b54e5bfa39781b93db26b35e260ad4d49542128a9d3',
+        '12b405249375ef676ef717c504984a42162e42a2f87e038276848d87f8f373de'),
     'src/helpers/CommonCLI.cpp': (
-        'c7c9b49f74e53415d7c707b0274b72477ae9472ac578f17f9a4f8777402acf0a',
-        'f8be197f117fb6cc52ab08b999feaaf6ae1db90ddf0991e6e407560a0d36369f'),
+        '0201d8abb5e4cb91615327d2ba2302dfd54d55734270d7462b71d772dc73c18d',
+        '3035e2fdf5869b1e60ba7f08bc835866a3e20b859d5306ff400e9925b6926b80'),
     'src/helpers/ota/OtaCli.cpp': (
         'dbe8f7e6f282942f3edd6be542d8e02acfff47ef86652f9b800e00da074dfcc5',
         '562017187e8ae475c3401beb544aabfd9d5b1abec29f597dedd5cf719670ebb3'),
