@@ -32,6 +32,7 @@ inline void attachInterrupt(uint32_t, void (*)(), int change) {
 
 HARNESS = r'''
 #include <cassert>
+#include <initializer_list>
 #include <helpers/ui/MomentaryButton.h>
 #include "examples/companion_radio/ui-orig/Button.h"
 uint32_t now = 100;

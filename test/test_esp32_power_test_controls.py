@@ -118,7 +118,7 @@ int main(){
   void flush(){++flushes;}
   void end(){++ends;driver_initialized=false;}
 ''')
-        code=code.replace("static bool logging_enabled = false;","static bool logging_enabled = false;\nstatic bool text_pending=false;\nbool hasPendingUsbTerminalOutput(){return text_pending;}")
+        code=code.replace("static bool logging_enabled = false;","static bool logging_enabled = false;\nbool usbDataLocked(){return false;}\nstatic bool text_pending=false;\nbool hasPendingUsbTerminalOutput(){return text_pending;}")
         code=code.replace("  bool inhibit_sleep = false;","  bool inhibit_sleep = false;\n  bool ota=false;bool isOTAUpdateRunning(){return ota;}\n  uint32_t uart_quiet_start_at=0;uint16_t uart_quiet_seconds=0;")
         return "#include <cassert>\n"+code.replace("@METHODS@",methods)
 

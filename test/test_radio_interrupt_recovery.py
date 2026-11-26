@@ -271,6 +271,7 @@ class RadioInterruptRecoveryTests(unittest.TestCase):
 #define RADIOLIB_ERR_UNSUPPORTED -2
 #define RADIOLIB_NC 0xffffffff
 using RadioLibIrqFlags_t = uint32_t;
+struct ChannelScanConfig_t;
 class PhysicalLayer {
 public:
  int setOutputPower(int8_t){return 0;}

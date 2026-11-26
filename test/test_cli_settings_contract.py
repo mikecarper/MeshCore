@@ -313,6 +313,7 @@ namespace mesh { struct Utils {
             'mqtt', 'mqtt.running',                  # MQTT connection status
             'ota.direct',                            # Direct USB OTA session diagnostics
             'ota.direct.capabilities',               # Read-only direct OTA guard capabilities
+            'ota.identity',                          # Prepared WiFi OTA session identity
             'password', 'prv.key',                   # Local secret/identity reads
             'public.key',                            # Read-only public identity
             'pwrmgt.bootreason', 'role',             # Boot/build facts

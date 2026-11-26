@@ -189,7 +189,7 @@ def build_and_run(scenario, *, mutation=None, full=True):
     tick = method(web_source, 'void WebConfigServer::tick(')
     setup = method(tick, 'if (_mode == MODE_SETUP && _retry_saved_wifi_in_setup && _wifi_ssid[0])')
     promotion = method(setup, 'if (WiFi.status() == WL_CONNECTED)')
-    idle_outer = method(tick, 'if (_mode == MODE_SETUP && WiFi.softAPgetStationNum() == 0 &&')
+    idle_outer = method(tick, 'if (_mode == MODE_SETUP && WiFi.softAPgetStationNum() == 0)')
     idle = method(idle_outer, 'if (_retry_saved_wifi_in_setup && _wifi_ssid[0])')
     if mutation == 'unguarded_station':
         policy = policy.replace('if (mode & WIFI_MODE_AP) protocols = kAccessPointProtocolMask;', '')
