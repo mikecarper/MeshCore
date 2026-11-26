@@ -212,6 +212,7 @@ int main(int argc, char** argv) {
 RUNTIME_HARNESS = r'''
 #include <RadioProfiles.h>
 #include <helpers/RecentChannelText.h>
+#define COMPANION_FEATURE_CHANNEL_TEXT_DEDUP 1
 #define MAX_GROUP_CHANNELS 5
 #define MAX_PACKET_PAYLOAD 255
 namespace mesh {

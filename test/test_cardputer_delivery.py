@@ -23,7 +23,12 @@ HARNESS = r'''
 #include <vector>
 #include <helpers/CompanionChannelAlias.h>
 #include <helpers/CLIReplyText.h>
+#ifndef COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+#define COMPANION_FEATURE_CHANNEL_TEXT_DEDUP 1
+#endif
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
 #include <helpers/RecentChannelText.h>
+#endif
 using std::isfinite;
 #define MESH_ENABLE_ONE_KEY_DM 1
 #define ONE_KEY_DM_SHARED_OFFLINE_QUEUE 0
@@ -91,7 +96,9 @@ struct MyMesh {
   Serial* _serial = &serial;
   UI* _ui = &ui;
   int app_target_ver = 3, offline_queue_len = 0;
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
   mesh::RecentChannelText<MAX_GROUP_CHANNELS> recent_channel_text;
+#endif
   uint8_t out_frame[MAX_FRAME_SIZE]{};
   bool accept = true, delivered = false;
   int contact_history = 0, channel_history = 0;
@@ -237,6 +244,7 @@ int main() {
   assert(!channel(9, 100, warning));
   duplicate.accept = true;
   assert(channel(9, 101, warning) && duplicate.offline_queue_len == 1);
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
   const int displayed = duplicate.ui.received;
   const int notifications = duplicate.ui.sounds;
   duplicate.offline_queue_len = 0;  // The phone downloaded the first message.
@@ -256,12 +264,15 @@ int main() {
   assert(channel(9, 105, warning) && duplicate.offline_queue_len == 9);
   assert(channel(9, 104, "AstaWX: 6"));
   assert(channel(9, 106, warning) && duplicate.offline_queue_len == 11);
+#else
+  assert(channel(9, 102, warning) && duplicate.offline_queue_len == 2);
+#endif
 }
 '''
 
 
 class CardputerDeliveryTests(unittest.TestCase):
-    def run_cpp(self, cardputer=True, meshtext=True):
+    def run_cpp(self, cardputer=True, meshtext=True, channel_dedup=True):
         source = SOURCE.read_text()
         signatures = [
             "void MyMesh::onMessageRecv(",
@@ -272,7 +283,8 @@ class CardputerDeliveryTests(unittest.TestCase):
             signatures.append("bool MyMesh::sendUiChannelMessage(")
         code = HARNESS.replace("@METHODS@", "\n".join(body(source, sig) for sig in signatures))
         self.run_program(code, f"-DCARDPUTER_ADV_UI={int(cardputer)}",
-                         f"-DMESH_ENABLE_MESHTEXT_CHAT={int(meshtext)}")
+                         f"-DMESH_ENABLE_MESHTEXT_CHAT={int(meshtext)}",
+                         f"-DCOMPANION_FEATURE_CHANNEL_TEXT_DEDUP={int(channel_dedup)}")
 
     def run_program(self, code, *defines):
         with tempfile.TemporaryDirectory(prefix="meshcore-cardputer-delivery-") as temp:
@@ -296,6 +308,9 @@ class CardputerDeliveryTests(unittest.TestCase):
 
     def test_headless_delivery_keeps_its_existing_behavior(self):
         self.run_cpp(cardputer=False)
+
+    def test_channel_text_filter_can_be_compiled_out(self):
+        self.run_cpp(cardputer=False, channel_dedup=False)
 
     def test_contact_origin_hooks_and_saved_notification_masks(self):
         source = SOURCE.read_text()

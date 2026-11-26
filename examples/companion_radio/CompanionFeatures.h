@@ -23,6 +23,10 @@
   #endif
 #endif
 
+#ifndef COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+  #define COMPANION_FEATURE_CHANNEL_TEXT_DEDUP 1
+#endif
+
 // The role terminal is also used by WebConfig on WiFi-only Companions. Its
 // parser and reply tracking do not require a physical USB transport.
 #if defined(ENABLE_USB_INTERFACE) \

@@ -1914,12 +1914,16 @@ bool MyMesh::setChannel(int channel_idx, const ChannelDetails& channel) {
   if (_ethernet_settings.enabled && channel.name[0]
       && parseCompanionChannelAlias(channel.name).kind != CompanionChannelKind::MeshCore) return false;
 #endif
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
   ChannelDetails previous{};
   const bool same_channel = BaseChatMesh::getChannel(channel_idx, previous)
       && strncmp(previous.name, channel.name, sizeof(previous.name)) == 0
       && memcmp(previous.channel.secret, channel.channel.secret, sizeof(channel.channel.secret)) == 0;
+#endif
   const bool saved = BaseChatMesh::setChannel(channel_idx, channel);
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
   if (saved && !same_channel) recent_channel_text.clear(channel_idx);
+#endif
 #if MESH_ENABLE_MESHTEXT_CHAT
   if (saved) _mt_delivery_config_dirty = true;
 #endif
@@ -2531,6 +2535,7 @@ bool MyMesh::queueChannelText(uint8_t channel_idx, const uint8_t secret[32], flo
                             bool is_emergency_channel, bool notify) {
   if (!text || channel_idx >= MAX_GROUP_CHANNELS) return false;
   int tlen = strlen(text);
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
   uint8_t fingerprint[mesh::RecentChannelText<MAX_GROUP_CHANNELS>::FingerprintSize];
   uint32_t received_at = 0;
   if (notify) {
@@ -2542,6 +2547,7 @@ bool MyMesh::queueChannelText(uint8_t channel_idx, const uint8_t secret[32], flo
     // A suppressed receive is still handled for retry and relay bookkeeping.
     if (recent_channel_text.suppress(channel_idx, fingerprint, received_at)) return true;
   }
+#endif
   int i = 0;
   if (app_target_ver >= 3) {
     out_frame[i++] = RESP_CODE_CHANNEL_MSG_RECV_V3;
@@ -2567,7 +2573,9 @@ bool MyMesh::queueChannelText(uint8_t channel_idx, const uint8_t secret[32], flo
   i += tlen;
   const bool queued = addToOfflineQueue(out_frame, i);
   if (!queued) return false;
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
   if (notify) recent_channel_text.remember(channel_idx, fingerprint, received_at);
+#endif
 
 #if CARDPUTER_ADV_UI
   onUiChannelMessage(channel_idx, text);
@@ -12816,7 +12824,9 @@ void MyMesh::loop() {
 #if MESH_WARM_RX_REFRESH
   if (_radio && _radio->serviceAGCMaintenanceFastLane()) return;
 #endif
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
   recent_channel_text.expire(millis());
+#endif
 #if CARDPUTER_ADV_UI
   // Apply saved output masks before the first received packet, not only at
   // the end of the loop or after a later settings change.
