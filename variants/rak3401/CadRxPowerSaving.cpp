@@ -5,6 +5,7 @@
 #include <nrf_gpio.h>
 #include "variant.h"
 #include <RadioLib.h>
+#include <helpers/radiolib/RXPowerSaving.h>
 
 #if !defined(NRF52840_XXAA) || SPI_32MHZ_INTERFACE || MESH_HIL_SPI_STARTUP_DIAG \
     || MC_NRF_RADIO_PROFILE_USB_IRQ_GUARD || defined(OTA_QSPI_RAK3401_RADIO_BUS_HANDOFF)
@@ -24,10 +25,22 @@ constexpr unsigned Group = 3;
 constexpr uint32_t Channels = ((1u << ChannelCount) - 1) << FirstChannel;
 constexpr uint32_t Starts = 0x0fu << FirstChannel;
 constexpr uint32_t RtcEvents = 0x0fu << RTC_EVTEN_COMPARE0_Pos;
-constexpr uint32_t PeriodTicks = 1638;  // 49.99 ms at 32.768 kHz
-constexpr uint32_t CadTicks = 82;       // 2.50 ms for warm wake after asserting NSS
-constexpr uint32_t SleepSelectTicks = 450;
-constexpr uint32_t SleepTicks = 453;    // 11.32 ms after SetCad, with room for RX handoff
+constexpr uint32_t PeriodTicks =
+    (uint64_t(RX_POWERSAVING_CAD_PERIOD_US) * 32768 + 500000) / 1000000;
+constexpr uint32_t CadTicks = 115;      // 3.51 ms for warm wake after asserting NSS
+constexpr uint32_t SleepSelectTicks = CadTicks + 368;
+constexpr uint32_t SleepTicks = SleepSelectTicks + 3;  // 11.32 ms after SetCad
+static_assert(PeriodTicks > SleepTicks + 8, "CAD must finish before the next cycle");
+
+// Budget the worst phase of the 32-symbol SF7/BW62.5 preamble: the interval
+// between scans, warm wake, CAD reporting, host-to-RX handoff and six symbols
+// for RX acquisition. The wake term also covers the first check on rearm.
+constexpr uint32_t SymbolUs = 2048;
+constexpr uint32_t WakeBudgetUs = 3600;
+constexpr uint32_t CadAndHandoffBudgetUs = 13500;
+static_assert(RX_POWERSAVING_CAD_PERIOD_US + WakeBudgetUs + CadAndHandoffBudgetUs
+                  + 6 * SymbolUs <= 32 * SymbolUs,
+              "A CAD hit must leave enough preamble for RX acquisition");
 
 NRF_SPIM_Type* const Spi = NRF_SPIM2;
 NRF_RTC_Type* const Clock = NRF_RTC2;
@@ -61,7 +74,7 @@ bool exhausted() {
 }
 
 bool overdue() {
-  return ownsBus() && uint32_t(millis() - started_ms) >= Cycles * 50 + 250;
+  return ownsBus() && uint32_t(millis() - started_ms) >= Cycles * RX_POWERSAVING_CAD_PERIOD_US / 1000 + 200;
 }
 
 bool inScanWindow() {

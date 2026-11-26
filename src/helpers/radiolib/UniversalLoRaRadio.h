@@ -304,6 +304,7 @@ class UniversalLoRaRadio : public mesh::Radio {
   MESH_AUTO_LORA_CONST(bool, isRxPowerSavingRfRxDisabled, (), (), false)
   MESH_AUTO_LORA_RET(mesh::RadioParamApplyResult, trySetParams, (float frequency, float bandwidth, uint8_t sf, uint8_t cr, const uint32_t* timings = nullptr), (frequency, bandwidth, sf, cr, timings), mesh::RadioParamApplyResult::FAILED)
   MESH_AUTO_LORA_RET(bool, isReceiving, (), (), false)
+  MESH_AUTO_LORA_RET(bool, isTransmitChannelBusy, (), (), false)
   MESH_AUTO_LORA_RET(bool, isReceivingPassive, (int interference_margin_db), (interference_margin_db), false)
   MESH_AUTO_LORA_CONST(float, getLastRSSI, (), (), 0.0f)
   MESH_AUTO_LORA_CONST(float, getLastSNR, (), (), 0.0f)

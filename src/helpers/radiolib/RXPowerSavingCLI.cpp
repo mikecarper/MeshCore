@@ -103,8 +103,9 @@ void RXPowerSavingCLI::get(const RxPowerSavingConfig& config,
     const char* effective = status.armed ? (cad ? "cad" : "armed")
         : status.suspended ? "scan" : status.receiving ? "continuous" : "inactive";
     snprintf(reply, reply_size,
-             "> desired=%s,effective=%s,level=%u,preamble=32,period_us=50000,err=%d",
-             config.enabled ? "on" : "off", effective, unsigned(config.level), (int)status.last_error);
+             "> desired=%s,effective=%s,level=%u,preamble=32,period_us=%lu,err=%d",
+             config.enabled ? "on" : "off", effective, unsigned(config.level),
+             (unsigned long)RX_POWERSAVING_CAD_PERIOD_US, (int)status.last_error);
     return;
   }
 #endif

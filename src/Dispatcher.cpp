@@ -627,7 +627,7 @@ bool Dispatcher::checkForeignRadioSend() {
   // CAD is the normal bounded pre-transmit check. Waiting does not retain the
   // transceiver: MeshCore RX/TX and profile scanning continue in the meantime.
   uint32_t& busy_since = profile_cad_busy[foreign_radio_profile];
-  if (_radio->isReceiving()) {
+  if (_radio->isTransmitChannelBusy()) {
     if (!busy_since) busy_since = now ? now : 1;
     if (radioDirection::mode() == radioDirection::Mode::Tx ||
         (uint32_t)(now - busy_since) <= getCADFailMaxDuration()) {
@@ -1673,7 +1673,7 @@ void Dispatcher::processRecvPacket(Packet* pkt) {
 bool Dispatcher::isTransmitChannelReady(const Packet* packet, uint32_t& retry_delay) {
   const bool busy = packet != NULL && usePassiveChannelCheck(packet)
     ? _radio->isReceivingPassive(getRetryInterferenceMargin())
-    : _radio->isReceiving();
+    : _radio->isTransmitChannelBusy();
   const uint8_t profile = packet ? packet->radio_profile : 0;
   uint32_t& profile_busy = profile_cad_busy[profile];
   if (busy) {

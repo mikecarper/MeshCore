@@ -182,11 +182,10 @@ static Mode current = Mode::Both;
 Mode mode() { return current; }
 }}
 ''' + code
-        code = code.replace("  unsigned scans = 0;", r'''
-  unsigned scans = 0, standbys = 0, clears = 0, transmissions = 0;
-  int standby_error = 0, clear_error = 0, transmit_error = 0;
+        code = code.replace("  unsigned scans = 0, configured_scans = 0, clears = 0;", r'''
+  unsigned scans = 0, configured_scans = 0, clears = 0, standbys = 0, transmissions = 0;
+  int standby_error = 0, transmit_error = 0;
   int standby() { ++standbys; return standby_error; }
-  int clearIrqFlags(uint32_t) { ++clears; return clear_error; }
   int startTransmit(uint8_t*, int) { ++transmissions; return transmit_error; }
 ''')
         code = code.replace("  unsigned n_cad_busy = 0, services = 0;", r'''

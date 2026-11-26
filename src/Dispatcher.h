@@ -522,6 +522,11 @@ public:
   */
   virtual bool isReceiving() { return false; }
 
+  // Check immediately before an outbound attempt. Drivers may leave the
+  // radio in standby after a clear CAD and resume RX on the next poll if
+  // the attempt is abandoned.
+  virtual bool isTransmitChannelBusy() { return isReceiving(); }
+
   /**
    * \brief Non-invasive channel check for a queued retry.
    *

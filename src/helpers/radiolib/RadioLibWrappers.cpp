@@ -3771,7 +3771,7 @@ int16_t RadioLibWrapper::runChannelScan(unsigned long timeout_ms, const ChannelS
   return RADIOLIB_ERR_RX_TIMEOUT;
 }
 
-bool RadioLibWrapper::isChannelActive() {
+bool RadioLibWrapper::isChannelActive(bool leave_standby_for_tx) {
 #if MESH_WARM_RX_REFRESH
   if(_rxps_pulse.pending) return true;
 #endif
@@ -3808,10 +3808,17 @@ bool RadioLibWrapper::isChannelActive() {
       stopReceiveDutyCycle();
     }
     int16_t result = performChannelScan();
+    state = STATE_IDLE;
+    if (leave_standby_for_tx && result == RADIOLIB_CHANNEL_FREE && !_nf_calib_active
+        && _radio->clearIrqFlags(UINT32_MAX) == RADIOLIB_ERR_NONE) {
+      // The clear scan already ended in standby. Leave RX off for this TX,
+      // or let recvRaw restart it on the next loop if the queue changed.
+      claimRadioInterrupt();
+      return false;
+    }
     // CAD also publishes an IRQ event. Consume it before restarting RX so recvRaw() doesn't
     // try to read a non-existent packet and count a spurious recv error.
     claimRadioInterrupt();
-    state = STATE_IDLE;
     startRecv();
     if (result != RADIOLIB_CHANNEL_FREE || state != STATE_RX
         || isPacketPendingOrReceiving()) {

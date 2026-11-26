@@ -88,8 +88,8 @@ struct ChannelScanConfig_t {
 };
 struct Radio {
   RadioInterruptEvents* events;
-  int scan_result = RADIOLIB_CHANNEL_FREE, start_result = 0;
-  unsigned scans = 0, configured_scans = 0;
+  int scan_result = RADIOLIB_CHANNEL_FREE, start_result = 0, clear_error = 0;
+  unsigned scans = 0, configured_scans = 0, clears = 0;
   ChannelScanConfig_t last_scan = {};
   int startChannelScan() { ++scans; return start_result; }
   int startChannelScan(const ChannelScanConfig_t& config) {
@@ -101,6 +101,7 @@ struct Radio {
     if (scan_result != RADIOLIB_ERR_UNKNOWN) events->record();
     return scan_result;
   }
+  int clearIrqFlags(uint32_t) { ++clears; return clear_error; }
 };
 struct RadioLibWrapper {
   @SETTLE_CONSTANT@
@@ -196,7 +197,9 @@ struct RadioLibWrapper {
   int16_t performChannelScanWithTimeout(unsigned long);
   int16_t runChannelScan(unsigned long, const ChannelScanConfig_t*);
   bool isPacketPendingOrReceiving();
-  bool isChannelActive();
+  bool isChannelActive(bool leave_standby_for_tx = false);
+  bool isReceiving() { return isReceivingPacket() || isChannelActive(); }
+  virtual bool isTransmitChannelBusy() { return isReceiving(); }
   bool isReceivingPassive(int);
   bool setRxPowerSaving(bool, uint32_t, uint32_t);
   mesh::RadioParamApplyResult trySetRxPowerSaving(bool, uint32_t, uint32_t);
@@ -814,11 +817,12 @@ class RadioReceiveContractTest(unittest.TestCase):
 #define RADIOLIB_IRQ_CAD_DEFAULT_MASK RADIOLIB_IRQ_CAD_DEFAULT_FLAGS
 struct SX1262Wrapper : RadioLibWrapper {
   @PRETRANSMIT_CAD@
+  @TRANSMIT_BUSY@
 };
 int main() {
   SX1262Wrapper w;
   w._rx_ps_enabled = w._rx_ps_armed = true;
-  assert(!w.isChannelActive());
+  assert(!w.isTransmitChannelBusy());
   const auto& cad = w.radio.last_scan.cad;
   assert(w.radio.scans == 1 && w.radio.configured_scans == 1);
   assert(cad.symNum == RADIOLIB_SX126X_CAD_ON_2_SYMB);
@@ -827,7 +831,21 @@ int main() {
   assert(cad.exitMode == RADIOLIB_SX126X_CAD_GOTO_STDBY && cad.timeout == 0);
   assert(cad.irqFlags == RADIOLIB_IRQ_CAD_DEFAULT_FLAGS);
   assert(cad.irqMask == RADIOLIB_IRQ_CAD_DEFAULT_MASK);
-  assert(w.stops == 1 && w.arms == 1 && w._rx_ps_armed);
+  assert(w.stops == 1 && w.radio.clears == 1 && w.arms == 0);
+  assert(!w._rx_ps_armed && !w.hasPendingRadioInterrupt() && w.state == STATE_IDLE);
+
+  // The receive poll can rearm when the queue retires the selected packet.
+  w.startRecv();
+  assert(w.arms == 1 && w._rx_ps_armed);
+
+  for (bool detected : {false, true}) {
+    SX1262Wrapper receiving;
+    if (detected) receiving.radio.scan_result = 1;
+    else receiving.radio.clear_error = -9;
+    assert(receiving.isTransmitChannelBusy() == detected);
+    assert(receiving.state == STATE_RX && receiving.arms == 1);
+    assert(receiving.radio.clears == (detected ? 0U : 1U));
+  }
 
   mesh::RadioProfileConfig second;
   second.params.freq = 910.5f;
@@ -836,15 +854,17 @@ int main() {
   second.params.cr = 5;
   second.mode = mesh::RadioProfileMode::Rx;
   w._profiles.setSecondary(second, false);
-  assert(!w.isChannelActive());
+  assert(!w.isTransmitChannelBusy());
   assert(w.radio.scans == 2 && w.radio.configured_scans == 1);
+  assert(w.state == STATE_RX && w.arms == 2 && w.radio.clears == 1);
   assert(w.performChannelScanWithTimeout(100) == RADIOLIB_CHANNEL_FREE);
   assert(w.radio.scans == 3 && w.radio.configured_scans == 1);
 }
 '''
         with tempfile.TemporaryDirectory() as folder:
             cpp, binary = Path(folder) / 'cad.cpp', Path(folder) / 'cad'
-            cpp.write_text(harness.replace('@PRETRANSMIT_CAD@', method(wrapper, 'int16_t performChannelScan()')))
+            cpp.write_text(harness.replace('@PRETRANSMIT_CAD@', method(wrapper, 'int16_t performChannelScan()'))
+                           .replace('@TRANSMIT_BUSY@', method(wrapper, 'bool isTransmitChannelBusy()')))
             subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++17', '-I', str(ROOT / 'src'),
                             str(cpp), '-o', str(binary)], check=True)
             subprocess.run([str(binary)], check=True)

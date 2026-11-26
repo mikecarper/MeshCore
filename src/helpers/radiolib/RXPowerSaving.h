@@ -241,7 +241,7 @@ inline bool rxPowerSavingUsesContinuousFallback(uint32_t rx_us, uint32_t sleep_u
 
 #if MESH_RAK3401_CAD_RXPS
 constexpr uint8_t RX_POWERSAVING_CAD_LEVEL = 11;
-constexpr uint32_t RX_POWERSAVING_CAD_PERIOD_US = 50000;
+constexpr uint32_t RX_POWERSAVING_CAD_PERIOD_US = 32000;
 constexpr uint32_t RX_POWERSAVING_CAD_LISTEN_US = 5120;
 
 // Carry the CAD policy through the existing two-period API, including profile

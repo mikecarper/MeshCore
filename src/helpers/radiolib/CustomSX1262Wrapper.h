@@ -26,21 +26,32 @@ class CustomSX1262Wrapper : public SX126xPulseWrapper<CustomSX1262> {
   static constexpr uint16_t CadReceiveEnd = RADIOLIB_SX126X_IRQ_RX_DONE
       | RADIOLIB_SX126X_IRQ_TIMEOUT | RADIOLIB_SX126X_IRQ_HEADER_ERR
       | RADIOLIB_SX126X_IRQ_CRC_ERR;
-  static constexpr uint32_t CadReceiveTimeoutUs = 1500000;
+  static constexpr uint16_t CadHeader = RADIOLIB_SX126X_IRQ_HEADER_VALID;
+  // A CAD hit may lead the intended transmission. Give the 32-symbol
+  // preamble plus the explicit LoRa header room to finish before aborting.
+  static constexpr uint32_t CadHeaderTimeoutMs = 140;
+  static constexpr uint32_t CadPacketTimeoutMs = 1600;
   bool _cad_rxps_armed = false;
   bool _cad_receiving = false;
+  bool _cad_header_seen = false;
   uint32_t _cad_receive_started = 0;
+
+  bool cadReceiveExpired(uint32_t now) const {
+    return _cad_receiving && now - _cad_receive_started >=
+        (_cad_header_seen ? CadPacketTimeoutMs : CadHeaderTimeoutMs);
+  }
 
   int16_t armCadRxPowerSaving() {
     auto* radio = static_cast<CustomSX1262*>(_radio);
     int16_t err = radio->standby(RADIOLIB_SX126X_STANDBY_RC);
+    // SetStandby can leave a native RxDutyCycle RTC event pending. It can
+    // terminate a subsequent receive window without an IRQ after a mode change.
+    if (err == RADIOLIB_ERR_NONE) err = radio->stopRTC();
     if (err == RADIOLIB_ERR_NONE) err = radio->setDioIrqParams(
-        RADIOLIB_SX126X_IRQ_ALL, CadHit | CadReceiveEnd);
+        RADIOLIB_SX126X_IRQ_ALL, CadHit | CadHeader | CadReceiveEnd);
     if (err == RADIOLIB_ERR_NONE) err = radio->clearIrqStatus();
-    constexpr uint32_t timeout_ticks = CadReceiveTimeoutUs * 8 / 125;
     const uint8_t cad_params[] = {RADIOLIB_SX126X_CAD_ON_2_SYMB, 22, 10,
-        RADIOLIB_SX126X_CAD_GOTO_RX, uint8_t(timeout_ticks >> 16),
-        uint8_t(timeout_ticks >> 8), uint8_t(timeout_ticks)};
+        RADIOLIB_SX126X_CAD_GOTO_STDBY, 0, 0, 0};
     // RadioLib's setCad() sends SetCad immediately after setting these
     // parameters. Leave the first scan to PPI so it cannot race sleep.
     if (err == RADIOLIB_ERR_NONE) err = radio->getMod()->SPIwriteStream(
@@ -57,42 +68,51 @@ class CustomSX1262Wrapper : public SX126xPulseWrapper<CustomSX1262> {
 
   int recvCadRxPowerSaving(uint8_t* bytes, int sz) {
     namespace cad = rak3401::cadRxps;
-    if (cad::interruptAsserted()) {
+    const uint32_t now = millis();
+    if (cad::interruptAsserted() || cadReceiveExpired(now)) {
       cad::stop();
       auto* radio = static_cast<CustomSX1262*>(_radio);
       uint8_t data[2] = {};
       const int16_t err = radio->getMod()->SPIreadStream(
           RADIOLIB_SX126X_CMD_GET_IRQ_STATUS, data, sizeof(data));
       const uint16_t irq = (uint16_t(data[0]) << 8) | data[1];
-      if (err == RADIOLIB_ERR_NONE && (irq & CadReceiveEnd)) {
-        _cad_receiving = false;
-        _loop_event_pending = true;
-        return RadioLibWrapper::recvRaw(bytes, sz);
-      }
-      // A detection also raises DIO1. Acknowledge only that bit so RX Done
-      // can produce a distinct edge, including if it races this SPI write.
-      if (err == RADIOLIB_ERR_NONE && (irq & CadHit)) {
-        if (!_cad_receiving) {
-          _cad_receiving = true;
-          _cad_receive_started = millis();
-        }
-        if (uint32_t(millis() - _cad_receive_started) < CadReceiveTimeoutUs / 1000 + 100) {
+      if (err == RADIOLIB_ERR_NONE && !(irq & CadReceiveEnd)) {
+        if (!_cad_receiving && (irq & CadHit)) {
+          // CAD_ONLY returns to standby. Enter ordinary RX explicitly so it
+          // has its own receive state after the native duty-cycle sequencer.
           claimRadioInterrupt();
-          radio->clearIrqFlags(CadHit);
-          return 0;
+          if (radio->setRx(RADIOLIB_SX126X_RX_TIMEOUT_NONE) == RADIOLIB_ERR_NONE) {
+            _cad_receiving = true;
+            _cad_header_seen = false;
+            _cad_receive_started = now;
+            // The radio can be acquiring the preamble while we acknowledge
+            // CAD. Clearing only this bit preserves a racing receive IRQ.
+            radio->clearIrqFlags(CadHit);
+            return 0;
+          }
+        }
+        if (_cad_receiving) {
+          if (irq & CadHeader) _cad_header_seen = true;
+          if (!cadReceiveExpired(now)) {
+            const uint16_t observed = irq & (CadHit | CadHeader);
+            if (observed) {
+              claimRadioInterrupt();
+              // RX_DONE may race this acknowledgement. Leave all terminal
+              // IRQs latched for the FIFO reader, including a late RX_DONE.
+              radio->clearIrqFlags(observed);
+            }
+            return 0;
+          }
         }
       }
-      // After a failed probe, the ordinary reader retains its bounded IRQ
-      // retry and still verifies RX_DONE before reading the FIFO.
+      // Let the ordinary reader verify RX_DONE before rearm even if the
+      // deadline or a transient IRQ-status error raced a completed packet.
+      _cad_receiving = false;
       _loop_event_pending = true;
-      if (err != RADIOLIB_ERR_NONE) _cad_receiving = false;
       return RadioLibWrapper::recvRaw(bytes, sz);
     }
-    if (_cad_receiving) {
-      // The radio owns RX until a terminal IRQ. Allow a bounded recovery if
-      // its receive timeout interrupt is absent.
-      if (uint32_t(millis() - _cad_receive_started) < CadReceiveTimeoutUs / 1000 + 100) return 0;
-    } else if (cad::ownsBus()) {
+    if (_cad_receiving) return 0;
+    if (cad::ownsBus()) {
       if (cad::exhausted()) {
         cad::stop();
         if (cad::start() || cad::interruptAsserted()) return 0;
@@ -341,6 +361,11 @@ public:
     return packetScoreInt(snr, sf, packet_len);
   }
   uint8_t getSpreadingFactor() const override { return ((CustomSX1262 *)_radio)->spreadingFactor; }
+  bool isTransmitChannelBusy() override {
+    if (_profiles.enabled()) return isReceiving();
+    return isChannelActive(true);
+  }
+
   int16_t performChannelScan() override {
     if (_profiles.enabled()) return RadioLibWrapper::performChannelScan();
 
@@ -529,7 +554,6 @@ protected:
     if (_cad_rxps_armed) {
       _cad_rxps_armed = _cad_receiving = false;
       rak3401::cadRxps::stop();
-      return _radio->standby();
     }
 #endif
     const int16_t standby_error = _radio->standby();

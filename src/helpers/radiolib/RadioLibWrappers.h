@@ -691,7 +691,7 @@ public:
     return mesh::RadioParamApplyResult::FAILED;
   }
   virtual bool isRxPowerSavingRfRxDisabled() const { return false; }
-  bool isChannelActive();
+  bool isChannelActive(bool leave_standby_for_tx = false);
 
   bool isReceiving() override {
     if (isReceivingPacket()) return true;
