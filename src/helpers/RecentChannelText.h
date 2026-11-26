@@ -26,9 +26,10 @@ struct ChannelTextDedupSettings {
 
 // Display history lives separately from the app delivery queue so draining the
 // queue does not forget what the user already saw.
-template <size_t ChannelCount>
+template <size_t ChannelCount, size_t ExternalCount = 0>
 class RecentChannelText {
   static_assert(ChannelCount <= ChannelTextDedupSettings::SlotCount, "channel mask too small");
+  static_assert(ExternalCount < ChannelCount, "leave some channel history in ordinary RAM");
 
  public:
   static constexpr size_t FingerprintSize = 8;
@@ -41,7 +42,7 @@ class RecentChannelText {
   }
 
   bool suppress(size_t index, const uint8_t* fingerprint, uint32_t now) {
-    auto& channel = channels_[index];
+    auto& channel = channelAt(index);
     for (uint8_t i = 0; i < Depth; ++i) {
       auto& entry = channel.entries[i];
       if ((channel.valid & (1U << i)) && now - entry.last_seen < WindowMs
@@ -54,7 +55,7 @@ class RecentChannelText {
   }
 
   void remember(size_t index, const uint8_t* fingerprint, uint32_t now) {
-    auto& channel = channels_[index];
+    auto& channel = channelAt(index);
     auto& entry = channel.entries[channel.next];
     memcpy(entry.fingerprint, fingerprint, FingerprintSize);
     entry.last_seen = now;
@@ -63,7 +64,8 @@ class RecentChannelText {
   }
 
   void clear(size_t index) {
-    channels_[index].valid = channels_[index].next = 0;
+    auto& channel = channelAt(index);
+    channel.valid = channel.next = 0;
   }
 
   void clearAll() {
@@ -75,7 +77,8 @@ class RecentChannelText {
     last_sweep_ = now;
     // Clear stale entries even on quiet channels before the millisecond clock
     // can wrap all the way back to their original timestamps.
-    for (auto& channel : channels_) {
+    for (size_t index = 0; index < ChannelCount; ++index) {
+      auto& channel = channelAt(index);
       for (uint8_t i = 0; i < Depth; ++i) {
         if (now - channel.entries[i].last_seen >= WindowMs)
           channel.valid &= uint8_t(~(1U << i));
@@ -94,8 +97,15 @@ class RecentChannelText {
     uint8_t valid;
     uint8_t next;
   };
-  Channel channels_[ChannelCount] = {};
+  // Only targets that select an external bank define this symbol.
+  static Channel external_channels_[ExternalCount ? ExternalCount : 1];
+  Channel channels_[ChannelCount - ExternalCount] = {};
   uint32_t last_sweep_ = 0;
+
+  Channel& channelAt(size_t index) {
+    if (index < ExternalCount) return external_channels_[index];
+    return channels_[index - ExternalCount];
+  }
 };
 
 }  // namespace mesh

@@ -1177,8 +1177,8 @@ private:
   int offline_queue_len;
   int offline_queue_head;
 #if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
-#if defined(COMPANION_CHANNEL_TEXT_HISTORY_RTC) && !COMPANION_RTC_SLOW_OFFLINE_FRAMES
-  static mesh::RecentChannelText<MAX_GROUP_CHANNELS> recent_channel_text;
+#if COMPANION_CHANNEL_TEXT_HISTORY_RTC > 0 && !COMPANION_RTC_SLOW_OFFLINE_FRAMES
+  mesh::RecentChannelText<MAX_GROUP_CHANNELS, COMPANION_CHANNEL_TEXT_HISTORY_RTC> recent_channel_text;
 #else
   mesh::RecentChannelText<MAX_GROUP_CHANNELS> recent_channel_text;
 #endif

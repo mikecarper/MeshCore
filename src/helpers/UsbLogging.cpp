@@ -1025,7 +1025,10 @@ static AtomicWholeRecordNonBlockingStream<11>
 // calls whose return values are not consumed by the CLI. Retain one complete
 // multi-line response while a normal host drains CDC0, but bound the memory and
 // drop later records instead of ever waiting on an unread endpoint.
-static BufferedNonBlockingWriteStream<4096>
+#ifndef MESH_NRF52_USB_TERMINAL_BUFFER_SIZE
+#define MESH_NRF52_USB_TERMINAL_BUFFER_SIZE 4096
+#endif
+static BufferedNonBlockingWriteStream<MESH_NRF52_USB_TERMINAL_BUFFER_SIZE>
     buffered_primary_usb_terminal_port(
         nonblocking_primary_usb_companion_port);
 static uint32_t primary_usb_terminal_seen_reset_generation = 0;
@@ -1048,7 +1051,7 @@ class Nrf52BufferedLoggingStream : public Stream {
   }
   size_t write(uint8_t value) override { return write(&value, 1); }
   size_t write(const uint8_t* data, size_t size) override {
-    if (!data || !size || size > 4096 || !canAccessPrimaryUsbSession(nullptr)
+    if (!data || !size || size > MESH_NRF52_USB_TERMINAL_BUFFER_SIZE || !canAccessPrimaryUsbSession(nullptr)
         || availableForWrite() < static_cast<int>(size)) return 0;
     return buffered_primary_usb_terminal_port.write(data, size);
   }
