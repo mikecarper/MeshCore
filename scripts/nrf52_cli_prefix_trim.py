@@ -13,11 +13,11 @@ import re
 
 SOURCES = {
     'examples/simple_repeater/MyMesh.cpp': (
-        '3051797ce92f5af23523efddc05485754193d9ae054327d220a44d5179dc01bb',
-        '5e1403a0a77c14ebcd03cc176c6ea28baa300e9642e6b2c5aafdc606ea1371df'),
+        '2a43f538a3a8a7aeae609e6d56b0bbc5d72ff1a6bbd6d36e7cff8b9a535545d0',
+        'a52b04476fd66ea62b28d20dc00dae0a2cdb27923eff5ac54ec629a5da5f8919'),
     'src/helpers/CommonCLI.cpp': (
-        '4ff2bd6e75e0697769068f557ea04bad6c26e3edbd55d57e78026bf6aeddb029',
-        '7d03b65da25321c0aa25b7af5424529389f44203784fd684f53f127bfbc80a2b'),
+        'c7c9b49f74e53415d7c707b0274b72477ae9472ac578f17f9a4f8777402acf0a',
+        'f8be197f117fb6cc52ab08b999feaaf6ae1db90ddf0991e6e407560a0d36369f'),
     'src/helpers/ota/OtaCli.cpp': (
         'dbe8f7e6f282942f3edd6be542d8e02acfff47ef86652f9b800e00da074dfcc5',
         '562017187e8ae475c3401beb544aabfd9d5b1abec29f597dedd5cf719670ebb3'),
@@ -37,8 +37,8 @@ CASES = {
          ('Error, ', 'MESH_SHARED_ERROR_COMMA', 'copyErrorComma', 3))),
     'src/helpers/CommonCLI.cpp': (
         '// Believe it or not',
-        (('Err - ', 'MESH_SHARED_ERR', 'copyErrorDash', 11),
-         ('OK - ', 'MESH_SHARED_OK', 'copyOkDash', 11),
+        (('Err - ', 'MESH_SHARED_ERR', 'copyErrorDash', 12),
+         ('OK - ', 'MESH_SHARED_OK', 'copyOkDash', 12),
          ('Error: ', 'MESH_SHARED_ERROR_COLON', 'copyErrorColon', 3),
          ('Error, ', 'MESH_SHARED_ERROR_COMMA', 'copyErrorComma', 6),
          ('ERR: ', 'MESH_SHARED_UPPER_ERROR_COLON', 'copyUpperErrorColon', 9))),

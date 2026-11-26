@@ -187,7 +187,7 @@ int main() {
                             '-I', str(ROOT / 'src'), str(unit), '-o', str(binary)]
                         subprocess.run(command, check=True, timeout=60)
                         subprocess.run([str(binary)], check=True, timeout=30)
-        self.assertEqual(checked, 418)
+        self.assertEqual(checked, 420)
 
 
 if __name__ == '__main__':
