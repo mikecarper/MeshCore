@@ -70,6 +70,7 @@ void initVariant()
   pinMode(TEMP_SENSOR, INPUT);
   pinMode(LUX_SENSOR, INPUT);
   pinMode(EXT_CHRG_DETECT, INPUT);
+  pinMode(EXT_CHRG_DONE, INPUT);
   pinMode(EXT_PWR_DETECT, INPUT);
   pinMode(GPS_RESETB, INPUT_PULLUP);
   pinMode(PIN_BUTTON1, INPUT);
@@ -83,6 +84,7 @@ void initVariant()
   pinMode(GPS_SLEEP_INT, OUTPUT);
   pinMode(GPS_RTC_INT, OUTPUT);
   pinMode(LED_PIN, OUTPUT);
+  pinMode(PIN_CHARGE_LED, OUTPUT);
 
   digitalWrite(PIN_3V3_EN, LOW);
   digitalWrite(PIN_3V3_ACC_EN, LOW);
@@ -93,4 +95,5 @@ void initVariant()
   digitalWrite(GPS_SLEEP_INT, LOW);
   digitalWrite(GPS_RTC_INT, LOW);
   digitalWrite(LED_PIN, LOW);
+  digitalWrite(PIN_CHARGE_LED, LOW);
 }

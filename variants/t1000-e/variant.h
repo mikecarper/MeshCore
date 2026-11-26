@@ -26,6 +26,7 @@
 #define ADC_MULTIPLIER          (2.0F)
 
 #define EXT_CHRG_DETECT         (35)            // P1.3
+#define EXT_CHRG_DONE           (36)            // P1.4, active low
 #define EXT_PWR_DETECT          (5)             // P0.5
 
 #define ADC_RESOLUTION          (14)
@@ -78,6 +79,7 @@
 #define LED_BUILTIN             (-1)
 #define LED_BLUE                (-1)            // No blue led
 #define LED_GREEN               (24)            // P0.24
+#define PIN_CHARGE_LED          (3)             // P0.03, active high
 #define LED_PIN                 LED_GREEN
 
 #define LED_STATE_ON            HIGH

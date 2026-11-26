@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "t1000e_sensors.h"
 #include "target.h"
+#include <helpers/LedPolicy.h>
 #include <helpers/UsbLogging.h>
 #include <helpers/radiolib/Nrf52BufferedRadioHal.h>
 #include <helpers/sensors/MicroNMEALocationProvider.h>
@@ -165,9 +166,28 @@ bool T1000SensorManager::querySensors(uint8_t requester_permissions, CayenneLPP&
   return true;
 }
 
+static void serviceChargeLed(unsigned long now) {
+  static bool was_on = false;
+  bool on = false;
+  if (mesh::leds::enabled() && digitalRead(EXT_PWR_DETECT) == HIGH) {
+    if (digitalRead(EXT_CHRG_DONE) == LOW) {
+      on = true;
+    } else {
+      // Use GPIO so charging status leaves PWM available for the buzzer.
+      const unsigned long half_period = digitalRead(EXT_CHRG_DETECT) == LOW ? 500 : 200;
+      on = (now / half_period) % 2 == 0;
+    }
+  }
+  if (on != was_on) {
+    digitalWrite(PIN_CHARGE_LED, on ? HIGH : LOW);
+    was_on = on;
+  }
+}
+
 void T1000SensorManager::loop() {
   static unsigned long next_gps_update = 0;
   unsigned long now = millis();
+  serviceChargeLed(now);
   loopGpsTelemetry(now);
 
   if (powersaving_enabled && _nmea->getGPSPowerSaving()) {

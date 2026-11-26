@@ -566,6 +566,11 @@ bool ST7735Display::begin() {
 
 #ifdef ESP_PLATFORM
     _spi->begin(PIN_TFT_SCL, -1 /* _miso */, PIN_TFT_SDA /* _mosi */, -1);
+  #ifdef HELTEC_TRACKER_V2
+    // SPIClass::begin() is a no-op on wake if HSPI is already initialized.
+    spiAttachSCK(_spi->bus(), PIN_TFT_SCL);
+    spiAttachMOSI(_spi->bus(), PIN_TFT_SDA);
+  #endif
 #else
     _spi->begin();
 #endif
@@ -654,6 +659,11 @@ void ST7735Display::turnOff() {
     // retaining the peripheral avoids an unchecked nrfx uninit/reinit cycle.
     pinMode(PIN_TFT_CS, INPUT);
     pinMode(PIN_TFT_DC, INPUT);
+#ifdef HELTEC_TRACKER_V2
+    // Disconnect HSPI from the pins before the shared peripheral rail goes off.
+    spiDetachSCK(_spi->bus(), PIN_TFT_SCL);
+    spiDetachMOSI(_spi->bus(), PIN_TFT_SDA);
+#endif
     pinMode(PIN_TFT_SDA, INPUT);
     pinMode(PIN_TFT_SCL, INPUT);
     pinMode(PIN_TFT_RST, INPUT);

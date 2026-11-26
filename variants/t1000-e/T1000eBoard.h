@@ -46,6 +46,7 @@ public:
 
   void shutdownPeripherals() override {
     NRF52Board::shutdownPeripherals();
+    digitalWrite(PIN_CHARGE_LED, LOW);
 
     #ifdef HAS_GPS
         digitalWrite(GPS_VRTC_EN, LOW);
