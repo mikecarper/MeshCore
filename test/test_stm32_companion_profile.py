@@ -312,7 +312,7 @@ class STM32CompanionProfileTest(unittest.TestCase):
         for definition in ("MAX_CONTACTS=100", "MAX_GROUP_CHANNELS=8",
                            "ENABLE_USB_INTERFACE"):
             self.assertRegex(flags, r"-D\s+" + re.escape(definition) + r"\b")
-        allowed = {"CHANNEL_TEXT_DEDUP"} if self.base in ("lora_e5", "lora_e5_mini") else set()
+        allowed = {"CHANNEL_TEXT_DEDUP"} if self.base in ("lora_e5", "lora_e5_mini", "rak3x72", "Tiny_Relay") else set()
         self.assertEqual(set(re.findall(r"COMPANION_FEATURE_(\w+)=0\b", flags)), allowed)
         self.assertNotRegex(self.config[self.base]["build_flags"], r"COMPANION_FEATURE_\w+=0")
         disabled = set(re.findall(r"-D\s*(MESH_ENABLE_\w+)=0\b", flags))

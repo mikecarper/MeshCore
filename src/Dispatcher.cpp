@@ -686,7 +686,12 @@ bool Dispatcher::checkForeignRadioSend() {
 #endif
 
 int Dispatcher::calcRxDelay(float score, uint32_t air_time) const {
-  return (int) ((powf(10.0f, 0.85f - score) - 1.0f) * air_time);
+#if MESH_STM32_COMPACT_RX_DELAY
+  const float factor = expf(2.302585093f * (0.85f - score));  // log(10)
+#else
+  const float factor = powf(10.0f, 0.85f - score);
+#endif
+  return (int)((factor - 1.0f) * air_time);
 }
 
 uint32_t Dispatcher::getCADFailRetryDelay() const {

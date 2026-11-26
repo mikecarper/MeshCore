@@ -1,4 +1,7 @@
 #include <helpers/UsbDataLock.h>
+#if MESH_STM32_COMPACT_RX_DELAY
+#include <helpers/stm32/CompanionRxDelay.h>
+#endif
 #include <helpers/CLIReplyText.h>
 #include <helpers/BleCommonPinWarning.h>
 #include <helpers/HardwareCommand.h>
@@ -849,7 +852,12 @@ int MyMesh::getInterferenceThreshold() const {
 
 int MyMesh::calcRxDelay(float score, uint32_t air_time) const {
   if (_prefs.rx_delay_base <= 0.0f) return 0;
-  return (int)((powf(_prefs.rx_delay_base, 0.85f - score) - 1.0f) * air_time);
+#if MESH_STM32_COMPACT_RX_DELAY
+  const float factor = expf(mesh::stm32::rxDelayLog(_prefs.rx_delay_base) * (0.85f - score));
+#else
+  const float factor = powf(_prefs.rx_delay_base, 0.85f - score);
+#endif
+  return (int)((factor - 1.0f) * air_time);
 }
 
 uint32_t MyMesh::getRetransmitDelay(const mesh::Packet *packet) {
