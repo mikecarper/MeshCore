@@ -242,7 +242,14 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks,
   bool recv_pkt_regionless_scope_set;
 #endif
   ClientACL acl;
+#if ROOM_REPLAY_CACHE_RTC_SLOW_STORAGE
+#if !ROOM_POSTS_RTC_SLOW_STORAGE
+#error "RTC Room replay cache requires the qualified Room post bank"
+#endif
+  static mesh::LogicalMessageCache<ROOM_MESSAGE_CACHE_SIZE> recent_room_posts;
+#else
   mesh::LogicalMessageCache<ROOM_MESSAGE_CACHE_SIZE> recent_room_posts;
+#endif
   mesh::LogicalMessageCache<16> recent_room_polls;
   mesh::RoomAccessPolicy room_access;
   mesh::RemoteCliReplyCache remote_cli_reply_cache;

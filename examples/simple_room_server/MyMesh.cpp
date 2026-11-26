@@ -2752,6 +2752,11 @@ void MyMesh::sendNodeDiscoverReq() {
 #endif
 static_assert(MAX_UNSYNCED_POSTS == 32 && sizeof(PostInfo) == 188,
               "Keep the complete qualified Room post capacity and geometry");
+#if ROOM_REPLAY_CACHE_RTC_SLOW_STORAGE
+static_assert(sizeof(mesh::LogicalMessageCache<ROOM_MESSAGE_CACHE_SIZE>) <= 1024,
+              "Keep the Room replay cache within the retained RAM budget");
+RTC_SLOW_ATTR mesh::LogicalMessageCache<ROOM_MESSAGE_CACHE_SIZE> MyMesh::recent_room_posts;
+#endif
 namespace {
 const void* room_rtc_posts_owner = nullptr;
 
@@ -2913,6 +2918,9 @@ MyMesh::~MyMesh() {
 #endif
 
 void MyMesh::begin(FILESYSTEM *fs) {
+#if ROOM_REPLAY_CACHE_RTC_SLOW_STORAGE
+  recent_room_posts.clear();
+#endif
   mesh::Mesh::begin();
   _fs = fs;
   // load persisted prefs

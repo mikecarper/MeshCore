@@ -4099,8 +4099,7 @@ apply_esp32_full_size_profile() {
     lilygo_tlora_v2_1_1_6_room_server_observer_mqtt|lilygo_tlora_v2_1_1_6_room_server_observer_mqtt_|\
     tbeam_room_server_observer_mqtt|tbeam_sx1262_room_server_observer_mqtt|tbeam_sx1276_room_server_observer_mqtt)
       if [[ "${env_name,,}" == tbeam_room_server_observer_mqtt ]]; then
-        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048"
-        record_build_reduction "web.terminal initial scrollback 2048 bytes; grows up to 32768 bytes when memory permits"
+        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DROOM_REPLAY_CACHE_RTC_SLOW_STORAGE=1"
       fi
       # Preserve all 32 Room posts in genuine byte-accessible RTC SLOW memory.
       # The bounded proof implementation serves the same maximum 4096 leaves
