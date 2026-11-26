@@ -793,6 +793,11 @@ bool CommonCLI::calculateRxPowerSavingLevel(uint32_t level, uint8_t sf, float bw
 #ifdef WRAPPER_CLASS
   if (!WRAPPER_CLASS::SupportsRxPowerSaving) return false;
 #endif
+#if MESH_RAK3401_CAD_RXPS
+  if (level == RX_POWERSAVING_CAD_LEVEL && preamble <= 0xff) {
+    return calcCadRxPowerSaving(sf, bw, preamble, rx_us, sleep_us);
+  }
+#endif
   if (level < 1 || level > 10 || preamble > 0xFF
       || !isRxPowerSavingPreamble((uint8_t)preamble)) {
     return false;
@@ -2218,7 +2223,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->rx_powersaving_enabled = constrain(_prefs->rx_powersaving_enabled, 0, 1);
     _prefs->rx_watchdog_enabled = constrain(_prefs->rx_watchdog_enabled, 0, 1);
     _prefs->system_watchdog_enabled = constrain(_prefs->system_watchdog_enabled, 0, 1);
-    _prefs->rx_ps_level = constrain(_prefs->rx_ps_level, 0, 10);
+    _prefs->rx_ps_level = constrain(_prefs->rx_ps_level, 0, RX_POWERSAVING_MAX_CONFIG_LEVEL);
     if (_prefs->rx_ps_preamble != 16 && _prefs->rx_ps_preamble != 32) {
       _prefs->rx_ps_preamble = 0;   // 0 = auto (derive from SF)
     }
@@ -5489,7 +5494,16 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
             ? RX_POWERSAVING_CONSERVATIVE_LEVEL : RX_POWERSAVING_BALANCED_LEVEL;
         requested_preamble = RX_POWERSAVING_PROFILE_PREAMBLE;
       }
-      if (requested_level < 1 || requested_level > 10
+#if MESH_RAK3401_CAD_RXPS
+      if (requested_level == RX_POWERSAVING_CAD_LEVEL) {
+        if (requested_preamble != 0 && requested_preamble != 32) {
+          strcpy(reply, "ERROR: level 11 requires a 32-symbol preamble");
+          return;
+        }
+        requested_preamble = 32;
+      }
+#endif
+      if (requested_level < 1 || requested_level > RX_POWERSAVING_MAX_CONFIG_LEVEL
           || (requested_preamble != 0 && requested_preamble != 16 && requested_preamble != 32)) {
         strcpy(reply, MESH_CLI_REPLY_TEXT("ERROR: level range is 1-10; preamble is 16 or 32", "ERROR: level 1-10; preamble 16|32"));
         return;
@@ -5556,6 +5570,12 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       restoreRxSetting(RxPowerSaving, result, previous_pending, previous_retry_at);
       return;
     }
+#if MESH_RAK3401_CAD_RXPS
+    if (level_requested && level == RX_POWERSAVING_CAD_LEVEL) {
+      strcpy(reply, "OK - level 11 (CAD); check get radio.rxps.status");
+      return;
+    }
+#endif
     if (level_requested) {
       sprintf(reply, "OK - level %lu,%s,%lu,%lu,preamble=%lu",
               (unsigned long)level,

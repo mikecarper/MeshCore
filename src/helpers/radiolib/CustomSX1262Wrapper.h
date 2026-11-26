@@ -9,6 +9,9 @@
 #include "SX126xMorseRamp.h"
 #include "SX126xMorseReceiver.h"
 #include "RxpsPulseTiming.h"
+#if MESH_RAK3401_CAD_RXPS
+#include "CadRxPowerSaving.h"
+#endif
 
 #ifndef USE_SX1262
 #define USE_SX1262
@@ -17,6 +20,94 @@
 class CustomSX1262Wrapper : public SX126xPulseWrapper<CustomSX1262> {
   bool _profile_standby_held = false;
   bool _saved_standby_xosc = false;
+
+#if MESH_RAK3401_CAD_RXPS
+  static constexpr uint16_t CadHit = RADIOLIB_SX126X_IRQ_CAD_DETECTED;
+  static constexpr uint16_t CadReceiveEnd = RADIOLIB_SX126X_IRQ_RX_DONE
+      | RADIOLIB_SX126X_IRQ_TIMEOUT | RADIOLIB_SX126X_IRQ_HEADER_ERR
+      | RADIOLIB_SX126X_IRQ_CRC_ERR;
+  static constexpr uint32_t CadReceiveTimeoutUs = 1500000;
+  bool _cad_rxps_armed = false;
+  bool _cad_receiving = false;
+  uint32_t _cad_receive_started = 0;
+
+  int16_t armCadRxPowerSaving() {
+    auto* radio = static_cast<CustomSX1262*>(_radio);
+    int16_t err = radio->standby(RADIOLIB_SX126X_STANDBY_RC);
+    if (err == RADIOLIB_ERR_NONE) err = radio->setDioIrqParams(
+        RADIOLIB_SX126X_IRQ_ALL, CadHit | CadReceiveEnd);
+    if (err == RADIOLIB_ERR_NONE) err = radio->clearIrqStatus();
+    constexpr uint32_t timeout_ticks = CadReceiveTimeoutUs * 8 / 125;
+    const uint8_t cad_params[] = {RADIOLIB_SX126X_CAD_ON_2_SYMB, 22, 10,
+        RADIOLIB_SX126X_CAD_GOTO_RX, uint8_t(timeout_ticks >> 16),
+        uint8_t(timeout_ticks >> 8), uint8_t(timeout_ticks)};
+    // RadioLib's setCad() sends SetCad immediately after setting these
+    // parameters. Leave the first scan to PPI so it cannot race sleep.
+    if (err == RADIOLIB_ERR_NONE) err = radio->getMod()->SPIwriteStream(
+        RADIOLIB_SX126X_CMD_SET_CAD_PARAMS, cad_params, sizeof(cad_params));
+    // Enter warm sleep through the driver once so it invalidates its modem
+    // cache and any optional in-radio retune patch before PPI takes over.
+    if (err == RADIOLIB_ERR_NONE) err = radio->sleep(true);
+    if (err != RADIOLIB_ERR_NONE) return err;
+    radio->getMod()->setRfSwitchState(Module::MODE_RX);
+    _cad_rxps_armed = rak3401::cadRxps::start();
+    _cad_receiving = false;
+    return _cad_rxps_armed ? RADIOLIB_ERR_NONE : RADIOLIB_ERR_SPI_CMD_FAILED;
+  }
+
+  int recvCadRxPowerSaving(uint8_t* bytes, int sz) {
+    namespace cad = rak3401::cadRxps;
+    if (cad::interruptAsserted()) {
+      cad::stop();
+      auto* radio = static_cast<CustomSX1262*>(_radio);
+      uint8_t data[2] = {};
+      const int16_t err = radio->getMod()->SPIreadStream(
+          RADIOLIB_SX126X_CMD_GET_IRQ_STATUS, data, sizeof(data));
+      const uint16_t irq = (uint16_t(data[0]) << 8) | data[1];
+      if (err == RADIOLIB_ERR_NONE && (irq & CadReceiveEnd)) {
+        _cad_receiving = false;
+        _loop_event_pending = true;
+        return RadioLibWrapper::recvRaw(bytes, sz);
+      }
+      // A detection also raises DIO1. Acknowledge only that bit so RX Done
+      // can produce a distinct edge, including if it races this SPI write.
+      if (err == RADIOLIB_ERR_NONE && (irq & CadHit)) {
+        if (!_cad_receiving) {
+          _cad_receiving = true;
+          _cad_receive_started = millis();
+        }
+        if (uint32_t(millis() - _cad_receive_started) < CadReceiveTimeoutUs / 1000 + 100) {
+          claimRadioInterrupt();
+          radio->clearIrqFlags(CadHit);
+          return 0;
+        }
+      }
+      // After a failed probe, the ordinary reader retains its bounded IRQ
+      // retry and still verifies RX_DONE before reading the FIFO.
+      _loop_event_pending = true;
+      if (err != RADIOLIB_ERR_NONE) _cad_receiving = false;
+      return RadioLibWrapper::recvRaw(bytes, sz);
+    }
+    if (_cad_receiving) {
+      // The radio owns RX until a terminal IRQ. Allow a bounded recovery if
+      // its receive timeout interrupt is absent.
+      if (uint32_t(millis() - _cad_receive_started) < CadReceiveTimeoutUs / 1000 + 100) return 0;
+    } else if (cad::ownsBus()) {
+      if (cad::exhausted()) {
+        cad::stop();
+        if (cad::start() || cad::interruptAsserted()) return 0;
+      } else if (!cad::overdue()) {
+        return 0;
+      }
+      stopReceiveDutyCycle();
+      _rx_ps_last_error = RADIOLIB_ERR_SPI_CMD_FAILED;
+      ++_rx_ps_arm_failures;
+      _rx_ps_arm_retry.recordFailure(millis());
+    }
+    requestRestartRecv();
+    return RadioLibWrapper::recvRaw(bytes, sz);
+  }
+#endif
 
 protected:
   uint8_t getDriverSwitchFeatures() const override {
@@ -210,19 +301,37 @@ public:
     return ((CustomSX1262 *)_radio)->setCodingRate(cr) == RADIOLIB_ERR_NONE;
   }
 
+#if MESH_RAK3401_CAD_RXPS
+  int recvRaw(uint8_t* bytes, int sz) override {
+    if (_cad_rxps_armed && isInRecvMode()) return recvCadRxPowerSaving(bytes, sz);
+    return RadioLibWrapper::recvRaw(bytes, sz);
+  }
+#endif
+
   bool isReceivingPacket() override {
 #if MESH_WARM_RX_REFRESH
     if(_rxps_pulse.owns()) return true;
+#endif
+#if MESH_RAK3401_CAD_RXPS
+    if (_cad_rxps_armed) return _cad_receiving || rak3401::cadRxps::interruptAsserted();
 #endif
     if (_rx_ps_armed && isChipBusy()) return false;
     return ((CustomSX1262 *)_radio)->isReceiving();
   }
   bool isChipBusy() override {
+#if MESH_RAK3401_CAD_RXPS
+    // Defer reconfiguration during CAD. Between checks a host transition
+    // can reclaim SPI and wake the radio by asserting NSS.
+    if (rak3401::cadRxps::ownsBus()) return rak3401::cadRxps::inScanWindow();
+#endif
     return ((CustomSX1262 *)_radio)->isChipBusy();
   }
   float getCurrentRSSI() override {
 #if MESH_WARM_RX_REFRESH
     if(_rxps_pulse.owns()) return NAN;
+#endif
+#if MESH_RAK3401_CAD_RXPS
+    if (_cad_rxps_armed) return NAN;
 #endif
     return ((CustomSX1262 *)_radio)->getRSSI(false);
   }
@@ -383,6 +492,15 @@ protected:
   }
 #endif
   int startReceiveMode() override {
+#if MESH_RAK3401_CAD_RXPS
+    // Successful reconfiguration can retire base RXPS via standby directly.
+    // Its normal SPI path already stopped PPI, so discard the CAD receive
+    // state before starting continuous or native duty-cycle RX.
+    if (!_rx_ps_armed && _cad_rxps_armed) {
+      rak3401::cadRxps::stop();
+      _cad_rxps_armed = _cad_receiving = false;
+    }
+#endif
 #if MESH_WARM_RX_REFRESH
     if(_rxps_pulse.pending && _rxps_pulse.phase==RxpsPulse::Phase::Packet) return pulseContinuous();
 #endif
@@ -390,6 +508,16 @@ protected:
   }
   int16_t armDutyCycle(RadioLibIrqFlags_t irq_flags, RadioLibIrqFlags_t irq_mask,
       uint32_t* effective_rx_us, uint32_t* effective_sleep_us) override {
+#if MESH_RAK3401_CAD_RXPS
+    if (rxPowerSavingUsesCad(_rx_ps_rx_us, _rx_ps_sleep_us)) {
+      if (_profiles.enabled() || _cur_sf != 7 || _cur_bw != 62.5f || currentPreambleLength() != 32) {
+        return RX_POWERSAVING_ERR_TIMING;
+      }
+      *effective_rx_us = RX_POWERSAVING_CAD_LISTEN_US;
+      *effective_sleep_us = RX_POWERSAVING_CAD_PERIOD_US - RX_POWERSAVING_CAD_LISTEN_US;
+      return armCadRxPowerSaving();
+    }
+#endif
     *effective_rx_us = _rx_ps_rx_us;
     *effective_sleep_us = _rx_ps_sleep_us;
     return ((CustomSX1262*)_radio)->startReceiveDutyCycle(
@@ -397,6 +525,13 @@ protected:
   }
 
   int16_t stopDutyCycleHardware() override {
+#if MESH_RAK3401_CAD_RXPS
+    if (_cad_rxps_armed) {
+      _cad_rxps_armed = _cad_receiving = false;
+      rak3401::cadRxps::stop();
+      return _radio->standby();
+    }
+#endif
     const int16_t standby_error = _radio->standby();
     const int16_t rtc_error = ((CustomSX1262*)_radio)->stopRTC();
     return standby_error != RADIOLIB_ERR_NONE ? standby_error : rtc_error;

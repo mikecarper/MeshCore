@@ -2163,7 +2163,11 @@ void RadioLibWrapper::rxPsWatchdogCheck() {
   unsigned long now = millis();
   bool tripped = false;
 
-  if (_rx_ps_armed && state == STATE_RX && _wd_stuck_thresh > 0) {
+  if (_rx_ps_armed && state == STATE_RX && _wd_stuck_thresh > 0
+#if MESH_RAK3401_CAD_RXPS
+      && !rxPowerSavingUsesCad(_rx_ps_rx_us, _rx_ps_sleep_us)
+#endif
+     ) {
     bool busy = isChipBusy();
     if (busy != _wd_last_busy) {
       // the sleep/listen wave is present -> radio healthy
@@ -3175,6 +3179,13 @@ MC_RADIO_FAST_CODE_ATTR int RadioLibWrapper::startReceivePowerSaving() {
   const RadioLibIrqFlags_t irq_mask = (1UL << RADIOLIB_IRQ_RX_DONE)
       | (1UL << RADIOLIB_IRQ_TIMEOUT) | (1UL << RADIOLIB_IRQ_CRC_ERR)
       | (1UL << RADIOLIB_IRQ_HEADER_ERR);
+#if MESH_RAK3401_CAD_RXPS
+  // The dual-profile clock also uses RTC2. Retire it before the scheduler
+  // claims RTC2 when leaving radio2, rather than stopping CAD after rearm.
+  if (!_profiles.enabled() && rxPowerSavingUsesCad(_rx_ps_rx_us, _rx_ps_sleep_us)) {
+    syncProfileClock(false);
+  }
+#endif
   uint32_t effective_rx_us = _rx_ps_rx_us, effective_sleep_us = _rx_ps_sleep_us;
   const int16_t err = armDutyCycle(irq_flags, irq_mask, &effective_rx_us, &effective_sleep_us);
   _rx_ps_last_error = err;

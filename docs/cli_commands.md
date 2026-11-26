@@ -2815,6 +2815,12 @@ set radio.rxps <rx_us> <sleep_us>
   builds, using the same commands. Their existing 5000 us TCXO startup delay
   is preserved, giving a 6000 us sleep/wake transition. Fast SF/BW tuples may
   use continuous receive; `get radio.rxps.status` reports the actual mode.
+- The `RAK_3401_repeater` build also accepts `set radio.rxps level 11`. This
+  experimental mode uses two-symbol CAD every 50 ms at SF7 and 62.5 kHz with
+  a 32-symbol on-air preamble. Between idle checks the SX1262
+  uses warm sleep. The nRF52840 hardware starts each check while its CPU can
+  sleep. `get radio.rxps.status` shows `effective=cad` when armed. Other radio
+  settings use continuous receive or the usual radio2 scan.
 - While radio2 profile scanning is enabled, RXPS is suspended so neither
   profile sleeps through its listening window. The requested RXPS setting
   is retained and restored after returning to single-profile receive.

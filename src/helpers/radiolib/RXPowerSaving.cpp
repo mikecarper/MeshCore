@@ -8,7 +8,7 @@ bool normalizeRxPowerSavingConfig(RxPowerSavingConfig* config, uint8_t sf, float
       || !isfinite(capture_cost_symbols) || transition_us >= RX_POWERSAVING_MAX_PERIOD_US) return false;
   RxPowerSavingConfig proposed = *config;
   proposed.enabled = proposed.enabled ? 1 : 0;
-  if (proposed.level > RX_POWERSAVING_RISKY_WORKING_MAX_LEVEL) {
+  if (proposed.level > RX_POWERSAVING_MAX_CONFIG_LEVEL) {
     proposed.level = RX_POWERSAVING_BALANCED_LEVEL;
   }
   if (proposed.preamble != 0 && !isRxPowerSavingPreamble(proposed.preamble)) {

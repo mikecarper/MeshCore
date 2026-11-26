@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "target.h"
 #include "OnboardRadioSleep.h"
+#include "CadRxPowerSaving.h"
 #include <helpers/ArduinoHelpers.h>
 #include <helpers/radiolib/Nrf52BufferedRadioHal.h>
 #include <helpers/radiolib/NrfRadioSpiStartupDiagHal.h>
@@ -151,6 +152,16 @@ RAK3401Board board;
 // Changing the speed never replaces this bus or its recovery/handoff path.
 #if MESH_HIL_SPI_STARTUP_DIAG
 static NrfRadioSpiStartupDiagHal radioHal(SPI1, MC_RAK3401_SPI_HZ);
+#elif MESH_RAK3401_CAD_RXPS
+class Rak3401RadioHal : public Nrf52BufferedRadioHal {
+public:
+  using Nrf52BufferedRadioHal::Nrf52BufferedRadioHal;
+  void spiBeginTransaction() override {
+    rak3401::cadRxps::stop();
+    Nrf52BufferedRadioHal::spiBeginTransaction();
+  }
+};
+static Rak3401RadioHal radioHal(SPI1, MC_RAK3401_SPI_HZ);
 #else
 static Nrf52BufferedRadioHal radioHal(SPI1, MC_RAK3401_SPI_HZ);
 #endif

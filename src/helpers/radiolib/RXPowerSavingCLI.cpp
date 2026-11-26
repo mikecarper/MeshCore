@@ -34,8 +34,8 @@ bool RXPowerSavingCLI::set(const char* value, uint8_t sf, float bw,
     proposed.level = args.mode == Mode::Conservative ? RX_POWERSAVING_CONSERVATIVE_LEVEL
         : args.mode == Mode::Balanced ? RX_POWERSAVING_BALANCED_LEVEL : args.level;
     const uint32_t preamble = args.mode == Mode::Level ? args.preamble : RX_POWERSAVING_PROFILE_PREAMBLE;
-    if (args.level > RX_POWERSAVING_RISKY_WORKING_MAX_LEVEL ||
-        proposed.level < 1 || proposed.level > RX_POWERSAVING_RISKY_WORKING_MAX_LEVEL ||
+    if (args.level > RX_POWERSAVING_MAX_CONFIG_LEVEL ||
+        proposed.level < 1 || proposed.level > RX_POWERSAVING_MAX_CONFIG_LEVEL ||
         (preamble != 0 && (preamble > 128 || !isRxPowerSavingPreamble(preamble)))) {
       snprintf(reply, reply_size, "ERROR: level range is 1-10; preamble is 16,32,64,128");
       return false;
@@ -96,6 +96,18 @@ void RXPowerSavingCLI::get(const RxPowerSavingConfig& config,
     snprintf(margin, sizeof(margin), ",catch=%d.%d", tenths / 10,
              tenths < 0 ? -(tenths % 10) : tenths % 10);
   }
+
+#if MESH_RAK3401_CAD_RXPS
+  const bool cad = rxPowerSavingUsesCad(config.rx_us, config.sleep_us);
+  if (config.level == RX_POWERSAVING_CAD_LEVEL || cad) {
+    const char* effective = status.armed ? (cad ? "cad" : "armed")
+        : status.suspended ? "scan" : status.receiving ? "continuous" : "inactive";
+    snprintf(reply, reply_size,
+             "> desired=%s,effective=%s,level=%u,preamble=32,period_us=50000,err=%d",
+             config.enabled ? "on" : "off", effective, unsigned(config.level), (int)status.last_error);
+    return;
+  }
+#endif
 
   // Overdrive has to be visible here, otherwise it reads as an ordinary level
   // and nobody remembers it runs outside the datasheet rule.

@@ -5,6 +5,7 @@
 #include "RAK3401Board.h"
 #include "target.h"
 #include "OnboardRadioSleep.h"
+#include "CadRxPowerSaving.h"
 #include "../../src/helpers/nrf52/TerminalPeripheralShutdown.h"
 
 #ifdef NRF52_POWER_MANAGEMENT
@@ -42,6 +43,9 @@ void RAK3401Board::shutdownPeripherals() {
   // would remap that live SPI bus and lowering the FEM would reset W5100S.
   if (!ethernet_stopped) return;
   const bool storage_power_safe = sensors.canRemoveSharedStoragePowerForDeepSleep();
+#if MESH_RAK3401_CAD_RXPS
+  rak3401::cadRxps::stop();
+#endif
   NRF52Board::shutdownPeripherals();
 #if ENV_INCLUDE_GPS && defined(PIN_GPS_TX) && defined(PIN_GPS_RX)
   if (storage_power_safe) {
@@ -120,6 +124,9 @@ void RAK3401Board::begin() {
 }
 
 bool RAK3401Board::recoverRadio() {
+#if MESH_RAK3401_CAD_RXPS
+  rak3401::cadRxps::stop();
+#endif
   // Quiesce the FEM, leave the shared peripheral rail and SPI controller
   // alone, and pulse the SX1262's dedicated NRST pin. BUSY must fall after a
   // physical reset before any SPI command is safe. Bounding that wait keeps a

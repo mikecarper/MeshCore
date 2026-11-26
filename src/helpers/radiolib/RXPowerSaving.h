@@ -239,6 +239,36 @@ inline bool rxPowerSavingUsesContinuousFallback(uint32_t rx_us, uint32_t sleep_u
       && sleep_us == RX_POWERSAVING_CONTINUOUS_FALLBACK_US;
 }
 
+#if MESH_RAK3401_CAD_RXPS
+constexpr uint8_t RX_POWERSAVING_CAD_LEVEL = 11;
+constexpr uint32_t RX_POWERSAVING_CAD_PERIOD_US = 50000;
+constexpr uint32_t RX_POWERSAVING_CAD_LISTEN_US = 5120;
+
+// Carry the CAD policy through the existing two-period API, including profile
+// rollback. This RX value is below the manual and level-derived RX ranges.
+constexpr uint32_t RX_POWERSAVING_CAD_SELECTOR_US = RX_POWERSAVING_MIN_PERIOD_US;
+
+inline bool rxPowerSavingUsesCad(uint32_t rx_us, uint32_t sleep_us) {
+  return rx_us == RX_POWERSAVING_CAD_SELECTOR_US
+      && sleep_us == RX_POWERSAVING_CAD_PERIOD_US;
+}
+
+inline bool calcCadRxPowerSaving(uint8_t sf, float bw, uint8_t preamble,
+                                uint32_t* rx_us, uint32_t* sleep_us) {
+  if (preamble != 0 && preamble != 32) return false;
+  if (sf == 7 && bw == 62.5f) {
+    *rx_us = RX_POWERSAVING_CAD_SELECTOR_US;
+    *sleep_us = RX_POWERSAVING_CAD_PERIOD_US;
+  } else {
+    *rx_us = *sleep_us = RX_POWERSAVING_CONTINUOUS_FALLBACK_US;
+  }
+  return true;
+}
+constexpr uint8_t RX_POWERSAVING_MAX_CONFIG_LEVEL = RX_POWERSAVING_CAD_LEVEL;
+#else
+constexpr uint8_t RX_POWERSAVING_MAX_CONFIG_LEVEL = RX_POWERSAVING_RISKY_WORKING_MAX_LEVEL;
+#endif
+
 inline uint32_t rxPowerSavingDefaultTransitionUs() {
 #if defined(MESH_RADIO_AUTO_LR1121) && MESH_RADIO_AUTO_LR1121
   // The single-radio Muzi build shares both drivers. Before identification,
@@ -584,6 +614,14 @@ inline bool recalcRxPowerSavingFromLevel(uint8_t level, uint8_t sf, float bw, ui
                                          uint8_t *effective_preamble = nullptr,
                                          uint32_t transition_us = rxPowerSavingDefaultTransitionUs(),
                                          float capture_cost_symbols = rxPowerSavingDefaultCaptureCost()) {
+#if MESH_RAK3401_CAD_RXPS
+  if (level == RX_POWERSAVING_CAD_LEVEL) {
+    if (!calcCadRxPowerSaving(sf, bw, preamble, rx_ps_rx_us, rx_ps_sleep_us)) return false;
+    if (effective_level) *effective_level = level;
+    if (effective_preamble) *effective_preamble = 32;
+    return true;
+  }
+#endif
   if (level < 1 || level > 10) {
     return false; // manual: nothing to recompute
   }
