@@ -1914,7 +1914,12 @@ bool MyMesh::setChannel(int channel_idx, const ChannelDetails& channel) {
   if (_ethernet_settings.enabled && channel.name[0]
       && parseCompanionChannelAlias(channel.name).kind != CompanionChannelKind::MeshCore) return false;
 #endif
+  ChannelDetails previous{};
+  const bool same_channel = BaseChatMesh::getChannel(channel_idx, previous)
+      && strncmp(previous.name, channel.name, sizeof(previous.name)) == 0
+      && memcmp(previous.channel.secret, channel.channel.secret, sizeof(channel.channel.secret)) == 0;
   const bool saved = BaseChatMesh::setChannel(channel_idx, channel);
+  if (saved && !same_channel) recent_channel_text.clear(channel_idx);
 #if MESH_ENABLE_MESHTEXT_CHAT
   if (saved) _mt_delivery_config_dirty = true;
 #endif
@@ -2525,6 +2530,18 @@ bool MyMesh::queueChannelText(uint8_t channel_idx, const uint8_t secret[32], flo
                             uint8_t path_len, uint32_t timestamp, const char* text,
                             bool is_emergency_channel, bool notify) {
   if (!text || channel_idx >= MAX_GROUP_CHANNELS) return false;
+  int tlen = strlen(text);
+  uint8_t fingerprint[mesh::RecentChannelText<MAX_GROUP_CHANNELS>::FingerprintSize];
+  uint32_t received_at = 0;
+  if (notify) {
+    // The text includes the sender name. Use the full text and channel key,
+    // with local receive time instead of the sender's timestamp.
+    mesh::Utils::sha256(fingerprint, sizeof(fingerprint), secret, PUB_KEY_SIZE,
+                        reinterpret_cast<const uint8_t*>(text), tlen);
+    received_at = millis();
+    // A suppressed receive is still handled for retry and relay bookkeeping.
+    if (recent_channel_text.contains(channel_idx, fingerprint, received_at)) return true;
+  }
   int i = 0;
   if (app_target_ver >= 3) {
     out_frame[i++] = RESP_CODE_CHANNEL_MSG_RECV_V3;
@@ -2542,7 +2559,6 @@ bool MyMesh::queueChannelText(uint8_t channel_idx, const uint8_t secret[32], flo
   out_frame[i++] = TXT_TYPE_PLAIN;
   memcpy(&out_frame[i], &timestamp, 4);
   i += 4;
-  int tlen = strlen(text); // TODO: UTF-8 ??
   if (i + tlen > MAX_FRAME_SIZE) {
     tlen = MAX_FRAME_SIZE - i;
     while (tlen > 0 && (uint8_t(text[tlen]) & 0xc0) == 0x80) --tlen;
@@ -2551,6 +2567,7 @@ bool MyMesh::queueChannelText(uint8_t channel_idx, const uint8_t secret[32], flo
   i += tlen;
   const bool queued = addToOfflineQueue(out_frame, i);
   if (!queued) return false;
+  if (notify) recent_channel_text.remember(channel_idx, fingerprint, received_at);
 
 #if CARDPUTER_ADV_UI
   onUiChannelMessage(channel_idx, text);
@@ -12799,6 +12816,7 @@ void MyMesh::loop() {
 #if MESH_WARM_RX_REFRESH
   if (_radio && _radio->serviceAGCMaintenanceFastLane()) return;
 #endif
+  recent_channel_text.expire(millis());
 #if CARDPUTER_ADV_UI
   // Apply saved output masks before the first received packet, not only at
   // the end of the loop or after a later settings change.

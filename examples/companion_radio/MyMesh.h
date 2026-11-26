@@ -38,6 +38,7 @@
 #include <helpers/MeshtextConfig.h>
 #include <helpers/HostKiss.h>
 #include <helpers/RadioProbeObserver.h>
+#include <helpers/RecentChannelText.h>
 #if MESH_ENABLE_ETHERNET_TUNNEL
 #include <helpers/EthernetTunnelSettings.h>
 #include <helpers/esp32/EthernetKissServer.h>
@@ -1170,6 +1171,7 @@ private:
   void initializeOfflineQueue();
   int offline_queue_len;
   int offline_queue_head;
+  mesh::RecentChannelText<MAX_GROUP_CHANNELS> recent_channel_text;
   // Local onboarding only: RAM-backed like the receive queue, not RF traffic.
   uint8_t pending_emergency_notices[(MAX_GROUP_CHANNELS + 7) / 8] = {};
 #if COMPANION_RTC_FAST_OFFLINE_FRAMES || COMPANION_RTC_SLOW_OFFLINE_FRAMES
