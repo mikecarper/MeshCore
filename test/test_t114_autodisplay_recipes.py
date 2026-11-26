@@ -109,11 +109,13 @@ class T114AutoDisplayRecipeTests(unittest.TestCase):
         for target in ROLES:
             with self.subTest(target=target):
                 self.assertEqual(self.flags(target)["ENV_INCLUDE_GPS"], "1")
-        for target in ("Heltec_t114_repeater", "Heltec_t114_repeater_bridge_rs232"):
-            with self.subTest(target=target):
-                flags = self.flags(target)
-                self.assertNotIn("ENABLE_OTA", flags)
-                self.assertEqual(flags["DISABLE_LORA_OTA"], "1")
+        repeat = self.flags("Heltec_t114_repeater")
+        self.assertEqual(repeat["ENABLE_OTA"], "1")
+        self.assertEqual(repeat["OTA_PREPARE_RAW_BOOTLOADER"], "1")
+        self.assertNotIn("DISABLE_LORA_OTA", repeat)
+        bridge = self.flags("Heltec_t114_repeater_bridge_rs232")
+        self.assertNotIn("ENABLE_OTA", bridge)
+        self.assertEqual(bridge["DISABLE_LORA_OTA"], "1")
         flags = self.flags("Heltec_t114_repeater_lora_ota_no_external_sensors")
         self.assertEqual(flags["ENABLE_OTA"], "1")
         self.assertEqual(flags["OTA_FLASH_STORE"], "1")

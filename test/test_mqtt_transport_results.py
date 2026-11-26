@@ -90,6 +90,7 @@ struct MQTTBridge {
   struct MQTTSlot {
     PsychicMqttClient* client=nullptr;
     uint32_t start_failures=0;
+    bool wifi_link_recovery=false;
     MQTTTransportHealth::State transport_health;
   };
   MQTTSlot _slots[RUNTIME_MQTT_SLOTS];

@@ -70,6 +70,7 @@ static void tud_cdc_get_line_coding(cdc_line_coding_t* coding) { coding->bit_rat
 extern "C" void meshRegulatorCleanReset() { ++clean_resets; }
 static void TinyUSB_Port_EnterDFU() { assert(clean_resets == 1); dfu = true; }
 namespace mesh {
+static bool usbDataLocked() { return false; }
 static std::atomic<bool> usb_logging_tx_waiting{false};
 #if defined(USE_TINYUSB)
 static bool usb_logging_watchdog_detached = false;
@@ -285,6 +286,7 @@ public:
   }
 } Serial;
 namespace mesh {
+static bool usbDataLocked() { return false; }
 @NULL@
 static NullUsbLoggingStream null_usb_logging_stream;
 Stream& usbCompanionPort() { return Serial; }

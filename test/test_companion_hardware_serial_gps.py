@@ -263,6 +263,7 @@ struct Mesh {
   bool hasFiniteDelayedReplyForRoute(BaseSerialInterface*) const { return false; }
 } the_mesh;
 namespace mesh {
+bool usbDataLocked() { return false; }
 Stream& usbCompanionPort() { return Serial; }
 }
 static bool acceptUsbBinaryStartupFrame(uint32_t) { return true; }
