@@ -221,7 +221,13 @@ int main(void) {
             output = FIX.replace_driver(Env(), VariantNode())
             self.assertEqual(original.read_text(), ORIGINAL)
             self.assertEqual(output, root / "build/patched-nrf52-usb/dcd_nrf5x.c")
-            self.assertEqual(output.read_text(), FIX.patched_source(ORIGINAL))
+            patched = output.read_text()
+            hook_declaration = "extern bool meshNrfUsbPowerLocked(void) __attribute__((weak));\n"
+            lock_guard = "  if (meshNrfUsbPowerLocked && meshNrfUsbPowerLocked()) return;\n"
+            self.assertEqual(patched.count(hook_declaration), 1)
+            self.assertEqual(patched.count(lock_guard), 1)
+            self.assertEqual(patched.replace(hook_declaration, "").replace(lock_guard, ""),
+                             FIX.patched_source(ORIGINAL))
             modified = output.stat().st_mtime_ns
             FIX.replace_driver(Env(), VariantNode())
             self.assertEqual(output.stat().st_mtime_ns, modified)

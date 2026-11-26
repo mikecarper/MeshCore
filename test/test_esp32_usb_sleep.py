@@ -672,7 +672,9 @@ int main() {
                     ui_source = (ROOT / f"examples/{role}/UITask.cpp").read_text()
                     loop = ui_source.index("void UITask::loop()")
                     opening = ui_source.index("{", loop) + 1
-                    button_start = ui_source.index("#if defined(PIN_USER_BTN)", opening)
+                    first_guard = ("#ifdef ROOM_WIFI_SETUP_BUTTON" if role == "simple_room_server"
+                                   else "#if defined(PIN_USER_BTN)")
+                    button_start = ui_source.index(first_guard, opening)
                     button_block = conditional_block(ui_source, button_start)
                     ui = ui_source[opening:button_start] + button_block
                     main = (ROOT / f"examples/{role}/main.cpp").read_text()

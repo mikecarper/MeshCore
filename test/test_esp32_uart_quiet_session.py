@@ -46,6 +46,7 @@ struct Uart : BufferStream {
 static uint32_t micros() { return millis()*1000; }
 static bool terminal_output_pending=false;
 namespace mesh {
+bool usbDataLocked() { return false; }
 bool hasPendingUsbTerminalOutput() { return terminal_output_pending; }
 bool isUsbLoggingEnabled() { return false; }
 bool hasDedicatedUsbLoggingPort() { return false; }

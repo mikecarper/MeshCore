@@ -42,8 +42,8 @@ GOLDEN = {
                  'calls': '47e08a9903c8f9585f0724de5b76828ad93ebc056e02d74c89ba6ead0890f41a'},
     'nrf_minimal': {'text': '4534a82069785cdccc306edc5d9819d8741a760faa6ea84adaee2071611d41a5',
                     'calls': '2a89015f21bb638e0a52db8a84dd3b40da6fa427920d3f3f7f9a4531beccebf3'},
-    'esp_full': {'text': '99988d2377d48d164baf8893bda5e2c4348897a66cf85a92c02d7548984ac7ef',
-                 'calls': 'd69b5adf9d003da290af07ecbf1757b68153f16a90f57d45d232dbc231558b1e'},
+    'esp_full': {'text': 'e1e7b8dadfaf28254c0011200d7a7a53f580429b5e90243f763ee83ca0faab8d',
+                 'calls': '4f2e7664bb5f6c4a9bc349a8446623bb67c441239689de4c20b16eac0088875d'},
     'stm32_wl_usb': {'text': 'ea38ed43ce9be8784395d12330024dd6a98dc45f16540d9e632cc443aebd0dbd'},
 }
 # Snapshots taken before shortening the English descriptions. These bind every
@@ -53,7 +53,7 @@ COMMAND_INVENTORY = {
     'nrf_full': '68f97f403bb2ba2335d4700292edae41a43336f41a8ece79f5522927dafc9fd4',
     'nrf_minimal': '39e5101b65a527d69b28598123e199de3ef9b3b1489a140408a22d9a29a28bec',
     'stm32_wl_usb': 'a4d30d5969c7311b3539d68625ae0d4bd843cdb0ec976a11abeda7fb48398d24',
-    'esp_full': '0b21075f161d65a31e46ca26d065ef26c8bf8b480ee3267ffa07aa9c34c423f0',
+    'esp_full': '7608b7c326f52e819de781410cf2fc9f8f2980aca5de48f6cc036e399d0e61ff',
 }
 
 FAST_HELP = (b'  get radio.fast / get radio.fast.caps\r\n'

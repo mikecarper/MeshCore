@@ -128,7 +128,14 @@ struct Spi {
     ++spi_begins;
   }
   void setClockDivider(int) {}
+  Spi* bus() { return this; }
 } spi;
+#ifdef HELTEC_TRACKER_V2
+void spiAttachSCK(Spi* bus, int pin) { assert(bus == &spi && pin == PIN_TFT_SCL); }
+void spiAttachMOSI(Spi* bus, int pin) { assert(bus == &spi && pin == PIN_TFT_SDA); }
+void spiDetachSCK(Spi* bus, int pin) { assert(bus == &spi && pin == PIN_TFT_SCL); }
+void spiDetachMOSI(Spi* bus, int pin) { assert(bus == &spi && pin == PIN_TFT_SDA); }
+#endif
 static Spi* _spi=&spi;
 static int _height, _width, _colstart, _rowstart, lcd;
 struct TFT_eSprite {

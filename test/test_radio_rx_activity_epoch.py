@@ -25,6 +25,8 @@ def build_source(family='CustomSX1262',remove_reset=False,include_duty=False):
   entry=entry.replace('_activityAt = 0;','').replace('_headerSeen = false;','')
  if include_duty:
   duty=method(chip,'int16_t startReceiveDutyCycle(')
+  if family=='CustomLR1110':
+   duty+='\n'+method(chip,'int16_t launchRxDutyCycle(')
   if remove_reset:duty=duty.replace('_activityAt = 0;','').replace('_headerSeen = false;','')
   entry+='\n'+duty
  source=source.replace('#include <cassert>', '''#include <cassert>
