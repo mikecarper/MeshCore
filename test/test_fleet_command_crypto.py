@@ -487,6 +487,11 @@ class FleetCommandCryptoTests(unittest.TestCase):
                 with self.subTest(command=command):
                     self.assertEqual(self.decode(envelope(command)), "reject")
 
+    def test_typed_unscoped_limits_cross_the_signed_command_path(self):
+        for command in ("set flood.max.unscoped.text 21", "get flood.max.unscoped.advert",
+                        "set flood.max.unscoped.data inherit"):
+            self.assertEqual(self.decode(envelope(command)), f"{NOW}\n{NOW + 120}\n{command}")
+
     def test_mediamesh_presets_have_cross_language_real_signatures(self):
         for preset in ["mediamesh", "mediamesh-range"]:
             command = "set radio2 " + preset

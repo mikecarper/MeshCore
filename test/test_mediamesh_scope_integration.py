@@ -22,9 +22,16 @@ def implementation():
     for signature in ("int RegionMap::getTransportKeysFor(",
                       "bool RegionMap::matchesScope(", "bool RegionMap::allowsUnmatchedFlood(",
                       "bool RegionMap::removeRegion(", "void RegionMap::resetFrom(",
-                      "RegionEntry* RegionMap::findMatch("):
+                      "RegionEntry* RegionMap::findMatch(", "RegionEntry* RegionMap::findByNamePrefix("):
         generated += "\n" + body(region, signature)
     common = (ROOT / "src/helpers/CommonCLI.cpp").read_text(encoding="ascii")
+    # Exercise the same token bound and allow/deny branch used on the serial CLI.
+    region_cmd = body(common, "void CommonCLI::handleRegionCmd(")
+    tokenizer = region_cmd[region_cmd.index("  const char* parts["):region_cmd.index("  if (n == 1)")]
+    branch = body(region_cmd, 'if (n >= 3 && (strcmp(parts[1], "allowf")')
+    utils = body((ROOT / "src/Utils.cpp").read_text(), "int Utils::parseTextParts(")
+    generated += "\n" + utils.replace("int Utils::parseTextParts", "static int parseRegionParts")
+    generated += "\nvoid CommonCLI::wildcardCommand(char* command, char* reply) {\n" + tokenizer.replace("mesh::Utils::parseTextParts", "parseRegionParts") + branch + "\n}"
     generated += "\n" + body(common, "bool CommonCLI::mediaMeshRegionStoreMissing(")
     generated += "\n" + body(common, "bool CommonCLI::updateMediaMeshScope(")
     generated += "\n" + body(common, "void CommonCLI::onRegionsLoaded(")

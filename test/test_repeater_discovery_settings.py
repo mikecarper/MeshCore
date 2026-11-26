@@ -169,6 +169,25 @@ static void persistence() {
       assertLoaded(damaged, 3);
     }
   }
+  for (uint8_t responses : {0, 3}) {
+    CommonCLI configured;
+    configured.prefs.discovery_responses = responses;
+    configured.prefs.unscoped_limits[16] = 22;
+    configured.prefs.unscoped_limits[6] = 1;
+    configured.savePrefs(&configured.fs, PrefsSaveRouting::Scope::Common);
+    auto bytes = configured.fs.files["/com_prefs"];
+    assert(image(configured) == bytes);
+    CommonCLI reboot;
+    reboot.fs.files["/com_prefs"] = bytes;
+    reboot.loadPrefsInt(&reboot.fs, "/com_prefs");
+    assert(reboot.prefs.discovery_responses == responses);
+    assert(!memcmp(reboot.prefs.unscoped_limits, configured.prefs.unscoped_limits, 17));
+    const size_t start = offset + (responses == 3 ? 0 : mesh::discovery::PREFS_SIZE);
+    bytes[start + 4] ^= 1;
+    reboot.fs.files["/com_prefs"] = bytes;
+    reboot.loadPrefsInt(&reboot.fs, "/com_prefs");
+    for (uint8_t limit : reboot.prefs.unscoped_limits) assert(limit == 0);
+  }
   CommonCLI missing;
   missing.prefs.discovery_responses = 0;
   missing.loadPrefsInt(&missing.fs, "/missing");

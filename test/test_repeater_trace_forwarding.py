@@ -72,6 +72,7 @@ struct MyMesh : mesh::Mesh {
   } _cli;
   struct Prefs {
     uint8_t disable_fwd = 1, trace_when_repeat_off = 0;
+    mesh::UnscopedFloodLimits::Slots unscoped_limits{};
     uint8_t flood_max = 64, flood_max_unscoped = 64, flood_max_advert = 64;
     uint8_t flood_channel_data_enabled = 1, loop_detect = LOOP_DETECT_OFF;
     uint8_t direct_retry_enabled = 1, direct_retry_recent_enabled = 0;

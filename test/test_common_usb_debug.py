@@ -35,7 +35,7 @@ class TestFS : public MemoryFS {
 #include <helpers/HilStartupTrace.h>
 #include <helpers/MQTTPrefsAtomicStore.h>
 #include <helpers/CLICommandUtils.h>
-#include <helpers/DiscoveryResponsePrefs.h>
+#include <helpers/UnscopedFloodLimits.h>
 #include <helpers/RepeaterRadioTiming.h>
 #include <helpers/radiolib/RXPowerSaving.h>
 #include <helpers/GpsPowerPolicy.h>
@@ -151,6 +151,7 @@ class ConfigSerializer {
   template<typename T> void def(const char*, T&) {}
   void def(const char* key, uint8_t& value) { bytes[key] = &value; }
   void def(const char*, char*, size_t) {}
+  void def(const char*, void*, size_t) {}
  public:
   std::map<std::string, uint8_t*> bytes;
   bool import(const char* key, uint8_t value) {

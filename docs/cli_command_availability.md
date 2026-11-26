@@ -216,7 +216,7 @@ should use command `0x42`. See [Companion radio binary protocol](companion_proto
 | Routing | [`get/set flood.advert.interval`](cli_commands.md#view-or-change-the-flood-advert-interval) | Repeater | Yes | Yes | Yes |
 | Routing | [`get/set advert.interval`](cli_commands.md#view-or-change-the-zero-hop-advert-interval) | Advert-capable role | Yes | Yes | Yes |
 | Routing | [`get/set flood.max`](cli_commands.md#limit-the-number-of-hops-for-a-flood-message) | Repeater | Yes | Yes | Yes |
-| Routing | [`get/set flood.max.unscoped`](cli_commands.md#limit-the-number-of-hops-for-an-unscoped-flood-message) | Repeater | Yes | Yes | Yes |
+| Routing | [`get/set flood.max.unscoped[.<type>]`](cli_commands.md#limit-the-number-of-hops-for-an-unscoped-flood-message) | Repeater | Yes | Yes | Yes |
 | Routing | [`get/set flood.max.advert`](cli_commands.md#limit-the-number-of-hops-for-an-advert-flood-message) | Repeater | Yes | Yes | Yes |
 | Routing | [`get/set flood.channel.data`; `get/set flood.channel.data.hops`](cli_commands.md#forward-flood-group-data-packets-on-repeaters) | Repeater | Yes | Yes | Yes |
 | Routing | [`get/set/del flood.channel.scope*`](cli_commands.md#force-a-transport-scope-onto-floods) | Repeater | Yes | Yes | Yes |
@@ -398,7 +398,7 @@ should use command `0x42`. See [Companion radio binary protocol](companion_proto
 | Routing | [`get/set flood.advert.interval`](cli_commands.md#view-or-change-the-flood-advert-interval) | Repeater, full common parser | Yes | Yes | Yes | Yes | Yes |
 | Routing | [`get/set advert.interval`](cli_commands.md#view-or-change-the-zero-hop-advert-interval) | Full common parser | Yes | Yes | Yes | Yes | Yes |
 | Routing | [`get/set flood.max`](cli_commands.md#limit-the-number-of-hops-for-a-flood-message) | Repeater, full common parser | Yes | Yes | Yes | Yes | Yes |
-| Routing | [`get/set flood.max.unscoped`](cli_commands.md#limit-the-number-of-hops-for-an-unscoped-flood-message) | Repeater, full common parser | Yes | Yes | Yes | Yes | Yes |
+| Routing | [`get/set flood.max.unscoped[.<type>]`](cli_commands.md#limit-the-number-of-hops-for-an-unscoped-flood-message) | Repeater, full common parser | Yes | Yes | Yes | Yes | Yes |
 | Routing | [`get/set flood.max.advert`](cli_commands.md#limit-the-number-of-hops-for-an-advert-flood-message) | Repeater, full common parser | Yes | Yes | Yes | Yes | Yes |
 | Routing | [`get/set flood.channel.data`; `get/set flood.channel.data.hops`](cli_commands.md#forward-flood-group-data-packets-on-repeaters) | Repeater, full common parser | Yes | Yes | Yes | Yes | Yes |
 | Routing | [`get/set/del flood.channel.scope*`](cli_commands.md#force-a-transport-scope-onto-floods) | Repeater role handler | Yes | Yes | Yes | Yes | Yes |

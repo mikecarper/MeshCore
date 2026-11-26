@@ -24,7 +24,7 @@ class UpstreamRoutingMergeTests(unittest.TestCase):
 #include <cstddef>
 #include <Packet.h>
 namespace mesh { Packet::Packet() : header(ROUTE_TYPE_TRANSPORT_FLOOD), transport_codes{} {} }
-constexpr uint8_t REGION_DENY_FLOOD = 1, REGION_EXCEPT_TEXT = 4;
+constexpr uint8_t REGION_DENY_FLOOD = 1, REGION_EXCEPT_TEXT = 4, REGION_EXCEPT_ADVERT = 8;
 struct RegionEntry { uint8_t flags; };
 struct TransportKey {
   uint16_t code = 0x1234;
@@ -93,6 +93,33 @@ namespace mesh {
 @CONSTRUCTOR@
 }
 int main() {
+  mesh::UnscopedFloodLimits::Slots limits{};
+  limits[mesh::UnscopedFloodLimits::Text] = 22;
+  limits[PAYLOAD_TYPE_GRP_DATA] = 3;
+  for (int type = 0; type <= PH_TYPE_MASK; ++type) {
+    mesh::Packet packet;
+    for (uint8_t route : {ROUTE_TYPE_FLOOD, ROUTE_TYPE_TRANSPORT_FLOOD}) {
+      packet.header = route | (type << PH_TYPE_SHIFT);
+      packet.transport_codes[0] = 0;
+      for (uint8_t hops : {0, 1, 2, 7, 8, 20, 21, 63}) {
+        packet.setPathHashSizeAndCount(1, hops);
+        const int cap = packet.isTextMessage() ? 21 : type == PAYLOAD_TYPE_GRP_DATA ? 2 : 8;
+        assert(mesh::isFloodHopLimitExceeded(&packet, 64, 8, 64, limits) == (hops >= cap));
+      }
+      const auto saved = limits[type];
+      limits[type] = 65; packet.setPathHashCount(8);
+      assert(!mesh::isFloodHopLimitExceeded(&packet, 64, 8, 64, limits));
+      assert(mesh::isFloodHopLimitExceeded(&packet, 8, 8, 64, limits));
+      if (type == PAYLOAD_TYPE_ADVERT) assert(mesh::isFloodHopLimitExceeded(&packet, 64, 8, 8, limits));
+      limits[type] = 1;
+      assert(mesh::isFloodHopLimitExceeded(&packet, 64, 8, 64, limits));
+      if (route == ROUTE_TYPE_TRANSPORT_FLOOD) {
+        packet.transport_codes[0] = 123;
+        assert(!mesh::isFloodHopLimitExceeded(&packet, 64, 8, 64, limits));
+      }
+      limits[type] = saved;
+    }
+  }
   for (uint8_t hash_size : {1, 2, 3}) {
     for (uint8_t payload : {PAYLOAD_TYPE_RESPONSE, PAYLOAD_TYPE_ADVERT}) {
       mesh::Packet packet;
@@ -226,7 +253,7 @@ struct MyMesh
 {
   struct { uint8_t disable_fwd = 0, flood_max = 64, flood_max_unscoped = 2,
                    flood_max_advert = 8, loop_detect = 0, trace_when_repeat_off = 0,
-                   flood_channel_data_enabled = 1, flood_channel_data_max_hops = 0xff; } _prefs;
+                   flood_channel_data_enabled = 1, flood_channel_data_max_hops = 0xff; mesh::UnscopedFloodLimits::Slots unscoped_limits{}; } _prefs;
   struct {
     struct Policy {
       uint8_t enabled = 3;

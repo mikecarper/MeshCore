@@ -11,6 +11,7 @@
 #define REGION_DENY_FLOOD   0x01
 #define REGION_DENY_DIRECT  0x02   // reserved for future
 #define REGION_EXCEPT_TEXT  0x04   // only applies to a flood-denied wildcard
+#define REGION_EXCEPT_ADVERT 0x08  // only applies to a flood-denied wildcard
 
 struct RegionEntry {
   uint16_t id;
@@ -21,7 +22,11 @@ struct RegionEntry {
   bool isWildcard() const { return id == 0; }
   const char* floodFlag() const {
     if (!(flags & REGION_DENY_FLOOD)) return "F";
-    return isWildcard() && (flags & REGION_EXCEPT_TEXT) ? "except-text" : "";
+    if (!isWildcard()) return "";
+    if (flags & REGION_EXCEPT_ADVERT) {
+      return flags & REGION_EXCEPT_TEXT ? "except-text except-advert" : "except-advert";
+    }
+    return flags & REGION_EXCEPT_TEXT ? "except-text" : "";
   }
 };
 

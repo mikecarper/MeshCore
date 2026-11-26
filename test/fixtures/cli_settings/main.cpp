@@ -5,6 +5,7 @@
 #include <cstring>
 #include <initializer_list>
 #include <helpers/CLICommandUtils.h>
+#include <helpers/UnscopedFloodLimits.h>
 #include <helpers/ConfigCapabilities.h>
 #include <helpers/RadioDirectionPolicy.h>
 #include <helpers/RadioProfileCommandUtils.h>
@@ -61,6 +62,7 @@ struct Prefs {
   uint32_t rx_ps_rx_us=1000, rx_ps_sleep_us=1000;
   bool cad_enabled=false, rx_boosted_gain=false, rx_powersaving_enabled=false;
   uint8_t extra_sf[4]={};
+  mesh::UnscopedFloodLimits::Slots unscoped_limits{};
   uint8_t flood_max=16, flood_max_advert=16, flood_max_unscoped=16;
 };
 struct Callbacks {
@@ -118,6 +120,7 @@ public:
     if (!savePrimaryRadioParams(f,bw,sf,cr,preamble)) return false;
     strcpy(reply,"OK - applying in 2s"); return true;
   }
+  @TYPED_LIMIT@
   @PRIMARY_VALIDATE@
   bool trySavePrefs() { savePrefs(); return true; }
   void applyAndSaveTxPower(int8_t power, char* reply);
@@ -289,6 +292,23 @@ int main() {
         assert(cli.prefs.flood_max==16 && cli.prefs.flood_max_advert==16
             && cli.prefs.flood_max_unscoped==16);
       }
+    }
+    cli.call(sender, "set flood.max.unscoped = 8", reply);
+    assert(!strcmp(reply, "OK") && cli.prefs.flood_max_unscoped == 8);
+    for (const char* type : {"req", "response", "txt_msg", "ack", "advert", "grp_txt", "data",
+                             "anon_req", "path", "trace", "multipart", "control", "ota", "raw", "text"}) {
+      snprintf(text, sizeof(text), "get flood.max.unscoped.%s", type);
+      cli.call(sender, text, reply); assert(!strcmp(reply, "> inherit"));
+      snprintf(text, sizeof(text), "set flood.max.unscoped.%s = 21", type);
+      cli.call(sender, text, reply); assert(!strcmp(reply, "OK"));
+      snprintf(text, sizeof(text), "get flood.max.unscoped.%s", type);
+      cli.call(sender, text, reply); assert(!strcmp(reply, "> 21"));
+      for (const char* invalid : {"-1", "65", "2junk", "2 3", "=", ""}) {
+        snprintf(text, sizeof(text), "set flood.max.unscoped.%s %s", type, invalid);
+        cli.call(sender, text, reply); assert(!strncmp(reply, "Err", 3));
+      }
+      snprintf(text, sizeof(text), "set flood.max.unscoped.%s inherit", type);
+      cli.call(sender, text, reply); assert(!strcmp(reply, "OK"));
     }
     for (const char* key : {"flood.max", "flood.max.advert", "flood.max.unscoped"}) {
       for (unsigned value : {0u, 1u, 64u}) {

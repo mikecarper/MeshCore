@@ -1230,7 +1230,7 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   if (packet->isRouteFlood()) {
     if (mesh::isFloodHopLimitExceeded(packet, _prefs.flood_max,
                                       _prefs.flood_max_unscoped,
-                                      _prefs.flood_max_advert)) {
+                                      _prefs.flood_max_advert, _prefs.unscoped_limits)) {
       return false;
     }
 #if !defined(PORTABLE_MQTT_OBSERVER) && !MESH_ENABLE_FLOOD_RULE_ENGINE

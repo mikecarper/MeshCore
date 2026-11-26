@@ -229,16 +229,27 @@ Use `region unknown deny` to require a recognized scope even with an empty list.
 The wildcard `*` controls unscoped floods. Explicit flood filters and hop limits
 still apply. Forwarding an unknown scope does not make it match `in=allowed`.
 
-To allow only text through the unscoped wildcard, run
+### Configure unscoped adverts and text
+
+To forward unscoped adverts and text while denying other unscoped floods, use
 
 ```text
-region denyf * except-text
+region denyf * except-text except-advert
+region get *
 region save
 ```
 
-This option covers both ordinary unscoped floods and floods with a zero primary
-transport code. It exempts `grp_txt` and `txt_msg` from the wildcard deny. Use
-`region get *` to check it. Plain `region denyf *` restores the full wildcard deny.
+Use only `except-advert` for adverts, only `except-text` for peer and channel text, or plain `region denyf *` to block both. Each command replaces the previous selection. A zero primary transport code also counts as unscoped.
+
+Set hop limits independently of the wildcard policy. For example, with the wildcard allowing all flood types and `flood.max` at least 21, these settings give text 21 hops, group data 2, and other unscoped packets 8 (subject to any advert cap).
+
+```text
+set flood.max.unscoped 8
+set flood.max.unscoped.text 21
+set flood.max.unscoped.data 2
+```
+
+To return data to the base limit, run `set flood.max.unscoped.data inherit`. [All supported payload types](cli_commands.md#limit-the-number-of-hops-for-an-unscoped-flood-message).
 
 `#BlackHole86` is a sink in every mode. A rewrite can send a packet into that scope
 once. A node running this firmware that receives it can process it locally, but

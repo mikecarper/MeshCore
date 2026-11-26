@@ -1,4 +1,5 @@
 #include "FleetCommand.h"
+#include "UnscopedFloodLimits.h"
 #include "RadioProfilePresets.h"
 #include "HardwareCommand.h"
 #include <SHA256.h>
@@ -280,6 +281,8 @@ const CommandFamily* commandFamily(const char* key, size_t length) {
     const bool row = family.kind == CommandKind::Filter || family.kind == CommandKind::Row;
     if (row ? rowKey(key, length, family.name) : keyEquals(key, length, family.name)) return &family;
   }
+  static const CommandFamily typed_limit = {"flood.max.unscoped.", CommandKind::Setting};
+  if (UnscopedFloodLimits::settingSlot(key, length) >= 0) return &typed_limit;
   return nullptr;
 }
 

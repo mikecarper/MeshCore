@@ -391,7 +391,7 @@ Reboot or changing enrollment discards the partial transfers.
 | Channel moderation | `get/set/del flood.moderation[.n]` |
 | Scope policy | `get/set/del flood.channel.scope[.n]`, `flood.channel.scope.require[.n]` |
 | Group-data forwarding | `get/set flood.channel.data`, `flood.channel.data.hops` |
-| Flood hop limits | `get/set flood.max`, `flood.max.unscoped`, `flood.max.advert` |
+| Flood hop limits | `get/set flood.max`, `flood.max.unscoped[.<type>]`, `flood.max.advert` |
 
 Each role still checks whether it supports the requested setting. Immediate
 primary radio changes, identity export, passwords, ACL edits, filesystem operations, firmware

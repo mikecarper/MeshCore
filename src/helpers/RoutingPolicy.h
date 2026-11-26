@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Packet.h>
+#include "UnscopedFloodLimits.h"
 
 namespace mesh {
 
@@ -13,13 +14,20 @@ namespace mesh {
  * \returns  true if the packet has exceeded a limit, and must not be forwarded
  */
 inline bool isFloodHopLimitExceeded(const Packet* packet, uint8_t flood_max,
-                                    uint8_t flood_max_unscoped, uint8_t flood_max_advert) {
+                                    uint8_t flood_max_unscoped, uint8_t flood_max_advert,
+                                    const uint8_t* limits = nullptr) {
   uint8_t hops = packet->getPathHashCount();
   if (hops >= flood_max) return true;
   const uint8_t route_type = packet->getRouteType();
   const bool unscoped = route_type == ROUTE_TYPE_FLOOD
       || (route_type == ROUTE_TYPE_TRANSPORT_FLOOD && packet->transport_codes[0] == 0);
-  if (unscoped && hops >= flood_max_unscoped) return true;
+  if (unscoped) {
+    if (limits) {
+      flood_max_unscoped = UnscopedFloodLimits::effective(limits, packet->getPayloadType(),
+                                                          packet->isTextMessage(), flood_max_unscoped);
+    }
+    if (hops >= flood_max_unscoped) return true;
+  }
   if (packet->getPayloadType() == PAYLOAD_TYPE_ADVERT && hops >= flood_max_advert) return true;
   return false;
 }

@@ -5121,16 +5121,24 @@ set flood.max <value>
 
 ```text
 get flood.max.unscoped
-set flood.max.unscoped <value>
+set flood.max.unscoped <0-64>
+get flood.max.unscoped.<type>
+set flood.max.unscoped.<type> <0-64|inherit>
 ```
 
-**Parameters:**
+The base limit defaults to 64 on repeaters and room servers. Each type initially inherits the base. A limit of 0 prevents forwarding at the first hop. The global `flood.max` and the advert-specific `flood.max.advert` still cap forwarding.
 
-- `value`: Maximum flood hop count (0-64) for a packet without a scope (no region set)
+```text
+set flood.max.unscoped 8
+set flood.max.unscoped.text 21
+set flood.max.unscoped.data 2
+```
 
-**Default:** `0xFF` - indicates it hasn't been set, will track flood.max until it is.
+With `flood.max` at 21 or higher, this lets unscoped peer and channel text travel up to 21 hops, group data up to 2, and other unscoped traffic up to 8. These limits apply to ordinary floods and transport floods whose primary code is zero.
 
-**Note:** An alternative to `region denyf *`, setting `flood.max.unscoped` to a lower value such as `3` would allow for local unscoped messages to propagate, while preventing noisy neighbors from flooding a local region.
+Use `text` to configure peer and channel text together. A specific `txt_msg` or `grp_txt` limit takes precedence over `text`. Set a type to `inherit` to remove its override. `get` reports the stored number or `inherit`.
+
+The individual payload names are `req`, `response`, `txt_msg`, `ack`, `advert`, `grp_txt`, `data` (also `grp_data`), `anon_req`, `path`, `trace`, `multipart`, `control`, `ota`, and `raw` (also `raw_custom`). Region rules and other forwarding filters still apply.
 
 ---
 
@@ -6442,17 +6450,18 @@ region allowf <name>
 
 ```text
 region denyf <name>
-region denyf * except-text
 ```
 
-**Parameters:** 
+Choose one wildcard configuration. Each command replaces the previous wildcard selection.
 
-- `name`: Region name (or `*` for wildcard)
+| Forward through the unscoped wildcard | Command |
+| --- | --- |
+| Nothing | `region denyf *` |
+| Adverts only | `region denyf * except-advert` |
+| Text only | `region denyf * except-text` |
+| Adverts and text | `region denyf * except-text except-advert` |
 
-Plain `region denyf *` denies all unscoped floods. The optional `except-text`
-setting allows unscoped group text (`grp_txt`) and peer text (`txt_msg`)
-through the wildcard. Named regions keep their own policy. Use `region get *`
-to check the setting and `region save` to keep it after reboot.
+Text includes peer messages (`txt_msg`) and channel messages (`grp_txt`). Hop limits and other flood filters still apply. Use `region get *` to check the selection and `region save` to keep it after reboot. Named regions have their own policy.
 
 ---
 

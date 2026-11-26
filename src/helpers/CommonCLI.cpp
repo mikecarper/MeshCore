@@ -1181,6 +1181,7 @@ void CommonCLI::loadPrefs(FILESYSTEM* fs) {
   _prefs->usb_debug_enabled = 0;
   _prefs->usb_logging_always = 0;
   _prefs->trace_when_repeat_off = 0;
+  memset(_prefs->unscoped_limits, 0, sizeof(_prefs->unscoped_limits));
   _prefs->discovery_responses = mesh::discovery::DEFAULT_RESPONSES;
   _prefs->radio2_flood_advert_disabled = 0;
   _prefs->ota_channel = 0;
@@ -1521,6 +1522,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
   _prefs->usb_debug_enabled = 0;
   _prefs->usb_logging_always = 0;
   _prefs->trace_when_repeat_off = 0;
+  memset(_prefs->unscoped_limits, 0, sizeof(_prefs->unscoped_limits));
   _prefs->discovery_responses = mesh::discovery::DEFAULT_RESPONSES;
   _prefs->radio2_flood_advert_disabled = 0;
   _prefs->gps_sync_interval_hours = 0;
@@ -2235,7 +2237,9 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
 
     // Read reply controls independently of the current UART profile. Older
     // images have no record and retain both replies enabled.
-    _prefs->discovery_responses = mesh::discovery::readPrefs(file);
+    size_t next_record;
+    _prefs->discovery_responses = mesh::discovery::readPrefs(file, &next_record);
+    mesh::UnscopedFloodLimits::read(file, next_record, _prefs->unscoped_limits);
     // Read the footer independently of optional legacy UART tails/profile.
 #if defined(RAK_4631)
     _prefs->peripherals_shared = mesh::peripherals::readCommonMode(file);
@@ -2415,6 +2419,10 @@ static bool writeCommonPrefsImage(Writer& writer, NodePrefs* prefs) {
     uint8_t discovery_tail[mesh::discovery::PREFS_SIZE];
     mesh::discovery::encodePrefs(discovery_tail, prefs->discovery_responses);
     WRITE_COMMON_PREFS_BYTES(discovery_tail, sizeof(discovery_tail));
+  }
+  uint8_t flood_limits[mesh::UnscopedFloodLimits::RecordSize];
+  if (mesh::UnscopedFloodLimits::encode(prefs->unscoped_limits, flood_limits)) {
+    WRITE_COMMON_PREFS_BYTES(flood_limits, sizeof(flood_limits));
   }
 #if defined(RAK_4631)
   uint8_t peripheral_footer[mesh::peripherals::FooterSize];
@@ -2675,6 +2683,10 @@ void CommonCLI::savePrefs(FILESYSTEM* fs, PrefsSaveRouting::Scope scope) {
       uint8_t discovery_tail[mesh::discovery::PREFS_SIZE];
       mesh::discovery::encodePrefs(discovery_tail, _prefs->discovery_responses);
       file.write(discovery_tail, sizeof(discovery_tail));
+    }
+    uint8_t flood_limits[mesh::UnscopedFloodLimits::RecordSize];
+    if (mesh::UnscopedFloodLimits::encode(_prefs->unscoped_limits, flood_limits)) {
+      file.write(flood_limits, sizeof(flood_limits));
     }
 #if defined(RAK_4631)
     uint8_t peripheral_footer[mesh::peripherals::FooterSize];
@@ -4715,6 +4727,44 @@ void CommonCLI::handleScheduledRadio(const char* args, bool temporary, char* rep
   }
 }
 
+void CommonCLI::handleUnscopedFloodLimit(const char* config, bool set, char* reply) {
+  const size_t key_len = strcspn(config, " ");
+  const int slot = mesh::UnscopedFloodLimits::settingSlot(config, key_len);
+  const char* value = config + key_len;
+  while (*value == ' ') ++value;
+  if (slot < 0 || (!set && *value)) {
+    strcpy(reply, "Err - unknown flood limit");
+    return;
+  }
+  uint8_t& stored = _prefs->unscoped_limits[slot];
+  if (!set) {
+    if (stored == 0 || stored > 65) strcpy(reply, "> inherit");
+    else sprintf(reply, "> %u", unsigned(stored - 1));
+    return;
+  }
+  if (*value == '=') {
+    ++value;
+    while (*value == ' ') ++value;
+  }
+  uint32_t hops = 0;
+  uint8_t encoded = 0;
+  if (strcmp(value, "inherit") != 0) {
+    if (!mesh::cli::parseUnsignedIntegerStrict(value, hops) || hops > 64) {
+      strcpy(reply, "Err - use 0-64 or inherit");
+      return;
+    }
+    encoded = uint8_t(hops + 1);
+  }
+  const uint8_t previous = stored;
+  stored = encoded;
+  if (previous != encoded && !trySavePrefs()) {
+    stored = previous;
+    strcpy(reply, "Err - save failed");
+    return;
+  }
+  strcpy(reply, "OK");
+}
+
 void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* reply) {
   if (mesh::handleUsbDataLockCommand(command, reply, 160)) return;
   const char* config = &command[4];
@@ -5696,9 +5746,14 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     } else {
       strcpy(reply, MESH_CLI_REPLY_TEXT("Error, must be 0-2", "Error, 0-2"));
     }
+  } else if (strncmp(config, "flood.max.unscoped.", 19) == 0) {
+    handleUnscopedFloodLimit(config, true, reply);
   } else if (memcmp(config, "flood.max.unscoped ", 19) == 0) {
+    const char* value = config + 19;
+    while (*value == ' ') ++value;
+    if (*value == '=') ++value;
     uint32_t m;
-    if (mesh::cli::parseUnsignedIntegerStrict(&config[19], m) && m <= 64) {
+    if (mesh::cli::parseUnsignedIntegerStrict(value, m) && m <= 64) {
       _prefs->flood_max_unscoped = m;
       savePrefs();
       strcpy(reply, "OK");
@@ -6763,6 +6818,8 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     sprintf(reply, "> %s %s", _prefs->flood_channel_data_enabled ? "on" : "off", hops);
   } else if (configKeyEquals(config, "flood.max.advert")) {
     sprintf(reply, "> %d", (uint32_t)_prefs->flood_max_advert);
+  } else if (strncmp(config, "flood.max.unscoped.", 19) == 0) {
+    handleUnscopedFloodLimit(config, false, reply);
   } else if (configKeyEquals(config, "flood.max.unscoped")) {
     sprintf(reply, "> %d", (uint32_t)_prefs->flood_max_unscoped);
   } else if (configKeyEquals(config, "flood.max")) {
@@ -7120,8 +7177,8 @@ void CommonCLI::handleRegionCmd(char* command, char* reply) {
     return;
   }
 
-  const char* parts[5];
-  int n = mesh::Utils::parseTextParts(command, parts, 5, ' ');
+  const char* parts[6];
+  int n = mesh::Utils::parseTextParts(command, parts, 6, ' ');
   if (n == 1) {
     _region_map->exportTo(reply, 160);
   } else if (n >= 2 && strcmp(parts[1], "load") == 0) {
@@ -7147,18 +7204,22 @@ void CommonCLI::handleRegionCmd(char* command, char* reply) {
     }
   } else if (n >= 3 && (strcmp(parts[1], "allowf") == 0 || strcmp(parts[1], "denyf") == 0)) {
     const bool deny = strcmp(parts[1], "denyf") == 0;
-    const bool except_text = n == 4 && deny && strcmp(parts[2], "*") == 0
-        && strcmp(parts[3], "except-text") == 0;
-    if (n > 3 && !except_text) {
-      strcpy(reply, "Err - use region denyf * except-text");
-      return;
+    uint8_t exceptions = 0;
+    for (int i = 3; i < n; ++i) {
+      uint8_t bit = 0;
+      if (!strcmp(parts[i], "except-text")) bit = REGION_EXCEPT_TEXT;
+      if (!strcmp(parts[i], "except-advert")) bit = REGION_EXCEPT_ADVERT;
+      if (!deny || strcmp(parts[2], "*") || !bit || (exceptions & bit)) {
+        strcpy(reply, "Err - use region denyf * [except-text] [except-advert]");
+        return;
+      }
+      exceptions |= bit;
     }
     auto region = _region_map->findByNamePrefix(parts[2]);
     if (region) {
-      if (region->isWildcard()) region->flags &= ~REGION_EXCEPT_TEXT;
-      if (deny) region->flags |= REGION_DENY_FLOOD;
+      if (region->isWildcard()) region->flags &= ~(REGION_EXCEPT_TEXT | REGION_EXCEPT_ADVERT);
+      if (deny) region->flags |= REGION_DENY_FLOOD | exceptions;
       else region->flags &= ~REGION_DENY_FLOOD;
-      if (except_text) region->flags |= REGION_EXCEPT_TEXT;
       strcpy(reply, "OK");
     } else {
       strcpy(reply, "Err - unknown region");

@@ -367,11 +367,16 @@ namespace mesh { struct Utils {
                     get_blocks.append(extract_braced(getter, 'if (strcmp(config, "radio.preamble") == 0)'))
                     set_blocks.append(extract_braced(setter, 'if (strcmp(config, "extra.sf") == 0 ||'))
                     get_blocks.append(extract_braced(getter, 'if (strcmp(config, "extra.sf") == 0)'))
+                    typed = 'if (strncmp(config, "flood.max.unscoped.", 19) == 0)'
+                    set_blocks.append(extract_braced(setter, typed))
+                    get_blocks.append(extract_braced(getter, typed))
                     for key in keys:
                         set_blocks.append(extract_braced(setter, f'if (memcmp(config, "{key} ", {len(key)+1}) == 0'))
                         get_blocks.append(extract_braced(getter, f'if (configKeyEquals(config, "{key}")'))
                     fixture = template.replace('@SET@', ' else '.join(set_blocks))
                     fixture = fixture.replace('@GET@', ' else '.join(get_blocks))
+                    fixture = fixture.replace('@TYPED_LIMIT@', extract_braced(
+                        source, 'void CommonCLI::handleUnscopedFloodLimit(').replace('CommonCLI::', ''))
                     fixture = fixture.replace('@DISPATCH@', dispatch)
                     fixture = fixture.replace('@PRIMARY_VALIDATE@', extract_braced(
                         source, 'bool CommonCLI::acceptsPrimaryRadioParams(').replace('CommonCLI::', ''))

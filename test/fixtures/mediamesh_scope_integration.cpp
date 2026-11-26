@@ -68,6 +68,7 @@ public:
       : _region_map(regions), _callbacks(callbacks) {}
   void onRegionsLoaded(FILESYSTEM* fs, bool loaded);
   void recoverMediaMeshRegions();
+  void wildcardCommand(char*, char*);
   #include "unmatched.inc"
 };
 
@@ -274,10 +275,27 @@ static void scope_filter() {
 static void wildcard_except_text() {
   Scenario test;
   RegionEntry& wildcard = test.regions.getWildcard();
+  auto configure = [&](const char* command, const char* display, bool ok = true) {
+    char input[96], reply[160] = {};
+    std::snprintf(input, sizeof(input), "%s", command);
+    test.cli.wildcardCommand(input, reply);
+    require(ok ? !std::strcmp(reply, "OK") : !std::strncmp(reply, "Err", 3), "region command result");
+    require(!std::strcmp(wildcard.floodFlag(), display), "wildcard configuration readback");
+  };
+  configure("region denyf * except-advert", "except-advert");
+  configure("region denyf * except-text", "except-text");
+  configure("region denyf * except-advert except-text", "except-text except-advert");
+  configure("region denyf * except-text junk", "except-text except-advert", false);
+  configure("region denyf * except-text except-advert extra", "except-text except-advert", false);
+  configure("region denyf #named except-advert", "except-text except-advert", false);
+  configure("region allowf *", "F");
+  configure("region denyf *", "");
   auto packet = media_packet();
   auto matched = [&]() { return test.regions.findMatch(&packet, REGION_DENY_FLOOD); };
   const uint16_t media_code = packet.transport_codes[0];
-  for (uint8_t flags : {0, REGION_DENY_FLOOD, REGION_DENY_FLOOD | REGION_EXCEPT_TEXT}) {
+  for (uint8_t flags : {0, REGION_DENY_FLOOD, REGION_DENY_FLOOD | REGION_EXCEPT_TEXT,
+                        REGION_DENY_FLOOD | REGION_EXCEPT_ADVERT,
+                        REGION_DENY_FLOOD | REGION_EXCEPT_TEXT | REGION_EXCEPT_ADVERT}) {
     wildcard.flags = flags;
     for (uint8_t route : {ROUTE_TYPE_FLOOD, ROUTE_TYPE_TRANSPORT_FLOOD}) {
       // Only the transport-wrapped route has a primary code on the wire.
@@ -285,7 +303,8 @@ static void wildcard_except_text() {
       for (uint8_t type = 0; type <= PH_TYPE_MASK; ++type) {
         packet.header = route | (type << PH_TYPE_SHIFT);
         const bool text = type == PAYLOAD_TYPE_TXT_MSG || type == PAYLOAD_TYPE_GRP_TXT;
-        require((matched() == &wildcard) == (flags == 0 || ((flags & REGION_EXCEPT_TEXT) && text)),
+        require((matched() == &wildcard) == (flags == 0 || ((flags & REGION_EXCEPT_TEXT) && text)
+                    || ((flags & REGION_EXCEPT_ADVERT) && type == PAYLOAD_TYPE_ADVERT)),
                 "wildcard allows exactly the selected flood payloads");
       }
     }
@@ -299,7 +318,7 @@ static void wildcard_except_text() {
   require(!matched(), "named deny stays effective");
   require(test.regions.save(&test.fs), "save text exception");
   RegionMap reboot(test.keys);
-  require(reboot.load(&test.fs) && std::strcmp(reboot.getWildcard().floodFlag(), "except-text") == 0,
+  require(reboot.load(&test.fs) && std::strcmp(reboot.getWildcard().floodFlag(), "except-text except-advert") == 0,
           "wildcard text exception survives reboot");
 }
 

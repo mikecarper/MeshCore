@@ -19,7 +19,7 @@ HARNESS = r'''
 #define ATOMIC_FILE_WRITER_IMPLEMENTATION
 #include <helpers/AtomicFileWriter.h>
 #include <helpers/PrefsSaveRouting.h>
-#include <helpers/DiscoveryResponsePrefs.h>
+#include <helpers/UnscopedFloodLimits.h>
 #include <helpers/GpsPowerPolicy.h>
 #include <helpers/radiolib/RXPowerSaving.h>
 #if defined(ESP32_PLATFORM)

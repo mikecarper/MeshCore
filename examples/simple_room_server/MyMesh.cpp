@@ -1793,7 +1793,7 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   const bool flood = packet->isRouteFlood();
   if (flood && mesh::isFloodHopLimitExceeded(packet, _prefs.flood_max,
                                             _prefs.flood_max_unscoped,
-                                            _prefs.flood_max_advert)) {
+                                            _prefs.flood_max_advert, _prefs.unscoped_limits)) {
     return false;
   }
 #if defined(ESP32_PLATFORM)

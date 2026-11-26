@@ -328,8 +328,11 @@ bool RegionMap::matchesScope(const RegionEntry& region, const mesh::Packet* pack
 RegionEntry* RegionMap::findMatch(const mesh::Packet* packet, uint8_t mask) {
   if (!packet->hasTransportCodes() || packet->transport_codes[0] == 0) {
     const uint8_t denied = wildcard.flags & mask;
-    if (denied == REGION_DENY_FLOOD && (wildcard.flags & REGION_EXCEPT_TEXT)
-        && packet->isRouteFlood() && packet->isTextMessage()) return &wildcard;
+    if (denied == REGION_DENY_FLOOD && packet->isRouteFlood()) {
+      if ((wildcard.flags & REGION_EXCEPT_TEXT) && packet->isTextMessage()) return &wildcard;
+      if ((wildcard.flags & REGION_EXCEPT_ADVERT) && packet->getPayloadType() == PAYLOAD_TYPE_ADVERT)
+        return &wildcard;
+    }
     return denied == 0 ? &wildcard : NULL;
   }
   for (int i = 0; i < num_regions; i++) {

@@ -45,11 +45,12 @@ inline bool decodePrefs(const uint8_t* in, size_t size, uint8_t& mask) {
 }
 
 template <typename File>
-uint8_t readPrefs(File& file) {
+uint8_t readPrefs(File& file, size_t* next_record = nullptr) {
   uint8_t mask = DEFAULT_RESPONSES;
   uint8_t bytes[PREFS_SIZE] = {};
   const size_t size = file.size();
   size_t offset = COMMON_LEGACY_SIZE;
+  if (next_record) *next_record = offset;
   if (size < offset + PREFS_SIZE || !file.seek(offset)
       || file.read(bytes, sizeof(bytes)) != sizeof(bytes))
     return mask;
@@ -57,11 +58,12 @@ uint8_t readPrefs(File& file) {
   // this build's bridge flags would lose saved settings across role changes.
   if (bytes[0] == 'R' && bytes[1] == 'S' && bytes[2] == 'P' && bytes[3] == 1) {
     offset += LEGACY_RS232_TAIL_SIZE;
+    if (next_record) *next_record = offset;
     if (size < offset + PREFS_SIZE || !file.seek(offset)
         || file.read(bytes, sizeof(bytes)) != sizeof(bytes))
       return mask;
   }
-  decodePrefs(bytes, sizeof(bytes), mask);
+  if (decodePrefs(bytes, sizeof(bytes), mask) && next_record) *next_record = offset + PREFS_SIZE;
   return mask;
 }
 

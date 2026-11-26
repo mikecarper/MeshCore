@@ -248,7 +248,7 @@ inline char* utoa(unsigned value,char* out,int base){
 #include <vector>
 #include <helpers/esp32/CpuClockPolicy.h>
 #include <helpers/bridges/RS232PowerSettings.h>
-#include <helpers/DiscoveryResponsePrefs.h>
+#include <helpers/UnscopedFloodLimits.h>
 @CONSTANTS@
 struct NodePrefs { @FIELDS@ };
 @MARKER@
