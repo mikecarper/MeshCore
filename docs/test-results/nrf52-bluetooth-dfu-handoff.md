@@ -43,6 +43,13 @@ The supported handler-mode path constructs an explicit exception-return
 frame. The callback also clears SysTick, pending FreeRTOS system exceptions,
 and both external interrupt banks before the handoff.
 
+The callback stages the bootloader peer record on its stack while it reads
+the bond. In an earlier Heltec Tower V2 BLE build, the bootloader's fixed
+record address overlapped the application's flash mutex. Writing to that
+address before the bond read could stop the transition. The helper copies the
+62-byte record to the fixed address after masking interrupts. It makes no
+application calls after the copy. Empty DFU control writes are ignored.
+
 Every environment inheriting `nrf52_base` uses the private patch and the
 compiled-image check in `scripts/check_nrf52_ble_dfu_handoff.py`. The check
 requires the qualified helper instructions, rejects a `CONTROL` write in
