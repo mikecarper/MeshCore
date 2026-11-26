@@ -97,7 +97,6 @@ MockSerial Serial;
                 "static void __attribute__((noinline)) serviceCommandInterfaces()")
     return source + r'''
 namespace mesh {
-bool usbDataLocked() { return false; }
 namespace power {
 // The command-pump fixture isolates USB/CLI timing from regulator storage.
 void serviceRegulatorSettings() {}
