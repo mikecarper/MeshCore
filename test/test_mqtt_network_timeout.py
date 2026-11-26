@@ -149,6 +149,7 @@ struct MQTTBridge {
   struct MQTTSlot {
     PsychicMqttClient* client = nullptr;
     bool enabled = false, connected = false, initial_connect_done = false;
+    bool wifi_link_recovery = false;
     const MQTTPresetDef* preset = nullptr;
     char host[64] = {}, broker_uri[128] = {}, username[32] = {}, password[32] = {};
     char audience[32] = {}, *auth_token = nullptr;
