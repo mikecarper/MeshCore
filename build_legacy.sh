@@ -4910,7 +4910,7 @@ apply_companion_radio_full_profile() {
       if [[ "${env_name,,}" == meshadventurer_companion_radio_full ||
             "${env_name,,}" == meshadventurer_m33s_companion_radio_full ]]; then
         append_platformio_build_unflags "-DCOMPANION_CHANNEL_TEXT_HISTORY_RTC=39"
-        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=4 -DCOMPANION_CHANNEL_TEXT_HISTORY_RTC=29"
+        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_SLOW_OFFLINE_FRAMES=4 -DCOMPANION_CHANNEL_TEXT_HISTORY_RTC=29 -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=2048"
       fi
       record_build_reduction \
         "companion.capacity limited to 100 contacts, 30 channels, and 16 queued frames by measured internal DRAM"
