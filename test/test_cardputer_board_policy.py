@@ -95,6 +95,7 @@ int main() {
                         "-fno-sanitize-recover=all", "-fno-pie", "-no-pie"]
                     built = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
                         *sanitizer, *flags, "-I", str(ROOT / "examples/companion_radio"),
+                        "-I", str(ROOT / "src"),
                         str(source), "-o", str(binary)], capture_output=True, text=True, timeout=30)
                     self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
                     tested = subprocess.run([str(binary)], capture_output=True, text=True, timeout=10)

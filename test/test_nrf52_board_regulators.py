@@ -53,6 +53,9 @@ static unsigned base_calls, sdk_calls, voltage_checks;
 static uint8_t softdevice;
 struct Power { unsigned DCDCEN; } power;
 #define NRF_POWER (&power)
+namespace mesh {
+inline bool usbDataLocked() { return false; }
+}
 namespace mesh_nrf52 {
 void softdeviceIsEnabled(uint8_t& enabled) { enabled = softdevice; }
 }

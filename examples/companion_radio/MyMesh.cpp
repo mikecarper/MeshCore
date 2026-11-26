@@ -587,6 +587,9 @@ alignas(4) RTC_FAST_ATTR MyMesh::Frame MyMesh::rtc_fast_offline_frames[COMPANION
 #if COMPANION_RTC_SLOW_OFFLINE_FRAMES
 alignas(4) RTC_SLOW_ATTR MyMesh::Frame MyMesh::rtc_slow_offline_frames[COMPANION_RTC_SLOW_OFFLINE_FRAMES];
 #endif
+#if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP && defined(COMPANION_CHANNEL_TEXT_HISTORY_RTC) && !COMPANION_RTC_SLOW_OFFLINE_FRAMES
+RTC_SLOW_ATTR mesh::RecentChannelText<MAX_GROUP_CHANNELS> MyMesh::recent_channel_text;
+#endif
 
 bool MyMesh::Frame::isChannelMsg() const {
   return len > 0 && (buf[0] == RESP_CODE_CHANNEL_MSG_RECV || buf[0] == RESP_CODE_CHANNEL_MSG_RECV_V3 ||
@@ -3485,6 +3488,11 @@ void MyMesh::begin(bool has_display, bool radio_available,
   const bool prefs_ready =
       _store->loadPrefs(_prefs, sensors.node_lat, sensors.node_lon);
 #if COMPANION_FEATURE_CHANNEL_TEXT_DEDUP
+#if defined(COMPANION_CHANNEL_TEXT_HISTORY_RTC) && !COMPANION_RTC_SLOW_OFFLINE_FRAMES
+  // A new Companion session starts with empty display history after reset.
+  recent_channel_text.clearAll();
+  recent_channel_text.settings = {};
+#endif
   channel_text_dedup_loaded = _store->loadChannelTextDedupSettings(recent_channel_text.settings);
 #endif
   // Before any saved-radio apply or automatic traffic. A normal update, an
@@ -11927,12 +11935,12 @@ bool MyMesh::handleChannelTextDedupCommand(const char* command, char* reply, siz
     }
     if (arg == digits || index >= MAX_GROUP_CHANNELS
         || (*arg && *arg != ' ' && *arg != '\t')) {
-      mesh::cli::formatError(reply, capacity, "invalid channel slot");
+      mesh::cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("invalid channel slot", "invalid slot"));
       return true;
     }
     ChannelDetails channel{};
     if (!getChannel(index, channel) || !channel.name[0]) {
-      mesh::cli::formatError(reply, capacity, "channel slot is empty");
+      mesh::cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("channel slot is empty", "empty slot"));
       return true;
     }
     slot = static_cast<int>(index);
@@ -11948,7 +11956,7 @@ bool MyMesh::handleChannelTextDedupCommand(const char* command, char* reply, siz
       return true;
     }
     if (!channel_text_dedup_loaded) {
-      mesh::cli::formatError(reply, capacity, "channel dedup settings unavailable");
+      mesh::cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("channel dedup settings unavailable", "settings unavailable"));
       return true;
     }
     if (requested != enabled) {
@@ -11956,7 +11964,7 @@ bool MyMesh::handleChannelTextDedupCommand(const char* command, char* reply, siz
       if (slot < 0) changed.global_enabled = requested;
       else changed.setChannelEnabled(slot, requested);
       if (!_store->saveChannelTextDedupSettings(changed)) {
-        mesh::cli::formatError(reply, capacity, "channel dedup save unconfirmed");
+        mesh::cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("channel dedup save unconfirmed", "save unconfirmed"));
         return true;
       }
       recent_channel_text.settings = changed;
@@ -11964,7 +11972,7 @@ bool MyMesh::handleChannelTextDedupCommand(const char* command, char* reply, siz
       else recent_channel_text.clear(slot);
     }
   } else if (*arg) {
-    mesh::cli::formatError(reply, capacity, "unexpected channel dedup argument");
+    mesh::cli::formatError(reply, capacity, MESH_CLI_REPLY_TEXT("unexpected channel dedup argument", "unexpected argument"));
     return true;
   }
 

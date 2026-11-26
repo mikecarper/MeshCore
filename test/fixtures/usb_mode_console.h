@@ -21,3 +21,7 @@ inline HardwareSerial Serial;
 #endif
 
 #include <helpers/UsbMode.h>
+
+namespace mesh {
+inline bool handleUsbDataLockCommand(const char*, char*, size_t) { return false; }
+}

@@ -53,6 +53,7 @@ struct Port : Stream {
   }
 } raw, null_port;
 namespace mesh {
+bool usbDataLocked() { return false; }
 bool isUsbBinaryStreamOwned() { return usb_binary_stream_owned.load(); }
 bool isUsbDebugLoggingEnabled() { return !isUsbBinaryStreamOwned() && logging && debug; }
 @COUNTERS@
@@ -306,6 +307,7 @@ static std::atomic<uint32_t> usb_text_writers{0};
 static std::atomic<bool> primary_usb_terminal_discard_pending{false};
 static uint32_t primary_usb_terminal_seen_reset_generation=0, reset_generation=0;
 static bool platform_debug=false, saved_logging=true, saved_debug=true;
+bool usbDataLocked() { return false; }
 uint32_t primaryUsbSessionGeneration(){return reset_generation;}
 bool isUsbDebugLoggingEnabled(){return !usb_binary_stream_owned.load() && saved_logging && saved_debug;}
 void setPlatformDebugOutputEnabled(bool enabled){platform_debug=enabled;}

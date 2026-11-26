@@ -4834,9 +4834,11 @@ apply_companion_radio_full_profile() {
       # Reuse idle queue storage during explicit OTA; retain all 224 normal slots.
       if [[ "${env_name,,}" != generic_espnow_companion_radio_full ]]; then
         export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DOTA_SHARED_COMPANION_QUEUE=1 -DONE_KEY_DM_COMPACT_HELD=1"
-        if [[ "${env_name,,}" == xiao_c3_companion_radio_full || "${env_name,,}" == heltec_ct62_companion_radio_full ]]; then
-          # Move 32 of the existing 128 retained slots into byte-accessible
-          # RTC FAST. Both the 224 normal and 128 active-OTA limits stay intact.
+        if [[ "${env_name,,}" == xiao_c3_companion_radio_full ]]; then
+          # Use 36 CPU-only RTC slots and let terminal scrollback grow on demand.
+          # All 224 normal frames and 128 active-OTA frames remain available.
+          export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=36 -DMESH_TERMINAL_INITIAL_OUTPUT_CAPACITY=1024"
+        elif [[ "${env_name,,}" == heltec_ct62_companion_radio_full ]]; then
           export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCOMPANION_RTC_FAST_OFFLINE_FRAMES=32"
         fi
       else

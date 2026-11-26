@@ -37,6 +37,7 @@ class TestFS : public MemoryFS {
 #include <helpers/CLICommandUtils.h>
 #include <helpers/DiscoveryResponsePrefs.h>
 #include <helpers/RepeaterRadioTiming.h>
+#include <helpers/radiolib/RXPowerSaving.h>
 #include <helpers/GpsPowerPolicy.h>
 #if defined(ESP32_PLATFORM)
 #include <helpers/esp32/CpuClockPolicy.h>
@@ -81,7 +82,6 @@ struct NodePrefs {
   void markUnsaved() { dirty = true; }
 };
 @HELPERS@
-void ensureRxPowerSavingDefaults(uint32_t*, uint32_t*) {}
 @LEGACY@
 @SERIALIZER@
 @STORE@;

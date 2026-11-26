@@ -98,8 +98,9 @@ struct MQTTBridge{
  struct{bool canonical_wifi=true;}_node_info;
  struct{uint8_t wifi_power_save=1;}prefs,*_obs=&prefs;
  struct Client{void disconnect(){}bool isStarted()const{return false;}};
- struct Slot{
+ struct MQTTSlot{
   Client* client=nullptr;bool connected=false;
+  bool enabled=false,initial_connect_done=false,wifi_link_recovery=false;
   uint32_t connected_at_ms=0,current_outage_started_ms=0;
   MQTTTransportHealth::State transport_health;
  }_slots[RUNTIME_MQTT_SLOTS];

@@ -94,6 +94,11 @@ class MiniRepeaterProfileTest(unittest.TestCase):
                     with self.subTest(path=path.relative_to(ROOT), section=name, macro=macro):
                         if path == ROOT / "variants/wio-e5-mini/platformio.ini" and name == SECTION:
                             continue
+                        if (macro == "MESH_ENABLE_CARRIER_TOOLS"
+                                and path == ROOT / "variants/heltec_v4/platformio.ini"
+                                and name == "env:heltec_v4_repeater_espnow_txsync_lab"):
+                            self.assertRegex(flags, r"-D\s+MESH_ESPNOW_TXSYNC_LAB=1\b")
+                            continue
                         self.assertNotRegex(flags, r"-D\s*" + macro + r"=0\b")
         # Retain pre-existing trims plus the approved browser-defaults and new flood controls omissions.
         disabled = set(re.findall(r"-D\s*(MESH_ENABLE_\w+)=0\b", self.flags))

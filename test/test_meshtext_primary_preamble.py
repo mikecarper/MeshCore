@@ -137,10 +137,9 @@ int main() {
         variant = (ROOT / "variants/t1000-e/platformio.ini").read_text()
         self.assertIn("-D USE_LR1110", variant)
         self.assertIn("-D MC_TCXO_DELAY_US=200", variant)
-        production = method(
-            (ROOT / "src/helpers/radiolib/CustomLR1110.h").read_text(),
-            "int16_t startReceiveDutyCycle(",
-        )
+        source = (ROOT / "src/helpers/radiolib/CustomLR1110.h").read_text()
+        production = "\n".join(method(source, signature) for signature in (
+            "int16_t startReceiveDutyCycle(", "int16_t launchRxDutyCycle("))
         self.run_native(r'''
 using RadioLibIrqFlags_t=uint32_t;
 #define RADIOLIB_IRQ_RX_DEFAULT_FLAGS 7

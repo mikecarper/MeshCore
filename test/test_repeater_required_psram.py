@@ -51,6 +51,8 @@ struct Console {
 static uint32_t millis() { return clock_ms; }
 static void delay(unsigned value) { clock_ms += value; }
 namespace mesh {
+static void applyUsbDataLockAtBoot() {}
+static bool usbDataLocked() { return false; }
 static void serviceUsbLoggingPort() { ++logging_services; }
 static void serviceUsbTerminalPort() { ++terminal_services; }
 static void prepareUsbLoggingPort() {}

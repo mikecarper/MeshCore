@@ -670,8 +670,8 @@
   "format_capacity": 97,
   "sources": {
     "examples/companion_radio/MyMesh.cpp": {
-      "input_sha": "1b81cc2d9167a730a9db65af0cd3f8edb2e5333567cef7f7ed0c9e2b3a1febd6",
-      "output_sha": "e61d6b1d8f76cc7925668df82ca5dc5cdc739ff30127b516c3bbc6b3a38e7e05",
+      "input_sha": "c7954513487892ae238a4d46d4eb27d5d65e7b6d3900672ec573d15b66566637",
+      "output_sha": "a71414da6f943a9b62b7e69e51b191dbc4fcbb00f592c15be131d900c1d03c83",
       "call_count": 112,
       "function_counts": {
         "strcpy": 8,
