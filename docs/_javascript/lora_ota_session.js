@@ -867,7 +867,8 @@
           else if (typeof this.link.resetRemoteSession === 'function') await this.link.resetRemoteSession(this.key, this.password);
           else await this.link.verifyPeer(this.key, this.password);
           freshSession = false;
-          const d = checks.destination(await this.remote('ota status'), await this.remote('ota self'), await this.remote('ver'));
+          const {status, self} = await checks.readReceiver(command => this.remote(command));
+          const d = checks.destination(status, self, await this.remote('ver'));
           if (d.targetId === this.info.targetId && d.hwId === this.info.hwId && d.version === this.info.fwVersion && d.baseHash === this.bodyHash) {
             await this.recordVerifiedInstall(id); return d;
           }

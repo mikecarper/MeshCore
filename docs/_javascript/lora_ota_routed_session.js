@@ -139,7 +139,8 @@
           // A reboot loses the target's learned return path. Cached ACL proof
           // alone cannot establish that the new firmware is responding.
           await this.link.resetRemoteSession(this.key);
-          const after = checks.destination(await this.remote('ota status'), await this.remote('ota self'), await this.remote('ver'));
+          const {status, self} = await checks.readReceiver(command => this.remote(command));
+          const after = checks.destination(status, self, await this.remote('ver'));
           if (after.targetId === this.info.targetId && after.hwId === this.info.hwId &&
               after.version === this.info.fwVersion && after.baseHash === this.bodyHash) {
             this.journal({phase:'installed', target:this.key, source:this.link.sourceKey, id:selected, packageHash:this.packageHash, bodyHash:this.bodyHash}); return after;

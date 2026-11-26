@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto').webcrypto;
 const pkg = require('../docs/_javascript/lora_ota_package.js');
 const delta = require('../docs/_javascript/lora_ota_delta.js');
+const {DirectSession} = require('../docs/_javascript/lora_ota_session.js');
 const {RoutedSession, routedPolicy} = require('../docs/_javascript/lora_ota_routed_session.js');
 
 const first='bb'.repeat(32), second='cc'.repeat(32), target='dd'.repeat(32), source='aa'.repeat(32);
@@ -73,7 +74,6 @@ test('direct and routed sessions freshly verify hybrid RAM capability before sta
   f.overrides.set(target+':ota status','hw=board target:12345678 | maxblk:1024 | bl:internal | no download');
   f.overrides.set(target+':ota self','base_hash='+Buffer.from(base.slice(-48,-40)).toString('hex')+' | bootloader: internal abi=3 codecs=0x5 | stage=ED000');
   f.link.verifyPeer=async()=>{};
-  const {DirectSession}=require('../docs/_javascript/lora_ota_session.js');
   for(const Session of [DirectSession,RoutedSession]) {
     const session=new Session(f.link,target,'',info,{image:next,inplacePlan:plan});
     if(Session===DirectSession) session.inspectRadios=async()=>{};
@@ -145,6 +145,44 @@ test('routed transfer and install leave RXPS enabled on every participant', asyn
   await f.session.start();
   assert.equal((await f.session.install()).baseHash, f.body);
   assert.ok(!f.calls.some(command => /radio.rxps/.test(command)));
+});
+
+test('direct and routed installs can verify a rebooted RAK4631 with deferred storage', async () => {
+  for (const Session of [DirectSession, RoutedSession]) {
+    const f = await fixture(), postReboot = [];
+    const session = new Session(f.link, target, '', {...f.info, hwId:'RAK4631'},
+      {pollMs:1, journal:f.setRecord});
+    session.inspect = async () => ({download:'ready'});
+    session.readDownload = async () => ({id:f.id, state:'ready'});
+    session.planRebootChannel = async () => ({change:false});
+    session.installMode = 'legacy';
+    session.bodyHash = f.body;
+    let rebooted = false, prepared = false;
+    f.link.resetRemoteSession = async key => {
+      assert.equal(key, target);
+      if (rebooted) { session.cancelled = true; throw Error('First verification failed'); }
+      rebooted = true;
+    };
+    const remote = f.link.remoteCommand;
+    f.link.remoteCommand = async (key, password, command) => {
+      if (!rebooted) return remote(key, password, command);
+      postReboot.push(command);
+      if (command === 'ota status')
+        return 'OTA | hw=RAK4631 | target:12345678 | maxblk:2048 | bl:' +
+          (prepared ? 'QSPI' : 'storage-ERR') + ' blrc:00 | no download';
+      if (command === 'ota self')
+        return 'self body=44 image=100 base_hash=' + f.body + ' | maxblk:2048 abi=3 codecs=0x5 | ' +
+          (prepared ? 'QSPI store:2048K | bootloader: QSPI apply OK' : 'storage unsafe: not probed');
+      if (command === 'ota bootloader status') {
+        prepared = true;
+        return 'BL board=239A0029 target=2D0DF000 name=4631_DFU crc=FF374B1B abi=3 caps=0A | staged:none mid=- hash=-';
+      }
+      return remote(key, password, command);
+    };
+    assert.equal((await session.install()).baseHash, f.body);
+    assert.equal(f.record.phase, 'installed');
+    assert.deepEqual(postReboot, ['ota status', 'ota self', 'ota bootloader status', 'ota status', 'ota self', 'ver']);
+  }
 });
 
 test('routed updates use legacy install only for an explicit unsupported probe',async()=>{
