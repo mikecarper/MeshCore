@@ -863,14 +863,15 @@ struct Updater {
   Server server;
   void* task = reinterpret_cast<void*>(1);
   void* board = reinterpret_cast<void*>(2);
+  struct { bool cleared = false; void clear() { cleared = true; } } identity;
   @END@
 };
 int main() {
   Updater updater;
   assert(!updater.end());
-  assert(!updater.running && updater.task && updater.board && delays == 100);
+  assert(!updater.running && updater.task && updater.board && !updater.identity.cleared && delays == 100);
   updater.task = nullptr; // Slow network write has now returned and task exited.
-  assert(updater.end() && !updater.board && delays == 100);
+  assert(updater.end() && !updater.board && updater.identity.cleared && delays == 100);
 }
 '''
         self.compile_and_run(fixture.replace("@END@", method))

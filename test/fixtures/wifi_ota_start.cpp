@@ -201,6 +201,8 @@ struct ESP32Board {
   bool ota_started_radio = false;
 #ifdef LIGHTWEIGHT_WIFI_OTA
   void* ota_server = nullptr;
+  struct { void clear() {} } ota_identity;
+  bool getOTAIdentity(char*, size_t);
 #else
   AsyncWebServer* ota_server = nullptr;
 #endif
@@ -222,6 +224,13 @@ static constexpr uint16_t LIGHTWEIGHT_OTA_PORT = 80;
 #endif
 struct esp_partition_t { unsigned address; };
 static bool valid_partitions = true;
+#ifdef LIGHTWEIGHT_WIFI_OTA
+bool ESP32Board::getOTAIdentity(char* reply, size_t capacity) {
+  if (valid_partitions) return true;
+  snprintf(reply, capacity, "ERR: this partition layout requires a USB firmware update");
+  return false;
+}
+#endif
 const esp_partition_t* esp_ota_get_running_partition() {
   static esp_partition_t value{0x10000}; return &value;
 }

@@ -286,6 +286,9 @@ public:
 #endif
   virtual uint8_t getStartupReason() const = 0;
   virtual bool getBootloaderVersion(char* version, size_t max_len) { return false; }
+#if defined(ESP_PLATFORM) && defined(LIGHTWEIGHT_WIFI_OTA)
+  virtual bool getOTAIdentity(char reply[], size_t capacity) { return false; }
+#endif
   virtual bool startOTAUpdate(const char* id, char reply[], bool force_ap = false) { return false; }   // not supported
   virtual bool stopOTAUpdate(char reply[]) { return false; }   // not supported
   virtual bool isOTAUpdateRunning() const { return false; }

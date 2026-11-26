@@ -4096,6 +4096,11 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       struct mallinfo mi = mallinfo();
       sprintf(reply, "Heap: free=%d, used=%d", (int)mi.fordblks, (int)mi.uordblks);
 #endif
+#if defined(ESP_PLATFORM) && defined(LIGHTWEIGHT_WIFI_OTA) && defined(ADMIN_PASSWORD)
+    } else if (strcmp(command, "get ota.identity") == 0) {
+      if (!_board->getOTAIdentity(reply, 160) && !reply[0])
+        strcpy(reply, "ERR: bound WiFi OTA identity unavailable");
+#endif
     } else if (memcmp(command, "start ota", 9) == 0 && (command[9] == 0 || command[9] == ' ')) {
       // Manual OTA: bring up the board's browser server for a hand-uploaded binary.
       const bool force_ap = command[9] == ' ' && strcmp(&command[10], "ap") == 0;

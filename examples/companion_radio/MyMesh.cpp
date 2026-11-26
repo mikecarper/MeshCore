@@ -4787,6 +4787,13 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
 #endif
 
 #if defined(ESP32_PLATFORM) && defined(COMPANION_RADIO_FULL)
+#if defined(ESP_PLATFORM) && defined(LIGHTWEIGHT_WIFI_OTA)
+  if (strcmp(command, "get ota.identity") == 0) {
+    if (!board.getOTAIdentity(reply, reply_size) && !reply[0])
+      snprintf(reply, reply_size, "ERR: bound WiFi OTA identity unavailable");
+    return true;
+  }
+#endif
   if (strcmp(command, "start ota") == 0
       || strcmp(command, "start ota ap") == 0) {
 #if defined(COMPANION_EXCLUSIVE_WIFI_BLE)

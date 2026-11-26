@@ -16,8 +16,8 @@ SOURCES = {
         '9d425f0da0b738cc2a3d6b54e5bfa39781b93db26b35e260ad4d49542128a9d3',
         '12b405249375ef676ef717c504984a42162e42a2f87e038276848d87f8f373de'),
     'src/helpers/CommonCLI.cpp': (
-        '0201d8abb5e4cb91615327d2ba2302dfd54d55734270d7462b71d772dc73c18d',
-        '3035e2fdf5869b1e60ba7f08bc835866a3e20b859d5306ff400e9925b6926b80'),
+        'b84a2efac22e56e06e0d4a9ee6d8c08fe4a6b28af10fbab4296dad395c8676ef',
+        'e4fecd8b9efdd5f94828c116f5fe3d01186b001d65ba53611138d853df300f1d'),
     'src/helpers/ota/OtaCli.cpp': (
         'dbe8f7e6f282942f3edd6be542d8e02acfff47ef86652f9b800e00da074dfcc5',
         '562017187e8ae475c3401beb544aabfd9d5b1abec29f597dedd5cf719670ebb3'),
@@ -41,7 +41,7 @@ CASES = {
          ('OK - ', 'MESH_SHARED_OK', 'copyOkDash', 12),
          ('Error: ', 'MESH_SHARED_ERROR_COLON', 'copyErrorColon', 3),
          ('Error, ', 'MESH_SHARED_ERROR_COMMA', 'copyErrorComma', 6),
-         ('ERR: ', 'MESH_SHARED_UPPER_ERROR_COLON', 'copyUpperErrorColon', 9))),
+         ('ERR: ', 'MESH_SHARED_UPPER_ERROR_COLON', 'copyUpperErrorColon', 10))),
     'src/helpers/ota/OtaCli.cpp': (
         'namespace mesh {', (('ERR ', 'MESH_SHARED_OTA_ERR', 'copyOtaError', 76),)),
 }

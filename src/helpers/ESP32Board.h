@@ -70,6 +70,8 @@ static_assert(MESH_ESP32_USB_HOST_LOSS_SLEEP_GRACE_MS <= 0x7fffffffUL,
 
 #if !defined(LIGHTWEIGHT_WIFI_OTA)
 class AsyncWebServer;
+#elif defined(ADMIN_PASSWORD) || defined(COMPANION_RADIO_FULL)
+#include <helpers/esp32/WiFiOtaSession.h>
 #endif
 #include <helpers/KeyValueStore.h>
 
@@ -102,6 +104,10 @@ protected:
 #endif
 #if defined(LIGHTWEIGHT_WIFI_OTA)
   void* ota_server = nullptr;
+#if defined(ADMIN_PASSWORD) || defined(COMPANION_RADIO_FULL)
+  mesh::wifi::OtaSessionIdentity ota_identity;
+  friend class LightweightOTAServer;
+#endif
 #else
   AsyncWebServer* ota_server = nullptr;
 #endif
@@ -707,6 +713,9 @@ public:
   }
 
   bool startOTAUpdate(const char* id, char reply[], bool force_ap = false) override;
+#if defined(LIGHTWEIGHT_WIFI_OTA) && (defined(ADMIN_PASSWORD) || defined(COMPANION_RADIO_FULL))
+  bool getOTAIdentity(char reply[], size_t capacity) override;
+#endif
   static bool rotateOTAAccessPoint(void* owner);
   bool stopOTAUpdate(char reply[]) override;
   bool isOTAUpdateRunning() const override { return ota_server != nullptr; }

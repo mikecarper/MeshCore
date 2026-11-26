@@ -289,6 +289,37 @@ active. The TCP connection auto-attaches and detaches the folder; do not run
 `ota folder on` at the same time because that command selects the USB-serial
 folder transport.
 
+#### Device-bound lightweight Wi-Fi OTA
+
+The lightweight ESP32 page checks the device identity when it opens and again
+just before upload. It sends a session token with the application `.bin`. The
+firmware checks the ESP chip ID, the EndF hardware ID, and the image integrity
+before activating the new partition. A rejected image can leave partial data in
+the inactive slot. Choose a release application binary for the exact board and
+role. If the running firmware lacks a usable EndF or there is no inactive slot,
+use USB.
+
+An update tool can bind the HTTP endpoint to a node selected through its
+existing command transport. Read `get ota.identity`, start OTA, then fetch
+`GET /ota/info` from the address returned by `start ota`. Both identify the
+same session, physical device, ESP chip, inactive slot size in bytes, and
+canonical hardware ID. The CLI response uses the following format.
+
+```text
+OTA1 s=0123456789abcdef0123456789abcdef d=02aabbccdd11 c=9 slot=3145728 hw=heltec_v4
+```
+
+The authenticated JSON reply contains `version: 1`, `protocol: "lightweight"`,
+and the fields `session`, `device`, `chip`, `slot`, and `hardware`. Compare
+every field with the selected node before sending a raw `POST /update` with
+`Content-Type: application/octet-stream`, the exact `Content-Length`, and
+`X-MeshCore-OTA-Session`. A successful `stop ota` or a reboot invalidates the
+session. The admin password continues to authorize the upload.
+
+Device binding applies to builds using the lightweight uploader. The legacy
+ElegantOTA page and partition migration or recovery apps retain their own
+protocols.
+
 ---
 
 ### Browser configuration portal (ESP32 repeater and room server)

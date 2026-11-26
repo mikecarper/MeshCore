@@ -2,10 +2,60 @@
 <html><head><meta name="viewport" content="width=device-width"><title>MeshCore OTA</title>
 <style>body{font-family:sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem}button,input{font-size:1rem;margin:.5rem 0}pre{white-space:pre-wrap}</style></head>
 <body><h2>MeshCore firmware update</h2><input id="file" type="file" accept=".bin,application/octet-stream"><br>
-<button id="upload">Upload and reboot</button><pre id="status"></pre><script>
-const f=document.getElementById('file'),s=document.getElementById('status'),b=document.getElementById('upload');
-b.onclick=()=>{if(!f.files.length){s.textContent='Select a firmware .bin file.';return}b.disabled=true;
-const x=new XMLHttpRequest();x.open('POST','/update');x.setRequestHeader('Content-Type','application/octet-stream');
-x.upload.onprogress=e=>{if(e.lengthComputable)s.textContent='Uploading '+Math.round(e.loaded*100/e.total)+'%'};
-x.onload=()=>{s.textContent=x.responseText;b.disabled=false};x.onerror=()=>{s.textContent='Upload failed';b.disabled=false};x.send(f.files[0])};
+<button id="upload" disabled>Upload and reboot</button><pre id="status" role="status"></pre><script>
+(function(){
+  var file=document.getElementById('file'),status=document.getElementById('status'),button=document.getElementById('upload');
+  var selected;
+  function valid(info){
+    return info && info.version===1 && info.protocol==='lightweight' &&
+      typeof info.session==='string' && /^[0-9a-f]{32}$/.test(info.session) &&
+      typeof info.device==='string' && /^[0-9a-f]{12}$/.test(info.device) &&
+      typeof info.hardware==='string' && /^[a-zA-Z0-9_.-]{1,32}$/.test(info.hardware) &&
+      typeof info.chip==='number' && info.chip>=0 && info.chip<65535 && info.chip%1===0 &&
+      typeof info.slot==='number' && info.slot>0 && info.slot<=4294967295 && info.slot%1===0;
+  }
+  function readIdentity(ready){
+    var request=new XMLHttpRequest();
+    function unavailable(){status.textContent='Could not verify the OTA session. Sign in and reload the page.';}
+    request.open('GET','/ota/info');
+    request.timeout=8000;
+    request.onerror=request.ontimeout=unavailable;
+    request.onload=function(){
+      if(request.status!==200){unavailable();return;}
+      var info;
+      try{info=JSON.parse(request.responseText);}catch(error){unavailable();return;}
+      if(!valid(info)){unavailable();return;}
+      ready(info);
+    };
+    request.send();
+  }
+  readIdentity(function(info){
+    selected=info;
+    status.textContent='Ready for '+info.hardware+' ('+info.slot+' bytes available).';
+    button.disabled=false;
+  });
+  button.onclick=function(){
+    if(!selected || !file.files.length){status.textContent='Select a firmware .bin file.';return;}
+    var image=file.files[0];
+    if(!image.size || image.size>selected.slot){status.textContent='The application .bin must fit the available slot.';return;}
+    button.disabled=true;
+    readIdentity(function(info){
+      if(info.session!==selected.session || info.device!==selected.device ||
+         info.hardware!==selected.hardware || info.slot!==selected.slot || info.chip!==selected.chip){
+        status.textContent='The device or OTA session changed. Reload the page before uploading.';
+        return;
+      }
+      var upload=new XMLHttpRequest();
+      upload.open('POST','/update');
+      upload.setRequestHeader('Content-Type','application/octet-stream');
+      upload.setRequestHeader('X-MeshCore-OTA-Session',selected.session);
+      upload.upload.onprogress=function(event){
+        if(event.lengthComputable)status.textContent='Uploading '+Math.round(event.loaded*100/event.total)+'%';
+      };
+      upload.onload=function(){status.textContent=upload.responseText;button.disabled=upload.status<400;};
+      upload.onerror=function(){status.textContent='Connection lost. Reconnect and check the running firmware before retrying.';};
+      upload.send(image);
+    });
+  };
+})();
 </script></body></html>
