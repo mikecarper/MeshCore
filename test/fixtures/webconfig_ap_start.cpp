@@ -83,6 +83,7 @@ struct WiFiFake {
   unsigned stop_delay_ms = 160, config_delay_ms = 0;
   struct APStatus { bool started() const; } AP;
   int live_mode = WIFI_STA;
+  int tx_power_limit_dbm = 20;
   uint8_t live_protocol = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N;
   wifi_config_t live_config;
   IPAddress ap_ip{192, 168, 4, 1}, planned_ip{192, 168, 4, 1};
@@ -134,6 +135,7 @@ struct WiFiFake {
     assert(channel == 6);
     ++ap_calls; polls = 0;
     if (fault == Fault::SetterFailure) return false;
+    tx_power_limit_dbm = 20;
     assert(pending_stop_ms == 0);  // A new start must not inherit old AP_START.
     live_mode |= WIFI_AP;
     live_config = {};
@@ -273,6 +275,11 @@ Control& control() { static Control control; return control; }
 }
 namespace wifi {
 esp_err_t applyManualStationTxPower() { return ESP_OK; }
+esp_err_t applyStationTxPower() {
+  assert(WiFi.live_mode & WIFI_AP);
+  WiFi.tx_power_limit_dbm = 11;
+  return ESP_OK;
+}
 @AP_MASK@
 constexpr uint8_t kProtocolMask = WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N | WIFI_PROTOCOL_LR;
 int accessPointChannel() { return 6; }
@@ -375,6 +382,11 @@ struct WebConfigServer {
 void requireEndpoint(const WebConfigServer& portal, const char* reply, bool cached_scan = true) {
   assert(portal._mode == WebConfigServer::MODE_SETUP && portal._dns != nullptr);
   assert(WiFi.live_mode == WIFI_AP_STA && WiFi.ap_started);
+#if defined(HELTEC_LORA_V4)
+  assert(WiFi.tx_power_limit_dbm == 11);
+#else
+  assert(WiFi.tx_power_limit_dbm == 20);
+#endif
   assert(WiFi.live_config.ap.ssid_len == 5);
   assert(memcmp(WiFi.live_config.ap.ssid, "MC-0A", 5) == 0);
   assert(!WiFi.live_config.ap.ssid_hidden && WiFi.live_config.ap.channel == 6);

@@ -992,10 +992,17 @@ bool WebConfigServer::startSetupMode(char reply[], SetupWiFiAccess access) {
     const bool configured = scan_prepared && station_ok
         && WiFi.softAPConfig(ap_ip, ap_ip, ap_mask);
     ap_ok = configured && WiFi.softAP(_ap_ssid, ap_password, ap_channel);
-    if (ap_ok && mesh::wifi::applyManualStationTxPower() != ESP_OK) {
-      mesh::usbDebugPort().printf("WebConfig: WiFi TX power override could not be applied\n");
-    }
     if (ap_ok) {
+#if defined(HELTEC_LORA_V4)
+      // Use the normal WiFi power policy for V4 setup. The SDK's higher
+      // default reduced weak LoRa reception on the V4.3.
+      const esp_err_t power_result = mesh::wifi::applyStationTxPower();
+#else
+      const esp_err_t power_result = mesh::wifi::applyManualStationTxPower();
+#endif
+      if (power_result != ESP_OK) {
+        mesh::usbDebugPort().printf("WebConfig: WiFi TX power limit could not be applied\n");
+      }
       // ESP-NOW can leave the persistent AP protocol mask with the proprietary
       // LR bit set. The driver then reports a healthy SoftAP, but ordinary
       // phones and laptops cannot discover its beacon. A WiFi companion must

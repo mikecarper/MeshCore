@@ -27,10 +27,12 @@ static unsigned housekeeping = 0, radio_polls = 0;
 uint32_t millis() { return now; }
 void delay(unsigned ms) { assert(ms == V4IdleYieldMs); }
 struct Radio {
-  bool rx=true, irq=false, rxps=false;
+  bool rx=true, irq=false, rxps=false, busy=false, receiving=false;
   bool isInRecvMode() const { return rx; }
   bool hasPendingRadioInterrupt() const { return irq; }
   bool isRxPowerSavingEnabled() const { return rxps; }
+  bool isChipBusy() const { return busy; }
+  bool isReceivingPacket() const { assert(!busy && !irq && rx); return receiving; }
   void loop() { ++radio_polls; }
 } radio_driver;
 struct Mesh {
@@ -60,6 +62,15 @@ int main() {
   the_mesh.powersaving_enabled = true; run(); assert(housekeeping == 7);
   the_mesh.powersaving_enabled = false;
   now = 2 * V4HousekeepingIntervalMs; run(); assert(housekeeping == 8 && radio_polls == 1);
+  radio_driver.receiving = true;
+  now += V4HousekeepingIntervalMs; run(); assert(housekeeping == 8 && radio_polls == 1);
+  radio_driver.irq = true; run(); assert(housekeeping == 9); radio_driver.irq = false;
+  const uint32_t last_full_pass = now;
+  now = last_full_pass + V4MaxHousekeepingIntervalMs - 1;
+  run(); assert(housekeeping == 9 && radio_polls == 1);
+  ++now; run(); assert(housekeeping == 10);
+  now += V4HousekeepingIntervalMs; radio_driver.busy = true;
+  run(); assert(housekeeping == 11);
 }
 '''.replace("@CONSTANTS@", constants).replace("@GATE@", source[start:end])
         with tempfile.TemporaryDirectory(prefix="v4-repeater-housekeeping-") as directory:

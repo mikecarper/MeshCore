@@ -53,14 +53,17 @@ class WebConfigApStartTest(unittest.TestCase):
             binary = work / "webconfig-ap-start.exe"
             sanitizer = (["-fsanitize=address,undefined", "-fno-sanitize-recover=all",
                           "-fno-pie", "-no-pie"] if sys.platform.startswith("linux") else [])
+            profiles = [("", ()), ("runtimepass", ()), ("short", ()), ("long-é-pass", ()),
+                        ("runtimepass", ("-DHELTEC_LORA_V4",))]
             for arduino_major in (2, 3):
-                for password in ("", "runtimepass", "short", "long-é-pass"):
-                    with self.subTest(arduino_major=arduino_major, password_kind="protected" if password == "runtimepass" else "legacy"):
+                for password, board_flags in profiles:
+                    with self.subTest(arduino_major=arduino_major, board_flags=board_flags,
+                                      password_kind="protected" if password == "runtimepass" else "legacy"):
                         security_flags = ['-DTEST_ADMIN_PASSWORD="' + password + '"']
                         # This obsolete build secret must never select AP security.
                         security_flags += ['-DWEBCONFIG_AP_PASSWORD="unused-old-key"']
                         compiled = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra",
-                            *sanitizer, f"-DESP_ARDUINO_VERSION_MAJOR={arduino_major}",
+                            *sanitizer, f"-DESP_ARDUINO_VERSION_MAJOR={arduino_major}", *board_flags,
                             *security_flags, "-I" + str(ROOT / "src"),
                             str(generated), "-o", str(binary)],
                             capture_output=True, text=True, timeout=60)

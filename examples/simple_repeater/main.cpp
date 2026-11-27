@@ -814,6 +814,7 @@ static bool usbLoggingRecoverySafe(void*) {
 #if defined(ESP32_PLATFORM) && defined(HELTEC_LORA_V4)
 static constexpr uint32_t V4IdleYieldMs = 8;
 static constexpr uint32_t V4HousekeepingIntervalMs = 128;
+static constexpr uint32_t V4MaxHousekeepingIntervalMs = 512;
 #endif
 
 void loop() {
@@ -840,13 +841,15 @@ void loop() {
 #if defined(ESP32_PLATFORM) && defined(HELTEC_LORA_V4)
   // Reduce application activity while the SX1262 listens on one channel.
   // Keep the existing radio yield and run normal dispatch on every IRQ.
-  // WebConfig maintenance runs with the other bounded housekeeping work.
+  // When the radio is acquiring a packet, postpone housekeeping briefly
+  // to reduce activity during demodulation. Bound the delay even on a
+  // busy channel so periodic services keep running.
   // Battery sleep, Radio2, and RX duty cycling keep their current paths.
   static uint32_t last_housekeeping_at = 0;
   const uint32_t now = millis();
-  if (uint32_t(now - last_housekeeping_at) >= V4HousekeepingIntervalMs) {
-    last_housekeeping_at = now;
-  } else if (radio_driver.isInRecvMode() && !radio_driver.hasPendingRadioInterrupt()
+  const uint32_t since_housekeeping = now - last_housekeeping_at;
+  const bool housekeeping_due = since_housekeeping >= V4HousekeepingIntervalMs;
+  if (radio_driver.isInRecvMode() && !radio_driver.hasPendingRadioInterrupt()
       && !the_mesh.isDualRadioActive() && !radio_driver.isRxPowerSavingEnabled()
       && (!the_mesh.getNodePrefs()->powersaving_enabled || board.isUsbDataConnected())
       && !mesh::morseTimingActive(&radio_driver)
@@ -862,10 +865,16 @@ void loop() {
       && !mesh::hostkiss::usbActive()
 #endif
   ) {
-    radio_driver.loop();
-    delay(V4IdleYieldMs);
-    return;
+    const bool defer_for_packet = housekeeping_due
+        && since_housekeeping < V4MaxHousekeepingIntervalMs
+        && !radio_driver.isChipBusy() && radio_driver.isReceivingPacket();
+    if (!housekeeping_due || defer_for_packet) {
+      if (!defer_for_packet) radio_driver.loop();
+      delay(V4IdleYieldMs);
+      return;
+    }
   }
+  if (housekeeping_due) last_housekeeping_at = now;
 #endif
 
 #if MESH_ENABLE_EMERGENCY_POWER
