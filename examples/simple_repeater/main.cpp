@@ -978,10 +978,15 @@ void loop() {
   }
 
 #if defined(ESP32_PLATFORM)
-  if (!morse_timing && !can_power_save && !the_mesh.isDualRadioActive()
-      && the_mesh.getNodePrefs()->powersaving_enabled) {
-    // Live radio2 needs the scanner's zero-delay polling cadence.
-    delay(1); // Idle without suspending USB or the button wake interval.
+  // Live radio2 and Morse need the zero-delay polling cadence.
+  if (!morse_timing && !can_power_save && !the_mesh.isDualRadioActive()) {
+    uint32_t idle_ms = the_mesh.getNodePrefs()->powersaving_enabled ? 1 : 0;
+#if defined(HELTEC_LORA_V4)
+    // Bound the loop activity near the V4 receiver while a USB host is
+    // attached, including intervals between console commands.
+    if (board.isUsbHostConnected()) idle_ms = 8;
+#endif
+    if (idle_ms) delay(idle_ms);
   }
 #endif
 
