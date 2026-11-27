@@ -53,7 +53,8 @@ struct Mesh{
 struct WebConfigServer{static bool loadEnabled(bool){return false;}};
 struct Portal{
  bool active=false;bool isActive(){return active;}
- template<class T>bool begin(const char*,T,void*){return false;}
+ bool allow_start=false;
+ template<class T>bool begin(const char*,T,void*){return active=allow_start;}
  void configureRecovery(const char*,const char*,uint32_t,uint32_t){}
 }portal;
 Portal& wifiSetupPortal(){return portal;}
@@ -153,6 +154,17 @@ int main(int argc,char** argv){
   assert(companion_wifi_active&&!companion_wifi_services_stopped&&board.inhibit_sleep);
   assert(mode_writes==1&&joins==1&&socket_starts==1&&console_starts==1&&power_writes==2);
   startCompanionWiFi();assert(mode_writes==1&&socket_starts==1);
+ }else if(scenario=="unconfigured_boot"){
+  companion_wifi_has_credentials=false;
+  companion_wifi_active=false;board.ota=false;sdk_mode=WIFI_OFF;
+  startCompanionWiFi();
+  assert(!the_mesh.setup && !portal.active && sdk_mode==WIFI_OFF);
+#ifndef WITH_WEBCONFIG
+  assert(!companion_wifi_active && !board.inhibit_sleep);
+  portal.allow_start=true;
+  startCompanionWiFi(true);
+  assert(portal.active && companion_wifi_active);
+#endif
  }else if(scenario=="registration"){
   companion_wifi_interface_registered=false;
   companion_wifi_active=false;board.ota=false;sdk_mode=WIFI_STA;

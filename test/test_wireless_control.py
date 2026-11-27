@@ -487,7 +487,7 @@ bool finishStoppingCompanionWiFi(){
  if(stop_pending)return false;
  companion_wifi_active=false;return true;
 }
-void startCompanionWiFi(){
+void startCompanionWiFi(bool){
  if(companion_wifi_active)return;
  companion_wifi_active=true;wifi_interface.enable();
 }

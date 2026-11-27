@@ -4313,14 +4313,7 @@ void MyMesh::begin(FILESYSTEM *fs, bool durable) {
 
   mesh::hilStartupTrace("mesh_webconfig_begin");
 #if defined(WITH_WEBCONFIG) && !defined(WEBCONFIG_NO_AUTO_AP)
-  bool start_webui = false;
-#ifdef WITH_MQTT_BRIDGE
-  // Offer first-boot MQTT setup only as the default. A saved WebUI choice,
-  // including off on an unconfigured ESP-NOW node, must take precedence.
-  start_webui = _prefs.bridge_enabled
-      && !WebConfigServer::hasConfiguredWiFi(_cli.getObserverPrefs());
-#endif
-  start_webui = WebConfigServer::loadEnabled(start_webui)
+  const bool start_webui = WebConfigServer::loadEnabled(false)
       && !mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi);
 #ifdef WITH_MQTT_BRIDGE
   if (start_webui && !WebConfigServer::hasConfiguredWiFi(_cli.getObserverPrefs())) {

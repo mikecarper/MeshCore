@@ -304,7 +304,8 @@ int main() {
   WiFi.connected = true;
   node.startSharedEspNowBridgeIfReady();
   assert(node.espnow_bridge.isRunning());
-  node.startupSetup(); // Execute the actual first-boot setup decision after saved defaults.
+  assert(WebConfigServer::saveEnabled(true));
+  node.startupSetup(); // Exercise the saved opt-in and its automatic setup window.
   assert(node._unconfigured_setup_espnow_suspended && node.isWebConfigActive());
   // An automatic retry can finish the AP scan after the loop clock was sampled.
   node._webconfig->tick(now - 3000U);
@@ -446,7 +447,7 @@ class ESP32FullPowerLifecycleTest(unittest.TestCase):
         boot_start = begin_body.index("// Defer construction to avoid static init crashes")
         boot_start = begin_body.rfind("  if (_prefs.bridge_enabled", 0, boot_start)
         boot_bridge = extract_braced(begin_body[boot_start:], "  if (_prefs.bridge_enabled")
-        startup = source[source.index("  bool start_webui ="):]
+        startup = source[source.index("  const bool start_webui ="):]
         startup = startup[:startup.index("#endif\n\n", startup.index("  if (start_webui)"))]
         tick = source.index("_webconfig->tick(millis());")
         portal_start = source.rfind("  if (_webconfig) {", 0, tick)
@@ -512,7 +513,7 @@ int main() {
             with self.subTest(role=role):
                 self.compile_and_run(self.fixture(role), *FLAGS)
 
-    def test_saved_webui_off_survives_reboot_without_stopping_espnow(self):
+    def test_default_off_and_saved_webui_choice_at_boot(self):
         checks = r'''
 int main() {
   for (bool configured : {false, true}) {
@@ -530,7 +531,7 @@ int main() {
       const auto mqtt_stops = node.@WORKER@->stops;
       const auto espnow_stops = node.espnow_bridge.stops;
       node.startupSetup();
-      const bool setup_expected = saved == 1 || (saved < 0 && !configured);
+      const bool setup_expected = saved == 1;
       assert(node.isWebConfigActive() == setup_expected);
       assert(node._prefs.bridge_enabled && node._prefs.espnow_bridge_enabled);
       if (setup_expected && !configured) {
@@ -555,6 +556,15 @@ int main() {
       }
     }
   }
+  WebConfigServer::saved_enabled = -1;
+  WiFi.reset(); espnow_owners = 0; now = 0;
+  MyMesh fresh; fresh.defaults();
+  fresh.startupSetup();
+  assert(!fresh.isWebConfigActive() && !sdk_started);
+  char reply[160] = {};
+  assert(fresh.startWebConfig(true, reply, SetupWiFiAccess::Protected));
+  assert(fresh.isWebConfigActive() && sdk_started);
+  assert(WebConfigServer::saved_enabled == -1);
 }
 '''
         for role in ("simple_repeater", "simple_room_server"):
@@ -611,7 +621,8 @@ int main() {
 int main() {
   MyMesh node; node.defaults();
   node.setBridgeState(true); WiFi.connected = true;
-  node.startSharedEspNowBridgeIfReady(); node.startupSetup();
+  node.startSharedEspNowBridgeIfReady();
+  assert(WebConfigServer::saveEnabled(true)); node.startupSetup();
   assert(node.isWebConfigActive() && !node._unconfigured_setup_espnow_suspended);
   now += 10000;
   assert(node.startSharedEspNowBridgeIfReady());
@@ -645,7 +656,7 @@ int main() {
   InfrastructureWirelessBackend backend;
   auto& control = mesh::wireless::control(); control.begin(backend);
   the_mesh.defaults(); assert(the_mesh._cli.prefs.wifi_ssid[0] == 0);
-  the_mesh.startupSetup();
+  assert(WebConfigServer::saveEnabled(true)); the_mesh.startupSetup();
   assert(the_mesh._unconfigured_setup_espnow_suspended && !the_mesh.isEspNowBridgeRunning());
   assert(the_mesh._prefs.bridge_enabled && the_mesh._prefs.espnow_bridge_enabled);
   char reply[160] = {};
@@ -745,6 +756,7 @@ int main() {
   assert(node.@WORKER@->stops == mqtt_stops && node.espnow_bridge.stops == second_espnow_stops);
   // A previous successful setup suspension must survive a later AP error.
   MyMesh cold; cold.defaults(); WebConfigServer::allow_start = true;
+  assert(WebConfigServer::saveEnabled(true));
   cold.startupSetup(); cold.stopWebConfig(reply); cold.servicePortal(); cold.serviceIdleWiFi();
   assert(cold._unconfigured_setup_espnow_suspended && !cold.espnow_bridge.isRunning());
   WebConfigServer::allow_start = false;

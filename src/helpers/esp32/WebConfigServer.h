@@ -6,10 +6,11 @@
 // companion builds. The UI removes MQTT controls when no bridge is present.
 //
 // Two modes:
-//  - SETUP: admin-password SoftAP + captive portal, raised on first boot
-//    when no WiFi is configured (wifi_ssid empty), or manually via
-//    `start webconfig ap`. A credential save joins in AP+STA mode, reports the
-//    assigned LAN IP, then reboots; the AP auto-stops after an idle timeout.
+//  - SETUP: admin-password SoftAP + captive portal. The display menu or
+//    `start webconfig ap` opens it on demand. A saved WebUI auto-start choice
+//    can also open setup when no network is configured. A credential save
+//    joins in AP+STA mode, reports the assigned LAN IP, then reboots. The AP
+//    auto-stops after an idle timeout.
 //    Legacy short/non-ASCII admin credentials use open WiFi plus HTTP login.
 //  - LAN: bound to an existing or portal-owned STA connection. Infrastructure
 //    roles use the committed node admin password. Explicit legacy passwordless

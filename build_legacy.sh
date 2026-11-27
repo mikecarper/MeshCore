@@ -2603,6 +2603,7 @@ supports_esp32_full_shared_espnow() {
 
 apply_esp32_full_shared_bridge_profile() {
   local env_name=$1
+  local target=${2:-$env_name}
 
   [ "$ESP32_FULL_BUILD" = "1" ] \
     && supports_esp32_full_shared_espnow "$env_name" || return 0
@@ -2610,8 +2611,8 @@ apply_esp32_full_shared_bridge_profile() {
   # Keep historical dedicated bridge defaults and MQTT observer behavior.
   # Newly combined ordinary repeaters start with ESP-NOW off, including when
   # upgrading preferences written before an ESP-NOW runtime setting existed.
-  if ! is_mqtt_bridge_target "$env_name" \
-      && ! pio_env_option_contains "$env_name" build_flags "WITH_ESPNOW_BRIDGE"; then
+  if ! is_mqtt_bridge_target "$target" \
+      && ! pio_env_option_contains "$target" build_flags "WITH_ESPNOW_BRIDGE"; then
     export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DESPNOW_BRIDGE_MERGED=1"
   fi
   export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DWITH_ESPNOW_BRIDGE=1"
@@ -5926,7 +5927,7 @@ build_firmware_one_profile() {
   apply_esp32_constrained_companion_size_profile "$env_name"
   apply_esp32_full_size_profile "$env_name"
   apply_esp32_iram_advert_storage_profile "$env_name"
-  apply_esp32_full_shared_bridge_profile "$pio_env_name"
+  apply_esp32_full_shared_bridge_profile "$pio_env_name" "$env_name"
   apply_esp32_full_async_tcp_profile "$env_name"
   apply_repeater_neighbor_capacity "$env_name"
   apply_stm32_companion_size_profile "$env_name"

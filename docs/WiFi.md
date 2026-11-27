@@ -150,16 +150,17 @@ do not report a completed download as aborted.
 The bootstrap uses ES5 syntax and Promise-based loading, including on Android
 5.1.1 with Chrome 43; newer JavaScript syntax must not prevent the page loading.
 
-Most full-size ESP32 MQTT observer builds have the shared WebConfig portal. On a
-fresh device with no saved SSID:
+Most full-size ESP32 MQTT observer builds have the shared WebConfig portal.
+The setup hotspot starts off by default on a fresh ESP32:
 
-1. Scan the WiFi QR or join the hotspot shown on the display, such as `MC-36`.
+1. Open **Wi-Fi Setup** from the device menu or run `start webconfig ap` over USB.
+2. Scan the WiFi QR or join the hotspot shown on the display, such as `MC-36`.
    Headless builds normally use `MeshCore-Setup-XXXX`. If prompted for a WiFi
    password, enter the node's admin password (factory default `password`).
-2. If the captive page does not open, browse to `http://192.168.4.1/`.
-3. Enter WiFi, radio, identity, and MQTT settings.
-4. Select **Save & Reboot**.
-5. After reboot, check `get wifi.status` and `get mqtt.status`.
+3. If the captive page does not open, browse to `http://192.168.4.1/`.
+4. Enter WiFi, radio, identity, and MQTT settings.
+5. Select **Save & Reboot**.
+6. After reboot, check `get wifi.status` and `get mqtt.status`.
 
 **Choose open or WPA2 setup**
 
@@ -171,6 +172,8 @@ On ESP32 Repeater, Room Server, and Wi-Fi Companion builds with WebConfig, run o
 | `start webconfig ap open` | Join the network ending in `-Open` without a Wi-Fi password. Enter the node’s admin password in the browser. |
 
 The generic Heltec HT-CT62 profile has no user button assigned. Use the commands above on that build.
+An unconfigured legacy Wi-Fi Companion with the smaller setup portal opens
+setup when you explicitly turn Wi-Fi on.
 
 To choose on the radio:
 
@@ -217,15 +220,12 @@ even correct credentials receive HTTP 429. A success clears only its own
 address's count. The [room browser](room_services.md#local-wi-fi-chat-on-esp32)
 uses a separate password budget; a WebConfig session does not bypass it.
 
-On an expanded FULL profile with no saved SSID, this automatic setup AP has an
-absolute 30-minute window. Browser activity or a phone left associated with the
-AP does not extend it. If no SSID has been saved when the window expires,
-WebConfig closes and the ESP32 WiFi radio remains off automatically for the
-remainder of that boot. A reboot or power cycle starts a new 30-minute setup
-window unless `set webui off` has been saved. That choice prevents automatic
-setup even without WiFi credentials. The timeout itself is not saved.
-The **Wi-Fi Setup** button page or `start webconfig ap` opens a fresh setup
-window during the same boot.
+On an expanded FULL profile with no saved SSID, each setup session has a
+30-minute window regardless of browser activity or connected clients. When the
+window expires, WebConfig closes the hotspot. Open **Wi-Fi Setup** or run
+`start webconfig ap` again for another session. To start WebConfig automatically
+on future boots, save `set webui on`. The menu starts a session for the current
+boot.
 
 Once an SSID is saved, the provisioning cutoff no longer applies. When WiFi is
 selected by `logging.output wifi|both` and a broker is configured, the station
@@ -497,9 +497,9 @@ isolation, not cryptographic security. Multiple LoRa/ESP-NOW gateways covering
 the same nodes can temporarily amplify duplicates, even though seen-packet
 tracking prevents an individual bridge from immediately echoing a packet back.
 
-If the configured network remains unavailable for two minutes, the companion
-opens its setup AP so the credentials can be repaired. It continues retrying
-the saved network. WiFi modem sleep has its own persisted `wifi.powersave`
+Companions keep retrying an unavailable saved network. With WebConfig, a saved
+`set webui on` enables automatic recovery setup after two minutes. You can
+also start setup from the menu or USB. WiFi modem sleep has its own persisted `wifi.powersave`
 setting and is independent of the Companion device power-saving setting. The
 WiFi card in Companion WebConfig exposes `none`, `min`, and `max`. Fresh
 Cascade-profile builds select `min`; target-default builds select `none`.

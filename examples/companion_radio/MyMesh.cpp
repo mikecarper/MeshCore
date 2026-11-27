@@ -5616,7 +5616,7 @@ bool MyMesh::handleLocalControlCommand(const char* command, char* reply,
 
   if (strcmp(command, "get webui") == 0) {
     return WebConfigServer::formatWebUIStatus(reply, reply_size,
-        WebConfigServer::loadEnabled(true), _webconfig);
+        WebConfigServer::loadEnabled(hasCompanionWiFiCredentials()), _webconfig);
   }
 
   if (strcmp(command, "set webui on") == 0
@@ -6179,7 +6179,7 @@ bool MyMesh::startWebConfig(bool force_ap, char* reply, SetupWiFiAccess access) 
       return _webconfig->requestStart(true, reply, access);
     }
     return WebConfigServer::formatWebUIStatus(reply, 160,
-        WebConfigServer::loadEnabled(true), _webconfig);
+        WebConfigServer::loadEnabled(hasCompanionWiFiCredentials()), _webconfig);
   }
   if (force_ap) {
 #ifdef WITH_MQTT_BRIDGE

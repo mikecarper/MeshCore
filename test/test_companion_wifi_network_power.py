@@ -96,10 +96,10 @@ void ota_console_start() { ++console_starts; }
 void ota_console_stop() { ++console_stops; }
 #define WIFI_DEBUG_PRINTLN(...) do {} while (0)
 struct WebConfigServer {
-  static bool enabled;
-  static bool loadEnabled(bool) { return enabled; }
+  static int enabled;
+  static bool loadEnabled(bool default_value) { return enabled < 0 ? default_value : enabled != 0; }
 };
-bool WebConfigServer::enabled = true;
+int WebConfigServer::enabled = -1;
 struct Mesh {
   bool web_active = false, last_force_ap = false;
   int web_starts = 0;
@@ -128,7 +128,7 @@ void reset() {
   companion_wifi_credential_reload_pending = companion_wifi_setup_requested = false;
   companion_wifi_has_credentials = true;
   ntp_cancels = resets = ps_applied = console_starts = console_stops = 0;
-  the_mesh = {}; WebConfigServer::enabled = true;
+  the_mesh = {}; WebConfigServer::enabled = -1;
 }
 
 int main() {
@@ -182,10 +182,12 @@ int main() {
   serviceCompanionWiFiAutoWebConfig();
   assert(the_mesh.web_starts == 1);
 
-  // Unconfigured devices still open setup, and standalone WiFi without MQTT
-  // retains its ordinary recovery AP.
+  // Unconfigured devices open setup at boot only after a saved opt-in.
   reset();
   companion_wifi_has_credentials = false;
+  startCompanionWiFiAutoWebConfig();
+  assert(the_mesh.web_starts == 0 && !companion_wifi_webconfig_start_pending);
+  WebConfigServer::enabled = 1;
   startCompanionWiFiAutoWebConfig();
   assert(the_mesh.web_starts == 1 && the_mesh.last_force_ap);
   assert(!companion_wifi_webconfig_start_pending);

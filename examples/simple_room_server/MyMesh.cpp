@@ -3063,13 +3063,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
 #endif
 
 #if defined(WITH_WEBCONFIG) && !defined(WEBCONFIG_NO_AUTO_AP)
-  bool start_webui = false;
-#ifdef WITH_MQTT_BRIDGE
-  // First-boot MQTT setup is a default, never an override of saved WebUI off.
-  start_webui = _prefs.bridge_enabled
-      && !WebConfigServer::hasConfiguredWiFi(_cli.getObserverPrefs());
-#endif
-  start_webui = WebConfigServer::loadEnabled(start_webui)
+  const bool start_webui = WebConfigServer::loadEnabled(false)
       && !mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi);
 #ifdef WITH_MQTT_BRIDGE
   if (start_webui && !WebConfigServer::hasConfiguredWiFi(_cli.getObserverPrefs())) {

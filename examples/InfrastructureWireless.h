@@ -166,13 +166,9 @@ public:
 #endif
 #ifdef WITH_WEBCONFIG
       if (the_mesh.isWebConfigStopping()) return Result::Pending;
-      bool default_setup = false;
-#ifdef WITH_MQTT_BRIDGE
-      default_setup = the_mesh.getNodePrefs()->bridge_enabled && !mqtt_configured;
-#endif
       // A transient group restore replays its live snapshot. A persistent On
       // uses the saved WebUI choice instead of inventing a setup portal.
-      if (wifi_saved_ ? resume_web_ : WebConfigServer::loadEnabled(default_setup)) {
+      if (wifi_saved_ ? resume_web_ : WebConfigServer::loadEnabled(false)) {
         char reply[160];
         if (!the_mesh.startWebConfig(false, reply)) return Result::Failed;
       }

@@ -72,6 +72,10 @@ class CompanionAccessPointOwnershipTest(unittest.TestCase):
         self.run_fixture("registration")
         self.run_fixture("registration", webconfig=False)
 
+    def test_unconfigured_boot_leaves_setup_off_until_requested(self):
+        self.run_fixture("unconfigured_boot")
+        self.run_fixture("unconfigured_boot", webconfig=False)
+
     def test_deliberate_recovery_setup_handoff_remains_available(self):
         self.run_fixture("setup_handoff")
         self.run_fixture("setup_handoff", webconfig=False)

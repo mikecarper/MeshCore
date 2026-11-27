@@ -51,6 +51,7 @@ bool WebConfigServer::has_saved_setting = true;
 @METHOD@
 
 struct { bool isOTAUpdateRunning() const { return false; } } board;
+bool hasCompanionWiFiCredentials() { return true; }
 struct MyMesh {
   WebConfigServer* _webconfig = nullptr;
   bool getWebUIStatus(char*) const;

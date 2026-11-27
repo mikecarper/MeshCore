@@ -2376,6 +2376,8 @@ static bool saveCompanionWiFiPreference(bool enabled) {
   bool toggleCompanionWiFi() {
 #if defined(COMPANION_EXCLUSIVE_WIFI_BLE)
     const bool current = getCompanionTransportMode() == CompanionTransportMode::WiFi;
+#elif !defined(WITH_WEBCONFIG)
+    const bool current = companion_wifi_has_credentials ? companion_wifi_requested : companion_wifi_active;
 #else
     const bool current = companion_wifi_requested;
 #endif
@@ -2705,7 +2707,7 @@ static bool saveCompanionWiFiPreference(bool enabled) {
 #ifdef WITH_WEBCONFIG
   static void startCompanionWiFiAutoWebConfig() {
     companion_wifi_webconfig_start_pending = false;
-    if (!WebConfigServer::loadEnabled(true)) return;
+    if (!WebConfigServer::loadEnabled(companion_wifi_has_credentials)) return;
     if (companion_wifi_has_credentials && WiFi.status() != WL_CONNECTED) {
       // The Companion owns the initial saved-SSID attempt. Do not ask the
       // portal to start its separate fifteen-second AP fallback at boot.
@@ -2720,7 +2722,7 @@ static bool saveCompanionWiFiPreference(bool enabled) {
   static void serviceCompanionWiFiAutoWebConfig() {
     if (!companion_wifi_webconfig_start_pending || !companion_wifi_requested
         || !companion_wifi_active) return;
-    if (!WebConfigServer::loadEnabled(true)) {
+    if (!WebConfigServer::loadEnabled(companion_wifi_has_credentials)) {
       companion_wifi_webconfig_start_pending = false;
       return;
     }
@@ -2769,10 +2771,22 @@ static bool saveCompanionWiFiPreference(bool enabled) {
     WIFI_DEBUG_PRINTLN("WiFi credentials reloaded; reconnecting to saved SSID");
   }
 
-  static void startCompanionWiFi() {
+  static void startCompanionWiFi(bool open_legacy_setup = false) {
     if (mesh::wireless::control().backgroundBlocked(mesh::wireless::WiFi)) return;
     if (companion_wifi_active) return;
+#ifndef WITH_WEBCONFIG
+    if (!companion_wifi_has_credentials && !open_legacy_setup) return;
+#endif
     if (!mesh::wifi::stationMutationAllowed()) return;
+#ifdef WITH_WEBCONFIG
+    (void)open_legacy_setup;
+#else
+    if (!companion_wifi_has_credentials
+        && !wifiSetupPortal().begin(COMPANION_WIFI_SETUP_AP, saveCompanionWiFi, nullptr)) {
+      WIFI_DEBUG_PRINTLN("WiFi setup: could not start setup portal");
+      return;
+    }
+#endif
 
     board.setInhibitSleep(true);
     companion_wifi_espnow_restore_pending = false;
@@ -2789,12 +2803,6 @@ static bool saveCompanionWiFiPreference(bool enabled) {
       mesh::wifi::beginStation(
           configured_wifi_ssid, configured_wifi_password);
     }
-#ifndef WITH_WEBCONFIG
-    else if (!wifiSetupPortal().begin(COMPANION_WIFI_SETUP_AP,
-                                      saveCompanionWiFi, nullptr)) {
-      WIFI_DEBUG_PRINTLN("WiFi setup: could not start setup portal");
-    }
-#endif
 #ifdef WITH_WEBCONFIG
     startCompanionWiFiAutoWebConfig();
 #endif
@@ -3621,7 +3629,7 @@ public:
           if (!finishStoppingCompanionWiFi()) return Result::Pending;
           companion_wifi_disable_in_progress = false;
         }
-        startCompanionWiFi();
+        startCompanionWiFi(true);
       }
       return companion_wifi_active == on ? Result::Done : Result::Failed;
     }
@@ -4935,7 +4943,7 @@ void loop() {
       wifi_setup_attempted = true;
       last_wifi_setup_attempt = wifi_now;
 #ifdef WITH_WEBCONFIG
-      if (WebConfigServer::loadEnabled(true)) {
+      if (WebConfigServer::loadEnabled(false)) {
         char web_reply[160];
         if (the_mesh.startWebConfig(true, web_reply)) {
           wifi_setup_recovery_mode = true;

@@ -2488,7 +2488,7 @@
         "Use get logging.output and set logging.output off|usb|wifi|both to choose the saved output mode. Avoid both when two consumers publish the same packets to one broker."
       );
       extra.push(
-        "With no saved SSID, automatic setup offers a 30-minute AP window per boot. Use set webui off to disable automatic setup after reboot. An explicit start webconfig command can reopen it. A configured Wi-Fi mode keeps reconnecting instead."
+        "The setup hotspot starts off by default. Open Wi-Fi Setup from the device menu or run start webconfig ap over USB. With no saved SSID, setup closes after 30 minutes. Save set webui on to start WebConfig at boot."
       );
     } else if (profile.logging === "usb-runtime") {
       if (!isFullCompanion(profile)) {

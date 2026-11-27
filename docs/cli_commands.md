@@ -361,12 +361,9 @@ when WiFi is running. See [WiFi power behavior](WiFi.md#wifi-power-behavior).
 again after future reboots; `set webui off` closes it and disables that boot
 start. `get webui` reports the current session first, followed by an explicit
 `auto-start: on|off` setting. It distinguishes stopped, starting, stopping,
-connecting, waiting for WiFi, a setup hotspot and a working LAN URL. The default is
-`off` on repeater and room-server builds. An unconfigured MQTT node can open
-first-time setup while no WebUI choice has been saved. An explicit
-`set webui off` prevents that AP from returning after reboot and pausing
-ESP-NOW. On display-equipped repeaters, an
-otherwise-unused triple click toggles the same saved setting.
+connecting, waiting for WiFi, a setup hotspot and a working LAN URL. The setup
+hotspot defaults to off on ESP32. On display-equipped repeaters, an otherwise
+unused triple click toggles the saved WebUI setting.
 For example, `> Web UI: running at http://192.168.1.130/; auto-start: off`
 means a temporary session is working at that address and automatic startup
 after reboot is disabled. Repeating `start webconfig` reports the current
@@ -396,11 +393,10 @@ policy; use them only on a trusted network.
 MQTT bridge, so run `set mqtt.enabled off` first. Use `stop webconfig` to
 close either mode for the current boot. (`stop webconfig` does not change a
 saved `webui on`.)
-LAN mode otherwise remains active until reboot. On expanded FULL builds, an
-unconfigured automatic setup AP receives one absolute 30-minute window per
-boot, then powers WiFi off even if a client remains attached; rebooting starts
-a new automatic window unless `webui off` is saved. An administrator can
-explicitly run `start webconfig ap` again. On ESP32 builds with WebConfig,
+LAN mode otherwise remains active until reboot. On expanded FULL builds with
+no saved SSID, a setup session closes after 30 minutes even if a client remains
+attached. Run `start webconfig ap` again to open another session. A saved
+`set webui on` starts WebConfig on the next boot. On ESP32 builds with WebConfig,
 `start webconfig ap wpa2` uses the admin password as the Wi-Fi password.
 `start webconfig ap open` adds `-Open` to the network name and requires the
 admin password in the browser. The choice lasts for the session. On a Repeater
@@ -411,8 +407,8 @@ the cutoff no longer applies and the selected WiFi/MQTT mode keeps reconnecting.
 Other setup sessions retain
 their profile's idle timeout.
 
-Full Repeater and Room Server suspend unconfigured network bridges during
-automatic first-boot setup. Automatic ESP-NOW retries remain suspended after the AP
+When automatic WebConfig startup is enabled, Full Repeater and Room Server
+suspend unconfigured network bridges during boot setup. Automatic ESP-NOW retries remain suspended after the AP
 closes, so they cannot keep an unused WiFi driver running. Saved bridge choices
 remain intact; explicitly enabling the bridge resumes it for this boot.
 Manual WebConfig/WiFi starts preserve an explicitly enabled ESP-NOW bridge,
