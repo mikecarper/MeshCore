@@ -77,7 +77,6 @@ protected:
   bool registerInterruptAction();
   void unregisterInterruptAction();
   bool hasAssertedRadioInterrupt() const;
-  bool hasPendingRadioInterrupt() const;
 #if defined(MESH_AGC_TIMING_DIAGNOSTICS) && MESH_AGC_TIMING_DIAGNOSTICS
   bool hasPendingSoftwareRadioInterrupt() const;
 #endif
@@ -858,6 +857,7 @@ public:
 #endif
   uint32_t getRecoveryCount() const override { return n_wd_soft + n_wd_hard; }
 
+  bool hasPendingRadioInterrupt() const;
   void loop() override;
   bool setTrackerSleep(bool sleeping) override;
   bool recoverRadio(bool hard) override;

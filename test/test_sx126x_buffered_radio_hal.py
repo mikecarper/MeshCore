@@ -247,7 +247,8 @@ class SX126xBufferedRadioHalTests(unittest.TestCase):
                 # still passes; the per-command transfer requirement must fail.
                 legacy=re.sub(r"  (?:MC_RADIO_FAST_CODE_ATTR )?void spiTransfer\([^}]+\}\n","",headers[header])
                 self.assertNotEqual(legacy,headers[header])
-                for clock in (8000000,8888888):
+                clocks = (4000000, 8000000, 8888888) if arch == "esp32" else (8000000, 8888888)
+                for clock in clocks:
                     for name,implementation,succeeds in (("buffered",headers[header],True),
                                                          ("per-byte",legacy,False)):
                         with self.subTest(arch=arch,clock=clock,implementation=name):

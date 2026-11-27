@@ -1523,6 +1523,7 @@ cannot select this clock, so ESP32-C6 does not offer `9`. Current nRF52,
 RP2040, and STM32 radio buses also do not offer this choice.
 
 `0` preserves board-specific defaults, including clocks that are not whole MHz.
+The Heltec V4 defaults to 4 MHz for single-profile operation and radio2.
 Adding the `9` choice does not change those defaults. An unsupported feature or
 clock is rejected. A feature saved as `on` only runs
 when its normal ownership and safety checks allow it; disabling `warm` also

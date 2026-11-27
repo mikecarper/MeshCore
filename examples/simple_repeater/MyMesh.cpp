@@ -15296,6 +15296,21 @@ bool MyMesh::hasPendingWork() const {
   return pendingWorkReason() != 0;
 }
 
+#if defined(ESP32_PLATFORM) && defined(HELTEC_LORA_V4)
+bool MyMesh::hasV4RepeaterWorkDue() const {
+  if (hasOutbound() || hasQueuedWorkDue() || hasRetryWorkDue()
+      || pending_self_advert || deferred_cli_command.pending
+      || _cli.hasPendingRadioSettings() || hasPendingOtaApply()) return true;
+#if defined(WITH_BRIDGE) || defined(WITH_UDP_BRIDGE)
+  if (isBridgeRunning()) return true;
+#endif
+#if MESH_USB_CONSOLE_COOPERATIVE
+  if (hasPendingSerialOutput()) return true;
+#endif
+  return false;
+}
+#endif
+
 mesh::powerdiag::Mask MyMesh::pendingWorkReason() const {
   using mesh::powerdiag::mask;
   using mesh::powerdiag::Reason;

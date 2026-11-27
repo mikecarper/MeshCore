@@ -811,6 +811,11 @@ static bool usbLoggingRecoverySafe(void*) {
       );
 }
 
+#if defined(ESP32_PLATFORM) && defined(HELTEC_LORA_V4)
+static constexpr uint32_t V4IdleYieldMs = 8;
+static constexpr uint32_t V4HousekeepingIntervalMs = 128;
+#endif
+
 void loop() {
 #if MESH_WARM_RX_REFRESH
   // Service the short radio lease before board, sensor, UI or transport work.
@@ -831,6 +836,37 @@ void loop() {
   board.feedWatchdog(the_mesh.getNodePrefs()->system_watchdog_enabled != 0);
 #endif
   serviceCommandInterfaces();
+
+#if defined(ESP32_PLATFORM) && defined(HELTEC_LORA_V4)
+  // Reduce application activity while the SX1262 listens on one channel.
+  // Keep the existing radio yield and run normal dispatch on every IRQ.
+  // WebConfig maintenance runs with the other bounded housekeeping work.
+  // Battery sleep, Radio2, and RX duty cycling keep their current paths.
+  static uint32_t last_housekeeping_at = 0;
+  const uint32_t now = millis();
+  if (uint32_t(now - last_housekeeping_at) >= V4HousekeepingIntervalMs) {
+    last_housekeeping_at = now;
+  } else if (radio_driver.isInRecvMode() && !radio_driver.hasPendingRadioInterrupt()
+      && !the_mesh.isDualRadioActive() && !radio_driver.isRxPowerSavingEnabled()
+      && (!the_mesh.getNodePrefs()->powersaving_enabled || board.isUsbDataConnected())
+      && !mesh::morseTimingActive(&radio_driver)
+      && !board.isOTAUpdateRunning() && !board.isRadioTestActive()
+      && !the_mesh.hasV4RepeaterWorkDue()
+#ifdef PIN_USER_BTN
+      && digitalRead(PIN_USER_BTN) != LOW
+#if defined(DISPLAY_CLASS)
+      && !user_btn.needsPolling()
+#endif
+#endif
+#if MESH_ENABLE_HOST_KISS
+      && !mesh::hostkiss::usbActive()
+#endif
+  ) {
+    radio_driver.loop();
+    delay(V4IdleYieldMs);
+    return;
+  }
+#endif
 
 #if MESH_ENABLE_EMERGENCY_POWER
   static mesh::power::EmergencyPowerRuntime emergency_power;
@@ -991,7 +1027,7 @@ void loop() {
   // Bound awake loop activity on every power source. Let the separate
   // sleep path handle its own wait when it has a sleep budget.
   if (!morse_timing && !single_radio_sleep_requested && !the_mesh.isDualRadioActive()) {
-    delay(8);
+    delay(V4IdleYieldMs);
   }
 #else
   if (!morse_timing && !can_power_save && !the_mesh.isDualRadioActive()

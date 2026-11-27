@@ -2292,6 +2292,9 @@ public:
   // To check if there is pending work
   bool hasPendingWork() const;
   mesh::powerdiag::Mask pendingWorkReason() const;
+#if defined(ESP32_PLATFORM) && defined(HELTEC_LORA_V4)
+  bool hasV4RepeaterWorkDue() const;
+#endif
 
   bool setRxBoostedGain(bool enable) override;
   bool supportsRxBoostedGain() const override;
