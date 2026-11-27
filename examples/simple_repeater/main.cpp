@@ -938,6 +938,9 @@ void loop() {
   // The G3 also retains its two-minute button wake interval here.
   can_power_save = can_power_save && sleep_guard(!user_btn.needsPolling(), mesh::powerdiag::Reason::Button);
 #endif
+#if defined(ESP32_PLATFORM) && defined(HELTEC_LORA_V4)
+  bool single_radio_sleep_requested = false;
+#endif
   if (can_power_save) {
 #if defined(ESP32_PLATFORM)
     const uint32_t sleep_budget_started_us = static_cast<uint32_t>(esp_timer_get_time());
@@ -970,7 +973,12 @@ void loop() {
           mesh::powerdiag::decision(mesh::powerdiag::mask(mesh::powerdiag::Reason::DualRadio), millis());
       } else
 #endif
-      board.sleepMilliseconds(sleep_ms); // Wake for scheduled jobs or a LoRa packet.
+      {
+#if defined(ESP32_PLATFORM) && defined(HELTEC_LORA_V4)
+        single_radio_sleep_requested = true;
+#endif
+        board.sleepMilliseconds(sleep_ms); // Wake for scheduled jobs or a LoRa packet.
+      }
     } else if (sleep_ms > 0 && mesh::powerdiag::enabled()) {
       mesh::powerdiag::decision(mesh::powerdiag::mask(mesh::powerdiag::Reason::Startup), millis());
     }
@@ -979,15 +987,18 @@ void loop() {
 
 #if defined(ESP32_PLATFORM)
   // Live radio2 and Morse need the zero-delay polling cadence.
-  if (!morse_timing && !can_power_save && !the_mesh.isDualRadioActive()) {
-    uint32_t idle_ms = the_mesh.getNodePrefs()->powersaving_enabled ? 1 : 0;
 #if defined(HELTEC_LORA_V4)
-    // Bound the loop activity near the V4 receiver while a USB host is
-    // attached, including intervals between console commands.
-    if (board.isUsbHostConnected()) idle_ms = 8;
-#endif
-    if (idle_ms) delay(idle_ms);
+  // Bound awake loop activity on every power source. Let the separate
+  // sleep path handle its own wait when it has a sleep budget.
+  if (!morse_timing && !single_radio_sleep_requested && !the_mesh.isDualRadioActive()) {
+    delay(8);
   }
+#else
+  if (!morse_timing && !can_power_save && !the_mesh.isDualRadioActive()
+      && the_mesh.getNodePrefs()->powersaving_enabled) {
+    delay(1); // Idle without suspending USB or the button wake interval.
+  }
+#endif
 #endif
 
   if (the_mesh.getNodePrefs()->reboot_interval > 0 &&

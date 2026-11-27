@@ -15,15 +15,16 @@ class ScannerPowerYieldTests(unittest.TestCase):
         compiler = shutil.which("g++") or shutil.which("clang++")
         self.assertIsNotNone(compiler)
         roles = ("companion_radio", "simple_repeater", "simple_room_server", "simple_sensor")
-        cases = [(role, []) for role in roles] + [("simple_repeater", ["-DHELTEC_LORA_V4"])]
-        for role, flags in cases:
-            with self.subTest(role=role, flags=flags), tempfile.TemporaryDirectory(prefix="scanner-power-yield-") as directory:
+        cases = [(role, False) for role in roles] + [("simple_repeater", True)]
+        for role, v4 in cases:
+            with self.subTest(role=role, v4=v4), tempfile.TemporaryDirectory(prefix="scanner-power-yield-") as directory:
                 source = (ROOT / "examples" / role / "main.cpp").read_text()
                 marker = "else if (!morse_timing && !the_mesh.isDualRadioActive()" if role == "companion_radio" else "if (!morse_timing && !can_power_save && !the_mesh.isDualRadioActive()"
+                if v4:
+                    marker = "if (!morse_timing && !single_radio_sleep_requested && !the_mesh.isDualRadioActive()"
                 gate = body(source, marker).removeprefix("else ")
                 harness = r'''
 #include <cassert>
-#include <cstdint>
 static unsigned yields=0, last_delay_ms=0;
 void delay(unsigned ms) { last_delay_ms=ms; ++yields; }
 struct Prefs { bool powersaving_enabled=true; } prefs;
@@ -33,13 +34,21 @@ struct Mesh {
   bool isDualRadioActive() const { return dual; }
   bool isTrackerModeEnabled() const { return tracker; }
 } the_mesh;
+void run(bool morse_timing=false, bool can_power_save=false, bool single_radio_sleep_requested=false) {
+  (void)can_power_save;
+  (void)single_radio_sleep_requested;
+  @GATE@
+}
 #if defined(HELTEC_LORA_V4)
-struct Board {
-  bool usb_host=false;
-  bool isUsbHostConnected() { return usb_host; }
-} board;
-#endif
-void run(bool morse_timing=false, bool can_power_save=false) { (void)can_power_save; @GATE@ }
+int main() {
+  run(); assert(yields==1 && last_delay_ms==8);
+  prefs.powersaving_enabled=false; run(); assert(yields==2 && last_delay_ms==8);
+  run(false, true); assert(yields==3); // Idle sleep allowed, but no sleep requested yet.
+  run(false, true, true); assert(yields==3);
+  run(true); assert(yields==3);
+  the_mesh.dual=true; run(); assert(yields==3);
+}
+#else
 int main() {
   run(); assert(yields==1 && last_delay_ms==1); // USB/logging/button holds keep CPU idle available.
   the_mesh.dual=true; run(); assert(yields==1); // Radio2 scanner: no1ms delay.
@@ -48,21 +57,14 @@ int main() {
   prefs.powersaving_enabled=false; run(); assert(yields==1);
   @TRACKER@
   prefs.powersaving_enabled=true; the_mesh.tracker=false; the_mesh.dual=false; run(); assert(yields==2);
-#if defined(HELTEC_LORA_V4)
-  prefs.powersaving_enabled=false;
-  board.usb_host=true;
-  run(); assert(yields==3 && last_delay_ms==8);
-  run(false, true); assert(yields==3); // Let the actual sleep path handle idle.
-  run(true); assert(yields==3);
-  the_mesh.dual=true; run(); assert(yields==3);
-  the_mesh.dual=false; board.usb_host=false; run(); assert(yields==3);
-#endif
 }
+#endif
 '''.replace("@GATE@", gate).replace("@TRACKER@", "the_mesh.tracker=true; the_mesh.dual=true; run(); assert(yields==1);" if role == "simple_sensor" else "")
                 work = Path(directory)
                 cpp, binary = work / "test.cpp", work / "test"
                 for broken in (False, True):
                     cpp.write_text(harness.replace("!the_mesh.isDualRadioActive()", "true") if broken else harness)
+                    flags = ["-DHELTEC_LORA_V4"] if v4 else []
                     compiled = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror", *flags, str(cpp), "-o", str(binary)], capture_output=True, text=True)
                     self.assertEqual(compiled.returncode, 0, compiled.stderr)
                     ran = subprocess.run([str(binary)], capture_output=True, text=True)
