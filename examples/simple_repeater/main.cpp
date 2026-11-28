@@ -32,6 +32,9 @@
 #endif
 
 #include "MyMesh.h"
+#ifdef MC_V4_RF24_HARD_OFF
+#include "V4RfOffLab.h"
+#endif
 #include <helpers/ota/OtaRollback.h>
 #if defined(OTA_BOOTLOADER_MIGRATION)
 #include <helpers/ota/BootloaderMigration.h>
@@ -234,6 +237,9 @@ void setup() {
   mesh::hilStartupTrace("board_begin");
   board.begin();
   mesh::hilStartupTrace("board_ready");
+#ifdef MC_V4_RF24_HARD_OFF
+  v4rf24::shutDown();
+#endif
 
 #if MESH_REPEATER_REQUIRE_PSRAM
   // Board startup resets the transceiver. Admit the complete external tables
@@ -480,6 +486,9 @@ void setup() {
   the_mesh.begin(fs, !volatile_primary_fs);
 #else
   the_mesh.begin(fs);
+#endif
+#ifdef MC_V4_RF24_HARD_OFF
+  v4rf24::shutDown();
 #endif
   mesh::hilStartupTrace("mesh_ready");
 #if defined(OTA_BOOTLOADER_MIGRATION)

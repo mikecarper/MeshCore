@@ -1,6 +1,10 @@
 #include <helpers/FloodProfilePolicy.h>
 #include <helpers/CLIReplyText.h>
 #include "MyMesh.h"
+#ifdef MC_V4_RF24_HARD_OFF
+#include "V4RfOffLab.h"
+extern CustomSX1262 radio;
+#endif
 #include <helpers/HardwareCommand.h>
 #include <helpers/ui/DisplayNightLocation.h>
 
@@ -12725,6 +12729,33 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
                            char *reply, int gpio_client_index,
                            uint8_t gpio_path_hash_size, bool usb_origin) {
   _wireless_usb_command = usb_origin;
+#ifdef MC_V4_RF24_HARD_OFF
+  if (usb_origin && !sender_timestamp && sender == nullptr) {
+    if (strcmp(command, "get rxlab.rf24") == 0) {
+      v4rf24::printStatus(reply, 160);
+      return;
+    }
+    if (strcmp(command, "get radio.rxstats") == 0) {
+      uint8_t raw[6] = {};
+      const int16_t status = radio.getMod()->SPIreadStream(RADIOLIB_SX126X_CMD_GET_STATS,
+                                                         raw, sizeof(raw));
+      if (status == RADIOLIB_ERR_NONE) {
+        snprintf(reply, 160, "> packets=%u crc=%u header=%u",
+                 static_cast<unsigned>((raw[0] << 8) | raw[1]),
+                 static_cast<unsigned>((raw[2] << 8) | raw[3]),
+                 static_cast<unsigned>((raw[4] << 8) | raw[5]));
+      } else {
+        snprintf(reply, 160, "Error: SX1262 GetStats failed (%d)", status);
+      }
+      return;
+    }
+    if (strcmp(command, "get radio.rssi.raw") == 0) {
+      snprintf(reply, 160, "> rssi=%.1f", radio.getRSSI(false));
+      return;
+    }
+  }
+#endif
+
 #if MESH_ENABLE_DIRECT_OTA_ADMIN
   if (mesh::DirectOtaAdminClient::isCommand(command)) {
     if (!usb_origin || sender_timestamp || sender != nullptr)
